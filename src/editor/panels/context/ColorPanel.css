@@ -1,0 +1,107 @@
+.cf-color {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+.cf-color .cf-ctx__section:first-of-type {
+  margin-top: 24px;
+}
+
+/* ---- swatch grids: fixed-size circles spread over the full width ---- */
+
+.cf-color__grid {
+  display: grid;
+  gap: 12px 8px;
+  justify-content: space-between;
+}
+
+.cf-color__grid--7 {
+  grid-template-columns: repeat(7, 36px);
+}
+
+.cf-color__grid--6 {
+  grid-template-columns: repeat(6, 40px);
+}
+
+.cf-color__grid .cf-swatch {
+  justify-self: center;
+}
+
+/* ---- round action buttons that sit in the document colours row ---- */
+
+.cf-color__round {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--c-ink);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-color__round:hover {
+  transform: scale(1.1);
+}
+
+.cf-color__round svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* rainbow ring with a white centre and a plus */
+.cf-color__add[aria-expanded="true"] {
+  box-shadow:
+    0 0 0 2px var(--c-bg),
+    0 0 0 4px var(--c-primary);
+}
+
+.cf-color__add-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--c-bg);
+  box-shadow: var(--sh-inset);
+}
+
+.cf-color__add-inner svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cf-color__eye {
+  border: 1px solid var(--c-line-strong);
+  background: var(--c-bg);
+}
+
+.cf-color__eye:hover {
+  border-color: var(--c-ink-5);
+  background: var(--c-bg-subtle);
+}
+
+.cf-color__more {
+  display: block;
+  margin: 12px 0 0;
+  padding: 4px 0;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-color__more:hover {
+  color: var(--c-primary);
+}
+
+.cf-color__pop-body {
+  width: 264px;
+  padding: 14px;
+}

@@ -1,0 +1,156 @@
+.cf-brandtab__loading {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cf-brandtab__hint {
+  margin-top: 10px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+/* ---- logos ---- */
+
+.cf-brandtab__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 20px 16px;
+  border: 1.5px dashed var(--c-line-strong);
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  text-align: center;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.cf-brandtab__drop:hover:not(:disabled) {
+  border-color: var(--c-primary);
+  background: var(--c-primary-softer);
+}
+
+.cf-brandtab__drop strong {
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+
+.cf-brandtab__drop-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-pill);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-brandtab__drop-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cf-brandtab__logo {
+  position: relative;
+}
+
+.cf-brandtab__logo-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--c-line);
+  background: var(--c-bg);
+}
+
+.cf-brandtab__logo-card img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.cf-brandtab__remove.cf-iconbtn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--c-bg);
+  box-shadow: var(--sh-2);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.cf-brandtab__logo:hover .cf-brandtab__remove,
+.cf-brandtab__remove:focus-visible {
+  opacity: 1;
+}
+
+/* ---- colours ---- */
+
+.cf-brandtab__colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cf-brandtab__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1.5px dashed var(--c-line-strong);
+  border-radius: var(--r-sm);
+  color: var(--c-ink-3);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-brandtab__add:hover,
+.cf-brandtab__add[aria-expanded="true"] {
+  border-color: var(--c-primary);
+  background: var(--c-primary-softer);
+  color: var(--c-primary);
+}
+
+.cf-brandtab__add svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cf-brandtab__picker {
+  width: 264px;
+  padding: 14px;
+}
+
+.cf-brandtab__picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ---- fonts ---- */
+
+.cf-brandtab__fonts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -6px 12px;
+}
+
+.cf-brandtab__addfont {
+  margin-top: 8px;
+}

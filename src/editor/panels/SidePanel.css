@@ -1,0 +1,133 @@
+.cf-sidepanel {
+  position: relative;
+  z-index: var(--z-panel);
+  flex: none;
+  width: 0;
+  min-height: 0;
+  background: var(--c-bg);
+  transition: width var(--dur-slow) var(--ease);
+}
+
+.cf-sidepanel.is-open {
+  width: var(--panel-w);
+}
+
+/* Clips the fixed-width content while the aside animates its width; the handle sits outside this clip. */
+.cf-sidepanel__clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  box-shadow: inset -1px 0 0 var(--c-line);
+}
+
+.cf-sidepanel:not(.is-open) .cf-sidepanel__clip {
+  box-shadow: none;
+}
+
+.cf-sidepanel__inner {
+  display: flex;
+  flex-direction: column;
+  width: var(--panel-w);
+  height: 100%;
+}
+
+.cf-sidepanel__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  animation: cf-sidepanel-in var(--dur) var(--ease) both;
+}
+
+@keyframes cf-sidepanel-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- collapse / re-open handle ---- */
+
+.cf-sidepanel__handle.cf-iconbtn {
+  position: absolute;
+  top: 50%;
+  right: -13px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-pill);
+  background: var(--c-bg);
+  color: var(--c-ink-2);
+  box-shadow: var(--sh-2);
+  transform: translateY(-50%);
+  transition:
+    right var(--dur-slow) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-sidepanel__handle.cf-iconbtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cf-sidepanel__handle.cf-iconbtn:hover {
+  background: var(--c-bg);
+  color: var(--c-primary);
+  box-shadow: var(--sh-float);
+}
+
+/* folded: the handle moves to the left edge of the workspace */
+.cf-sidepanel:not(.is-open) .cf-sidepanel__handle.cf-iconbtn {
+  right: -34px;
+}
+
+/*
+ * ---- narrow screens: the panel becomes a bottom sheet ----
+ * The editor shell turns the rail into a tab bar along the bottom and sets this sheet's `bottom` / open height
+ * (editor.css); the rest of the sheet lives here.
+ */
+
+@media (max-width: 899px) {
+  .cf-sidepanel,
+  .cf-sidepanel.is-open {
+    position: fixed;
+    right: 0;
+    bottom: var(--bottombar-h);
+    left: 0;
+    width: auto;
+    height: 0;
+    transition: height var(--dur-slow) var(--ease);
+  }
+
+  .cf-sidepanel.is-open {
+    height: min(52vh, 460px);
+  }
+
+  .cf-sidepanel__clip {
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    box-shadow: var(--sh-pop);
+  }
+
+  .cf-sidepanel__inner {
+    width: 100%;
+  }
+
+  .cf-sidepanel__handle.cf-iconbtn,
+  .cf-sidepanel:not(.is-open) .cf-sidepanel__handle.cf-iconbtn {
+    top: -34px;
+    right: 14px;
+    transform: none;
+  }
+
+  /* the chevron points down while the sheet is open and up while it is folded away */
+  .cf-sidepanel__handle.cf-iconbtn svg {
+    transform: rotate(-90deg);
+  }
+}

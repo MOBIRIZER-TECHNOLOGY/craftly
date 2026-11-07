@@ -1,0 +1,172 @@
+/* ---- design cards ---- */
+
+/* cards are as tall as their own content, so a landscape card is not stretched to its portrait neighbour */
+.cf-proj__grid {
+  align-items: start;
+}
+
+.cf-proj__design {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 6px 8px;
+  background: var(--c-bg-subtle);
+}
+
+.cf-proj__design:hover {
+  background: var(--c-hover);
+}
+
+.cf-proj__design.is-current {
+  box-shadow: inset 0 0 0 1.5px var(--c-primary-line);
+  cursor: default;
+}
+
+.cf-proj__thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--c-hover);
+  box-shadow: var(--sh-inset);
+  color: var(--c-ink-4);
+}
+
+.cf-proj__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cf-proj__thumb > svg:not(.cf-proj__star) {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+}
+
+.cf-proj__badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+}
+
+.cf-proj__star {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 16px;
+  height: 16px;
+  color: var(--c-warning-ink);
+  fill: var(--c-warning-ink);
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--c-ink) 40%, transparent));
+}
+
+.cf-proj__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.cf-proj__title {
+  overflow: hidden;
+  color: var(--c-ink);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-proj__sub {
+  overflow: hidden;
+  color: var(--c-ink-3);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- folders ---- */
+
+.cf-proj__folders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 -6px;
+}
+
+.cf-proj__folder {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  padding: 4px 6px;
+  border-radius: var(--r-md);
+  color: var(--c-ink);
+  text-align: left;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+button.cf-proj__folder:hover {
+  background: var(--c-hover);
+}
+
+.cf-proj__folder.is-form {
+  padding-right: 8px;
+}
+
+.cf-proj__folder-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-md);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-proj__folder-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.cf-proj__folder-icon.is-create {
+  border: 1.5px dashed var(--c-line-strong);
+  background: transparent;
+  color: var(--c-ink-2);
+}
+
+.cf-proj__folder-icon.is-starred {
+  background: var(--c-warning-soft);
+  color: var(--c-warning-ink);
+}
+
+.cf-proj__folder-icon.is-starred svg {
+  fill: var(--c-warning-ink);
+}
+
+.cf-proj__folder-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-proj__folder-count {
+  color: var(--c-ink-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+}

@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Type-check, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Audit the packages that ship (fails on a moderate or worse advisory)
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Type-check
+        run: npm run typecheck
+      - name: Lint (no warnings allowed)
+        run: npm run lint
+      - name: Format (Prettier)
+        run: npm run format:check
+      - name: Tests with coverage (fails below 95 %)
+        run: npm run coverage
+      - name: Production build
+        run: npm run build
+      - name: Keep the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage
+          retention-days: 7
+
+  browser:
+    name: Browser checks (Chrome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start the dev server and run the journeys
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          E2E_OUT: ${{ runner.temp }}/e2e
+        run: |
+          npm run dev > "$RUNNER_TEMP/dev-server.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run e2e
+      - name: Run the journeys again on a production build, with the offline check
+        # the build that people get: minified, with the service worker (the store handle the journeys read is switched on for this copy only)
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          E2E_OUT: ${{ runner.temp }}/e2e-production
+          VITE_EXPOSE_STORE: "1"
+        run: |
+          npx vite build --outDir dist-e2e
+          npx vite preview --outDir dist-e2e --host 127.0.0.1 --port 4174 > "$RUNNER_TEMP/preview.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4174/ > /dev/null; then break; fi
+            sleep 1
+          done
+          BASE=http://127.0.0.1:4174 OFFLINE=1 npm run e2e
+      - name: Keep the screenshots of failed checks and the server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failures
+          path: |
+            ${{ runner.temp }}/e2e
+            ${{ runner.temp }}/e2e-production
+            ${{ runner.temp }}/dev-server.log
+            ${{ runner.temp }}/preview.log
+          retention-days: 7

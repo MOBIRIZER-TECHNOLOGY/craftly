@@ -1,0 +1,163 @@
+.cf-num {
+  --_h: var(--ctl-md);
+
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: var(--_h);
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-num--sm {
+  --_h: var(--ctl-sm);
+}
+
+.cf-num:hover:not(.is-disabled) {
+  border-color: var(--c-ink-4);
+}
+
+.cf-num:focus-within {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+}
+
+.cf-num.is-disabled {
+  background: var(--c-bg-subtle);
+  color: var(--c-ink-4);
+}
+
+.cf-num__handle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: stretch;
+  justify-content: center;
+  min-width: 28px;
+  padding: 0 0 0 10px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  user-select: none;
+  touch-action: none;
+}
+
+.cf-num.is-scrub .cf-num__handle {
+  cursor: ew-resize;
+}
+
+.cf-num.is-scrub .cf-num__handle:hover {
+  color: var(--c-primary);
+}
+
+.cf-num__handle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cf-num__label {
+  display: block;
+}
+
+.cf-num__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.cf-num__handle + .cf-num__input {
+  padding-left: 6px;
+}
+
+.cf-num__input:focus-visible {
+  outline: none;
+}
+
+.cf-num__suffix {
+  flex: none;
+  padding-right: 10px;
+  color: var(--c-ink-4);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  user-select: none;
+}
+
+.cf-num__input:disabled {
+  cursor: not-allowed;
+}
+
+/* While scrubbing keep the resize cursor everywhere and block text selection. */
+.cf-scrubbing,
+.cf-scrubbing * {
+  cursor: ew-resize !important;
+  user-select: none !important;
+}
+
+/* ---- stepper variant:  [-]  34  [+] ---- */
+
+.cf-num--stepper {
+  width: auto;
+  min-width: 104px;
+}
+
+.cf-num--stepper .cf-num__input {
+  padding: 0 2px;
+  text-align: center;
+}
+
+.cf-num__step {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 28px;
+  color: var(--c-ink-2);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.cf-num__step:first-child {
+  border-radius: calc(var(--r-sm) - 1px) 0 0 calc(var(--r-sm) - 1px);
+}
+
+.cf-num__step:last-child {
+  border-radius: 0 calc(var(--r-sm) - 1px) calc(var(--r-sm) - 1px) 0;
+}
+
+.cf-num__step:hover:not(:disabled) {
+  background: var(--c-hover);
+  color: var(--c-ink);
+}
+
+.cf-num__step:active:not(:disabled) {
+  background: var(--c-press);
+}
+
+.cf-num__step:disabled {
+  color: var(--c-ink-4);
+  cursor: not-allowed;
+}
+
+.cf-num__step svg {
+  width: 14px;
+  height: 14px;
+}

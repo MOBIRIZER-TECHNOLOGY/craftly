@@ -1,0 +1,100 @@
+/* Trash: dimmed thumbnails with Restore / Delete forever. */
+
+.cf-trash .cf-trash__empty-btn {
+  --_fg: var(--c-danger-ink);
+  --_bd-hover: var(--c-danger);
+}
+
+.cf-trash__count {
+  margin-bottom: 16px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.cf-trash__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 26px 18px;
+}
+
+.cf-trash__card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cf-trash__stage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+  overflow: hidden;
+}
+
+.cf-trash__stage img {
+  position: absolute;
+  inset: 8%;
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+  filter: grayscale(0.4) drop-shadow(0 2px 5px color-mix(in srgb, var(--c-ink) 24%, transparent));
+  opacity: 0.78;
+}
+
+.cf-trash__mock {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  border-radius: 0;
+  filter: grayscale(0.4);
+  opacity: 0.8;
+}
+
+.cf-trash__body {
+  min-width: 0;
+}
+
+.cf-trash__title {
+  overflow: hidden;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-trash__sub {
+  margin-top: 2px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.cf-trash__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cf-trash__delete {
+  --cf-btn-ghost-fg: var(--c-danger-ink);
+  --cf-btn-ghost-hover: var(--c-danger-soft);
+  --cf-btn-ghost-press: var(--c-danger-soft);
+}
+
+@media (max-width: 759px) {
+  .cf-trash__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 12px;
+  }
+
+  /* two columns of cards are narrow: stack the buttons at full width */
+  .cf-trash__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

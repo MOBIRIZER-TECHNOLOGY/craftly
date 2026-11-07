@@ -1,0 +1,351 @@
+/* Dashboard shell: left rail (expandable), white sheet with a rounded corner, phone tab bar. */
+
+.cf-dash {
+  --_rail: var(--rail-w);
+
+  position: fixed;
+  inset: 0;
+  display: flex;
+  background: var(--c-bg-subtle);
+  color: var(--c-ink);
+}
+
+.cf-dash.is-rail-expanded {
+  --_rail: 232px;
+}
+
+/* toasts clear the phone tab bar */
+body:has(.cf-dash) {
+  --cf-toast-bottom: 24px;
+}
+
+/* ================= rail ================= */
+
+.cf-dnav {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: stretch;
+  width: var(--_rail);
+  padding: 12px 0 14px;
+  overflow: hidden auto;
+  transition: width var(--dur) var(--ease);
+}
+
+.cf-dnav__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.cf-dnav:not(.is-expanded) .cf-dnav__top {
+  justify-content: center;
+  padding: 0;
+}
+
+.cf-dnav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: -0.01em;
+}
+
+/* round purple Create button with its label underneath */
+.cf-dnav__create {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  margin: 14px 0 10px;
+}
+
+.cf-dnav__create-btn,
+.cf-dtabbar__create-btn {
+  --cf-ib-fg: var(--c-ink-inverse);
+  --cf-ib-hover: var(--c-primary-hover);
+  --cf-ib-press: var(--c-primary-press);
+  --cf-ib-fg-hover: var(--c-ink-inverse);
+
+  border-radius: var(--r-pill);
+  background: var(--c-primary);
+  box-shadow: var(--sh-2);
+}
+
+.cf-dnav__create-btn svg,
+.cf-dtabbar__create-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.cf-dnav__create-label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--c-ink-2);
+}
+
+.cf-dnav__create-wide {
+  width: auto;
+  margin: 14px 14px 10px;
+  border-radius: var(--r-md);
+}
+
+.cf-dnav__list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cf-dnav__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0 5px;
+  color: var(--c-ink-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1.2;
+}
+
+.cf-dnav__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 32px;
+  border-radius: 12px;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.cf-dnav__icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.cf-dnav__item:hover .cf-dnav__icon {
+  background: var(--c-hover);
+  color: var(--c-ink);
+}
+
+.cf-dnav__item.is-active {
+  color: var(--c-ink);
+  font-weight: var(--fw-bold);
+}
+
+.cf-dnav__item.is-active .cf-dnav__icon {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-dnav__item:focus-visible {
+  outline-offset: -2px;
+  border-radius: 12px;
+}
+
+.cf-dnav__bottom {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
+.cf-dnav__account {
+  border-radius: var(--r-pill);
+}
+
+/* expanded rail: rows with the label beside the icon */
+.cf-dnav.is-expanded .cf-dnav__list {
+  padding: 0 12px;
+}
+
+.cf-dnav.is-expanded .cf-dnav__item {
+  flex-direction: row;
+  gap: 12px;
+  height: 42px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: var(--fs-md);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.cf-dnav.is-expanded .cf-dnav__icon,
+.cf-dnav.is-expanded .cf-dnav__item:hover .cf-dnav__icon,
+.cf-dnav.is-expanded .cf-dnav__item.is-active .cf-dnav__icon {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+}
+
+.cf-dnav.is-expanded .cf-dnav__item:hover {
+  background: var(--c-hover);
+}
+
+.cf-dnav.is-expanded .cf-dnav__item.is-active {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-dnav.is-expanded .cf-dnav__bottom {
+  padding: 8px 12px 0;
+}
+
+.cf-dnav__account-wide {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.cf-dnav__account-wide .cf-btn__label {
+  flex: 1;
+  text-align: left;
+}
+
+/* ================= content column + sheet ================= */
+
+.cf-dash__column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.cf-dash__mobilebar {
+  display: none;
+}
+
+.cf-dash__sheet {
+  flex: 1;
+  min-height: 0;
+  margin: 8px 8px 0 0;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--c-bg);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+
+.cf-dash__scroll {
+  height: 100%;
+  overflow: hidden auto;
+}
+
+/* ================= phone tab bar ================= */
+
+.cf-dtabbar {
+  display: none;
+}
+
+@media (max-width: 759px) {
+  body:has(.cf-dash) {
+    --cf-toast-bottom: 88px;
+  }
+
+  .cf-dash,
+  .cf-dash.is-rail-expanded {
+    flex-direction: column;
+  }
+
+  .cf-dnav {
+    display: none;
+  }
+
+  .cf-dash__mobilebar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+    padding: 0 10px 0 16px;
+  }
+
+  .cf-dash__logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-extrabold);
+    letter-spacing: -0.01em;
+  }
+
+  .cf-dash__sheet {
+    margin: 0;
+  }
+
+  .cf-dtabbar {
+    /* above the (positioned) cards of the sheet, so the raised Create button is never cut off */
+    position: relative;
+    z-index: 6;
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding: 0 6px env(safe-area-inset-bottom, 0px);
+    background: var(--c-bg);
+    box-shadow: 0 -1px 0 var(--c-line);
+  }
+
+  .cf-dtabbar__item {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    color: var(--c-ink-3);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+  }
+
+  .cf-dtabbar__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 30px;
+    border-radius: var(--r-pill);
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+
+  .cf-dtabbar__icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .cf-dtabbar__item.is-active {
+    color: var(--c-primary);
+    font-weight: var(--fw-bold);
+  }
+
+  .cf-dtabbar__item.is-active .cf-dtabbar__icon {
+    background: var(--c-primary-soft);
+  }
+
+  .cf-dtabbar__item:focus-visible {
+    outline-offset: -3px;
+    border-radius: var(--r-md);
+  }
+
+  .cf-dtabbar__create {
+    display: flex;
+    flex: 1;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .cf-dtabbar .cf-dtabbar__create-btn {
+    --_size: 52px;
+
+    margin-top: -16px;
+    box-shadow:
+      0 0 0 5px var(--c-bg),
+      var(--sh-float);
+  }
+}

@@ -1,0 +1,91 @@
+.cf-cattile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px 8px;
+  border-radius: var(--r-md);
+  color: var(--c-ink-2);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.cf-cattile__art {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  transition: transform var(--dur) var(--ease);
+}
+
+/* the second card peeking out behind the face */
+.cf-cattile__plate {
+  position: absolute;
+  inset: 2px 2px 2px 2px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, var(--_plate), var(--_to));
+  opacity: 0.5;
+  transform: translate(6px, -5px) rotate(7deg);
+  transition: transform var(--dur) var(--ease);
+}
+
+.cf-cattile__face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 18px;
+  background: linear-gradient(145deg, var(--_from), var(--_to));
+  box-shadow:
+    0 6px 14px color-mix(in srgb, var(--_to) 38%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--c-bg) 60%, transparent),
+    inset 0 -10px 16px color-mix(in srgb, var(--c-ink) 14%, transparent);
+}
+
+/* soft gloss across the top half */
+.cf-cattile__face::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 46% 0;
+  border-radius: 18px 18px 50% 50% / 18px 18px 26% 26%;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c-bg) 46%, transparent), color-mix(in srgb, var(--c-bg) 0%, transparent));
+}
+
+.cf-cattile__icon {
+  position: relative;
+  display: inline-flex;
+  color: var(--c-ink-inverse);
+  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--c-ink) 32%, transparent));
+}
+
+.cf-cattile__icon svg {
+  width: 30px;
+  height: 30px;
+  stroke-width: 2;
+}
+
+.cf-cattile__label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+}
+
+.cf-cattile:hover {
+  color: var(--c-ink);
+}
+
+.cf-cattile:hover .cf-cattile__art {
+  transform: translateY(-3px);
+}
+
+.cf-cattile:hover .cf-cattile__plate {
+  transform: translate(8px, -6px) rotate(10deg);
+}
+
+.cf-cattile:active .cf-cattile__art {
+  transform: translateY(-1px) scale(0.97);
+}
+
+.cf-cattile:focus-visible {
+  outline-offset: -2px;
+}

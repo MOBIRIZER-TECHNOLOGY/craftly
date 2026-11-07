@@ -1,0 +1,40 @@
+.cf-spinner {
+  display: inline-block;
+  flex: none;
+  color: var(--c-primary);
+  line-height: 0;
+}
+
+.cf-spinner svg {
+  display: block;
+  animation: cf-spin 0.8s linear infinite;
+}
+
+.cf-spinner__track,
+.cf-spinner__arc {
+  stroke-width: 3;
+  stroke: currentColor;
+}
+
+.cf-spinner__track {
+  opacity: 0.18;
+}
+
+.cf-spinner__arc {
+  stroke-linecap: round;
+  stroke-dasharray: 28 100;
+}
+
+@keyframes cf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A spinner is a progress cue: keep it turning, just slower, when motion is reduced. */
+@media (prefers-reduced-motion: reduce) {
+  .cf-spinner svg {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

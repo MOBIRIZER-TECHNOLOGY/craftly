@@ -1,0 +1,148 @@
+/* Charts and Tables sub-pages. */
+
+.cf-chart-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 10px 10px;
+}
+
+.cf-chart-preview {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.cf-chart-preview__grid {
+  fill: none;
+  stroke: var(--c-line-strong);
+  stroke-dasharray: 2 3;
+  stroke-width: 1;
+}
+
+.cf-chart-cell__name {
+  overflow: hidden;
+  color: var(--c-ink-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- table size picker ---- */
+
+.cf-tablepick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 18px 16px 14px;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+}
+
+.cf-tablepick__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cf-tablepick__row {
+  display: flex;
+  gap: 6px;
+}
+
+.cf-tablepick__cell {
+  width: 44px;
+  height: 36px;
+  border: 1.5px solid var(--c-line-strong);
+  border-radius: var(--r-xs);
+  background: var(--c-bg);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.cf-tablepick__cell.is-lit {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+
+.cf-tablepick__cell:hover {
+  transform: scale(1.06);
+}
+
+.cf-tablepick__cell:focus-visible {
+  outline-offset: 1px;
+}
+
+.cf-tablepick__caption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+}
+
+.cf-tablepick__caption strong {
+  color: var(--c-ink);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+}
+
+.cf-tablepick__none {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 12px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.cf-tablepick__none svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* ---- quick add ---- */
+
+.cf-tablequick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cf-tablequick__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px 8px;
+  color: var(--c-ink-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-tablequick__glyph {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  max-width: 44px;
+}
+
+.cf-tablequick__glyph i {
+  height: 7px;
+  border-radius: 1.5px;
+  background: var(--c-line-strong);
+}
+
+.cf-tablequick__glyph i.is-head {
+  background: var(--c-primary);
+}

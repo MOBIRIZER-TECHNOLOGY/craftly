@@ -1,0 +1,201 @@
+/*
+ * Floating tool palette: a vertical white card next to the rail with a round close button above it.
+ * Positioned inside the left rail (which is the positioning context) at left: 80px, top: 120px.
+ */
+
+.cf-tools {
+  position: absolute;
+  top: 120px;
+  left: calc(var(--rail-w) + 8px);
+  z-index: var(--z-toolbar);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  animation: cf-tools-in var(--dur) var(--ease) both;
+}
+
+@keyframes cf-tools-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* narrow screens: the rail is a tab bar along the bottom, so the palette rises above it */
+@media (max-width: 899px) {
+  .cf-tools {
+    top: auto;
+    bottom: calc(100% + 12px);
+    left: 12px;
+  }
+}
+
+.cf-tools__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: 12px;
+  border-radius: var(--r-pill);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  box-shadow: var(--sh-float);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.cf-tools__close:hover {
+  background: var(--c-hover);
+}
+
+.cf-tools__close:active {
+  transform: scale(0.94);
+}
+
+.cf-tools__close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cf-tools__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--r-lg);
+  background: var(--c-bg);
+  box-shadow: var(--sh-float);
+}
+
+.cf-tools__btn {
+  position: relative;
+}
+
+.cf-tools__btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* a little corner notch marks the buttons that open a flyout */
+.cf-tools__btn.has-flyout::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 0;
+  height: 0;
+  border-bottom: 5px solid var(--c-ink-5);
+  border-left: 5px solid transparent;
+}
+
+/* ---- flyouts ---- */
+
+.cf-tools__flyout {
+  padding: 14px;
+  border-radius: var(--r-lg);
+}
+
+.cf-flyout {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 232px;
+}
+
+.cf-flyout__title {
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+
+.cf-flyout__hint {
+  margin-top: -6px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.cf-flyout__shapes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.cf-flyout__shape {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
+  border-radius: var(--r-sm);
+  background: var(--c-bg-subtle);
+  color: var(--c-ink-2);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.cf-flyout__shape:hover {
+  background: var(--c-hover);
+  color: var(--c-ink);
+  transform: translateY(-1px);
+}
+
+.cf-flyout__shape.is-selected {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  box-shadow: inset 0 0 0 1.5px var(--c-primary);
+}
+
+.cf-flyout__preview {
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+}
+
+.cf-flyout__colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cf-flyout__custom {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: conic-gradient(var(--c-danger), var(--c-warning), var(--c-success), var(--c-blue), var(--c-primary), var(--c-danger));
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.cf-flyout__custom:hover {
+  transform: scale(1.1);
+}
+
+.cf-flyout__custom.is-selected {
+  box-shadow:
+    0 0 0 2px var(--c-bg),
+    0 0 0 4px var(--c-primary);
+}
+
+.cf-flyout__custom-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--c-bg);
+  box-shadow: var(--sh-inset);
+}
+
+.cf-flyout__picker {
+  margin-top: 2px;
+}

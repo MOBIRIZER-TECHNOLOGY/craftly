@@ -1,0 +1,23 @@
+.cf-skeleton {
+  display: block;
+  flex: none;
+  background: linear-gradient(90deg, var(--c-hover) 0%, var(--c-bg-subtle) 45%, var(--c-hover) 90%);
+  background-size: 220% 100%;
+  animation: cf-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes cf-skeleton-shimmer {
+  from {
+    background-position: 110% 0;
+  }
+  to {
+    background-position: -110% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-skeleton {
+    animation: none;
+    background: var(--c-hover);
+  }
+}

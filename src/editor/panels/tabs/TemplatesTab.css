@@ -1,0 +1,107 @@
+.cf-tpl__wall {
+  min-height: 120px;
+}
+
+.cf-tpl__skeletons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.cf-tpl__card {
+  display: block;
+  overflow: hidden;
+  background: var(--c-hover);
+  box-shadow: var(--sh-inset);
+}
+
+.cf-tpl__thumb {
+  display: block;
+  border-radius: var(--r-md);
+}
+
+.cf-tpl__name {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 24px 10px 8px;
+  overflow: hidden;
+  color: var(--c-ink-inverse);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--c-ink) 74%, transparent));
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+
+.cf-tpl__card:hover .cf-tpl__name,
+.cf-tpl__card:focus-visible .cf-tpl__name {
+  opacity: 1;
+}
+
+.cf-tpl__pages {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--c-ink) 66%, transparent);
+  color: var(--c-ink-inverse);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+.cf-tpl__pages svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ---- detail ---- */
+
+.cf-tpl__pages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cf-tpl__page {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cf-tpl__page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cf-tpl__page-no {
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+}
+
+.cf-tpl__add {
+  margin-right: -6px;
+  color: var(--c-primary);
+}
+
+.cf-tpl__page-card {
+  overflow: hidden;
+  background: var(--c-hover);
+  box-shadow: var(--sh-1), var(--sh-inset);
+}

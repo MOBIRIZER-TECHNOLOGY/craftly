@@ -1,0 +1,179 @@
+.cf-btn {
+  /* per-variant colours (set below) */
+  --_fg: var(--c-ink);
+  --_bg: transparent;
+  --_bd: transparent;
+  --_bg-hover: var(--c-hover);
+  --_bg-press: var(--c-press);
+  --_bd-hover: var(--_bd);
+  /* per-size metrics */
+  --_h: var(--ctl-md);
+  --_px: 14px;
+  --_fs: var(--fs-md);
+  --_icon: var(--icon-md);
+  --_gap: 8px;
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--_gap);
+  min-width: var(--_h);
+  height: var(--_h);
+  padding: 0 var(--_px);
+  border: 1px solid var(--_bd);
+  border-radius: var(--r-sm);
+  background: var(--_bg);
+  color: var(--_fg);
+  font-family: var(--font-ui);
+  font-size: var(--_fs);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  user-select: none;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.cf-btn:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--_bg-hover);
+  border-color: var(--_bd-hover);
+}
+
+.cf-btn:active:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--_bg-press);
+}
+
+.cf-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cf-btn[aria-disabled="true"] {
+  cursor: progress;
+}
+
+/* ---- sizes ---- */
+
+.cf-btn--sm {
+  --_h: var(--ctl-sm);
+  --_px: 10px;
+  --_fs: var(--fs-sm);
+  --_icon: var(--icon-sm);
+  --_gap: 6px;
+}
+
+.cf-btn--lg {
+  --_h: var(--ctl-lg);
+  --_px: 20px;
+  --_fs: var(--fs-lg);
+  --_icon: var(--icon-lg);
+  --_gap: 10px;
+  border-radius: var(--r-md);
+}
+
+.cf-btn--icon-only {
+  padding: 0;
+  width: var(--_h);
+}
+
+.cf-btn--block {
+  display: flex;
+  width: 100%;
+}
+
+/* ---- variants ---- */
+
+.cf-btn--primary {
+  --_fg: var(--c-ink-inverse);
+  --_bg: var(--c-primary);
+  --_bg-hover: var(--c-primary-hover);
+  --_bg-press: var(--c-primary-press);
+  box-shadow: var(--sh-1);
+}
+
+.cf-btn--secondary {
+  --_fg: var(--c-ink);
+  --_bg: var(--c-bg);
+  --_bd: var(--c-line-strong);
+  --_bg-hover: var(--c-bg-subtle);
+  --_bg-press: var(--c-hover);
+  --_bd-hover: var(--c-ink-5);
+}
+
+.cf-btn--ghost {
+  /* overridable so ghost buttons can sit on the brand gradient (see TopBar) */
+  --_fg: var(--cf-btn-ghost-fg, var(--c-ink));
+  --_bg-hover: var(--cf-btn-ghost-hover, var(--c-hover));
+  --_bg-press: var(--cf-btn-ghost-press, var(--c-press));
+}
+
+.cf-btn--soft {
+  --_fg: var(--c-primary);
+  --_bg: var(--c-primary-soft);
+  --_bg-hover: var(--c-primary-tint);
+  --_bg-press: var(--c-primary-line);
+}
+
+.cf-btn--danger {
+  --_fg: var(--c-ink-inverse);
+  --_bg: var(--c-danger-solid);
+  --_bg-hover: var(--c-danger-hover);
+  --_bg-press: var(--c-danger-press);
+  box-shadow: var(--sh-1);
+}
+
+/* ---- parts ---- */
+
+.cf-btn__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.cf-btn__icon svg {
+  width: var(--_icon);
+  height: var(--_icon);
+}
+
+.cf-btn__label {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* room for descenders: the label clips its overflow to get the ellipsis */
+  line-height: 1.35;
+}
+
+.cf-btn--loading {
+  cursor: progress;
+}
+
+.cf-btn--loading > :not(.cf-btn__spinner) {
+  opacity: 0;
+}
+
+.cf-btn__spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.cf-btn__spinner .cf-spinner {
+  color: inherit;
+}
+
+.cf-btn--lg.cf-btn--primary,
+.cf-btn--lg.cf-btn--danger {
+  box-shadow: var(--sh-2);
+}

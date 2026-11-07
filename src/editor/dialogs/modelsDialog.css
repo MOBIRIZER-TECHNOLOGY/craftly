@@ -1,0 +1,127 @@
+.cf-models {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cf-models__lede {
+  margin: 0;
+  color: var(--c-ink-2);
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+}
+
+.cf-models__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--c-warning-soft);
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cf-models__warn svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.cf-models__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cf-models__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+}
+
+.cf-models__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cf-models__name {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-models__text {
+  margin: 0;
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cf-models__meta {
+  margin: 0;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cf-models__meta a {
+  margin-right: 8px;
+  color: var(--c-primary);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+}
+
+.cf-models__meta a:hover {
+  text-decoration: underline;
+}
+
+.cf-models__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cf-models__work {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cf-models__work-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--ctl-sm);
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.cf-models__storage {
+  margin: 0;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cf-models__sizes {
+  margin-right: auto;
+  margin-left: 12px;
+  color: var(--c-ink-3);
+}

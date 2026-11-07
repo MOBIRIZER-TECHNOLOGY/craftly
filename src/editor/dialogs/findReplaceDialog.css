@@ -1,0 +1,57 @@
+.cf-find-pop {
+  width: 360px;
+  max-width: calc(100vw - 16px);
+}
+
+.cf-find {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.cf-find__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.cf-find__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+
+.cf-find__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cf-find__row .cf-search {
+  flex: 1;
+  min-width: 0;
+  margin-right: 4px;
+}
+
+.cf-find__count {
+  color: var(--c-ink-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cf-find__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cf-find__note {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}

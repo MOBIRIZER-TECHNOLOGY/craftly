@@ -1,0 +1,124 @@
+.cf-leftrail {
+  position: relative;
+  z-index: calc(var(--z-panel) + 1);
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: var(--rail-w);
+  min-height: 0;
+  border-right: 1px solid var(--c-line);
+  background: var(--c-bg);
+  user-select: none;
+  transition: border-color var(--dur) var(--ease);
+}
+
+/* beside an open side panel the divider fades to a whisper (both sides are white) */
+.cf-leftrail:not(.is-flush) {
+  border-right-color: color-mix(in srgb, var(--c-line) 55%, transparent);
+}
+
+.cf-leftrail__list {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.cf-leftrail__list::-webkit-scrollbar {
+  display: none;
+}
+
+.cf-leftrail__tab {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 72px;
+  padding: 8px 0 0;
+  border-radius: var(--r-md);
+  color: var(--c-ink-3);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.cf-leftrail__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 36px;
+  border-radius: var(--r-md);
+  color: var(--c-ink-2);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.cf-leftrail__icon svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.75;
+}
+
+.cf-leftrail__label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+}
+
+.cf-leftrail__tab:hover:not(.is-active) .cf-leftrail__icon {
+  background: var(--c-hover);
+  color: var(--c-ink);
+}
+
+.cf-leftrail__tab:hover:not(.is-active) {
+  color: var(--c-ink);
+}
+
+.cf-leftrail__tab:active .cf-leftrail__icon {
+  transform: scale(0.94);
+}
+
+.cf-leftrail__tab.is-active {
+  color: var(--c-ink);
+}
+
+.cf-leftrail__tab.is-active .cf-leftrail__label {
+  font-weight: var(--fw-bold);
+}
+
+.cf-leftrail__tab.is-active .cf-leftrail__icon {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  box-shadow: inset 0 0 0 1px var(--c-primary-tint);
+}
+
+.cf-leftrail__tab.is-active .cf-leftrail__icon svg {
+  stroke-width: 2;
+}
+
+.cf-leftrail__tab:focus-visible {
+  outline-offset: -3px;
+}
+
+@media (max-height: 640px) {
+  .cf-leftrail__tab {
+    height: 64px;
+    padding-top: 6px;
+  }
+}
+
+/* narrow screens: the editor shell lays the rail out as a tab bar along the bottom, so the divider moves to its top */
+@media (max-width: 899px) {
+  .cf-leftrail,
+  .cf-leftrail:not(.is-flush) {
+    border-right: 0;
+  }
+
+  .cf-leftrail__tab {
+    padding-top: 6px;
+  }
+}

@@ -1,0 +1,60 @@
+.cf-adj__top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.cf-adj__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cf-adj__row {
+  min-width: 0;
+}
+
+.cf-adj__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.cf-adj__label {
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-adj__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.cf-adj__value {
+  min-width: 34px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.cf-adj__reset.cf-iconbtn {
+  --cf-ib-fg: var(--c-ink-3);
+}
+
+.cf-adj__duo {
+  display: flex;
+  gap: 24px;
+  margin-top: 14px;
+}
+
+.cf-adj__duo-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}

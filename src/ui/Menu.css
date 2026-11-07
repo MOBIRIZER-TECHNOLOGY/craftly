@@ -1,0 +1,159 @@
+.cf-popover--menu {
+  min-width: 200px;
+  max-width: 340px;
+}
+
+.cf-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  outline: none;
+}
+
+.cf-menu:focus-visible {
+  outline: none;
+}
+
+.cf-popover--menu > .cf-menu {
+  min-width: 0;
+}
+
+.cf-menu--surface {
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  box-shadow: var(--sh-pop);
+}
+
+.cf-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+/* Hover and arrow keys both move DOM focus, so :focus is the single highlight state. */
+.cf-menu__item:focus,
+.cf-menu__item.is-open {
+  background: var(--c-hover);
+}
+
+.cf-menu__item:active {
+  background: var(--c-press);
+}
+
+.cf-menu__item[aria-disabled="true"] {
+  color: var(--c-ink-4);
+  cursor: default;
+}
+
+.cf-menu__item[aria-disabled="true"]:focus {
+  background: transparent;
+}
+
+.cf-menu__item.is-danger {
+  color: var(--c-danger-ink);
+}
+
+.cf-menu__item.is-danger:focus,
+.cf-menu__item.is-danger.is-open {
+  background: var(--c-danger-soft);
+}
+
+.cf-menu__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--c-ink-2);
+}
+
+.cf-menu__item.is-danger .cf-menu__icon {
+  color: inherit;
+}
+
+.cf-menu__item[aria-disabled="true"] .cf-menu__icon {
+  color: inherit;
+}
+
+.cf-menu__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cf-menu__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* room for descenders (g, p, y) inside the clipped box */
+  line-height: 1.45;
+  padding-block: 1px;
+}
+
+.cf-menu__hint {
+  flex: none;
+  margin-left: 16px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.cf-menu__shortcut {
+  flex: none;
+  margin-left: 24px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.01em;
+}
+
+.cf-menu__hint + .cf-menu__shortcut {
+  margin-left: 16px;
+}
+
+.cf-menu__check,
+.cf-menu__chevron {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--c-ink-3);
+}
+
+.cf-menu__check {
+  color: var(--c-primary);
+}
+
+.cf-menu__chevron {
+  margin-right: -4px;
+  margin-left: 8px;
+}
+
+.cf-menu__divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--c-line);
+}
+
+.cf-menu__label {
+  padding: 8px 10px 4px;
+  color: var(--c-ink-4);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

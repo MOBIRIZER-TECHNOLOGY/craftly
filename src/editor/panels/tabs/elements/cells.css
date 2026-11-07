@@ -1,0 +1,145 @@
+/* Cells of the Elements sub-pages: shapes, illustrations, icons and photos. */
+
+.cf-cell {
+  background: var(--c-bg-subtle);
+  color: var(--c-ink);
+}
+
+.cf-cell:hover {
+  background: var(--c-hover);
+}
+
+/* ---- shapes ---- */
+
+.cf-cell--shape {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+}
+
+.cf-cell--shape svg {
+  width: 70%;
+  height: 70%;
+  transition: transform var(--dur) var(--ease-spring);
+}
+
+.cf-cell--shape:hover svg {
+  transform: scale(1.1);
+}
+
+/* ---- illustrations and stickers ---- */
+
+.cf-cell--graphic {
+  overflow: hidden;
+}
+
+.cf-cell__box {
+  display: block;
+}
+
+.cf-cell__svg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+}
+
+.cf-cell__svg svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transition: transform var(--dur) var(--ease-spring);
+}
+
+.cf-cell--graphic:hover .cf-cell__svg svg {
+  transform: scale(1.05);
+}
+
+/* stickers get a soft white outline, like die-cut stickers */
+.cf-cell__svg.is-sticker svg {
+  filter: drop-shadow(0 0 1px var(--c-bg)) drop-shadow(0 0 1px var(--c-bg)) drop-shadow(0 1px 2px color-mix(in srgb, var(--c-ink) 22%, transparent));
+}
+
+/* ---- icons ---- */
+
+.cf-cell--icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--c-ink);
+}
+
+.cf-cell__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+}
+
+.cf-cell__icon svg {
+  width: 30px;
+  height: 30px;
+  transition: transform var(--dur) var(--ease-spring);
+}
+
+.cf-cell--icon:hover .cf-cell__icon svg {
+  transform: scale(1.12);
+}
+
+/* ---- photos ---- */
+
+.cf-cell--photo {
+  overflow: hidden;
+  background: var(--c-hover);
+}
+
+.cf-cell__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: cf-cell-fade var(--dur) var(--ease) both;
+}
+
+@keyframes cf-cell-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cf-cell__shimmer {
+  position: absolute;
+  inset: 0;
+}
+
+.cf-cell__caption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 22px 10px 8px;
+  overflow: hidden;
+  color: var(--c-ink-inverse);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--c-ink) 72%, transparent));
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+
+.cf-cell--photo:hover .cf-cell__caption,
+.cf-cell--photo:focus-visible .cf-cell__caption {
+  opacity: 1;
+}

@@ -1,0 +1,110 @@
+.cf-tabs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.cf-tabs--full {
+  display: flex;
+  width: 100%;
+}
+
+.cf-tabs--full .cf-tabs__tab {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+.cf-tabs__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  color: var(--c-ink-3);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-tabs__tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cf-tabs__icon {
+  display: inline-flex;
+}
+
+.cf-tabs__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---- underline ---- */
+
+.cf-tabs--underline {
+  gap: 4px;
+  box-shadow: inset 0 -1px 0 var(--c-line);
+}
+
+.cf-tabs--underline .cf-tabs__tab {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+
+.cf-tabs--underline .cf-tabs__tab::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--c-primary);
+  transform: scaleX(0);
+  transition: transform var(--dur) var(--ease);
+}
+
+.cf-tabs--underline .cf-tabs__tab:hover:not(:disabled) {
+  color: var(--c-ink);
+  background: var(--c-bg-subtle);
+}
+
+.cf-tabs--underline .cf-tabs__tab.is-selected {
+  color: var(--c-primary);
+}
+
+.cf-tabs--underline .cf-tabs__tab.is-selected::after {
+  transform: scaleX(1);
+}
+
+/* ---- pill ---- */
+
+.cf-tabs--pill {
+  gap: 6px;
+}
+
+.cf-tabs--pill .cf-tabs__tab {
+  height: 38px;
+  padding: 0 18px;
+  border-radius: var(--r-pill);
+  color: var(--c-ink-2);
+}
+
+.cf-tabs--pill .cf-tabs__tab:hover:not(:disabled):not(.is-selected) {
+  background: var(--c-glass);
+  color: var(--c-ink);
+}
+
+.cf-tabs--pill .cf-tabs__tab.is-selected {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  box-shadow: inset 0 0 0 1px var(--c-primary-line);
+}

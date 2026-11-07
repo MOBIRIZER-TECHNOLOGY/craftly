@@ -1,0 +1,125 @@
+.cf-field {
+  --_h: var(--ctl-md);
+
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cf-field--sm {
+  --_h: var(--ctl-sm);
+}
+.cf-field--lg {
+  --_h: var(--ctl-lg);
+}
+
+.cf-field__label {
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-field__box {
+  display: flex;
+  align-items: center;
+  height: var(--_h);
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-field--lg .cf-field__box {
+  border-radius: var(--r-md);
+}
+
+.cf-field__box:hover:not(.is-disabled) {
+  border-color: var(--c-ink-4);
+}
+
+.cf-field__box:focus-within {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+}
+
+.cf-field__box.is-invalid {
+  border-color: var(--c-danger);
+}
+
+.cf-field__box.is-invalid:focus-within {
+  box-shadow: 0 0 0 3px var(--c-danger-halo);
+}
+
+.cf-field__box.is-disabled {
+  background: var(--c-bg-subtle);
+}
+
+.cf-field__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  outline: none;
+}
+
+.cf-field--lg .cf-field__input {
+  font-size: var(--fs-lg);
+}
+
+.cf-field__input:focus-visible {
+  outline: none;
+}
+
+.cf-field__input::placeholder {
+  color: var(--c-ink-4);
+  font-weight: var(--fw-regular);
+}
+
+.cf-field__input:disabled {
+  color: var(--c-ink-4);
+  cursor: not-allowed;
+}
+
+.cf-field__adornment {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--c-ink-3);
+}
+
+.cf-field__adornment:first-child {
+  padding-left: 10px;
+}
+.cf-field__adornment:first-child + .cf-field__input {
+  padding-left: 8px;
+}
+.cf-field__input + .cf-field__adornment {
+  padding-right: 10px;
+}
+
+.cf-field__adornment svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cf-field__message {
+  margin: 0;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.cf-field__message.is-error {
+  color: var(--c-danger-ink);
+  font-weight: var(--fw-medium);
+}

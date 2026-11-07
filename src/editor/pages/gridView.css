@@ -1,0 +1,169 @@
+/* Grid view: all pages as large thumbnails on the workspace background. */
+
+.cf-grid {
+  --cf-btn-ghost-fg: var(--c-ink-2);
+  --cf-btn-ghost-hover: var(--c-line);
+  --cf-btn-ghost-press: var(--c-line-strong);
+
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--c-workspace);
+  overscroll-behavior: contain;
+}
+
+.cf-grid__barwrap {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-toolbar);
+  display: flex;
+  justify-content: center;
+  padding: 10px 12px 0;
+  pointer-events: none;
+}
+
+.cf-grid__bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  box-shadow: var(--sh-float);
+  pointer-events: auto;
+}
+
+.cf-grid__list {
+  display: grid;
+  justify-content: start;
+  align-content: start;
+  margin: 0;
+  list-style: none;
+}
+
+.cf-gridcell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.cf-gridcell.is-dragging {
+  opacity: 0.4;
+}
+
+.cf-gridcell__thumb {
+  position: relative;
+  display: block;
+  padding: 0;
+  border-radius: var(--r-xs);
+  background: var(--c-bg);
+  box-shadow: 0 0 0 1px var(--c-line-strong);
+  cursor: pointer;
+  transition: box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-gridcell__thumb:hover {
+  box-shadow: 0 0 0 2px var(--c-ink-5);
+}
+
+.cf-gridcell.is-active .cf-gridcell__thumb {
+  box-shadow: 0 0 0 3px var(--c-ring);
+}
+
+.cf-gridcell__thumb:focus-visible {
+  outline: 2px solid var(--c-ring);
+  outline-offset: 4px;
+}
+
+.cf-gridcell__canvas {
+  border-radius: var(--r-xs);
+}
+
+.cf-gridcell__more.cf-iconbtn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--c-bg);
+  box-shadow: var(--sh-1);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.cf-gridcell:hover .cf-gridcell__more,
+.cf-gridcell:focus-within .cf-gridcell__more,
+.cf-gridcell.is-menu-open .cf-gridcell__more {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .cf-gridcell.is-active .cf-gridcell__more {
+    opacity: 1;
+  }
+}
+
+.cf-gridcell.is-drop-before::before,
+.cf-gridcell.is-drop-after::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 24px;
+  width: 4px;
+  border-radius: var(--r-pill);
+  background: var(--c-ring);
+  pointer-events: none;
+}
+
+.cf-gridcell.is-drop-before::before {
+  left: -14px;
+}
+
+.cf-gridcell.is-drop-after::after {
+  right: -14px;
+}
+
+.cf-gridcell .cf-pagecap {
+  font-size: var(--fs-sm);
+}
+
+.cf-gridcell--add {
+  align-self: start;
+}
+
+.cf-gridcell__add {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--r-xs);
+  background: var(--c-press);
+}
+
+.cf-gridcell__add .cf-btn {
+  --_h: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.cf-gridcell__add-main.cf-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+.cf-gridcell__add-caret.cf-btn {
+  flex: none;
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+}
+
+.cf-gridcell__add .cf-btn__icon svg {
+  width: 22px;
+  height: 22px;
+}

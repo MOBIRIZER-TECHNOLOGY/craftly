@@ -1,0 +1,115 @@
+.cf-search {
+  --_h: 40px;
+  --_r: var(--r-md);
+  --_fs: var(--fs-md);
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--_h);
+  padding: 0 8px 0 12px;
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--_r);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-search--lg {
+  --_h: 56px;
+  --_r: var(--r-lg);
+  --_fs: var(--fs-lg);
+
+  gap: 12px;
+  padding: 0 12px 0 18px;
+  box-shadow: var(--sh-1);
+}
+
+.cf-search:hover:not(.is-disabled) {
+  border-color: var(--c-ink-4);
+}
+
+.cf-search:focus-within {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+}
+
+.cf-search.is-disabled {
+  background: var(--c-bg-subtle);
+}
+
+.cf-search__icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--c-ink-3);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.cf-search--lg .cf-search__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.cf-search:focus-within .cf-search__icon {
+  color: var(--c-primary);
+}
+
+.cf-search__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: var(--_fs);
+  font-weight: var(--fw-medium);
+  outline: none;
+}
+
+.cf-search__input:focus-visible {
+  outline: none;
+}
+
+.cf-search__input::placeholder {
+  color: var(--c-ink-3);
+  font-weight: var(--fw-regular);
+}
+
+.cf-search__clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-pill);
+  background: var(--c-hover);
+  color: var(--c-ink-2);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.cf-search--lg .cf-search__clear {
+  width: 28px;
+  height: 28px;
+}
+
+.cf-search__clear:hover {
+  background: var(--c-press);
+}
+
+.cf-search__clear svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cf-search__trailing {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}

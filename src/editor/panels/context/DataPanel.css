@@ -1,0 +1,142 @@
+.cf-data {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+/* ---- the editable grids ---- */
+
+.cf-data__scroll {
+  margin-right: -4px;
+  padding: 2px 4px 6px 0;
+  overflow-x: auto;
+}
+
+.cf-data__grid,
+.cf-data__chartgrid {
+  display: grid;
+  gap: 6px;
+  align-items: center;
+}
+
+.cf-data__grid {
+  grid-template-columns: repeat(var(--cf-cols, 3), minmax(84px, 1fr)) 28px;
+}
+
+.cf-data__chartgrid {
+  grid-template-columns: minmax(84px, 1.2fr) repeat(var(--cf-series, 1), minmax(92px, 1fr)) 28px;
+}
+
+.cf-data__colhead {
+  display: flex;
+  justify-content: center;
+}
+
+.cf-data__head {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  padding-left: 2px;
+}
+
+.cf-data__serieshead {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cf-data__serieshead[data-dim] {
+  opacity: 0.55;
+}
+
+.cf-data__cell {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--c-field-border);
+  border-radius: 6px;
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  outline: none;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-data__cell:hover {
+  border-color: var(--c-ink-4);
+}
+
+.cf-data__cell:focus {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+}
+
+.cf-data__cell.is-header {
+  background: var(--c-bg-subtle);
+  font-weight: var(--fw-bold);
+}
+
+.cf-data__cell.is-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cf-data__cell.is-dim {
+  opacity: 0.55;
+}
+
+.cf-data__cell.is-invalid,
+.cf-data__cell.is-invalid:focus {
+  border-color: var(--c-danger);
+  background: var(--c-danger-soft);
+  box-shadow: none;
+}
+
+.cf-data__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.cf-data__after {
+  margin-top: 16px;
+}
+
+/* ---- colours and inline controls ---- */
+
+.cf-data__colorrow,
+.cf-data__inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+}
+
+.cf-data__colorlabel {
+  color: var(--c-ink-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+}
+
+.cf-data__colorside {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cf-data__stripe.is-off .cf-swatch {
+  opacity: 0.4;
+}
+
+.cf-data__palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}

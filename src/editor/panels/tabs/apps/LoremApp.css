@@ -1,0 +1,25 @@
+.cf-lorem__count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cf-lorem__preview-field {
+  margin-top: 18px;
+}
+
+.cf-lorem__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  box-shadow: var(--sh-inset);
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}

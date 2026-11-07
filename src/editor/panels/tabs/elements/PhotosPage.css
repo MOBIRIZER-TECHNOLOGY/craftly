@@ -1,0 +1,57 @@
+.cf-photos__upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1.5px dashed var(--c-primary-line);
+  border-radius: var(--r-md);
+  background: var(--c-primary-softer);
+  color: var(--c-ink);
+  text-align: left;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.cf-photos__upload:hover {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+  transform: translateY(-1px);
+}
+
+.cf-photos__upload-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: var(--c-primary);
+  color: var(--c-ink-inverse);
+}
+
+.cf-photos__upload-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cf-photos__upload-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+
+.cf-photos__upload-text strong {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+
+.cf-photos__upload-text span {
+  color: var(--c-ink-3);
+}

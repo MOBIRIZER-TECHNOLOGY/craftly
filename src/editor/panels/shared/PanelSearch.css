@@ -1,0 +1,108 @@
+.cf-psearch {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 52px;
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--c-primary-tint);
+  border-radius: var(--r-lg);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  box-shadow: var(--sh-1);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-psearch:hover {
+  border-color: var(--c-primary-line);
+}
+
+.cf-psearch:focus-within {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+}
+
+.cf-psearch__lead {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  color: var(--c-ink-2);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.cf-psearch__lead svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cf-psearch:focus-within .cf-psearch__lead {
+  color: var(--c-primary);
+}
+
+.cf-psearch__lead.is-button {
+  cursor: pointer;
+}
+
+.cf-psearch__lead.is-button:hover {
+  background: var(--c-hover);
+  color: var(--c-ink);
+}
+
+.cf-psearch__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  outline: none;
+}
+
+.cf-psearch__input:focus-visible {
+  outline: none;
+}
+
+.cf-psearch__input::placeholder {
+  color: var(--c-ink-3);
+  font-weight: var(--fw-regular);
+}
+
+.cf-psearch__clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-pill);
+  background: var(--c-hover);
+  color: var(--c-ink-2);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.cf-psearch__clear:hover {
+  background: var(--c-press);
+}
+
+.cf-psearch__clear svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cf-psearch__trailing {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}

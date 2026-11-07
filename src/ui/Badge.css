@@ -1,0 +1,55 @@
+.cf-badge {
+  --_fg: var(--c-ink-2);
+  --_bg: var(--c-hover);
+  --_solid: var(--c-ink-2);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  background: var(--_bg);
+  color: var(--_fg);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.cf-badge--solid {
+  background: var(--_solid);
+  color: var(--c-ink-inverse);
+}
+
+.cf-badge--primary {
+  --_fg: var(--c-primary);
+  --_bg: var(--c-primary-soft);
+  --_solid: var(--c-primary);
+}
+.cf-badge--success {
+  --_fg: var(--c-success-ink);
+  --_bg: var(--c-success-soft);
+  --_solid: var(--c-success-solid);
+}
+.cf-badge--danger {
+  --_fg: var(--c-danger-ink);
+  --_bg: var(--c-danger-soft);
+  --_solid: var(--c-danger-solid);
+}
+.cf-badge--warning {
+  --_fg: var(--c-ink);
+  --_bg: var(--c-warning-soft);
+  --_solid: var(--c-warning);
+}
+.cf-badge--info {
+  --_fg: var(--c-info-ink);
+  --_bg: var(--c-info-soft);
+  --_solid: var(--c-info-solid);
+}
+
+.cf-badge--warning.cf-badge--solid {
+  color: var(--c-ink);
+}

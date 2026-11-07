@@ -1,0 +1,115 @@
+.cf-share-pop {
+  width: 380px;
+  max-width: calc(100vw - 16px);
+}
+
+.cf-share {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cf-share__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px 4px;
+}
+
+.cf-share__head--back {
+  padding: 10px 14px 10px 12px;
+  border-bottom: 1px solid var(--c-line);
+}
+
+.cf-share__head--back .cf-share__title {
+  font-size: var(--fs-md);
+}
+
+.cf-share__title {
+  min-width: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  line-height: 1.3;
+}
+
+.cf-share__body {
+  padding: 12px 20px 20px;
+}
+
+.cf-share__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 8px;
+}
+
+.cf-share__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 4px;
+  border-radius: var(--r-md);
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.cf-share__tile:hover:not(:disabled) {
+  background: var(--c-bg-subtle);
+}
+
+.cf-share__tile:disabled {
+  cursor: progress;
+}
+
+.cf-share__tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-pill);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+
+.cf-share__tile:hover:not(:disabled) .cf-share__tile-icon {
+  background: var(--c-primary-tint);
+  transform: translateY(-1px);
+}
+
+.cf-share__tile-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.cf-share__tile-label {
+  overflow-wrap: anywhere;
+}
+
+.cf-share__note {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--c-bg-subtle);
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.45;
+}
+
+.cf-share__note-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--c-ink-4);
+}

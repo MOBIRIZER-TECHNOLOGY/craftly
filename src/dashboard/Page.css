@@ -1,0 +1,88 @@
+/* Page frame shared by every dashboard page: content column, page header, titled sections. */
+
+.cf-dpage {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 40px 72px;
+}
+
+.cf-dpage__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 20px;
+}
+
+.cf-dpage__head-text {
+  min-width: 0;
+}
+
+.cf-dpage__title {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.cf-dpage__subtitle {
+  margin-top: 6px;
+  color: var(--c-ink-3);
+  line-height: 1.5;
+}
+
+.cf-dpage__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cf-dsection {
+  margin-top: 36px;
+}
+
+.cf-dsection__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cf-dsection__title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.cf-dsection__more {
+  flex: none;
+  color: var(--c-ink-2);
+}
+
+@media (max-width: 759px) {
+  .cf-dpage {
+    padding: 16px 16px 40px;
+  }
+
+  .cf-dpage__head {
+    flex-direction: column;
+    margin-bottom: 14px;
+  }
+
+  .cf-dpage__actions {
+    justify-content: flex-start;
+  }
+
+  .cf-dpage__title {
+    font-size: var(--fs-xl);
+  }
+
+  .cf-dsection {
+    margin-top: 28px;
+  }
+}

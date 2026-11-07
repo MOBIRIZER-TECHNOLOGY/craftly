@@ -1,0 +1,68 @@
+/* Previews of frames and photo grids: soft tinted placeholders drawn from the real masks and cell layouts. */
+
+.cf-frame-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  padding: 8px;
+}
+
+.cf-frame-preview {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.cf-frame-preview__shape {
+  fill: var(--c-primary-soft);
+  stroke: var(--c-primary-line);
+  stroke-dasharray: 4 3;
+  stroke-width: 1.6;
+  transition:
+    fill var(--dur-fast) var(--ease),
+    stroke var(--dur-fast) var(--ease);
+}
+
+.cf-frame-preview__icon {
+  fill: var(--c-primary-line);
+}
+
+.cf-frame-cell:hover .cf-frame-preview__shape {
+  fill: var(--c-primary-tint);
+  stroke: var(--c-primary);
+}
+
+.cf-grid-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 8px;
+}
+
+.cf-grid-preview {
+  width: 100%;
+  height: auto;
+}
+
+.cf-grid-preview__cell {
+  fill: var(--c-primary-soft);
+  stroke: var(--c-primary-line);
+  stroke-width: 1.2;
+  transition: fill var(--dur-fast) var(--ease);
+}
+
+.cf-grid-cell:hover .cf-grid-preview__cell {
+  fill: var(--c-primary-tint);
+}
+
+.cf-grid-cell__name {
+  overflow: hidden;
+  color: var(--c-ink-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

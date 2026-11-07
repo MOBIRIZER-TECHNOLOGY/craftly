@@ -1,0 +1,84 @@
+/* Horizontal carousel: a scroll-snapping track with round arrows that fade in when there is more to see. */
+
+.cf-carousel {
+  position: relative;
+}
+
+.cf-carousel__track {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 4px 4px 14px;
+  margin: -4px -4px 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 4px;
+  scrollbar-width: none;
+}
+
+.cf-carousel__track::-webkit-scrollbar {
+  display: none;
+}
+
+.cf-carousel__track > * {
+  flex: none;
+  scroll-snap-align: start;
+}
+
+.cf-carousel__arrow {
+  position: absolute;
+  top: calc(50% - 22px);
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-pill);
+  background: var(--c-bg);
+  box-shadow: var(--sh-float);
+  color: var(--c-ink);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-carousel__arrow svg {
+  width: 22px;
+  height: 22px;
+}
+
+.cf-carousel__arrow--prev {
+  left: -14px;
+  transform: translateX(6px);
+}
+
+.cf-carousel__arrow--next {
+  right: -14px;
+  transform: translateX(-6px);
+}
+
+.cf-carousel.can-prev .cf-carousel__arrow--prev,
+.cf-carousel.can-next .cf-carousel__arrow--next {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.cf-carousel__arrow:hover:not([aria-disabled="true"]) {
+  background: var(--c-bg-subtle);
+}
+
+/* touch devices swipe instead */
+@media (hover: none), (max-width: 759px) {
+  .cf-carousel__arrow {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-carousel__arrow {
+    transform: none;
+  }
+}

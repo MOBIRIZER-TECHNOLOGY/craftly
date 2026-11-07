@@ -1,0 +1,14 @@
+/* Helpers shared by the small dialogs. */
+
+.cf-dialog-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cf-dialog-note {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.45;
+}

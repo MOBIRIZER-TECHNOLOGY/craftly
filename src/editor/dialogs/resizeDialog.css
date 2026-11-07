@@ -1,0 +1,185 @@
+.cf-resize {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 24px;
+  min-width: 0;
+}
+
+.cf-resize__heading {
+  margin-bottom: 8px;
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.02em;
+}
+
+.cf-resize__list {
+  max-height: min(52vh, 420px);
+  margin: 0 -8px;
+  padding: 0 8px;
+  overflow: auto;
+  border-radius: var(--r-sm);
+}
+
+.cf-resize__cat {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 8px 4px;
+  background: var(--c-bg);
+  color: var(--c-ink-4);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cf-resize .cf-btn.cf-resize__preset {
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  text-align: left;
+}
+
+.cf-resize__preset[aria-pressed="true"] {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  box-shadow: inset 0 0 0 1.5px var(--c-primary-line);
+}
+
+.cf-resize__preset .cf-btn__label {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.cf-resize__preset .cf-btn__icon {
+  width: 36px;
+  height: 36px;
+}
+
+.cf-resize__tile {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, currentColor 14%, var(--c-bg));
+}
+
+.cf-resize__shape {
+  display: block;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  background: var(--c-bg);
+}
+
+.cf-resize__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cf-resize__name {
+  overflow: hidden;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-resize__dims {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.cf-resize__preset[aria-pressed="true"] .cf-resize__dims {
+  color: inherit;
+  opacity: 0.8;
+}
+
+/* ---- custom size ---- */
+
+.cf-resize__custom {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.cf-resize__custom .cf-resize__heading {
+  margin-bottom: -2px;
+}
+
+.cf-resize__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.cf-resize__unit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cf-resize__label {
+  color: var(--c-ink-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+}
+
+.cf-resize__hint {
+  margin-top: -6px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.4;
+}
+
+.cf-resize__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--c-bg-subtle);
+  font-size: var(--fs-sm);
+}
+
+.cf-resize__facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cf-resize__facts dt {
+  color: var(--c-ink-3);
+  font-weight: var(--fw-medium);
+}
+
+.cf-resize__facts dd {
+  margin: 0;
+  color: var(--c-ink);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .cf-resize {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .cf-resize__list {
+    max-height: 240px;
+  }
+}

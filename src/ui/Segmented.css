@@ -1,0 +1,92 @@
+.cf-seg {
+  --_h: var(--ctl-md);
+
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-md);
+  background: var(--c-hover);
+}
+
+.cf-seg--sm {
+  --_h: var(--ctl-sm);
+  border-radius: 10px;
+}
+
+.cf-seg--full {
+  display: flex;
+  width: 100%;
+}
+
+.cf-seg--full .cf-seg__option {
+  flex: 1 1 0;
+}
+
+.cf-seg__option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: calc(var(--_h) - 6px);
+  height: calc(var(--_h) - 6px);
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  color: var(--c-ink-3);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-seg--sm .cf-seg__option {
+  padding: 0 10px;
+  font-size: var(--fs-sm);
+  border-radius: 7px;
+}
+
+.cf-seg__option.is-icon-only {
+  padding: 0;
+}
+
+.cf-seg__option:hover:not(:disabled):not(.is-selected) {
+  color: var(--c-ink);
+  background: var(--c-glass, rgba(255, 255, 255, 0.72));
+}
+
+.cf-seg__option.is-selected {
+  background: var(--c-bg);
+  color: var(--c-ink);
+  box-shadow:
+    var(--sh-1),
+    0 0 0 1px var(--c-line);
+}
+
+.cf-seg__option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cf-seg__icon {
+  display: inline-flex;
+}
+
+.cf-seg__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cf-seg--sm .cf-seg__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Focus ring sits inside the track so the rounded track does not clip it. */
+.cf-seg__option:focus-visible {
+  outline-offset: -2px;
+}

@@ -1,0 +1,24 @@
+.cf-kbd-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cf-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--c-line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--r-xs);
+  background: var(--c-bg);
+  color: var(--c-ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  white-space: nowrap;
+}

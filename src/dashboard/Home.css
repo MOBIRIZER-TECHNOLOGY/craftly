@@ -1,0 +1,23 @@
+/* Home page specifics; the page frame, hero and carousels have their own files. */
+
+.cf-home__page {
+  padding-top: 8px;
+}
+
+.cf-home__tile--lg {
+  width: 232px;
+}
+
+.cf-home__tile--sm {
+  width: 172px;
+}
+
+@media (max-width: 759px) {
+  .cf-home__tile--lg {
+    width: 196px;
+  }
+
+  .cf-home__tile--sm {
+    width: 148px;
+  }
+}

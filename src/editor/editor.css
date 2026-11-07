@@ -1,0 +1,151 @@
+/* ------------------------------------------------------------------ */
+/* Editor shell layout                                                 */
+/*                                                                     */
+/*   TopBar                                                            */
+/*   [ LeftRail | SidePanel | Workspace / Notes / PageStrip / BottomBar ]*/
+/*                                                                     */
+/* Under 900px the rail becomes a tab bar along the bottom and the     */
+/* side panel a sheet over the workspace.                              */
+/* ------------------------------------------------------------------ */
+
+.cf-editor {
+  --cf-tabbar-h: 60px;
+
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-ui);
+}
+
+.cf-editor__chrome {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.cf-editor__body {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.cf-editor__center {
+  /* its own stacking context: the rulers and toolbars inside never paint over the side panel's fold handle */
+  position: relative;
+  z-index: 0;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--c-workspace);
+}
+
+/* grid view shows the pages alone (like the editor it mirrors); while viewing, nothing in the rail or panel can change the design */
+.cf-editor.is-grid .cf-leftrail,
+.cf-editor.is-grid .cf-sidepanel,
+.cf-editor.is-view .cf-leftrail,
+.cf-editor.is-view .cf-sidepanel {
+  display: none;
+}
+
+/* kit workaround: menu labels clip their overflow (for the ellipsis) at line-height 1.2, which cuts the tails off g, p, y */
+.cf-menu .cf-menu__text {
+  line-height: var(--lh-base);
+}
+
+/* ---- loading / not found ---- */
+
+.cf-editor-state {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  background: var(--c-bg-subtle);
+}
+
+/* a design from the library opens in a blink: only show the spinner when it takes longer than that */
+.cf-editor-state > .cf-spinner {
+  animation: cf-editor-reveal var(--dur) var(--ease) 180ms both;
+}
+
+@keyframes cf-editor-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Narrow screens                                                      */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 899px) {
+  .cf-editor__body {
+    flex-direction: column;
+  }
+
+  .cf-editor__center {
+    order: 1;
+  }
+
+  /* the rail turns into a tab bar under everything else */
+  .cf-editor__body > .cf-leftrail {
+    order: 2;
+    flex-direction: row;
+    width: 100%;
+    height: var(--cf-tabbar-h);
+    box-shadow: inset 0 1px 0 var(--c-line);
+  }
+
+  .cf-editor__body > .cf-leftrail .cf-leftrail__list {
+    flex: 1;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 0 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .cf-editor__body > .cf-leftrail .cf-leftrail__tab {
+    flex: 1 0 64px;
+    width: auto;
+    height: 100%;
+    padding-top: 6px;
+  }
+
+  /* the panel is a sheet over the workspace and the page strip; the bottom bar and the tab bar stay reachable below it */
+  .cf-editor__body > .cf-sidepanel,
+  .cf-editor__body > .cf-sidepanel.is-open {
+    bottom: calc(var(--cf-tabbar-h) + var(--bottombar-h));
+  }
+
+  .cf-editor__body > .cf-sidepanel.is-open {
+    height: min(46vh, 460px);
+  }
+
+  /* the notes box and the page strip keep their height; the workspace gives way */
+  .cf-notes {
+    margin: 0 8px 6px;
+  }
+}
+
+@media (max-width: 599px) {
+  .cf-editor {
+    --cf-tabbar-h: 56px;
+  }
+}
+
+/* short phones in landscape: the tab bar gets a little tighter */
+@media (max-height: 640px) {
+  .cf-editor {
+    --cf-tabbar-h: 52px;
+  }
+}

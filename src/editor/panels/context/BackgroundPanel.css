@@ -1,0 +1,153 @@
+.cf-bg {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+/* ---- current page colour ---- */
+
+.cf-bg__current {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  margin-top: 8px;
+  padding: 10px 12px 10px 10px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-bg__current:hover {
+  border-color: var(--c-ink-5);
+  background: var(--c-bg-subtle);
+}
+
+.cf-bg__current-swatch {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+}
+
+.cf-bg__current-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cf-bg__current-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-bg__current-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.cf-bg__current-chev {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--c-ink-3);
+}
+
+/* ---- preset grids ---- */
+
+.cf-bg__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 8px;
+}
+
+.cf-bg__grid--photo {
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+}
+
+.cf-bg__tile {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+/* a hairline over the picture, so white and near-white backgrounds still read as a tile */
+.cf-bg__tile::after,
+.cf-bg__current-swatch::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--sh-inset);
+  pointer-events: none;
+}
+
+.cf-bg__grid--photo .cf-bg__tile {
+  aspect-ratio: 4 / 3;
+}
+
+.cf-bg__tile:hover {
+  transform: scale(1.05);
+}
+
+.cf-bg__tile.is-selected {
+  overflow: visible;
+  box-shadow:
+    0 0 0 2px var(--c-bg),
+    0 0 0 4px var(--c-primary);
+}
+
+.cf-bg__tile:focus-visible {
+  outline-offset: 3px;
+}
+
+/* the picture inside a tile, a swatch or the current-colour box */
+
+.cf-fill {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  border-radius: inherit;
+  background-position: center;
+  background-size: cover;
+}
+
+.cf-fill canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.cf-fill--photo {
+  background-color: var(--c-hover);
+}
+
+.cf-bg__colors {
+  display: flex;
+  gap: 24px;
+}
+
+.cf-bg__current + .cf-ctx__pinned {
+  margin-top: 12px;
+}

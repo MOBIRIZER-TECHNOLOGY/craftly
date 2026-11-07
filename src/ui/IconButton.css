@@ -1,0 +1,63 @@
+.cf-iconbtn {
+  --_size: var(--ctl-md);
+  --_icon: var(--icon-md);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--_size);
+  height: var(--_size);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--cf-ib-fg, var(--c-ink-2));
+  line-height: 0;
+  user-select: none;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.cf-iconbtn svg {
+  width: var(--_icon);
+  height: var(--_icon);
+}
+
+.cf-iconbtn:hover:not([aria-disabled="true"]) {
+  background: var(--cf-ib-hover, var(--c-hover));
+  color: var(--cf-ib-fg-hover, var(--cf-ib-fg, var(--c-ink)));
+}
+
+.cf-iconbtn:active:not([aria-disabled="true"]) {
+  background: var(--cf-ib-press, var(--c-press));
+}
+
+.cf-iconbtn.is-active {
+  background: var(--cf-ib-active-bg, var(--c-primary-soft));
+  color: var(--cf-ib-active-fg, var(--c-primary));
+}
+
+.cf-iconbtn.is-active:hover:not([aria-disabled="true"]) {
+  background: var(--cf-ib-active-bg, var(--c-primary-tint));
+  color: var(--cf-ib-active-fg, var(--c-primary));
+}
+
+.cf-iconbtn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cf-iconbtn--sm {
+  --_size: var(--ctl-sm);
+  --_icon: var(--icon-sm);
+}
+
+.cf-iconbtn--lg {
+  --_size: var(--ctl-lg);
+  --_icon: var(--icon-lg);
+  border-radius: var(--r-md);
+}

@@ -1,0 +1,375 @@
+/* Workspace: scroller, page paper, overlays */
+.cf-workspace {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--c-workspace);
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* The canvas is a stop in the tab order: when the keyboard puts focus on it, a frame inside its edge says so (an outline would be
+   cut off by overflow: hidden, and the page and its overlays would be drawn over it). */
+.cf-workspace:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  border: 2px solid var(--c-ring);
+  pointer-events: none;
+}
+.cf-workspace--tool-text,
+.cf-workspace--tool-shape,
+.cf-workspace--tool-line,
+.cf-workspace--tool-draw {
+  cursor: crosshair;
+}
+.cf-workspace--tool-hand {
+  cursor: grab;
+}
+.cf-workspace__scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(14, 19, 24, 0.28) transparent;
+}
+.cf-workspace__content {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+.cf-paper {
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(14, 19, 24, 0.12), 0 6px 24px rgba(14, 19, 24, 0.1);
+  z-index: 0;
+}
+.cf-sticky {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 1;
+}
+.cf-pageview {
+  max-width: none;
+  max-height: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  pointer-events: none;
+}
+.cf-pageframe {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* selection */
+.cf-sel,
+.cf-outline,
+.cf-crop {
+  position: absolute;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+.cf-sel__outline {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--c-ring);
+  pointer-events: none;
+}
+.cf-sel--locked .cf-sel__outline {
+  border-style: dashed;
+}
+.cf-sel--editing .cf-sel__outline {
+  border-width: 1px;
+}
+.cf-sel--line .cf-sel__outline {
+  display: none;
+}
+.cf-outline--hover {
+  border: 2px solid rgba(139, 61, 255, 0.55);
+}
+.cf-outline--item {
+  border: 1px solid var(--c-ring);
+}
+
+.cf-handle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  box-shadow: 0 0 0 1.5px var(--c-ring), 0 1px 4px rgba(14, 19, 24, 0.28);
+  pointer-events: auto;
+  touch-action: none;
+}
+.cf-handle--corner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.cf-handle--v {
+  width: 8px;
+  height: 22px;
+  border-radius: 6px;
+}
+.cf-handle--h {
+  width: 22px;
+  height: 8px;
+  border-radius: 6px;
+}
+.cf-handle--rotate,
+.cf-handle--move {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--c-ink);
+  box-shadow: 0 1px 6px rgba(14, 19, 24, 0.28);
+  cursor: grab;
+}
+.cf-handle--move {
+  cursor: move;
+}
+.cf-handle--rotate:hover,
+.cf-handle--move:hover {
+  color: var(--c-primary);
+}
+
+/* snapping guides, marquee, HUD */
+.cf-guide {
+  position: absolute;
+  background: #f0397f;
+  pointer-events: none;
+  z-index: 3;
+}
+.cf-guide--v {
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+.cf-guide--h {
+  height: 1px;
+  transform: translateY(-0.5px);
+}
+.cf-marquee {
+  position: absolute;
+  border: 1px solid var(--c-ring);
+  background: rgba(139, 61, 255, 0.09);
+  pointer-events: none;
+}
+.cf-drawpreview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.cf-drawpreview polyline {
+  fill: none;
+  stroke: var(--c-ring);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cf-hud {
+  position: absolute;
+  z-index: var(--z-toolbar, 30);
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  background: var(--c-ink);
+  color: #fff;
+  font: 600 12px/1 var(--font-ui);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* text editing */
+.cf-texteditor {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  transform-origin: 50% 50%;
+  overflow-wrap: break-word;
+  cursor: text;
+  min-height: 1em;
+}
+.cf-texteditor > div {
+  min-height: 1em;
+}
+.cf-texteditor[data-list] > div,
+.cf-texteditor > div[data-list] {
+  position: relative;
+}
+.cf-texteditor > div[data-list="bullet"],
+.cf-texteditor > div[data-list="number"] {
+  padding-left: 1.25em;
+  counter-increment: cf-item;
+}
+.cf-texteditor > div[data-list="bullet"]::before {
+  content: "\2022";
+  position: absolute;
+  left: 0;
+}
+.cf-texteditor > div[data-list="number"]::before {
+  content: counter(cf-item) ".";
+  position: absolute;
+  left: 0;
+}
+.cf-texteditor {
+  counter-reset: cf-item;
+}
+
+/* cropping */
+.cf-crop {
+  pointer-events: none;
+}
+.cf-crop__ghost,
+.cf-crop__live {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.cf-crop__ghost {
+  opacity: 0.38;
+  filter: grayscale(0.2);
+}
+.cf-crop__window {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  outline: 2px solid var(--c-ring);
+  cursor: move;
+  pointer-events: auto;
+  touch-action: none;
+}
+.cf-crop__handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1.5px var(--c-ring), 0 1px 4px rgba(14, 19, 24, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none;
+}
+.cf-crop__handle--nw { left: 0; top: 0; cursor: nwse-resize; }
+.cf-crop__handle--n { left: 50%; top: 0; cursor: ns-resize; width: 24px; height: 8px; }
+.cf-crop__handle--ne { left: 100%; top: 0; cursor: nesw-resize; }
+.cf-crop__handle--e { left: 100%; top: 50%; cursor: ew-resize; width: 8px; height: 24px; }
+.cf-crop__handle--se { left: 100%; top: 100%; cursor: nwse-resize; }
+.cf-crop__handle--s { left: 50%; top: 100%; cursor: ns-resize; width: 24px; height: 8px; }
+.cf-crop__handle--sw { left: 0; top: 100%; cursor: nesw-resize; }
+.cf-crop__handle--w { left: 0; top: 50%; cursor: ew-resize; width: 8px; height: 24px; }
+.cf-crop__done {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 18px);
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--c-primary);
+  color: #fff;
+  font: 700 13px/1.2 var(--font-ui);
+  cursor: pointer;
+  box-shadow: var(--sh-float);
+  pointer-events: auto;
+}
+.cf-crop__done:hover {
+  background: var(--c-primary-hover);
+}
+
+/* rulers and guides */
+.cf-ruler {
+  position: absolute;
+  z-index: 25;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  touch-action: none;
+}
+.cf-ruler canvas {
+  display: block;
+  max-width: none;
+}
+.cf-ruler--top {
+  top: 0;
+  right: 0;
+  border-bottom: 1px solid var(--c-line);
+  cursor: row-resize;
+}
+.cf-ruler--left {
+  left: 0;
+  bottom: 0;
+  border-right: 1px solid var(--c-line);
+  cursor: col-resize;
+}
+.cf-ruler__corner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 26;
+  background: rgba(255, 255, 255, 0.95);
+  border-right: 1px solid var(--c-line);
+  border-bottom: 1px solid var(--c-line);
+}
+.cf-gline {
+  position: absolute;
+  z-index: 4;
+  background: #14b8e8;
+  pointer-events: auto;
+  touch-action: none;
+}
+.cf-gline--v {
+  top: -4000px;
+  height: 8000px;
+  width: 1px;
+  cursor: col-resize;
+}
+.cf-gline--h {
+  left: -4000px;
+  width: 8000px;
+  height: 1px;
+  cursor: row-resize;
+}
+/* fat invisible hit area */
+.cf-gline::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+.cf-gline--draft {
+  pointer-events: none;
+  z-index: 24;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.cf-gline--draft.cf-gline--v {
+  top: 0;
+  height: 100%;
+}
+.cf-gline--draft.cf-gline--h {
+  left: 0;
+  width: 100%;
+}
+
+/* Animate > Preview: the page plays on its own, so selection handles and guides step aside */
+.cf-workspace.is-previewing .cf-pageframe {
+  visibility: hidden;
+}

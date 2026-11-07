@@ -1,0 +1,411 @@
+/* ------------------------------------------------------------------ */
+/* Top bar: brand gradient, white text, 56px                           */
+/* ------------------------------------------------------------------ */
+
+.cf-topbar {
+  /* theme the kit's icon buttons and ghost buttons for a dark surface */
+  --cf-ib-fg: var(--c-ink-inverse);
+  --cf-ib-hover: var(--c-bar-hover);
+  --cf-ib-press: var(--c-bar-press);
+  --cf-ib-active-bg: var(--c-bar-press);
+  --cf-ib-active-fg: var(--c-ink-inverse);
+  --cf-btn-ghost-fg: var(--c-ink-inverse);
+  --cf-btn-ghost-hover: var(--c-bar-hover);
+  --cf-btn-ghost-press: var(--c-bar-press);
+
+  position: relative;
+  z-index: var(--z-panel);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--topbar-h);
+  padding: 0 12px;
+  background: var(--grad-brand);
+  color: var(--c-ink-inverse);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+/* the default focus ring is purple, which disappears on the gradient */
+.cf-topbar :focus-visible {
+  outline-color: var(--c-ink-inverse);
+}
+
+.cf-topbar .cf-spinner {
+  color: currentColor;
+}
+
+.cf-topbar__group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cf-topbar__group--end {
+  gap: 8px;
+}
+
+.cf-topbar__sep {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 6px;
+  background: var(--c-on-dark-press);
+}
+
+/* ---- text buttons ---- */
+
+.cf-topbar__btn.cf-btn {
+  padding: 0 12px;
+}
+
+.cf-topbar .cf-btn[aria-expanded="true"] {
+  background: var(--c-bar-press);
+}
+
+.cf-topbar__resize .cf-btn__icon {
+  display: none;
+}
+
+.cf-topbar__mode.cf-btn {
+  gap: 6px;
+  padding: 0 8px 0 10px;
+}
+
+.cf-topbar__mode .cf-btn__icon--right svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.cf-topbar .cf-btn:disabled {
+  opacity: 0.55;
+}
+
+/* ---- save indicator ---- */
+
+.cf-topbar__save.is-error {
+  --cf-ib-fg: var(--c-danger);
+  --cf-ib-hover: var(--c-danger-soft);
+  background: var(--c-bg);
+}
+
+.cf-topbar__save.is-unsaved,
+.cf-topbar__save.is-saving {
+  opacity: 0.85;
+}
+
+/* ---- title ---- */
+
+.cf-topbar__title-wrap {
+  /* the title gets whatever the two button groups leave over; when that is a sliver it folds away (see the container query) */
+  container: cftitle / inline-size;
+  flex: 1 1 0;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  /* room for the focus ring of the title field, which overflow:hidden would otherwise clip */
+  padding: 4px 8px;
+  overflow: hidden;
+}
+
+.cf-topbar__title {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  max-width: min(100%, 420px);
+  cursor: text;
+}
+
+@container cftitle (max-width: 96px) {
+  .cf-topbar__title {
+    display: none;
+  }
+}
+
+.cf-topbar__title > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+  height: var(--ctl-md);
+  padding: 0 12px;
+  font: inherit;
+  line-height: var(--ctl-md);
+  white-space: pre;
+}
+
+.cf-topbar__title-sizer {
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cf-topbar__title-input {
+  width: 100%;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  text-align: center;
+  text-overflow: ellipsis;
+  outline: none;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.cf-topbar__title-input::placeholder {
+  color: var(--c-bar-placeholder);
+}
+
+.cf-topbar__title-input:hover:not(:focus) {
+  background: var(--c-bar-hover);
+}
+
+.cf-topbar__title-input:focus {
+  background: var(--c-bg);
+  color: var(--c-ink);
+  box-shadow: var(--sh-ring);
+  text-align: left;
+  text-overflow: clip;
+}
+
+/* ---- Present split button ---- */
+
+.cf-topbar__split {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  border: 1px solid var(--c-on-dark-press);
+  border-radius: var(--r-md);
+  background: var(--c-bar-hover);
+}
+
+.cf-topbar__split .cf-btn {
+  --_h: 40px;
+  height: 38px;
+  border: 0;
+  border-radius: 0;
+}
+
+.cf-topbar__split-main.cf-btn {
+  padding: 0 16px;
+  border-radius: var(--r-md) 0 0 var(--r-md);
+}
+
+.cf-topbar__split-main .cf-btn__icon {
+  display: none;
+}
+
+.cf-topbar__split-caret.cf-btn {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-left: 1px solid var(--c-on-dark-press);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+}
+
+/* ---- Share ---- */
+
+.cf-btn.cf-topbar__share {
+  --_h: 40px;
+  --_fg: var(--c-ink);
+  --_bg: var(--c-bg);
+  --_bd: transparent;
+  --_bd-hover: transparent;
+  --_bg-hover: var(--c-primary-softer);
+  --_bg-press: var(--c-primary-soft);
+
+  padding: 0 20px;
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-1);
+}
+
+.cf-topbar__share .cf-btn__icon {
+  display: none;
+}
+
+.cf-btn.cf-topbar__share[aria-expanded="true"] {
+  background: var(--c-primary-soft);
+}
+
+/* ---- Resize popover ---- */
+
+.cf-resizepop {
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+}
+
+.cf-resizepop__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  border-radius: var(--r-sm);
+  color: var(--c-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cf-resizepop__item:hover,
+.cf-resizepop__item:focus-visible {
+  background: var(--c-hover);
+}
+
+.cf-resizepop__item:focus-visible {
+  outline-offset: -2px;
+}
+
+.cf-resizepop__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-resizepop__icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cf-resizepop__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cf-resizepop__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-resizepop__desc {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+}
+
+.cf-resizepop__chev {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--c-ink-3);
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsive                                                          */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 1100px) {
+  .cf-topbar__title {
+    max-width: min(100%, 300px);
+  }
+}
+
+@media (max-width: 899px) {
+  .cf-topbar {
+    padding: 0 8px;
+    gap: 4px;
+  }
+  .cf-topbar__mode .cf-topbar__lbl {
+    display: none;
+  }
+  .cf-topbar__mode.cf-btn {
+    padding: 0 6px 0 8px;
+  }
+  .cf-topbar__btn.cf-btn {
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 599px) {
+  .cf-topbar__lbl--share {
+    display: none;
+  }
+  .cf-topbar__split-main .cf-btn__icon,
+  .cf-topbar__share .cf-btn__icon {
+    display: inline-flex;
+  }
+  .cf-topbar__split-main.cf-btn {
+    padding: 0 10px;
+  }
+  .cf-btn.cf-topbar__share {
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+  }
+  .cf-topbar__sep--hide-sm {
+    display: none;
+  }
+}
+
+@media (max-width: 519px) {
+  .cf-topbar {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cf-topbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* no room for the title: it is renamed from the File menu (which opens the rename dialog) */
+  .cf-topbar__title-wrap {
+    display: none;
+  }
+  .cf-topbar__group--end {
+    margin-left: auto;
+  }
+  .cf-topbar__lbl--keep {
+    display: none;
+  }
+  .cf-topbar__resize .cf-btn__icon {
+    display: inline-flex;
+  }
+  .cf-topbar__redo {
+    display: none;
+  }
+  .cf-topbar__split-caret.cf-btn {
+    width: 28px;
+    min-width: 28px;
+  }
+}
+
+@media (max-width: 399px) {
+  .cf-topbar {
+    gap: 2px;
+    padding: 0 4px;
+  }
+  .cf-topbar .cf-iconbtn {
+    --_size: 32px;
+  }
+  .cf-topbar__save {
+    display: none;
+  }
+  .cf-topbar__btn.cf-btn {
+    padding: 0 6px;
+  }
+  .cf-topbar__mode.cf-btn {
+    gap: 2px;
+    padding: 0 4px 0 6px;
+  }
+  .cf-topbar__split-main.cf-btn {
+    padding: 0 8px;
+  }
+  .cf-topbar__group--end {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 359px) {
+  .cf-topbar__mode {
+    display: none;
+  }
+}

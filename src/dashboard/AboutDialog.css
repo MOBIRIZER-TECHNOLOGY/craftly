@@ -1,0 +1,71 @@
+.cf-about__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cf-about__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cf-about__name {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.cf-about__tag {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+}
+
+.cf-about__text {
+  color: var(--c-ink-2);
+  line-height: 1.55;
+}
+
+.cf-about__storage {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+}
+
+.cf-about__storage-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-sm);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-about__storage-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.cf-about__storage-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.cf-about__storage-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-about__storage-sub {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}

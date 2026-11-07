@@ -1,0 +1,62 @@
+/* Templates page: chips, masonry (CSS columns), show more. */
+
+.cf-tplpage__page {
+  padding-top: 4px;
+}
+
+.cf-tplpage__chips {
+  margin: 0 -4px 6px;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cf-tplpage__chips::-webkit-scrollbar {
+  display: none;
+}
+
+.cf-tplpage__chips .cf-tabs {
+  width: max-content;
+}
+
+.cf-tplpage__chips .cf-tabs__tab {
+  height: 36px;
+  padding: 0 16px;
+  background: var(--c-bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+}
+
+.cf-tplpage__chips .cf-tabs__tab:not(.is-selected):hover {
+  background: var(--c-hover);
+}
+
+.cf-tplpage__chips .cf-tabs__tab.is-selected {
+  background: var(--c-primary-soft);
+}
+
+.cf-tplpage__chips .cf-tabs__tab svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cf-tplpage__count {
+  margin: 14px 0 16px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.cf-tplpage__masonry {
+  column-fill: balance;
+}
+
+.cf-tplpage__item {
+  margin-bottom: 22px;
+  break-inside: avoid;
+}
+
+.cf-tplpage__more {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}

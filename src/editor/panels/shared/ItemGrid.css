@@ -1,0 +1,52 @@
+.cf-itemgrid {
+  display: grid;
+  gap: var(--cf-gap, 8px);
+}
+
+.cf-lazybox {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* a lazily rendered grid cell lets its content (hover lift, focus ring) paint outside the clipped box */
+.cf-itemgrid__lazy {
+  overflow: visible;
+}
+
+.cf-itemgrid__lazy > .cf-lazybox__skeleton {
+  border-radius: var(--r-md);
+}
+
+.cf-lazybox__skeleton {
+  position: absolute;
+  inset: 0;
+}
+
+.cf-masonry {
+  display: flex;
+  align-items: flex-start;
+}
+
+.cf-masonry__col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cf-masonry__item {
+  min-width: 0;
+}
+
+.cf-vgrid {
+  position: relative;
+  width: 100%;
+}
+
+.cf-vgrid__window {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: grid;
+}

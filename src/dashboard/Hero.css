@@ -1,0 +1,110 @@
+/* The Home / Templates hero: teal-to-lavender gradient that fades into the white sheet. */
+
+.cf-hero {
+  position: relative;
+  z-index: 4; /* the Home search results hang below the hero and must cover the sections after it */
+  padding: 52px 40px 64px;
+  background:
+    linear-gradient(180deg, transparent 52%, var(--c-bg) 100%),
+    radial-gradient(70% 90% at 12% 0%, color-mix(in srgb, var(--c-bg) 55%, transparent), transparent 70%),
+    var(--grad-hero);
+}
+
+.cf-hero--compact {
+  padding: 40px 40px 48px;
+}
+
+.cf-hero__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.cf-hero__title {
+  max-width: 100%;
+  padding-bottom: 4px;
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.cf-hero--compact .cf-hero__title {
+  font-size: 34px;
+}
+
+/* white pills on the gradient (the selected one keeps the kit's purple look) */
+.cf-hero__tabs .cf-tabs__tab {
+  height: 38px;
+  gap: 7px;
+  padding: 0 16px;
+}
+
+.cf-hero__tabs .cf-tabs__tab:not(.is-selected) {
+  background: color-mix(in srgb, var(--c-bg) 72%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-ink) 10%, transparent);
+}
+
+.cf-hero__tabs .cf-tabs__tab:not(.is-selected):hover {
+  background: var(--c-bg);
+}
+
+.cf-hero__tabs .cf-tabs__tab svg {
+  width: 17px;
+  height: 17px;
+}
+
+.cf-hero__search {
+  position: relative;
+  width: 100%;
+  margin-top: 4px;
+  text-align: left;
+}
+
+.cf-hero__search .cf-search--lg {
+  height: 58px;
+  border-color: var(--c-field-border);
+  border-radius: var(--r-xl);
+  background: var(--c-bg);
+  box-shadow: var(--sh-2);
+}
+
+.cf-hero__search .cf-search--lg:hover:not(.is-disabled) {
+  border-color: var(--c-primary-line);
+}
+
+.cf-hero__search .cf-search--lg:focus-within {
+  border-color: var(--c-primary);
+  box-shadow:
+    0 0 0 4px var(--c-focus-halo),
+    var(--sh-2);
+}
+
+@media (max-width: 759px) {
+  .cf-hero,
+  .cf-hero--compact {
+    padding: 20px 16px 44px;
+  }
+
+  .cf-hero__inner {
+    gap: 16px;
+  }
+
+  .cf-hero__title,
+  .cf-hero--compact .cf-hero__title {
+    font-size: 28px;
+  }
+
+  .cf-hero__search .cf-search--lg {
+    height: 52px;
+  }
+}

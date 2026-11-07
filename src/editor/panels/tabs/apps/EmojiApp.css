@@ -1,0 +1,30 @@
+.cf-emoji__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 2px;
+}
+
+.cf-emoji__cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: var(--r-sm);
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.cf-emoji__cell:hover {
+  background: var(--c-hover);
+  box-shadow: none;
+  transform: scale(1.18);
+}
+
+.cf-emoji__cell:active {
+  transform: scale(1.02);
+}
+
+.cf-emoji__cell > span {
+  pointer-events: none;
+}

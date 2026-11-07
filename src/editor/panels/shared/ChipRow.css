@@ -1,0 +1,84 @@
+.cf-chiprow {
+  position: relative;
+  flex: none;
+  margin: 0 -16px;
+}
+
+.cf-chiprow__scroller {
+  display: flex;
+  gap: 8px;
+  padding: 2px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cf-chiprow__scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* fading edges hint at hidden chips */
+.cf-chiprow.has-right .cf-chiprow__scroller {
+  mask-image: linear-gradient(90deg, var(--c-ink) calc(100% - 48px), transparent);
+}
+
+.cf-chiprow.has-left .cf-chiprow__scroller {
+  mask-image: linear-gradient(90deg, transparent, var(--c-ink) 48px);
+}
+
+.cf-chiprow.has-left.has-right .cf-chiprow__scroller {
+  mask-image: linear-gradient(90deg, transparent, var(--c-ink) 48px, var(--c-ink) calc(100% - 48px), transparent);
+}
+
+.cf-chiprow__arrow {
+  position: absolute;
+  top: 50%;
+  display: inline-flex;
+  transform: translateY(-50%);
+}
+
+.cf-chiprow__arrow .cf-iconbtn {
+  border-radius: var(--r-pill);
+  background: var(--c-bg);
+  box-shadow: var(--sh-2);
+}
+
+.cf-chiprow__arrow--left {
+  left: 10px;
+}
+
+.cf-chiprow__arrow--right {
+  right: 10px;
+}
+
+.cf-chip {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-pill);
+  background: var(--c-bg);
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.cf-chip:hover {
+  border-color: var(--c-ink-5);
+  background: var(--c-bg-subtle);
+}
+
+.cf-chip.is-selected {
+  border-color: var(--c-primary-line);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-chip.is-selected:hover {
+  background: var(--c-primary-tint);
+}

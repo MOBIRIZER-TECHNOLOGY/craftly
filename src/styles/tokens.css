@@ -1,0 +1,98 @@
+/*
+ * Craftly design tokens.
+ *
+ * The first block is the contract from docs/DESIGN.md section 5 - names must not
+ * change, and a value only for a reason written down in docs/ACCESSIBILITY.md (three
+ * were darkened so that words on them reach 4.5:1: --grad-brand, --grad-text and
+ * --c-ink-4). The second block holds UI-kit extensions (semantic tints, control
+ * sizes, extra shadows, the tooltip layer ...). Component CSS may only use variables
+ * from this file; raw colours belong here (or in the colour picker / data files).
+ * src/styles/tokens.test.ts checks the contrast of the colours that carry words.
+ */
+
+:root {
+  /* ---------------------------------------------------------------- */
+  /* Contract (docs/DESIGN.md section 5)                              */
+  /* ---------------------------------------------------------------- */
+  --c-primary: #7c3aed;        --c-primary-hover: #6d28d9;   --c-primary-press: #5b21b6;
+  --c-primary-soft: #f1ebff;   --c-primary-softer: #f8f5ff;  --c-ring: #8b3dff;   /* selection outline */
+  --c-teal: #12c2b9;           --c-blue: #3b82f6;
+  --grad-brand: linear-gradient(90deg, #0f766e 0%, #2563eb 55%, #7c3aed 100%);   /* white text on it: 5.17:1 at worst */
+  --grad-hero: linear-gradient(180deg, #b9eef0 0%, #e6dcff 100%);
+  --grad-text: linear-gradient(90deg, #2563eb, #7c3aed);                          /* headline on --grad-hero: 4.0:1 at worst */
+
+  --c-ink: #0e1318;  --c-ink-2: #3a3f4a;  --c-ink-3: #666d7a;  --c-ink-4: #696d76;  --c-ink-inverse: #fff;   /* ink-4: 5.19:1 on white, 4.55 on a hovered row */
+  --c-line: #e3e5ea; --c-line-strong: #cfd3db;
+  --c-bg: #ffffff;   --c-bg-subtle: #f6f7f9;  --c-workspace: #eff0f5;  --c-hover: #eef0f4;  --c-press: #e4e6ec;
+  --c-danger: #e5484d;  --c-success: #16a34a;  --c-warning: #f59e0b;
+
+  --r-xs: 4px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 24px; --r-pill: 999px;
+  --sh-1: 0 1px 2px rgba(14,19,24,.08);
+  --sh-2: 0 2px 8px rgba(14,19,24,.14);
+  --sh-float: 0 2px 14px rgba(14,19,24,.18);
+  --sh-pop: 0 10px 36px rgba(14,19,24,.22), 0 0 0 1px rgba(14,19,24,.05);
+
+  --font-ui: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fs-xs: 11px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 28px; --fs-3xl: 40px;
+
+  --topbar-h: 56px;  --rail-w: 72px;  --panel-w: 340px;  --bottombar-h: 52px;  --strip-h: 96px;
+  --ease: cubic-bezier(.2,.8,.2,1);  --dur-fast: 120ms;  --dur: 200ms;
+  --z-panel: 20; --z-toolbar: 30; --z-popover: 100; --z-modal: 200; --z-toast: 300;
+
+  /* ---------------------------------------------------------------- */
+  /* UI-kit extensions                                                */
+  /* ---------------------------------------------------------------- */
+
+  /* What the contract colours were before they were darkened for contrast, and the badge colours that carry words */
+  --grad-brand-bright: linear-gradient(90deg, #12c2b9 0%, #3b82f6 55%, #7c3aed 100%);   /* art with no words on it */
+  --c-ink-5: #9aa1ad;      /* light grey for icons, borders and lines; 2.6:1 on white, so never for words */
+  --c-info-ink: #1d4ed8;   /* text of the soft info badge: 5.85:1 on --c-info-soft */
+  --c-success-ink: #117f3a;  --c-danger-ink: #c33d42;                          /* words in green and in red (the soft badges, error messages, delete entries): 4.5:1 or better on white and on their soft backgrounds */
+  --c-success-solid: #12883e;  --c-danger-solid: #d34247;  --c-info-solid: #3473da;   /* fill of the solid badges and of the danger button, white text on it: 4.55, 4.53 and 4.55:1 */
+  --c-warning-ink: #b45309;   /* amber for icons (the favourite stars, the warning marks): 5.0:1 on white, 4.6 on --c-warning-soft; --c-warning stays for fills behind dark text */
+  --c-field-border: #8d8f95;  /* outline of a text field, a checkbox and the off switch (WCAG 1.4.11): 3.2:1 on white, 3.0 on --c-bg-subtle; under the pointer it turns to --c-ink-4 */
+
+  /* Interaction tints and semantic soft backgrounds */
+  --c-primary-tint: rgba(124, 58, 237, .12);     /* hover on soft surfaces, ring fill */
+  --c-primary-line: rgba(124, 58, 237, .28);     /* hairline around soft/active surfaces */
+  --c-focus-halo: rgba(124, 58, 237, .18);       /* soft ring around focused inputs */
+  --c-selection: rgba(139, 61, 255, .22);        /* ::selection */
+  --c-danger-hover: #c1353a;  --c-danger-press: #ab2a2f;  --c-danger-soft: #fdecec;   /* hover and press of the danger button, which rests on --c-danger-solid */
+  --c-success-soft: #e6f6ec;  --c-warning-soft: #fef3dc;  --c-info-soft: #e8f0ff;
+  --c-info: #3b82f6;
+  --c-backdrop: rgba(14, 19, 24, .5);            /* modal backdrop */
+  --c-scroll: #cfd3db;        --c-scroll-hover: #aab0bc;
+  --c-checker-a: #ffffff;     --c-checker-b: #d3d7de;    /* transparency checkerboard */
+  --c-tooltip: #0e1318;                           /* tooltip / toast surface */
+  --c-tooltip-soft: rgba(255, 255, 255, .62);    /* secondary text on dark surfaces */
+  --c-on-dark-hover: rgba(255, 255, 255, .14);
+  --c-on-dark-press: rgba(255, 255, 255, .22);
+  /* the top bar is a gradient with white words on it: a white tint on a button would take them under 4.5:1, so it darkens */
+  --c-bar-hover: rgba(14, 19, 24, .16);          /* pointer on a button, and the resting Present button */
+  --c-bar-press: rgba(14, 19, 24, .28);          /* pressed, open or switched on */
+  --c-bar-placeholder: rgba(255, 255, 255, .92); /* the title field when it is empty: 4.6:1 at worst */
+  --c-glass: rgba(255, 255, 255, .6);            /* translucent white hover on tinted backgrounds */
+  --c-glass-strong: rgba(255, 255, 255, .92);    /* translucent app bars */
+  --c-danger-halo: rgba(229, 72, 77, .18);       /* focus ring of invalid inputs */
+  --c-info-on-dark: #8ab4ff;   --c-success-on-dark: #4ade80;   --c-danger-on-dark: #ff8a8e;   --c-primary-on-dark: #d6c4ff;
+
+  /* Typography */
+  --fw-regular: 400;  --fw-medium: 500;  --fw-semibold: 600;  --fw-bold: 700;  --fw-extrabold: 800;
+  --lh-base: 1.45;
+
+  /* Control sizes (buttons, inputs, icon buttons) and icon sizes */
+  --ctl-sm: 28px;  --ctl-md: 36px;  --ctl-lg: 44px;
+  --icon-sm: 16px; --icon-md: 20px; --icon-lg: 24px;
+
+  /* Elevation extras */
+  --sh-modal: 0 24px 64px rgba(14,19,24,.28), 0 0 0 1px rgba(14,19,24,.04);
+  --sh-thumb: 0 0 0 1px rgba(14,19,24,.1), 0 2px 6px rgba(14,19,24,.28);
+  --sh-inset: inset 0 0 0 1px rgba(14,19,24,.1);
+  --sh-ring: 0 0 0 3px var(--c-focus-halo);
+
+  /* Motion */
+  --ease-in: cubic-bezier(.4, 0, 1, 1);   /* exit animations */
+
+  /* Layers (popovers inside modals are lifted automatically by the kit) */
+  --z-tooltip: 400;
+}

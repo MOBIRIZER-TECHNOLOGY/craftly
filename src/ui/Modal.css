@@ -1,0 +1,197 @@
+.cf-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--c-backdrop);
+  overscroll-behavior: contain;
+  animation: cf-modal-fade-in var(--dur) var(--ease) both;
+}
+
+.cf-modal-backdrop.is-closing {
+  pointer-events: none;
+  animation: cf-modal-fade-out 150ms var(--ease-in) both;
+}
+
+.cf-modal {
+  --_w: 560px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: var(--_w);
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--r-xl);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  box-shadow: var(--sh-modal);
+  outline: none;
+  animation: cf-modal-in var(--dur) var(--ease) both;
+}
+
+.cf-modal:focus,
+.cf-modal:focus-visible {
+  outline: none;
+}
+
+.cf-modal-backdrop.is-closing .cf-modal {
+  animation: cf-modal-out 150ms var(--ease-in) both;
+}
+
+.cf-modal--sm {
+  --_w: 400px;
+}
+.cf-modal--md {
+  --_w: 560px;
+}
+.cf-modal--lg {
+  --_w: 760px;
+}
+.cf-modal--xl {
+  --_w: 1000px;
+}
+.cf-modal--full {
+  --_w: 100%;
+  height: 100%;
+}
+
+.cf-modal__header {
+  flex: none;
+  padding: 24px 64px 0 24px;
+}
+
+.cf-modal__title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.cf-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px 24px 24px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.cf-modal__header + .cf-modal__body {
+  padding-top: 12px;
+}
+
+.cf-modal--flush .cf-modal__body {
+  padding: 0;
+}
+
+.cf-modal--flush {
+  overflow: hidden;
+}
+
+.cf-modal__footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 24px 24px;
+}
+
+.cf-modal__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-pill);
+  background: var(--c-bg-subtle);
+  color: var(--c-ink-2);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.cf-modal__close:hover {
+  background: var(--c-hover);
+  color: var(--c-ink);
+}
+
+.cf-modal__close:active {
+  background: var(--c-press);
+}
+
+.cf-modal__close svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 640px) {
+  .cf-modal-backdrop {
+    padding: 12px;
+  }
+  .cf-modal__header {
+    padding-left: 20px;
+  }
+  .cf-modal__body {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .cf-modal__footer {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+@keyframes cf-modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cf-modal-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cf-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cf-modal-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-modal-backdrop,
+  .cf-modal {
+    animation: none !important;
+  }
+}

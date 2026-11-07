@@ -1,0 +1,62 @@
+.cf-notes {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  height: 140px;
+  max-height: 30%;
+  min-height: 96px;
+  margin: 0 12px 6px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  box-shadow: var(--sh-1);
+}
+
+.cf-notes__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 0 14px;
+}
+
+.cf-notes__title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--c-ink-2);
+}
+
+.cf-notes__page {
+  flex: 1;
+  color: var(--c-ink-4);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-notes__text {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 14px 12px;
+  border: 0;
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  background: transparent;
+  color: var(--c-ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+  resize: none;
+  outline: none;
+}
+
+.cf-notes__text::placeholder {
+  color: var(--c-ink-4);
+}
+
+.cf-notes__text:focus-visible {
+  outline: none;
+}
+
+.cf-notes:focus-within {
+  border-color: var(--c-primary-line);
+  box-shadow: var(--sh-ring);
+}

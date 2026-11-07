@@ -1,0 +1,195 @@
+/* Template preview: big page + page strip on the left, details and the purple call to action on the right. */
+
+.cf-tpreview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 0;
+  max-height: calc(100vh - 48px);
+}
+
+.cf-tpreview__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+  padding: 32px 28px 24px;
+  overflow: auto;
+  background: var(--c-workspace);
+}
+
+/* centre the page (and its strip) vertically when the details column is taller; auto margins collapse when the stage overflows */
+.cf-tpreview__stage > :first-child {
+  margin-top: auto;
+}
+
+.cf-tpreview__stage > :last-child {
+  margin-bottom: auto;
+}
+
+.cf-tpreview__page {
+  flex: none;
+  max-width: 100%;
+  line-height: 0;
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-float);
+  overflow: hidden;
+}
+
+.cf-tpreview__canvas {
+  display: block;
+}
+
+.cf-tpreview__strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  max-width: 100%;
+  padding: 4px;
+  overflow-x: auto;
+}
+
+.cf-tpreview__thumb {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border-radius: var(--r-xs);
+  line-height: 0;
+  box-shadow: 0 0 0 1px var(--c-line-strong);
+  overflow: hidden;
+  opacity: 0.82;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-tpreview__thumb:hover {
+  opacity: 1;
+}
+
+.cf-tpreview__thumb.is-active {
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--c-bg),
+    0 0 0 4px var(--c-ring);
+}
+
+.cf-tpreview__thumb:focus-visible {
+  outline-offset: 3px;
+}
+
+.cf-tpreview__num {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--c-tooltip);
+  color: var(--c-ink-inverse);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  line-height: 16px;
+  text-align: center;
+}
+
+/* ---- details ---- */
+
+.cf-tpreview__info {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 32px 28px 24px;
+  overflow: auto;
+}
+
+.cf-tpreview__kicker {
+  color: var(--c-primary);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cf-tpreview__name {
+  padding-right: 36px;
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.cf-tpreview__facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.cf-tpreview__facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--c-line);
+}
+
+.cf-tpreview__facts dt {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+}
+
+.cf-tpreview__facts dd {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  text-align: right;
+}
+
+.cf-tpreview__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cf-tpreview__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.cf-tpreview__star.is-on {
+  color: var(--c-warning-ink);
+  fill: currentColor;
+}
+
+.cf-tpreview__note {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+@media (max-width: 820px) {
+  .cf-tpreview {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
+  }
+
+  .cf-tpreview__stage {
+    padding: 20px 16px 16px;
+    overflow: visible;
+  }
+
+  .cf-tpreview__info {
+    padding: 20px 20px 24px;
+    overflow: visible;
+  }
+
+  .cf-tpreview__name {
+    font-size: var(--fs-xl);
+  }
+}

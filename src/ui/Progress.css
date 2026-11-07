@@ -1,0 +1,40 @@
+.cf-progress {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--c-hover);
+}
+
+.cf-progress__bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--c-primary);
+  transition: width var(--dur) var(--ease);
+}
+
+/* unknown end: a short bar slides across */
+.cf-progress.is-indeterminate .cf-progress__bar {
+  width: 38%;
+  animation: cf-progress-slide 1.2s var(--ease) infinite;
+}
+
+@keyframes cf-progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(270%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-progress__bar {
+    transition: none;
+  }
+  .cf-progress.is-indeterminate .cf-progress__bar {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
+}

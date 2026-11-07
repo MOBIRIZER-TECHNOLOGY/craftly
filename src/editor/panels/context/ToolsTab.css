@@ -1,0 +1,108 @@
+.cf-tool__lede {
+  margin: 0 0 12px;
+}
+
+.cf-tool__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 0;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cf-tool__note svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.cf-tool__note--warn {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--c-warning-soft);
+  color: var(--c-ink-2);
+}
+
+.cf-tool__work {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cf-tool__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--ctl-sm);
+}
+
+.cf-tool__stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-tool__sizes {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* a choice that sits right above the button that uses it (the strength of a blur) */
+.cf-tool__choice {
+  margin-bottom: 12px;
+}
+
+/* the line under the choice of factor: what the photo is now and what it becomes */
+.cf-tool__sizes--line {
+  display: block;
+  margin: 8px 0 12px;
+}
+
+.cf-tool__done {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 8px 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--c-success-soft);
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-tool__done-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cf-tool__done-text svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--c-success);
+}
+
+.cf-tool__note--action {
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* a button keeps its whole label (it clips with "..." when squeezed): the sentence beside it wraps instead */
+.cf-tool__done > .cf-btn,
+.cf-tool__row > .cf-btn,
+.cf-tool__note--action > .cf-btn {
+  flex: none;
+}

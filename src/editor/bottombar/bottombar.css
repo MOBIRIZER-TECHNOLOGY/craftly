@@ -1,0 +1,150 @@
+/* ------------------------------------------------------------------ */
+/* Bottom bar: notes, timer | zoom, pages, page indicator, grid, full  */
+/* ------------------------------------------------------------------ */
+
+.cf-bottombar {
+  /* the bar sits on the workspace colour, so hovers need to be a notch darker than --c-hover */
+  --cf-btn-ghost-fg: var(--c-ink-2);
+  --cf-btn-ghost-hover: var(--c-press);
+  --cf-btn-ghost-press: var(--c-line);
+  --cf-ib-fg: var(--c-ink-2);
+  --cf-ib-hover: var(--c-press);
+  --cf-ib-press: var(--c-line);
+  --cf-ib-active-bg: var(--c-press);
+  --cf-ib-active-fg: var(--c-ink);
+
+  /* the bar is as wide as the column beside the side panel, not the window: its rules follow its own width */
+  container: cfbottom / inline-size;
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: var(--bottombar-h);
+  padding: 0 12px;
+  background: var(--c-workspace);
+  color: var(--c-ink-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+}
+
+.cf-bottombar__group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cf-bottombar__group--end {
+  margin-left: auto;
+}
+
+.cf-bottombar__btn.cf-btn {
+  padding: 0 10px;
+  font-weight: var(--fw-medium);
+}
+
+.cf-bottombar__btn.cf-btn.is-active {
+  background: var(--c-press);
+  color: var(--c-ink);
+}
+
+.cf-bottombar__btn.cf-btn.is-active:hover {
+  background: var(--c-line);
+}
+
+.cf-bottombar__btn .cf-btn__label {
+  overflow: visible;
+}
+
+.cf-bottombar__timer.is-running {
+  color: var(--c-primary);
+}
+
+.cf-bottombar__timer .cf-bottombar__lbl--keep {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- zoom ---- */
+
+.cf-bottombar__zoom {
+  width: 150px;
+  flex: none;
+  margin: 0 6px 0 0;
+}
+
+.cf-bottombar__zoombtn.cf-btn {
+  min-width: 56px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cf-bottombar__pageof {
+  min-width: 48px;
+  padding: 0 8px;
+  color: var(--c-ink-2);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- timer popover ---- */
+
+.cf-timerpop {
+  width: 240px;
+  padding: 16px;
+}
+
+.cf-timerpop__body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.cf-timerpop__time {
+  text-align: center;
+  color: var(--c-ink);
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-extrabold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.cf-timerpop__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* ---- responsive (container queries on the bar itself) ---- */
+
+@container cfbottom (max-width: 720px) {
+  .cf-bottombar__lbl:not(.cf-bottombar__lbl--keep) {
+    display: none;
+  }
+  .cf-bottombar__btn.cf-btn {
+    padding: 0 8px;
+  }
+  .cf-bottombar__zoom {
+    width: 110px;
+  }
+}
+
+@container cfbottom (max-width: 540px) {
+  .cf-bottombar__zoom {
+    display: none;
+  }
+  .cf-bottombar__pageof {
+    min-width: 0;
+    padding: 0 4px;
+  }
+}
+
+@container cfbottom (max-width: 400px) {
+  .cf-bottombar__timer:not(.is-running) {
+    display: none;
+  }
+}

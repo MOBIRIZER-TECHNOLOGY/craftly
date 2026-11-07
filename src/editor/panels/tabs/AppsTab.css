@@ -1,0 +1,109 @@
+.cf-apps__banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding: 16px 16px 16px 18px;
+  border: 1px solid var(--c-primary-tint);
+  border-radius: var(--r-lg);
+  background: linear-gradient(135deg, var(--c-primary-soft), var(--c-info-soft));
+}
+
+.cf-apps__banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.cf-apps__banner-text strong {
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+
+.cf-apps__banner-text span {
+  color: var(--c-ink-2);
+}
+
+.cf-apps__banner-art {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  color: var(--c-primary);
+  box-shadow: var(--sh-2);
+}
+
+.cf-apps__banner-art svg {
+  width: 22px;
+  height: 22px;
+}
+
+.cf-apps__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 -6px;
+}
+
+.cf-apps__item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 6px;
+}
+
+.cf-apps__item:hover {
+  background: var(--c-bg-subtle);
+  box-shadow: none;
+  transform: translateX(2px);
+}
+
+.cf-apps__tile {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(145deg, var(--_from), var(--_to));
+  color: var(--c-ink-inverse);
+  box-shadow:
+    0 6px 12px color-mix(in srgb, var(--_to) 32%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--c-bg) 55%, transparent);
+}
+
+.cf-apps__tile svg {
+  width: 26px;
+  height: 26px;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--c-ink) 30%, transparent));
+}
+
+.cf-apps__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.cf-apps__text strong {
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+
+.cf-apps__text > span:not(.cf-badge) {
+  color: var(--c-ink-3);
+}

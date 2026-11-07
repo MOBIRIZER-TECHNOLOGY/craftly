@@ -1,0 +1,47 @@
+.cf-alt__hint {
+  margin: 0 0 12px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+
+.cf-alt__input {
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+  resize: vertical;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-alt__input::placeholder {
+  color: var(--c-ink-4);
+}
+
+.cf-alt__input:hover {
+  border-color: var(--c-ink-4);
+}
+
+.cf-alt__input:focus,
+.cf-alt__input:focus-visible {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+  outline: none;
+}
+
+.cf-alt__count {
+  margin-top: 6px;
+  color: var(--c-ink-4);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

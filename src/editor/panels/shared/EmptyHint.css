@@ -1,0 +1,27 @@
+.cf-hint {
+  padding: 40px 12px 24px;
+}
+
+.cf-hint .cf-empty__title {
+  font-size: var(--fs-md);
+}
+
+.cf-hint .cf-empty__text {
+  max-width: 260px;
+  font-size: var(--fs-sm);
+}
+
+.cf-hint--compact {
+  padding: 20px 8px 12px;
+}
+
+.cf-hint--compact .cf-empty__icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 4px;
+}
+
+.cf-hint--compact .cf-empty__icon svg {
+  width: 22px;
+  height: 22px;
+}

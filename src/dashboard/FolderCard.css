@@ -1,0 +1,179 @@
+/* Project folder card (grid) and list row. Same title-link-stretched pattern as DesignCard. */
+
+.cf-fcard {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 8px 12px 12px;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-fcard:hover,
+.cf-fcard.is-menu-open {
+  background: var(--c-hover);
+  box-shadow: inset 0 0 0 1px var(--c-line-strong);
+}
+
+.cf-fcard:has(.cf-fcard__title:focus-visible) {
+  box-shadow: inset 0 0 0 3px var(--c-ring);
+}
+
+.cf-fcard.is-drop-target {
+  background: var(--c-primary-soft);
+  box-shadow:
+    inset 0 0 0 2px var(--c-primary),
+    0 0 0 4px var(--c-focus-halo);
+}
+
+.cf-fcard__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-fcard__icon svg {
+  width: 24px;
+  height: 24px;
+  fill: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.cf-fcard__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.cf-fcard__title {
+  display: block;
+  overflow: hidden;
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-fcard__title::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-md);
+}
+
+@supports selector(:has(*)) {
+  .cf-fcard__title:focus-visible {
+    outline: none;
+  }
+}
+
+.cf-fcard__sub {
+  margin-top: 1px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+}
+
+.cf-fcard__cell {
+  display: none;
+}
+
+.cf-fcard__actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+}
+
+.cf-fcard__more {
+  color: var(--c-ink-2);
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-fcard:hover .cf-fcard__more,
+.cf-fcard:focus-within .cf-fcard__more,
+.cf-fcard.is-menu-open .cf-fcard__more {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .cf-fcard__more {
+    opacity: 1;
+  }
+}
+
+/* ---- list row (columns match DesignCard's row) ---- */
+
+.cf-fcard--row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 160px 140px 72px;
+  column-gap: 16px;
+  padding: 8px 12px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cf-fcard--row:hover,
+.cf-fcard--row.is-menu-open {
+  background: var(--c-bg-subtle);
+  box-shadow: none;
+}
+
+.cf-fcard--row.is-drop-target {
+  background: var(--c-primary-soft);
+  box-shadow: inset 0 0 0 2px var(--c-primary);
+}
+
+.cf-fcard--row .cf-fcard__icon {
+  width: 64px;
+  height: 48px;
+}
+
+.cf-fcard--row .cf-fcard__sub {
+  display: none;
+}
+
+.cf-fcard--row .cf-fcard__cell {
+  display: block;
+  overflow: hidden;
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 759px) {
+  .cf-fcard--row {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    column-gap: 12px;
+    padding: 6px 4px;
+  }
+
+  .cf-fcard--row .cf-fcard__icon {
+    width: 56px;
+    height: 42px;
+  }
+
+  .cf-fcard--row .cf-fcard__cell {
+    display: none;
+  }
+
+  .cf-fcard--row .cf-fcard__sub {
+    display: block;
+  }
+}

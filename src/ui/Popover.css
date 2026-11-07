@@ -1,0 +1,82 @@
+.cf-popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--z-popover);
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  box-shadow: var(--sh-pop);
+  outline: none;
+  transform-origin: top left;
+  animation: cf-popover-in var(--dur) var(--ease) both;
+}
+
+.cf-popover:focus,
+.cf-popover:focus-visible {
+  outline: none;
+}
+
+/* The enter animation grows out of the edge that touches the anchor. */
+.cf-popover[data-side="bottom"] {
+  --_dy: -6px;
+  --_dx: 0px;
+}
+.cf-popover[data-side="top"] {
+  --_dy: 6px;
+  --_dx: 0px;
+}
+.cf-popover[data-side="right"] {
+  --_dy: 0px;
+  --_dx: -6px;
+}
+.cf-popover[data-side="left"] {
+  --_dy: 0px;
+  --_dx: 6px;
+}
+
+.cf-popover[data-side="bottom"][data-align="start"] {
+  transform-origin: top left;
+}
+.cf-popover[data-side="bottom"][data-align="center"] {
+  transform-origin: top center;
+}
+.cf-popover[data-side="bottom"][data-align="end"] {
+  transform-origin: top right;
+}
+.cf-popover[data-side="top"][data-align="start"] {
+  transform-origin: bottom left;
+}
+.cf-popover[data-side="top"][data-align="center"] {
+  transform-origin: bottom center;
+}
+.cf-popover[data-side="top"][data-align="end"] {
+  transform-origin: bottom right;
+}
+.cf-popover[data-side="right"] {
+  transform-origin: left top;
+}
+.cf-popover[data-side="left"] {
+  transform-origin: right top;
+}
+
+@keyframes cf-popover-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--_dx, 0), var(--_dy, -6px)) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-popover {
+    animation: none;
+  }
+}

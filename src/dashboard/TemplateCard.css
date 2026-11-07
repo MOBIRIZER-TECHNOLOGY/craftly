@@ -1,0 +1,134 @@
+/* Template card: the rendered first page; hover / focus reveals Preview, star and a menu. */
+
+.cf-tcard {
+  position: relative;
+  flex: none;
+  min-width: 0;
+}
+
+.cf-tcard__open {
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: var(--r-md);
+  line-height: 0;
+  cursor: pointer;
+}
+
+.cf-tcard__thumb {
+  border-radius: var(--r-md);
+  box-shadow:
+    inset 0 0 0 1px var(--c-line),
+    var(--sh-1);
+  transition: box-shadow var(--dur) var(--ease);
+}
+
+.cf-tcard:hover .cf-tcard__thumb,
+.cf-tcard.is-menu-open .cf-tcard__thumb {
+  box-shadow:
+    inset 0 0 0 1px var(--c-primary-line),
+    var(--sh-2);
+}
+
+/* a soft shade at the top keeps the white buttons readable on pale templates */
+.cf-tcard__open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c-ink) 28%, transparent) 0%, transparent 40%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.cf-tcard:hover .cf-tcard__open::after,
+.cf-tcard:focus-within .cf-tcard__open::after,
+.cf-tcard.is-menu-open .cf-tcard__open::after {
+  opacity: 1;
+}
+
+.cf-tcard__actions {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+  left: 8px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.cf-tcard__tools {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.cf-tcard__preview,
+.cf-tcard__star,
+.cf-tcard__more {
+  box-shadow: var(--sh-2);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-tcard__star,
+.cf-tcard__more {
+  background: var(--c-bg);
+  color: var(--c-ink-2);
+  --cf-ib-active-bg: var(--c-bg);
+  --cf-ib-active-fg: var(--c-warning-ink);
+}
+
+.cf-tcard:hover .cf-tcard__preview,
+.cf-tcard:hover .cf-tcard__star,
+.cf-tcard:hover .cf-tcard__more,
+.cf-tcard:focus-within .cf-tcard__preview,
+.cf-tcard:focus-within .cf-tcard__star,
+.cf-tcard:focus-within .cf-tcard__more,
+.cf-tcard.is-menu-open .cf-tcard__preview,
+.cf-tcard.is-menu-open .cf-tcard__star,
+.cf-tcard.is-menu-open .cf-tcard__more,
+.cf-tcard.is-favourite .cf-tcard__star {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cf-tcard__star:hover:not([aria-disabled="true"]),
+.cf-tcard__more:hover:not([aria-disabled="true"]) {
+  background: var(--c-bg-subtle);
+}
+
+.cf-tcard__star.is-active svg {
+  fill: currentColor;
+}
+
+.cf-tcard__name {
+  margin-top: 8px;
+  overflow: hidden;
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* touch: no hover, so the star and menu are always on; the "Preview" label is dropped (tap the picture) */
+@media (hover: none) {
+  .cf-tcard__star,
+  .cf-tcard__more {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .cf-tcard__preview {
+    display: none;
+  }
+}

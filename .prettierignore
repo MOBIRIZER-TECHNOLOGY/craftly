@@ -1,0 +1,20 @@
+# Prettier is run on the code only (see the "format" scripts in package.json); these are left alone.
+
+# generated or not ours
+dist
+dist-*
+coverage
+node_modules
+reports
+research_notes
+package-lock.json
+public
+
+# documents: their tables and wrapping are laid out by hand
+*.md
+
+# stylesheets: tokens.css mirrors docs/DESIGN.md, and tests read the stylesheets as text (tokens.test.ts, classNames.test.ts)
+*.css
+
+# the catalogues (templates, illustrations, shapes, photos) are laid out by hand, one record to a line
+src/data

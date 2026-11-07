@@ -1,0 +1,171 @@
+/* Uploaded image card: checkerboard stage, hover "Use in new design", menu. */
+
+.cf-icard {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "stage stage"
+    "body actions";
+  align-items: center;
+  gap: 8px 4px;
+  min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+
+.cf-icard__stage {
+  grid-area: stage;
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--r-md);
+  background-color: var(--c-checker-a);
+  background-image:
+    linear-gradient(45deg, var(--c-checker-b) 25%, transparent 25%, transparent 75%, var(--c-checker-b) 75%),
+    linear-gradient(45deg, var(--c-checker-b) 25%, transparent 25%, transparent 75%, var(--c-checker-b) 75%);
+  background-position:
+    0 0,
+    8px 8px;
+  background-size: 16px 16px;
+  box-shadow: inset 0 0 0 1px var(--c-line);
+  overflow: hidden;
+}
+
+.cf-icard__stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--c-bg) 72%, transparent);
+}
+
+.cf-icard__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cf-icard__use {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.cf-icard:hover .cf-icard__use,
+.cf-icard:focus-within .cf-icard__use,
+.cf-icard.is-menu-open .cf-icard__use {
+  opacity: 1;
+}
+
+.cf-icard__use .cf-btn {
+  box-shadow: var(--sh-2);
+}
+
+@media (hover: none) {
+  .cf-icard__use {
+    opacity: 1;
+  }
+}
+
+.cf-icard__body {
+  grid-area: body;
+  min-width: 0;
+}
+
+.cf-icard__title {
+  overflow: hidden;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-icard__sub {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-icard__actions {
+  grid-area: actions;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.cf-icard__cell {
+  display: none;
+}
+
+.cf-icard__more {
+  color: var(--c-ink-2);
+}
+
+/* ---- list row ---- */
+
+.cf-icard--row {
+  grid-template-columns: 64px minmax(0, 1fr) 160px 140px 72px;
+  grid-template-areas: none;
+  gap: 16px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  contain-intrinsic-size: auto 64px;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.cf-icard--row:hover {
+  background: var(--c-bg-subtle);
+}
+
+.cf-icard--row .cf-icard__stage,
+.cf-icard--row .cf-icard__body,
+.cf-icard--row .cf-icard__actions {
+  grid-area: auto;
+}
+
+.cf-icard--row .cf-icard__stage {
+  border-radius: var(--r-sm);
+}
+
+.cf-icard--row .cf-icard__sub {
+  display: none;
+}
+
+.cf-icard--row .cf-icard__cell {
+  display: block;
+  overflow: hidden;
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-icard--row .cf-icard__use {
+  display: none;
+}
+
+@media (max-width: 759px) {
+  .cf-icard--row {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 6px 4px;
+  }
+
+  .cf-icard--row .cf-icard__cell {
+    display: none;
+  }
+
+  .cf-icard--row .cf-icard__sub {
+    display: block;
+  }
+}

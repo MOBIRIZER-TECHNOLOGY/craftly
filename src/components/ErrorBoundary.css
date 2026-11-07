@@ -1,0 +1,41 @@
+.cf-crash {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--grad-hero);
+}
+.cf-crash__card {
+  width: min(480px, 100%);
+  padding: 32px;
+  border-radius: var(--r-xl);
+  background: var(--c-bg);
+  box-shadow: var(--sh-pop);
+}
+.cf-crash__card h1 {
+  margin: 0 0 8px;
+  font-size: var(--fs-2xl);
+  font-weight: 800;
+}
+.cf-crash__card p {
+  margin: 0 0 16px;
+  color: var(--c-ink-2);
+  line-height: 1.55;
+}
+.cf-crash__detail {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  color: var(--c-ink-3);
+  font: 500 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow: auto;
+}
+.cf-crash__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}

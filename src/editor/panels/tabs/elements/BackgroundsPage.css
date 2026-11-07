@@ -1,0 +1,36 @@
+.cf-bgcell {
+  overflow: hidden;
+  padding: 0;
+}
+
+.cf-bgcell__fill {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  box-shadow: var(--sh-inset);
+}
+
+.cf-bgcell--solid .cf-bgcell__fill {
+  aspect-ratio: 1;
+}
+
+.cf-bgcell--gradient .cf-bgcell__fill,
+.cf-bgcell--pattern .cf-bgcell__fill,
+.cf-bgcell--photo .cf-bgcell__fill {
+  aspect-ratio: 4 / 3;
+}
+
+.cf-bgcell--solid {
+  border-radius: var(--r-sm);
+}
+
+/* keep the inner hairline above photos */
+.cf-bgcell__fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--sh-inset);
+  pointer-events: none;
+}

@@ -1,0 +1,72 @@
+/* The File menu is a kit Popover + MenuList with a header (title, size) above the list. */
+
+.cf-popover.cf-filemenu {
+  width: 344px;
+  max-width: calc(100vw - 16px);
+  /* the kit caps menu popovers at 340px; the header and the hints need the extra room */
+  min-width: 0;
+}
+
+.cf-filemenu__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 12px);
+  margin: 6px 6px 0;
+  padding: 8px 10px 2px;
+  border-radius: var(--r-sm);
+  color: var(--c-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cf-filemenu__head:disabled {
+  cursor: default;
+}
+
+.cf-filemenu__head:hover:not(:disabled) {
+  background: var(--c-hover);
+}
+
+.cf-filemenu__title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-filemenu__pen {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--c-ink-3);
+}
+
+.cf-filemenu__head:disabled .cf-filemenu__pen {
+  display: none;
+}
+
+.cf-filemenu__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 6px;
+  padding: 2px 16px 12px;
+  border-bottom: 1px solid var(--c-line);
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.cf-filemenu__meta-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.cf-filemenu .cf-menu {
+  padding-top: 6px;
+}

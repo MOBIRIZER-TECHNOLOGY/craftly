@@ -1,0 +1,12 @@
+.cf-line-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  padding: 0 10px;
+  color: var(--c-ink);
+}
+
+.cf-line-cell svg {
+  max-width: 100%;
+}

@@ -1,0 +1,51 @@
+.cf-ditem {
+  position: relative;
+  display: block;
+  min-width: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-drag: element;
+  transition:
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-ditem:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-2);
+}
+
+.cf-ditem:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--sh-1);
+}
+
+.cf-ditem[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--c-bg), 0 0 0 4px var(--c-primary);
+}
+
+.cf-ditem.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cf-ditem.is-disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.cf-ditem:focus-visible {
+  outline-offset: 2px;
+}
+
+.cf-ditem[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.cf-ditem img,
+.cf-ditem svg,
+.cf-ditem canvas {
+  -webkit-user-drag: none;
+}

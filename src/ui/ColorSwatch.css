@@ -1,0 +1,64 @@
+.cf-swatch {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 0;
+  transition:
+    transform var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-swatch--circle,
+.cf-swatch--circle .cf-swatch__checker,
+.cf-swatch--circle .cf-swatch__fill {
+  border-radius: 50%;
+}
+
+.cf-swatch--square,
+.cf-swatch--square .cf-swatch__checker,
+.cf-swatch--square .cf-swatch__fill {
+  border-radius: var(--r-sm);
+}
+
+.cf-swatch__checker,
+.cf-swatch__fill {
+  position: absolute;
+  inset: 0;
+}
+
+/* Four-quadrant checkerboard shown behind translucent colours. */
+.cf-swatch__checker {
+  background: conic-gradient(
+      var(--c-checker-b) 25%,
+      var(--c-checker-a) 0 50%,
+      var(--c-checker-b) 0 75%,
+      var(--c-checker-a) 0
+    )
+    0 0 / 10px 10px;
+}
+
+.cf-swatch__fill {
+  background: var(--cf-swatch);
+  box-shadow: var(--sh-inset);
+}
+
+.cf-swatch.is-button {
+  cursor: pointer;
+}
+
+.cf-swatch.is-button:hover {
+  transform: scale(1.1);
+}
+
+.cf-swatch.is-selected {
+  box-shadow:
+    0 0 0 2px var(--c-bg),
+    0 0 0 4px var(--c-primary);
+}
+
+.cf-swatch.is-button:focus-visible {
+  outline-offset: 3px;
+}

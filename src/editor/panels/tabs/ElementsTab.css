@@ -1,0 +1,8 @@
+.cf-elements__tiles {
+  row-gap: 6px;
+}
+
+/* an icon from the search results sits in a fixed-height cell, like in the Icons page */
+.cf-searchicon {
+  height: 64px;
+}

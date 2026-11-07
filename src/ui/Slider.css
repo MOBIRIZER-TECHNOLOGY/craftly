@@ -1,0 +1,105 @@
+.cf-slider {
+  --_thumb: 16px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.cf-slider__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-slider__label {
+  color: var(--c-ink-2);
+}
+
+.cf-slider__value {
+  color: var(--c-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.cf-slider__control {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  /* the track lines up with the surrounding content; the thumb overhangs by half its width at the ends */
+  margin: 0 calc(var(--_thumb) / -2);
+  padding: 0 calc(var(--_thumb) / 2);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.cf-slider__track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--c-line-strong);
+}
+
+.cf-slider__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: var(--c-primary);
+}
+
+.cf-slider__thumb {
+  position: absolute;
+  top: 50%;
+  width: var(--_thumb);
+  height: var(--_thumb);
+  border-radius: 50%;
+  background: var(--c-bg);
+  box-shadow: var(--sh-thumb);
+  transform: translate(-50%, -50%);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+  cursor: grab;
+}
+
+.cf-slider__control:hover .cf-slider__thumb {
+  transform: translate(-50%, -50%) scale(1.12);
+}
+
+.cf-slider.is-dragging .cf-slider__thumb {
+  transform: translate(-50%, -50%) scale(1.18);
+  box-shadow:
+    0 0 0 4px var(--c-focus-halo),
+    var(--sh-thumb);
+  cursor: grabbing;
+}
+
+.cf-slider.is-dragging .cf-slider__control {
+  cursor: grabbing;
+}
+
+.cf-slider__thumb:focus-visible {
+  outline: 2px solid var(--c-ring);
+  outline-offset: 2px;
+}
+
+.cf-slider.is-disabled {
+  opacity: 0.5;
+}
+
+.cf-slider.is-disabled .cf-slider__control,
+.cf-slider.is-disabled .cf-slider__thumb {
+  cursor: not-allowed;
+}
+
+.cf-slider.is-disabled .cf-slider__control:hover .cf-slider__thumb {
+  transform: translate(-50%, -50%);
+}

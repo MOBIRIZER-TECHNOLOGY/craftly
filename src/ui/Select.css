@@ -1,0 +1,139 @@
+.cf-select {
+  --_h: var(--ctl-md);
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: var(--_h);
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-select--sm {
+  --_h: var(--ctl-sm);
+
+  padding-left: 10px;
+  font-size: var(--fs-sm);
+}
+
+.cf-select:hover:not(:disabled) {
+  border-color: var(--c-ink-4);
+}
+
+.cf-select.is-open,
+.cf-select:focus-visible {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+  outline: none;
+}
+
+.cf-select:disabled {
+  background: var(--c-bg-subtle);
+  color: var(--c-ink-4);
+  cursor: not-allowed;
+}
+
+.cf-select__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-select__value.is-placeholder {
+  color: var(--c-ink-4);
+  font-weight: var(--fw-regular);
+}
+
+.cf-select__chevron {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--c-ink-3);
+  transition: transform var(--dur) var(--ease);
+}
+
+.cf-select.is-open .cf-select__chevron {
+  transform: rotate(180deg);
+}
+
+.cf-select__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--c-ink-2);
+}
+
+.cf-select__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---- listbox ---- */
+
+.cf-select__popover {
+  max-height: min(320px, calc(100vh - 16px));
+}
+
+.cf-select__list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  outline: none;
+}
+
+.cf-select__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.cf-select__option:focus {
+  background: var(--c-hover);
+}
+
+.cf-select__option.is-selected {
+  color: var(--c-primary);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-select__option[aria-disabled="true"] {
+  color: var(--c-ink-4);
+  cursor: default;
+}
+
+.cf-select__option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cf-select__check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--c-primary);
+}

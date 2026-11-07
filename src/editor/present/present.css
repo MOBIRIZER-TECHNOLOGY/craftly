@@ -1,0 +1,194 @@
+/* Presenter: a full-window dark overlay (also the element that goes full screen). */
+
+.cf-present {
+  --cf-ib-fg: var(--c-ink-inverse);
+  --cf-ib-hover: var(--c-on-dark-hover);
+  --cf-ib-press: var(--c-on-dark-press);
+  --cf-ib-active-bg: var(--c-on-dark-press);
+  --cf-ib-active-fg: var(--c-ink-inverse);
+
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal) + 50);
+  display: flex;
+  flex-direction: column;
+  background: var(--c-ink);
+  color: var(--c-ink-inverse);
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+  animation: cf-present-in var(--dur) var(--ease) both;
+}
+
+.cf-present :focus-visible {
+  outline-color: var(--c-ink-inverse);
+}
+
+.cf-present.is-idle {
+  cursor: none;
+}
+
+.cf-present.is-link:not(.is-idle) .cf-present__stage {
+  cursor: pointer;
+}
+
+.cf-present__stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  cursor: default;
+}
+
+.cf-present__page {
+  display: block;
+  max-width: none;
+  background: var(--c-bg);
+  box-shadow: var(--sh-float);
+}
+
+.cf-present__error {
+  max-width: 40ch;
+  padding: 16px 20px;
+  border-radius: var(--r-md);
+  background: var(--c-on-dark-hover);
+  color: var(--c-ink-inverse);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* ---- notes ---- */
+
+.cf-present__notes {
+  flex: none;
+  max-height: 28vh;
+  padding: 14px 24px 18px;
+  overflow: auto;
+  border-top: 1px solid var(--c-on-dark-press);
+  background: var(--c-on-dark-hover);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.cf-present__notes-title {
+  margin-bottom: 6px;
+  color: var(--c-tooltip-soft);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cf-present__notes-text {
+  max-width: 88ch;
+  margin: 0 auto 0 0;
+  font-size: var(--fs-lg);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.cf-present__notes-text.is-empty {
+  color: var(--c-tooltip-soft);
+}
+
+/* ---- controls ---- */
+
+.cf-present__controls {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--c-tooltip);
+  box-shadow: var(--sh-float), 0 0 0 1px var(--c-on-dark-hover);
+  transform: translateX(-50%);
+  transition:
+    opacity var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.cf-present__controls.is-idle {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+}
+
+.cf-present__controls .cf-iconbtn {
+  border-radius: var(--r-pill);
+}
+
+.cf-present__count {
+  min-width: 64px;
+  padding: 0 6px;
+  color: var(--c-ink-inverse);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.cf-present__sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--c-on-dark-press);
+}
+
+/* ---- auto-play progress: how far through its time the page on screen is ---- */
+
+.cf-present__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--c-on-dark-hover);
+  pointer-events: none;
+}
+
+.cf-present__progress-bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--grad-brand-bright);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+@keyframes cf-present-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 599px) {
+  .cf-present__controls {
+    bottom: 12px;
+  }
+  .cf-present__count {
+    min-width: 48px;
+  }
+  .cf-present__notes {
+    padding: 12px 16px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-present {
+    animation: none;
+  }
+  .cf-present__controls {
+    transition: none;
+  }
+}

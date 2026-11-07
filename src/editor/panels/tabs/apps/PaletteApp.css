@@ -1,0 +1,93 @@
+.cf-pal__images {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cf-pal__choice {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--c-hover);
+  box-shadow: var(--sh-inset);
+  transition:
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.cf-pal__choice img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cf-pal__choice:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-2);
+}
+
+.cf-pal__choice.is-selected {
+  box-shadow:
+    0 0 0 2px var(--c-bg),
+    0 0 0 4px var(--c-primary);
+}
+
+.cf-pal__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: 1.5px dashed var(--c-line-strong);
+  border-radius: var(--r-md);
+  color: var(--c-ink-3);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.cf-pal__add:hover {
+  border-color: var(--c-primary);
+  background: var(--c-primary-softer);
+  color: var(--c-primary);
+}
+
+.cf-pal__add svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cf-pal__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cf-pal__swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.cf-pal__swatch > span {
+  color: var(--c-ink-3);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.cf-pal__bar {
+  display: flex;
+  height: 36px;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-inset);
+}
+
+.cf-pal__bar > span {
+  flex: 1;
+}

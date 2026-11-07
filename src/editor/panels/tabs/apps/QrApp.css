@@ -1,0 +1,45 @@
+.cf-qr__stage {
+  margin-bottom: 18px;
+}
+
+.cf-qr__img {
+  width: 176px;
+  height: 176px;
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-2);
+  image-rendering: pixelated;
+}
+
+.cf-qr__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 176px;
+  height: 176px;
+  border: 1.5px dashed var(--c-line-strong);
+  border-radius: var(--r-md);
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.cf-qr__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cf-qr__body > .cf-app__field,
+.cf-qr__body > .cf-app__row .cf-app__field {
+  margin-bottom: 0;
+}
+
+.cf-qr__wifi {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cf-qr__wifi .cf-app__field {
+  margin-bottom: 0;
+}

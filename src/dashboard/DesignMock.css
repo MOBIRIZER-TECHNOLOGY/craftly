@@ -1,0 +1,61 @@
+/* Illustrated design page on a tinted stage. Colour comes from --cf-mock-color (a design type accent). */
+
+.cf-mock {
+  --cf-mock-h: 128px;
+  --_c: var(--cf-mock-color, var(--c-primary));
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--cf-mock-h);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--_c) 11%, var(--c-bg-subtle));
+  overflow: hidden;
+}
+
+.cf-mock__page {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(80%, calc(var(--cf-mock-h) * 0.7 * var(--cf-mock-ratio)));
+  aspect-ratio: var(--cf-mock-aspect);
+  border-radius: var(--r-xs);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--_c) 70%, var(--c-bg)) 0%, var(--_c) 100%);
+  box-shadow: var(--sh-2);
+  color: var(--c-ink-inverse);
+}
+
+.cf-mock__page svg {
+  width: min(38%, 30px);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+/* two "text lines" at the bottom of the page */
+.cf-mock__page::before,
+.cf-mock__page::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--c-ink-inverse) 62%, transparent);
+}
+
+.cf-mock__page::before {
+  bottom: 17%;
+  width: 46%;
+}
+
+.cf-mock__page::after {
+  bottom: 8%;
+  width: 28%;
+}
+
+.cf-mock--wide .cf-mock__page::before,
+.cf-mock--wide .cf-mock__page::after {
+  display: none;
+}

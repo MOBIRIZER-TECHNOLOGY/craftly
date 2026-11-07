@@ -1,0 +1,51 @@
+.cf-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--z-tooltip);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 280px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: var(--c-tooltip);
+  color: var(--c-ink-inverse);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: 1.35;
+  box-shadow: var(--sh-2);
+  pointer-events: none;
+  animation: cf-tooltip-in var(--dur-fast) var(--ease) both;
+}
+
+.cf-tooltip[data-side="top"] {
+  --_from: translateY(3px);
+}
+.cf-tooltip[data-side="bottom"] {
+  --_from: translateY(-3px);
+}
+.cf-tooltip[data-side="left"] {
+  --_from: translateX(3px);
+}
+.cf-tooltip[data-side="right"] {
+  --_from: translateX(-3px);
+}
+
+.cf-tooltip__kbd {
+  flex: none;
+  color: var(--c-tooltip-soft);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+}
+
+@keyframes cf-tooltip-in {
+  from {
+    opacity: 0;
+    transform: var(--_from, none);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

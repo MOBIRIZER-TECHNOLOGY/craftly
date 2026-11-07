@@ -1,0 +1,253 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Avatar,
+  BrandMark,
+  Button,
+  IconBrand,
+  IconButton,
+  IconChevronDown,
+  IconFolder,
+  IconHome,
+  IconInfo,
+  IconPanelClose,
+  IconPanelOpen,
+  IconPlus,
+  IconTemplate,
+  IconTrash,
+  IconUpload,
+  MenuPopover,
+  cx,
+  toast,
+  type MenuEntry,
+} from "@/ui";
+import { designPath, navigate, type Route } from "@/router";
+import { importProjectFile } from "@/export/projectFile";
+import { AboutDialog } from "./AboutDialog";
+import { openCreateDialog } from "./createDialogState";
+import { pickFiles } from "./files";
+import "./Shell.css";
+
+type NavId = "home" | "projects" | "templates" | "brand" | "trash";
+
+interface NavEntry {
+  id: NavId;
+  label: string;
+  href: string;
+  icon: ReactNode;
+}
+
+const NAV: NavEntry[] = [
+  { id: "home", label: "Home", href: "#/", icon: <IconHome aria-hidden="true" /> },
+  { id: "projects", label: "Projects", href: "#/projects", icon: <IconFolder aria-hidden="true" /> },
+  { id: "templates", label: "Templates", href: "#/templates", icon: <IconTemplate aria-hidden="true" /> },
+  { id: "brand", label: "Brand", href: "#/brand", icon: <IconBrand aria-hidden="true" /> },
+  { id: "trash", label: "Trash", href: "#/trash", icon: <IconTrash aria-hidden="true" /> },
+];
+
+const TAB_BAR_LEFT: NavId[] = ["home", "projects"];
+const TAB_BAR_RIGHT: NavId[] = ["templates", "brand"];
+const byId = (id: NavId) => NAV.find((entry) => entry.id === id) as NavEntry;
+
+const RAIL_KEY = "craftly:rail-expanded";
+
+function readRailPreference(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** The page the route belongs to (unknown routes show Home). */
+export function activeNav(route: Route): NavId {
+  return NAV.some((entry) => entry.id === route.name) ? (route.name as NavId) : "home";
+}
+
+/* ------------------------------------------------------------------ */
+/* Account menu                                                       */
+/* ------------------------------------------------------------------ */
+
+/** Import a .craftly file chosen by the user and open the design it contains. */
+function importProject(): void {
+  void pickFiles({ accept: ".craftly,.json,application/json" }).then(async ([file]) => {
+    if (!file) return;
+    try {
+      const design = await importProjectFile(file);
+      toast.success(`Imported “${design.title}”`);
+      navigate(designPath(design.id));
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? error.message : "Check that it is a Craftly project file.";
+      toast.error(`Couldn't import that file. ${detail}`);
+    }
+  });
+}
+
+function useAccountMenu(includeTrash: boolean) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
+
+  const items: MenuEntry[] = [
+    { type: "label", label: "On this device" },
+    { id: "import", label: "Import project file", icon: <IconUpload aria-hidden="true" />, onSelect: importProject },
+    ...(includeTrash ? [{ id: "trash", label: "Trash", icon: <IconTrash aria-hidden="true" />, onSelect: () => navigate("/trash") }] : []),
+    { id: "about", label: "About Craftly", icon: <IconInfo aria-hidden="true" />, onSelect: () => setAboutOpen(true) },
+  ];
+
+  const popover = (
+    <>
+      <MenuPopover open={anchor !== null} anchor={anchor} onClose={() => setAnchor(null)} items={items} placement="top-start" aria-label="Account" />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+    </>
+  );
+  return { anchor, setAnchor, popover };
+}
+
+/* ------------------------------------------------------------------ */
+/* Shell                                                              */
+/* ------------------------------------------------------------------ */
+
+export function Shell({ route, children }: { route: Route; children: ReactNode }) {
+  const current = activeNav(route);
+  const [expanded, setExpanded] = useState(readRailPreference);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const desktopMenu = useAccountMenu(false);
+  const mobileMenu = useAccountMenu(true);
+
+  // every page starts at the top
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [route.name, route.id]);
+
+  const toggleRail = () => {
+    setExpanded((value) => {
+      try {
+        localStorage.setItem(RAIL_KEY, value ? "0" : "1");
+      } catch {
+        /* the preference just is not remembered */
+      }
+      return !value;
+    });
+  };
+
+  return (
+    <div className={cx("cf-dash", expanded && "is-rail-expanded")} data-route={current}>
+      {/* ---- left rail (desktop) ---- */}
+      <nav className={cx("cf-dnav", expanded && "is-expanded")} aria-label="Main" id="cf-dnav">
+        <div className="cf-dnav__top">
+          <IconButton
+            className="cf-dnav__toggle"
+            label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+            aria-expanded={expanded}
+            aria-controls="cf-dnav"
+            icon={expanded ? <IconPanelClose aria-hidden="true" /> : <IconPanelOpen aria-hidden="true" />}
+            onClick={toggleRail}
+          />
+          {expanded ? (
+            <span className="cf-dnav__brand">
+              <BrandMark size={26} />
+              Craftly
+            </span>
+          ) : null}
+        </div>
+
+        {expanded ? (
+          <Button className="cf-dnav__create-wide" variant="primary" size="lg" block icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()}>
+            Create a design
+          </Button>
+        ) : (
+          <div className="cf-dnav__create">
+            <IconButton className="cf-dnav__create-btn" size="lg" label="Create a design" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()} />
+            <span className="cf-dnav__create-label" aria-hidden="true">
+              Create
+            </span>
+          </div>
+        )}
+
+        <ul className="cf-dnav__list">
+          {NAV.map((entry) => (
+            <li key={entry.id}>
+              <a className={cx("cf-dnav__item", entry.id === current && "is-active")} href={entry.href} aria-current={entry.id === current ? "page" : undefined}>
+                <span className="cf-dnav__icon">{entry.icon}</span>
+                <span className="cf-dnav__label">{entry.label}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+
+        <div className="cf-dnav__bottom">
+          {expanded ? (
+            <Button
+              className="cf-dnav__account-wide"
+              variant="ghost"
+              block
+              icon={<Avatar name="You" size={28} />}
+              iconRight={<IconChevronDown aria-hidden="true" />}
+              aria-haspopup="menu"
+              aria-expanded={desktopMenu.anchor !== null}
+              onClick={(event) => desktopMenu.setAnchor(event.currentTarget)}
+            >
+              You
+            </Button>
+          ) : (
+            <IconButton
+              className="cf-dnav__account"
+              size="lg"
+              label="Account"
+              icon={<Avatar name="You" size={34} />}
+              aria-haspopup="menu"
+              aria-expanded={desktopMenu.anchor !== null}
+              onClick={(event) => desktopMenu.setAnchor(event.currentTarget)}
+            />
+          )}
+        </div>
+        {desktopMenu.popover}
+      </nav>
+
+      {/* ---- content column ---- */}
+      <div className="cf-dash__column">
+        <header className="cf-dash__mobilebar">
+          <a className="cf-dash__logo" href="#/" aria-label="Craftly home">
+            <BrandMark size={28} />
+            <span>Craftly</span>
+          </a>
+          <IconButton
+            label="Account"
+            icon={<Avatar name="You" size={32} />}
+            aria-haspopup="menu"
+            aria-expanded={mobileMenu.anchor !== null}
+            onClick={(event) => mobileMenu.setAnchor(event.currentTarget)}
+          />
+          {mobileMenu.popover}
+        </header>
+
+        <main className="cf-dash__sheet" id="cf-dash-main">
+          <div className="cf-dash__scroll" ref={scrollRef}>
+            {children}
+          </div>
+        </main>
+      </div>
+
+      {/* ---- bottom tab bar (phones) ---- */}
+      <nav className="cf-dtabbar" aria-label="Main">
+        {TAB_BAR_LEFT.map((id) => (
+          <TabLink key={id} entry={byId(id)} active={current === id} />
+        ))}
+        <div className="cf-dtabbar__create">
+          <IconButton className="cf-dtabbar__create-btn" size="lg" label="Create a design" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()} />
+        </div>
+        {TAB_BAR_RIGHT.map((id) => (
+          <TabLink key={id} entry={byId(id)} active={current === id} />
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+function TabLink({ entry, active }: { entry: NavEntry; active: boolean }) {
+  return (
+    <a className={cx("cf-dtabbar__item", active && "is-active")} href={entry.href} aria-current={active ? "page" : undefined}>
+      <span className="cf-dtabbar__icon">{entry.icon}</span>
+      <span className="cf-dtabbar__label">{entry.label}</span>
+    </a>
+  );
+}
