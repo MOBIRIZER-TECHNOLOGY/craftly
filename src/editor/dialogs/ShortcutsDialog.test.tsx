@@ -37,6 +37,8 @@ describe("<ShortcutsDialog>", () => {
     mount();
     const keys = (label: string) => Array.from(rowOf(label).querySelectorAll("kbd")).map((k) => k.textContent);
     expect(keys("Path with the Pen (points and curves)")).toEqual(["P"]);
+    // while a path is being placed, undo takes its last point back
+    expect(keys("Take the last point back")).toEqual(["Backspace", "Ctrl", "Z"]);
   });
 
   it("shows each key as a key cap and alternatives with 'or'", () => {

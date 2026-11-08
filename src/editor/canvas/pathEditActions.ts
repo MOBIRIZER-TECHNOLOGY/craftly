@@ -86,19 +86,26 @@ export function closeEditedPath(): void {
   if (closed !== edited.path) applyPath(edited.el, closed);
 }
 
-/** Selects the next (or previous) point, going round. With nothing selected it starts at the first (or last). */
-export function cycleSelectedNode(step: 1 | -1): void {
+/**
+ * Selects the next (or previous) point; with nothing selected it starts at the first (or last). It stops at the ends and
+ * says so (false), as the walk through the elements of a page does: the key then goes on to the toolbar of the points, and
+ * the focus is never stuck on the canvas.
+ */
+export function cycleSelectedNode(step: 1 | -1): boolean {
   const edited = editedPath();
-  if (!edited) return;
+  if (!edited) return false;
   const count = edited.path.nodes.length;
   const selected = selectedIn(edited.path);
-  const from = selected.length ? selected[selected.length - 1] : step > 0 ? -1 : count;
-  selectNodes([(from + step + count) % count]);
+  const next = selected.length ? selected[selected.length - 1] + step : step > 0 ? 0 : count - 1;
+  if (next < 0 || next >= count) return false;
+  selectNodes([next]);
+  return true;
 }
 
 /**
- * The keys of point editing: Delete takes the selected points away, the arrows move them, Tab walks through the points and
- * Enter is done. Returns true when the key was used (the editor's own key handling then leaves it alone).
+ * The keys of point editing: Delete takes the selected points away, the arrows move them, Tab walks through the points (and
+ * after the last one, or before the first, is the browser's) and Enter is done. Returns true when the key was used (the
+ * editor's own key handling then leaves it alone).
  */
 export function pathEditKey(e: KeyboardEvent): boolean {
   if (!usePathEdit.getState().id) return false;
@@ -113,10 +120,7 @@ export function pathEditKey(e: KeyboardEvent): boolean {
     stopPathEdit();
     return true;
   }
-  if (key === "tab") {
-    cycleSelectedNode(e.shiftKey ? -1 : 1);
-    return true;
-  }
+  if (key === "tab") return cycleSelectedNode(e.shiftKey ? -1 : 1);
   if (key.startsWith("arrow") && hasSelection) {
     const step = e.shiftKey ? 10 : 1;
     nudgeSelectedNodes(key === "arrowleft" ? -step : key === "arrowright" ? step : 0, key === "arrowup" ? -step : key === "arrowdown" ? step : 0);

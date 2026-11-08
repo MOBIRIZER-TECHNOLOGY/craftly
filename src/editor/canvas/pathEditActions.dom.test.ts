@@ -6,6 +6,7 @@ import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createShape, createText } from "@/core/factory";
 import { elementPath, localToDesign } from "@/core/penShape";
+import { getActions, useEditor } from "@/core/store";
 import type { Point, ShapeElement } from "@/core/types";
 import { live, openElements } from "@/test/ctxUtils";
 import { resetEditor } from "@/test/helpers";
@@ -34,6 +35,32 @@ const nodes = () => elementPath(live<ShapeElement>("p"))!.nodes;
 /** where a point of the path is on the page */
 const onPage = (i: number): Point => localToDesign(live<ShapeElement>("p"), nodes()[i]);
 const selected = () => usePathEdit.getState().selected;
+
+// no workspace is mounted here, so nothing tidies up after a bad start: what startPathEdit leaves in the store is what it did
+describe("startPathEdit", () => {
+  it("opens a path of the page, and selects it", () => {
+    openElements([pathElement()]);
+    act(() => startPathEdit("p"));
+    expect(usePathEdit.getState().id).toBe("p");
+    expect(useEditor.getState().selection).toEqual(["p"]);
+  });
+
+  it("opens nothing for an element that is not on the page, or when no design is open", () => {
+    openElements([pathElement()]);
+    act(() => startPathEdit("nothing"));
+    expect(usePathEdit.getState().id).toBeNull();
+    act(() => getActions().closeDesign());
+    act(() => startPathEdit("p"));
+    expect(usePathEdit.getState().id).toBeNull();
+  });
+
+  it("opens nothing for a locked path", () => {
+    openElements([pathElement({ locked: true })]);
+    act(() => startPathEdit("p"));
+    expect(usePathEdit.getState().id).toBeNull();
+    expect(useEditor.getState().selection).toEqual([]);
+  });
+});
 
 describe("editedPath", () => {
   it("is the open path, with its element", () => {
@@ -159,14 +186,26 @@ describe("the keys of point editing", () => {
     expect(usePathEdit.getState().id).toBeNull();
   });
 
-  it("Tab walks forward through the points, round to the first, and Shift+Tab walks back", () => {
+  it("Tab walks forward through the points and Shift+Tab walks back", () => {
     open();
-    for (const want of [0, 1, 2, 0]) {
+    for (const want of [0, 1, 2]) {
       expect(press("Tab")).toBe(true);
       expect(selected()).toEqual([want]);
     }
-    expect(press("Tab", { shiftKey: true })).toBe(true);
+    for (const want of [1, 0]) {
+      expect(press("Tab", { shiftKey: true })).toBe(true);
+      expect(selected()).toEqual([want]);
+    }
+  });
+
+  it("Tab is left to the browser after the last point, and Shift+Tab before the first, so that the toolbar can be reached", () => {
+    open();
+    act(() => selectNodes([2]));
+    expect(press("Tab")).toBe(false);
     expect(selected()).toEqual([2]);
+    act(() => selectNodes([0]));
+    expect(press("Tab", { shiftKey: true })).toBe(false);
+    expect(selected()).toEqual([0]);
   });
 
   it.each([
@@ -195,12 +234,39 @@ describe("the keys of point editing", () => {
 });
 
 describe("walking through the points", () => {
+  const walk = (step: 1 | -1) => {
+    let moved = false;
+    act(() => {
+      moved = cycleSelectedNode(step);
+    });
+    return moved;
+  };
+
   it("starts at the first point going forward and at the last going back, when none is selected", () => {
     open();
-    act(() => cycleSelectedNode(-1));
+    expect(walk(-1)).toBe(true);
     expect(selected()).toEqual([2]);
     act(() => selectNodes([]));
-    act(() => cycleSelectedNode(1));
+    expect(walk(1)).toBe(true);
     expect(selected()).toEqual([0]);
+  });
+
+  it("says that it has moved on to a point, and that it has not when there is none to go to", () => {
+    open();
+    act(() => selectNodes([1]));
+    expect(walk(1)).toBe(true);
+    expect(walk(1)).toBe(false);
+    expect(selected()).toEqual([2]);
+    expect(walk(-1)).toBe(true);
+    expect(walk(-1)).toBe(true);
+    expect(walk(-1)).toBe(false);
+    expect(selected()).toEqual([0]);
+  });
+
+  it("goes on from the last of several selected points", () => {
+    open();
+    act(() => selectNodes([0, 1]));
+    expect(walk(1)).toBe(true);
+    expect(selected()).toEqual([2]);
   });
 });

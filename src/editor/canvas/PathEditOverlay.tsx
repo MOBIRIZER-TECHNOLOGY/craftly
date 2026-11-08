@@ -34,7 +34,7 @@ export function PathEditOverlay() {
   const mode = useEditor((s) => s.mode);
   const presenting = useEditor((s) => s.presenting);
   const path = useMemo(() => (shape ? elementPath(shape) : null), [shape]);
-  const usable = !!shape && !!path && onlySelected && tool === "select" && mode === "edit" && !presenting;
+  const usable = !!shape && !shape.locked && !!path && onlySelected && tool === "select" && mode === "edit" && !presenting;
 
   // leave point editing when what it needs is gone
   useEffect(() => {

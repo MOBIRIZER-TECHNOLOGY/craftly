@@ -1,10 +1,11 @@
 /**
  * Point editing of a path: which path element is open for it and which of its points are selected. Like the crop mode of an
  * image it is a state of the editor, not of the document; the overlay (PathEditOverlay.tsx) leaves it again as soon as the
- * element is no longer the one thing selected, is no longer a path that can be edited, or a tool is picked up.
+ * element is no longer the one thing selected, is no longer a path that can be edited, is locked, or a tool is picked up.
  */
 import { create } from "zustand";
-import { getActions } from "@/core/store";
+import { findElement } from "@/core/ops";
+import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { ID } from "@/core/types";
 
 interface PathEditStore {
@@ -16,8 +17,11 @@ interface PathEditStore {
 
 export const usePathEdit = create<PathEditStore>()(() => ({ id: null, selected: [] }));
 
-/** Opens a path element for point editing (and selects it, with the Select tool). */
+/** Opens a path element of the page for point editing (and selects it, with the Select tool). A locked path is not opened. */
 export function startPathEdit(id: ID): void {
+  const page = getActivePage(useEditor.getState());
+  const el = page ? findElement(page, id) : null;
+  if (!el || el.locked) return;
   const actions = getActions();
   actions.setTool("select");
   actions.select([id]);

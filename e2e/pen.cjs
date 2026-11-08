@@ -2,7 +2,9 @@
  * The Pen tool and the editing of a path's points, as a person does it with the mouse and the keys: pick the pen in the Tools
  * palette, click corners, drag a curve out of a point, close the path on its first point, undo and redo it, open its points
  * with Enter, drag a point, click the path to add one, turn a point smooth with a double click, delete a point, leave with
- * Escape, download the page as SVG and find the curve in it, and reload to find the path as it was left.
+ * Escape, undo while a path is being placed (it takes the last point back), walk through the points with Tab and on to the
+ * toolbar of the points, see that the toolbar still shows Done in a narrow window, download the page as SVG and find the
+ * curve in it, reload to find the path as it was left, and choose another page in the middle of a path.
  */
 const fs = require("node:fs");
 const { launch, outDir, BASE } = require("./lib.cjs");
@@ -265,6 +267,101 @@ let shotN = 0;
     return s.last.path;
   });
 
+  /* ---------------- undo while a path is being placed ---------------- */
+  const placedPoints = () => page.evaluate(() => document.querySelectorAll(".cf-penpreview__node").length);
+  await step("Ctrl+Z, and the Undo button, take the last point of a path being placed back and leave the shapes alone", async () => {
+    const { width: W, height: H, n: before } = await state();
+    await page.locator(".cf-workspace").focus();
+    await page.keyboard.press("p");
+    await click(0.62 * W, 0.15 * H);
+    await click(0.7 * W, 0.3 * H);
+    await click(0.78 * W, 0.18 * H);
+    if ((await placedPoints()) !== 3) throw new Error((await placedPoints()) + " points placed");
+    await page.keyboard.press("Control+z");
+    await wait(200);
+    if ((await placedPoints()) !== 2) throw new Error("Ctrl+Z left " + (await placedPoints()) + " points");
+    if ((await state()).n !== before) throw new Error("Ctrl+Z reached into the page");
+    await page.keyboard.press("Control+Shift+z"); // nothing to bring back, and no redo of the page
+    await wait(200);
+    if ((await placedPoints()) !== 2 || (await state()).n !== before) throw new Error("Ctrl+Shift+Z did something");
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await wait(200);
+    if ((await placedPoints()) !== 1) throw new Error("the Undo button left " + (await placedPoints()) + " points");
+    await page.keyboard.press("Control+z");
+    await wait(200);
+    if ((await count(".cf-penpreview")) !== 0) throw new Error("the path is not gone");
+    if ((await state()).n !== before) throw new Error("the page changed: " + before + " -> " + (await state()).n);
+    await page.keyboard.press("Escape"); // puts the pen down, and keeps the path that was selected
+    await wait(200);
+    return "3 -> 2 -> 1 -> 0 points, " + before + " shapes all along";
+  });
+
+  /* ---------------- the keyboard goes on to the toolbar of the points ---------------- */
+  await step("Tab walks through the points and then on to the toolbar, where Smooth works from the keyboard", async () => {
+    // choosing a drawing tool clears the selection: choose the open path again, the last one made
+    await page.evaluate(() => {
+      const s = window.__editor.getState();
+      const pg = s.design.pages.find((p) => p.id === s.activePageId);
+      s.actions.select([pg.elements[pg.elements.length - 1].id]);
+    });
+    const s0 = await state();
+    if (s0.sel.length !== 1 || s0.last.shape !== "path") throw new Error("selection " + s0.sel);
+    await page.locator(".cf-workspace").focus();
+    await page.keyboard.press("Enter");
+    await page.locator("[data-cf-pathedit]").waitFor({ timeout: 5000 });
+    const points = await count(".cf-pathedit__anchor");
+    const bar = page.getByRole("toolbar", { name: "Point editing controls" });
+    for (let i = 1; i <= points; i++) {
+      await page.keyboard.press("Tab");
+      const caption = await bar.innerText();
+      if (!new RegExp(`Point ${i} of ${points}`).test(caption)) throw new Error(`Tab ${i}: ` + caption.replace(/\s+/g, " "));
+    }
+    await page.keyboard.press("Tab"); // after the last point: the browser's
+    const where = await page.evaluate(() => {
+      const el = document.activeElement;
+      return { inBar: !!el.closest('[aria-label="Point editing controls"]'), name: (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 30) };
+    });
+    if (!where.inBar) throw new Error("the focus went to " + where.name);
+    if (!/^Corner/.test(where.name)) throw new Error("the first stop of the toolbar is " + where.name);
+    const before = (await state()).last.path;
+    await page.keyboard.press("Tab"); // Smooth
+    await page.keyboard.press("Enter");
+    await wait(300);
+    const after = (await state()).last.path;
+    // the last point of an open path has one side only, so it gets one handle: the side becomes a curve
+    if (after === before || !/C/.test(after)) throw new Error(`Smooth did nothing: ${before} -> ${after}`);
+    if ((await count("[data-cf-pathedit]")) !== 1) throw new Error("point editing ended");
+    return points + " points, then the toolbar: " + where.name;
+  });
+
+  /* ---------------- a narrow window ---------------- */
+  await step("in a narrow window the toolbar of the points still shows Done", async () => {
+    await page.setViewportSize({ width: 600, height: 800 });
+    await wait(700);
+    const bar = await page.evaluate(() => {
+      const scroller = document.querySelector('[aria-label="Point editing controls"] .cf-tb__scroll') || document.querySelector(".cf-tb__scroll");
+      const done = Array.from(scroller.querySelectorAll("button")).find((b) => /^Done/.test(b.textContent.trim()));
+      const s = scroller.getBoundingClientRect();
+      const d = done.getBoundingClientRect();
+      const close = Array.from(scroller.querySelectorAll("button")).some((b) => /^Close path/.test(b.textContent.trim()));
+      return { overflow: scroller.scrollWidth - scroller.clientWidth, doneRight: Math.round(d.right), barRight: Math.round(s.right), close };
+    });
+    await shot("narrow");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await wait(500);
+    if (!bar.close) throw new Error("the bar has no Close path button, so it was not the long one");
+    if (bar.overflow > 1 || bar.doneRight > bar.barRight) throw new Error(`Done is cut off: ${JSON.stringify(bar)}`);
+    return `Done ends at ${bar.doneRight}, the bar at ${bar.barRight}`;
+  });
+
+  await step("Escape leaves point editing again", async () => {
+    await page.locator(".cf-workspace").focus();
+    await page.keyboard.press("Escape");
+    await wait(300);
+    if ((await count("[data-cf-pathedit]")) !== 0) throw new Error("still editing points");
+    return "left";
+  });
+
   /* ---------------- export and persistence ---------------- */
   await step("the page downloads as SVG with the curve in it", async () => {
     await page.getByRole("button", { name: "Share", exact: true }).first().click();
@@ -294,6 +391,37 @@ let shotN = 0;
     const closed = await page.evaluate((id) => window.__editor.getState().design.pages[0].elements.find((e) => e.id === id)?.path, pathId);
     if (!closed || !/Z$/.test(closed)) throw new Error("the closed path is not as it was left: " + closed);
     return `${after.n} elements`;
+  });
+
+  /* ---------------- another page, in the middle of a path ---------------- */
+  await step("a page chosen in the middle of a path leaves the path on the page it was drawn on", async () => {
+    const first = await page.evaluate(() => window.__editor.getState().design.pages[0].id);
+    const before = await page.evaluate((id) => window.__editor.getState().design.pages.find((p) => p.id === id).elements.length, first);
+    const { width: W, height: H } = await state();
+    await page.locator(".cf-workspace").focus();
+    await page.keyboard.press("p");
+    await click(0.15 * W, 0.12 * H);
+    await click(0.25 * W, 0.2 * H);
+    await page.getByRole("button", { name: "Add page", exact: true }).first().click();
+    await wait(500);
+    const s = await page.evaluate(
+      ([id]) => {
+        const st = window.__editor.getState();
+        return {
+          pages: st.design.pages.length,
+          active: st.activePageId === id,
+          tool: st.tool,
+          onFirst: st.design.pages.find((p) => p.id === id).elements.length,
+          onNew: st.design.pages[st.design.pages.length - 1].elements.length,
+          preview: document.querySelectorAll(".cf-penpreview").length,
+        };
+      },
+      [first],
+    );
+    if (s.pages !== 2 || s.active) throw new Error("the new page is not the active one: " + JSON.stringify(s));
+    if (s.onFirst !== before + 1 || s.onNew !== 0) throw new Error("the path is not on the first page: " + JSON.stringify(s));
+    if (s.tool !== "pen" || s.preview !== 0) throw new Error("the pen or its preview: " + JSON.stringify(s));
+    return `page 1 ${before} -> ${s.onFirst} shapes, the pen still in hand on page 2`;
   });
 
   await step("no errors reached the console", async () => {

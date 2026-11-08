@@ -552,6 +552,7 @@ describe("the pen and point editing", () => {
       pen: {
         path: { closed: false, nodes: Array.from({ length: count }, (_unused, i) => ({ x: 100 + i * 100, y: 100 + i * 50, handleIn: null, handleOut: null })) },
         hover: null,
+        pageId: state().activePageId,
       },
     });
   afterEach(() => {
@@ -587,6 +588,14 @@ describe("the pen and point editing", () => {
     actions().select(["p"]);
     expect(press("Enter")).toBe(true);
     expect(usePathEdit.getState().id).toBe("p");
+  });
+
+  it("Enter does not open the points of a locked path, which the list of layers can still select", () => {
+    open([createShape("path", { id: "p", x: 100, y: 100, width: 200, height: 100, fill: null, path: "M0 0 L100 0 L100 100", locked: true }), rect()]);
+    actions().select(["p"]);
+    expect(state().selection).toEqual(["p"]);
+    press("Enter");
+    expect(usePathEdit.getState().id).toBeNull();
   });
 
   describe("while a path is being placed", () => {
@@ -626,6 +635,39 @@ describe("the pen and point editing", () => {
       press("Delete");
       expect(useGesture.getState().pen!.path.nodes).toHaveLength(1);
       expect(byId("r")).toBeTruthy();
+    });
+
+    it("Ctrl+Z takes the last point back and leaves the document alone; with no point left it is undo again", () => {
+      open([rect()]);
+      actions().select(["r"]);
+      actions().nudge(10, 0);
+      actions().setTool("pen");
+      draft(3);
+      expect(ctrl("z")).toBe(true);
+      expect(useGesture.getState().pen!.path.nodes).toHaveLength(2);
+      ctrl("z");
+      ctrl("z");
+      expect(useGesture.getState().pen).toBeNull();
+      // the move that was made before the path was started is still made
+      expect(byId("r").x).toBe(410);
+      ctrl("z");
+      expect(byId("r").x).toBe(400);
+    });
+
+    it("Ctrl+Shift+Z and Ctrl+Y bring nothing back, so that they cannot redo the document under the path", () => {
+      open([rect()]);
+      actions().select(["r"]);
+      actions().nudge(10, 0);
+      actions().undo();
+      actions().setTool("pen");
+      draft(2);
+      expect(ctrl("z", { shiftKey: true })).toBe(true);
+      expect(ctrl("y")).toBe(true);
+      expect(byId("r").x).toBe(400);
+      expect(useGesture.getState().pen!.path.nodes).toHaveLength(2);
+      useGesture.setState({ pen: null });
+      ctrl("y");
+      expect(byId("r").x).toBe(410);
     });
   });
 
@@ -670,12 +712,37 @@ describe("the pen and point editing", () => {
 
     it("Tab walks through the points, and Enter is done", () => {
       edit();
-      press("Tab");
+      expect(press("Tab")).toBe(true);
       expect(usePathEdit.getState().selected).toEqual([0]);
+      press("Tab");
+      expect(usePathEdit.getState().selected).toEqual([1]);
       press("Tab", { shiftKey: true });
-      expect(usePathEdit.getState().selected).toEqual([2]);
+      expect(usePathEdit.getState().selected).toEqual([0]);
       expect(press("Enter")).toBe(true);
       expect(usePathEdit.getState().id).toBeNull();
+    });
+
+    it("Tab starts at the first point and Shift+Tab at the last when none is selected", () => {
+      edit();
+      press("Tab", { shiftKey: true });
+      expect(usePathEdit.getState().selected).toEqual([2]);
+    });
+
+    it("Tab moves on to the toolbar after the last point (Shift+Tab: before the first) instead of wrapping round, and leaves the elements alone", () => {
+      const canvas = document.body.appendChild(document.createElement("div"));
+      canvas.setAttribute("data-cf-workspace", "");
+      edit();
+      for (let i = 0; i < 3; i++) expect(press("Tab", {}, canvas)).toBe(true);
+      expect(usePathEdit.getState().selected).toEqual([2]);
+      expect(press("Tab", {}, canvas)).toBe(false);
+      expect(usePathEdit.getState().selected).toEqual([2]);
+      selectNodes([0]);
+      expect(press("Tab", { shiftKey: true }, canvas)).toBe(false);
+      expect(usePathEdit.getState().selected).toEqual([0]);
+      // point editing goes on, on the same path
+      expect(state().selection).toEqual(["p"]);
+      expect(usePathEdit.getState().id).toBe("p");
+      canvas.remove();
     });
   });
 });

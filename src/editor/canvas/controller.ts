@@ -914,10 +914,12 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
-  // A path that is being placed is made when another tool is chosen, and dropped when the page or the design changes under it.
+  // A path that is being placed is made when another tool is chosen, and when another page is chosen (it goes on the page it was
+  // drawn on); it is dropped when the design is closed or another one opened under it.
   const stopWatchingTool = useEditor.subscribe((s, prev) => {
     if (prev.tool === "pen" && s.tool !== "pen") finishPen(false, true);
-    else if (prev.activePageId !== s.activePageId || (prev.design && !s.design)) cancelPen();
+    else if (prev.design?.id !== s.design?.id) cancelPen();
+    else if (prev.activePageId !== s.activePageId) finishPen(false, true);
   });
 
   return {

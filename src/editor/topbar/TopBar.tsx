@@ -1,5 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { useEditor, type EditorState } from "@/core/store";
+import { useGesture } from "@/editor/canvas/gestureStore";
+import { penHistory } from "@/editor/canvas/penTool";
 import { insertImageFiles } from "@/editor/insert";
 import { navigate } from "@/router";
 import {
@@ -236,6 +238,8 @@ function PresentButton() {
 export function TopBar() {
   const canUndo = useEditor((s) => s.canUndo);
   const canRedo = useEditor((s) => s.canRedo);
+  // while a path is being placed with the Pen, undo takes its last point back and redo has nothing to bring back
+  const placing = useGesture((s) => s.pen !== null);
   const readOnly = useEditor((s) => s.mode === "view");
   const designTitle = useEditor((s) => s.design?.title);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -274,13 +278,21 @@ export function TopBar() {
         <ResizeMenu />
         <ModeMenu />
         <span className="cf-topbar__sep cf-topbar__sep--hide-sm" aria-hidden="true" />
-        <IconButton label="Undo" shortcut="Ctrl+Z" icon={<IconUndo aria-hidden="true" />} disabled={!canUndo || readOnly} onClick={() => actions.undo()} />
+        <IconButton
+          label="Undo"
+          shortcut="Ctrl+Z"
+          icon={<IconUndo aria-hidden="true" />}
+          disabled={(!canUndo && !placing) || readOnly}
+          onClick={() => {
+            if (!penHistory(false)) actions.undo();
+          }}
+        />
         <IconButton
           label="Redo"
           shortcut="Ctrl+Shift+Z"
           className="cf-topbar__redo"
           icon={<IconRedo aria-hidden="true" />}
-          disabled={!canRedo || readOnly}
+          disabled={!canRedo || placing || readOnly}
           onClick={() => actions.redo()}
         />
         <span className="cf-topbar__sep cf-topbar__sep--hide-sm" aria-hidden="true" />

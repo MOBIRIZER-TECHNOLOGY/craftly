@@ -122,12 +122,17 @@
 
 /* ---- crop mode ---- */
 
+/* the caption is the part of a bar that gives way when there is not room for everything: the buttons after it, Done among them, stay in view */
 .cf-tb__caption {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   padding: 0 8px 0 10px;
+  overflow: hidden;
   color: var(--c-ink-2);
   font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cf-tb__zoom {

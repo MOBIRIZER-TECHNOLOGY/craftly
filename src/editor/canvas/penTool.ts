@@ -3,7 +3,8 @@
  * the path ends with a click on its last point, Enter, Esc, a double click, or by choosing another tool, and closes with a
  * click on its first point. The path being placed lives in `useGesture().pen` (design px); finishing it makes an ordinary
  * path shape (src/core/penShape.ts) and gives the page back to the Select tool with the new path selected. The canvas
- * controller routes the pointer here; the keys (src/editor/hotkeys.ts) call `finishPen`, `backspacePen` and `cancelPen`.
+ * controller routes the pointer here; the keys (src/editor/hotkeys.ts) call `finishPen`, `backspacePen`, `penHistory` and
+ * `cancelPen`. A path stays on the page it was started on: choosing another page finishes it there.
  */
 import { createShape } from "@/core/factory";
 import { closePath, type PenNode } from "@/core/pen";
@@ -55,7 +56,8 @@ export function penPress(pt: Point, options: { zoom: number; shift: boolean }): 
   }
   const at = options.shift && last ? constrainTo45(last, pt) : pt;
   const placed: PenNode = { x: at.x, y: at.y, handleIn: null, handleOut: null };
-  useGesture.getState().set({ pen: { path: { nodes: [...nodes, placed], closed: false }, hover: null } });
+  const pageId = draft?.pageId ?? useEditor.getState().activePageId;
+  useGesture.getState().set({ pen: { path: { nodes: [...nodes, placed], closed: false }, hover: null, pageId } });
   return { shaping: nodes.length };
 }
 
@@ -67,7 +69,7 @@ export function penDrag(index: number, pt: Point, zoom: number): void {
   const out = { x: pt.x - node.x, y: pt.y - node.y };
   const pulled = Math.hypot(out.x, out.y) * zoom >= DRAG_SLOP;
   const nodes = draft.path.nodes.map((n, i) => (i === index ? { ...n, handleOut: pulled ? out : null, handleIn: pulled ? { x: negate(out.x), y: negate(out.y) } : null } : n));
-  useGesture.getState().set({ pen: { path: { ...draft.path, nodes }, hover: null } });
+  useGesture.getState().set({ pen: { ...draft, path: { ...draft.path, nodes }, hover: null } });
 }
 
 /** The pointer moves with no button down: shows the side the next click would make. */
@@ -80,7 +82,8 @@ export function penHover(pt: Point, shift: boolean): void {
 
 /**
  * Makes the path out of the points placed so far (nothing for fewer than two) and selects it. The Select tool takes over,
- * unless the path is being finished because another tool was chosen (`keepTool`).
+ * unless the path is being finished because another tool was chosen (`keepTool`). When it is finished after another page was
+ * chosen it goes on the page it was drawn on, and the page, the tool and the selection are left as the person made them.
  */
 export function finishPen(closed = false, keepTool = false): void {
   const draft = draftOf();
@@ -90,8 +93,13 @@ export function finishPen(closed = false, keepTool = false): void {
   const path = closed ? closePath(draft.path) : draft.path;
   const stroke = getDrawStroke(design.width);
   const actions = getActions();
+  const shape = createShape("path", newPathShape(path, { color: stroke.color, strokeWidth: stroke.width }));
+  if (useEditor.getState().activePageId !== draft.pageId) {
+    actions.addElement(shape, { center: false, pageId: draft.pageId, select: false });
+    return;
+  }
   if (!keepTool) actions.setTool("select");
-  actions.addElement(createShape("path", newPathShape(path, { color: stroke.color, strokeWidth: stroke.width })), { center: false });
+  actions.addElement(shape, { center: false });
 }
 
 /** Throws the path away. */
@@ -105,5 +113,16 @@ export function backspacePen(): void {
   if (!draft) return;
   const nodes = draft.path.nodes.slice(0, -1);
   if (!nodes.length) return cancelPen();
-  useGesture.getState().set({ pen: { path: { ...draft.path, nodes }, hover: draft.hover } });
+  useGesture.getState().set({ pen: { ...draft, path: { ...draft.path, nodes } } });
+}
+
+/**
+ * Undo and redo belong to the path while one is being placed: undo takes the last point back, and redo does nothing (a point
+ * that was taken back is not kept), so that neither reaches into the document under the path. True when the key or the button
+ * was used up, false when no path is being placed and undo and redo are the document's.
+ */
+export function penHistory(redo: boolean): boolean {
+  if (!draftOf()) return false;
+  if (!redo) backspacePen();
+  return true;
 }

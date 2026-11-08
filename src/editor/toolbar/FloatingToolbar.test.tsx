@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -594,5 +596,19 @@ describe("toolbar frame", () => {
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
     window.removeEventListener("keydown", listener);
     expect(seen).toEqual(["Escape", "z+ctrl", "ArrowLeft"]);
+  });
+});
+
+describe("the caption of a toolbar", () => {
+  const css = readFileSync(resolve(__dirname, "FloatingToolbar.css"), "utf8");
+  const rule = /\.cf-tb__caption\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+  // a stylesheet is not laid out in jsdom: e2e/pen.cjs measures it in a narrow window
+  it("is the part of a bar that gives way when there is not room for everything, so that the buttons after it stay in view", () => {
+    expect(rule).toMatch(/flex:\s*0 1 auto/);
+    expect(rule).toMatch(/min-width:\s*0/);
+    expect(rule).toMatch(/overflow:\s*hidden/);
+    expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+    expect(rule).toMatch(/white-space:\s*nowrap/);
   });
 });

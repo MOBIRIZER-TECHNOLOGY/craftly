@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage } from "@/core/factory";
 import { useEditor } from "@/core/store";
+import { useGesture } from "@/editor/canvas/gestureStore";
 import { chromeDesign, clearToasts, listenOnWindow, renderChrome, storeDesign } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor } from "@/test/helpers";
 import { TopBar } from "./TopBar";
@@ -56,6 +57,58 @@ describe("<TopBar>: home, undo and redo", () => {
     expect(isDisabled(undo)).toBe(true);
     await userEvent.setup({ delay: null }).click(undo);
     expect(storeDesign().title).toBe("Edited title");
+  });
+});
+
+describe("<TopBar>: undo and redo while a path is being placed", () => {
+  /** a path of `count` points that the Pen has not finished */
+  const placing = (count: number) =>
+    act(() =>
+      useGesture.setState({
+        pen: {
+          path: { closed: false, nodes: Array.from({ length: count }, (_unused, i) => ({ x: 100 + i * 100, y: 100, handleIn: null, handleOut: null })) },
+          hover: null,
+          pageId: useEditor.getState().activePageId,
+        },
+      }),
+    );
+  const points = () => useGesture.getState().pen?.path.nodes.length ?? 0;
+  afterEach(() => act(() => useGesture.setState({ pen: null })));
+
+  it("Undo takes the last point back, and is on even when the document has nothing to undo", async () => {
+    await mount();
+    const user = userEvent.setup({ delay: null });
+    const undo = button("Undo");
+    expect(isDisabled(undo)).toBe(true);
+    placing(3);
+    expect(isDisabled(undo)).toBe(false);
+    await user.click(undo);
+    expect(points()).toBe(2);
+    await user.click(undo);
+    await user.click(undo);
+    expect(points()).toBe(0);
+    expect(isDisabled(undo)).toBe(true);
+  });
+
+  it("Undo leaves the document alone", async () => {
+    await mount();
+    act(() => actions().setTitle("Edited title"));
+    placing(2);
+    await userEvent.setup({ delay: null }).click(button("Undo"));
+    expect(storeDesign().title).toBe("Edited title");
+    expect(points()).toBe(1);
+  });
+
+  it("Redo is off, and comes back with the path that is finished or thrown away", async () => {
+    await mount();
+    act(() => actions().setTitle("Edited title"));
+    act(() => actions().undo());
+    const redo = button("Redo");
+    expect(isDisabled(redo)).toBe(false);
+    placing(2);
+    expect(isDisabled(redo)).toBe(true);
+    act(() => useGesture.setState({ pen: null }));
+    expect(isDisabled(redo)).toBe(false);
   });
 });
 

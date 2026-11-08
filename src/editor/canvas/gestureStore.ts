@@ -1,13 +1,15 @@
 /** Transient, purely visual gesture state (marquee, HUD tooltip, freehand preview). */
 import { create } from "zustand";
 import type { PenPath } from "@/core/pen";
-import type { Point, Rect } from "@/core/types";
+import type { ID, Point, Rect } from "@/core/types";
 
 /** The path that the Pen tool is placing (design px): it lasts from the first click until the path is finished. */
 export interface PenDraft {
   path: PenPath;
   /** where the pointer is, for the side the next click would make */
   hover: Point | null;
+  /** the page the path is being drawn on: it goes there even when another page is chosen before it is finished */
+  pageId: ID;
 }
 
 interface GestureStore {

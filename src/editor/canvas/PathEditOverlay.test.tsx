@@ -142,6 +142,29 @@ describe("leaving", () => {
     act(() => getActions().setTool("pen"));
     await waitFor(() => expect(usePathEdit.getState().id).toBeNull());
   });
+
+  it("ends when the path is locked", async () => {
+    await edit();
+    act(() => getActions().setLocked(["p"], true));
+    await waitFor(() => expect(usePathEdit.getState().id).toBeNull());
+  });
+});
+
+describe("a locked path", () => {
+  it("is not opened for point editing, though the list of layers can select it", async () => {
+    const rig = await mountWorkspace(canvasDesign([pathElement({ locked: true })]));
+    act(() => getActions().select(["p"]));
+    expect(state().selection).toEqual(["p"]);
+    act(() => startPathEdit("p"));
+    expect(usePathEdit.getState().id).toBeNull();
+    expect(rig.container.querySelector("[data-cf-pathedit]")).toBeNull();
+  });
+
+  it("is not opened by a double click either", async () => {
+    const rig = await mountWorkspace(canvasDesign([pathElement({ locked: true })]));
+    rig.dblclick(200, 100);
+    expect(usePathEdit.getState().id).toBeNull();
+  });
 });
 
 describe("selecting points", () => {
@@ -178,10 +201,11 @@ describe("selecting points", () => {
     act(() => cycleSelectedNode(1));
     act(() => cycleSelectedNode(1));
     expect(usePathEdit.getState().selected).toEqual([2]);
+    // after the last point it stops there (the key goes on to the toolbar), it does not wrap round
     act(() => cycleSelectedNode(1));
-    expect(usePathEdit.getState().selected).toEqual([0]);
-    act(() => cycleSelectedNode(-1));
     expect(usePathEdit.getState().selected).toEqual([2]);
+    act(() => cycleSelectedNode(-1));
+    expect(usePathEdit.getState().selected).toEqual([1]);
   });
 });
 

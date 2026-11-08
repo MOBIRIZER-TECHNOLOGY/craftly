@@ -9,7 +9,7 @@ import { getActions, getActivePage, useEditor } from "@/core/store";
 import { measureTextElement } from "@/render/textLayout";
 import { pathEditKey } from "./canvas/pathEditActions";
 import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore";
-import { backspacePen, finishPen, hasPenDraft } from "./canvas/penTool";
+import { backspacePen, finishPen, hasPenDraft, penHistory } from "./canvas/penTool";
 import { stopPreview, usePreview } from "./canvas/preview";
 import { insertImageFiles } from "./insert";
 import { isInteractiveControl, isTyping, markSelectAllOnEdit } from "./canvas/controller";
@@ -66,15 +66,17 @@ function onKeyDown(e: KeyboardEvent) {
   // a focused button / slider / menu item owns arrows, Tab, Enter and Space
   if (isInteractiveControl(e.target) && (key.startsWith("arrow") || key === "tab" || key === "enter" || key === " " || key === "home" || key === "end")) return;
 
+  // while a path is being placed undo takes its last point back and redo does nothing: neither reaches into the document
   if (mod && key === "z") {
     e.preventDefault();
+    if (penHistory(e.shiftKey)) return;
     if (e.shiftKey) a.redo();
     else a.undo();
     return;
   }
   if (mod && key === "y") {
     e.preventDefault();
-    a.redo();
+    if (!penHistory(true)) a.redo();
     return;
   }
   if (s.mode === "view") return;
@@ -92,6 +94,8 @@ function onKeyDown(e: KeyboardEvent) {
       e.preventDefault();
       return;
     }
+    // with the points of a path open, Tab is theirs and then the browser's (the toolbar of the points comes next), never the page's
+    if (key === "tab" && usePathEdit.getState().id) return;
   }
 
   if (mod && key === "a") {
