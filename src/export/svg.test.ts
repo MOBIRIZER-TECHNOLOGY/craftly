@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createChart, createDesign, createGraphic, createGroup, createLine, createPage, createShape, createTable, createText, solid } from "@/core/factory";
-import type { DesignElement, Fill, Page, TextEffect } from "@/core/types";
+import { newPathShape } from "@/core/penShape";
+import type { DesignElement, Fill, Page, Point, TextEffect } from "@/core/types";
 import { layoutText } from "@/render/textLayout";
 
 // This file loads the renderer and the font table, which takes a few seconds when many test files do the same at once:
@@ -208,6 +209,24 @@ describe("shapes and lines", () => {
     expect(svg).toMatch(/<path d="M[^"]+Z" fill="#0e1318"\/>/);
     expect(svg).toContain('fill-rule="evenodd"');
     checkXml(svg);
+  });
+
+  it("writes a path made with the Pen as a <path> with its curves, in the pixels of its box", async () => {
+    const node = (x: number, y: number, handleIn: Point | null, handleOut: Point | null) => ({ x, y, handleIn, handleOut });
+    const made = newPathShape({ closed: false, nodes: [node(10, 20, null, { x: 40, y: 0 }), node(110, 80, { x: -40, y: 0 }, null)] }, { color: "#ff0066", strokeWidth: 6 });
+    const { svg } = await render([createShape("path", made)]);
+    expect(made).toMatchObject({ x: 10, y: 20, width: 100, height: 60 });
+    expect(svg).toContain('<g transform="translate(10 20)">');
+    expect(svg).toContain('<path d="M0 0C40 0 60 60 100 60" fill="none" stroke="#ff0066" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>');
+    checkXml(svg);
+  });
+
+  it("fills a closed path made with the Pen and gives it no outline", async () => {
+    const corner = (x: number, y: number) => ({ x, y, handleIn: null, handleOut: null });
+    const made = newPathShape({ closed: true, nodes: [corner(0, 0), corner(100, 0), corner(50, 80)] }, { color: "#0e1318", strokeWidth: 6 });
+    const { svg } = await render([createShape("path", made)]);
+    expect(svg).toContain('<path d="M0 0L100 0L50 80L0 0Z" fill="#0e1318"/>');
+    expect(svg).not.toContain("stroke");
   });
 
   it("keeps dashed outlines on the path the canvas draws (not <ellipse>'s start point)", async () => {

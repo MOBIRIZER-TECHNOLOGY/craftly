@@ -1,7 +1,9 @@
 /** Contextual toolbars of shapes and lines. */
+import { elementPath } from "@/core/penShape";
+import { startPathEdit } from "@/editor/canvas/pathEditStore";
 import { getShape } from "@/render/shapePaths";
 import type { ArrowKind, LineElement, ShapeElement, StrokeStyle } from "@/core/types";
-import { Divider, IconChevronDown, type MenuEntry } from "@/ui";
+import { Divider, IconChevronDown, IconCurve, type MenuEntry } from "@/ui";
 import {
   BorderPopover,
   CopyStyleButton,
@@ -19,7 +21,7 @@ import {
   type BarProps,
 } from "../common";
 import { ArrowheadPreview, IconStrokeStyle, IconStrokeWeight } from "../icons";
-import { MenuButton, PopoverButton, SliderField, TBIcon, toggleContext, useContextActive } from "../kit";
+import { MenuButton, PopoverButton, SliderField, TBIcon, TBText, toggleContext, useContextActive } from "../kit";
 import { MIXED_SWATCH_CSS, editElements, only, uniform } from "../selection";
 
 type Extra = { copyEnabled: boolean };
@@ -37,6 +39,11 @@ export function ShapeBar({ els, ids, copyEnabled }: BarProps<ShapeElement> & Ext
       <FlipMenu />
       <AnimateButton />
       <PositionButton />
+      {els.length === 1 && elementPath(els[0]) && (
+        <TBText icon={<IconCurve />} tip="Move, add and delete the points of this path" shortcut="Enter" onClick={() => startPathEdit(els[0].id)}>
+          Edit points
+        </TBText>
+      )}
       {ids.length > 1 && <MultiActions ids={ids} />}
       <Divider vertical className="cf-tb__div" />
       <CopyStyleButton els={els} enabled={copyEnabled} />

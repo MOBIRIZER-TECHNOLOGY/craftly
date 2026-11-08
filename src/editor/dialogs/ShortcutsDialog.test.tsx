@@ -15,7 +15,7 @@ describe("<ShortcutsDialog>", () => {
     const region = screen.getByRole("region", { name: "Shortcuts" });
     // the list scrolls inside the dialog: the keyboard has to be able to focus it, or nobody without a mouse can scroll it
     expect(region.tabIndex).toBe(0);
-    const groups = ["Add to the page", "Arrange", "Edit and select", "General", "Mouse and canvas gestures", "Pages", "Presenting", "View"];
+    const groups = ["Add to the page", "Arrange", "Edit and select", "General", "Mouse and canvas gestures", "Pages", "Pen and path points", "Presenting", "View"];
     expect(groupNames().sort()).toEqual(groups);
     expect(
       within(region)
@@ -31,6 +31,12 @@ describe("<ShortcutsDialog>", () => {
     expect(keys("Bold the selected text")).toEqual(["Ctrl", "B"]);
     expect(keys("Italic the selected text")).toEqual(["Ctrl", "I"]);
     expect(keys("Underline the selected text")).toEqual(["Ctrl", "U"]);
+  });
+
+  it("lists the Pen, with its key, and the keys of point editing", () => {
+    mount();
+    const keys = (label: string) => Array.from(rowOf(label).querySelectorAll("kbd")).map((k) => k.textContent);
+    expect(keys("Path with the Pen (points and curves)")).toEqual(["P"]);
   });
 
   it("shows each key as a key cap and alternatives with 'or'", () => {
@@ -82,7 +88,7 @@ describe("<ShortcutsDialog>", () => {
   it("finds the same key in several groups", async () => {
     mount();
     await userEvent.setup({ delay: null }).type(screen.getByRole("searchbox", { name: "Search shortcuts" }), "esc");
-    expect(groupNames().sort()).toEqual(["General", "Pages", "Presenting"]);
+    expect(groupNames().sort()).toEqual(["General", "Pages", "Pen and path points", "Presenting"]);
   });
 
   it("says when nothing matches and brings everything back when the search is cleared", async () => {
@@ -93,14 +99,14 @@ describe("<ShortcutsDialog>", () => {
     expect(screen.getByText('No shortcuts match "zzzz".')).toBeTruthy();
     expect(groupNames()).toEqual([]);
     await user.click(screen.getByRole("button", { name: "Clear search" }));
-    expect(groupNames()).toHaveLength(8);
+    expect(groupNames()).toHaveLength(9);
     expect(screen.queryByText(/No shortcuts match/)).toBeNull();
   });
 
   it("ignores spaces around the search words", async () => {
     mount();
     await userEvent.setup({ delay: null }).type(screen.getByRole("searchbox", { name: "Search shortcuts" }), "   ");
-    expect(groupNames()).toHaveLength(8);
+    expect(groupNames()).toHaveLength(9);
   });
 
   it("closes from its close button and on Escape", async () => {

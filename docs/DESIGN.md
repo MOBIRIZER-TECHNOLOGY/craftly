@@ -120,6 +120,7 @@ src/
     types.ts                   the document model (READ THIS FIRST)
     ids.ts geometry.ts color.ts svg.ts factory.ts clone.ts assets.ts
     ops.ts                     pure document operations (align, group, reorder, duplicate ...)
+    pen.ts penShape.ts         vector paths: points with handles, the curve maths and the editing of a path (pen.ts); how a path sits in a shape element (penShape.ts)
     animation.ts transition.ts element animations and page transitions (pure timelines)
     textMetrics.ts             pluggable text measurer
     store.ts                   Zustand editor store: document, selection, clipboard, history, view, panels
@@ -139,7 +140,7 @@ src/
   editor/                      editor UI
     Editor.tsx hotkeys.ts insert.ts autosave.ts
     topbar/ bottombar/ pages/  top bar and file menu, bottom bar (notes, timer), page strip and grid view
-    canvas/                    PageView, SelectionOverlay, TextEditorOverlay, controller (pointer logic), snapping
+    canvas/                    PageView, SelectionOverlay, TextEditorOverlay, controller (pointer logic), snapping, the Pen (penTool, PenPreview) and the point editing of a path (PathEditOverlay, pathEditStore, pathEditActions)
     panels/                    left side-panel tabs + context panels (Position, Effects, Colour, Fonts, Filters with the photo Tools tab, Background, Data, Animate)
     toolbar/                   floating contextual toolbar + mini toolbar + context menu
     dialogs/                   download, resize, find and replace, keyboard shortcuts, version history, on-device models
@@ -339,6 +340,8 @@ selected characters, `false` when there is no selection (then fall back to `acti
 from `useTextSelectionStyle()`.
 
 **Crop helpers** (`@/editor/canvas/CropOverlay`): `getCropScale(el)`, `setCropScale(id, s)`, `resetCrop(id)`.
+
+**Pen and point editing** (`@/core/pen`, `@/core/penShape`, `@/editor/canvas/penTool`, `pathEdit*`): a path is the existing `ShapeElement` with `shape: "path"` and `path` = SVG path data in a 0..100 box that is stretched to the element's box (`scalePathData`), so the Pen added nothing to the stored formats and needed no migration. `pen.ts` is pure: a `PenPath` is `{ nodes, closed }`, a node is `{ x, y, handleIn, handleOut }` (handles are offsets from the anchor; a point is smooth when both are there, opposite and on one line, within half a degree), `parsePath` reads one piece of absolute M, L, H, V, C, Q and Z (anything else, such as an arc, relative commands or two pieces, is not editable: `elementPath(el)` is null and no Edit points button is offered), `pathToString` writes M, L, C and Z with at most three decimals, and every editing function (`moveNodes`, `moveHandle`, `insertNode`, `deleteNodes`, `setNodeKind`, `closePath`) returns a new path. `penShape.ts` is the bridge to the element: `elementPath(el)` gives the points in the element's own pixels, and `patchForPath(el, path)` gives the `x, y, width, height, path` that fit the new curve (the box is the curve's own bounds, at least 1 px each way) and keep every point where it is on the page whatever the element's rotation and flips (`localToDesign` and `designToLocal`). A gesture always maps from the element as it was when the gesture began. The path being placed is transient (`useGesture().pen`); finishing it calls `setTool("select")` and adds one element, so it is one undo step. Point editing has its own store, `usePathEdit` (the id of the open element and the selected point numbers); `PathEditOverlay` is the pointer's part (SVG over the element, one transaction per gesture; its pointer maths subtracts the workspace's place on the screen, which is not 0, 0 in a browser), `pathEditActions` is everything else (the toolbar `PathBar`, and the keys through `pathEditKey` in `hotkeys.ts`). Escape peels the innermost layer first: a preview, text editing, a crop, a path being placed (it is finished), point editing, the tool, a context panel, the selection.
 
 **Context menu**: the toolbar package calls `setContextMenuHandler(fn)` from `@/editor/canvas/controller`; `fn(clientX, clientY, { overElement })`
 opens the menu (UI kit `openContextMenu`; `overElement` is true when something is selected).

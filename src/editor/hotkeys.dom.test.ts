@@ -9,6 +9,11 @@ import { createDesign, createGroup, createImage, createPage, createShape, create
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { DesignElement } from "@/core/types";
 import { resetEditor } from "@/test/helpers";
+import { elementPath } from "@/core/penShape";
+import type { ShapeElement } from "@/core/types";
+import { useGesture } from "./canvas/gestureStore";
+import { selectNodes } from "./canvas/pathEditActions";
+import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore";
 import { usePreview, startPreview } from "./canvas/preview";
 import { takeSelectAllOnEdit } from "./canvas/controller";
 import { installHotkeys } from "./hotkeys";
@@ -536,6 +541,142 @@ describe("tool shortcuts", () => {
       press("l", init);
     }
     expect(elements()).toHaveLength(0);
+  });
+});
+
+describe("the pen and point editing", () => {
+  const path = () => createShape("path", { id: "p", x: 100, y: 100, width: 200, height: 100, fill: null, path: "M0 0 L100 0 L100 100" });
+  const nodes = () => elementPath(byId("p") as ShapeElement)!.nodes;
+  const draft = (count: number) =>
+    useGesture.setState({
+      pen: {
+        path: { closed: false, nodes: Array.from({ length: count }, (_unused, i) => ({ x: 100 + i * 100, y: 100 + i * 50, handleIn: null, handleOut: null })) },
+        hover: null,
+      },
+    });
+  afterEach(() => {
+    stopPathEdit();
+    useGesture.setState({ pen: null });
+  });
+
+  it("P picks up the pen, unless a modifier is held or a field is being typed in", () => {
+    open();
+    expect(press("p")).toBe(true);
+    expect(state().tool).toBe("pen");
+    actions().setTool("select");
+    press("p", { ctrlKey: true });
+    expect(state().tool).toBe("select");
+    const input = document.body.appendChild(document.createElement("input"));
+    press("p", {}, input);
+    input.remove();
+    expect(state().tool).toBe("select");
+  });
+
+  it("does not pick up the pen in view mode", () => {
+    open();
+    actions().setMode("view");
+    press("p");
+    expect(state().tool).toBe("select");
+  });
+
+  it("Enter opens the points of a selected path, and does nothing for another shape", () => {
+    open([path(), rect()]);
+    actions().select(["r"]);
+    press("Enter");
+    expect(usePathEdit.getState().id).toBeNull();
+    actions().select(["p"]);
+    expect(press("Enter")).toBe(true);
+    expect(usePathEdit.getState().id).toBe("p");
+  });
+
+  describe("while a path is being placed", () => {
+    it("Enter makes the path and Escape does the same", () => {
+      open([rect()]);
+      actions().setTool("pen");
+      draft(3);
+      expect(press("Enter")).toBe(true);
+      expect(elements().filter((e) => e.type === "shape" && e.shape === "path")).toHaveLength(1);
+      expect(state().tool).toBe("select");
+      actions().setTool("pen");
+      draft(2);
+      press("Escape");
+      expect(elements().filter((e) => e.type === "shape" && e.shape === "path")).toHaveLength(2);
+    });
+
+    it("Escape throws a single point away and keeps the pen, a second Escape puts it down", () => {
+      open([rect()]);
+      actions().setTool("pen");
+      draft(1);
+      press("Escape");
+      expect(useGesture.getState().pen).toBeNull();
+      expect(elements().filter((e) => e.type === "shape" && e.shape === "path")).toHaveLength(0);
+      expect(state().tool).toBe("pen");
+      press("Escape");
+      expect(state().tool).toBe("select");
+    });
+
+    it("Backspace and Delete take the last point back and leave the selection alone", () => {
+      open([rect()]);
+      actions().select(["r"]);
+      actions().setTool("pen");
+      actions().select(["r"]);
+      draft(3);
+      expect(press("Backspace")).toBe(true);
+      expect(useGesture.getState().pen!.path.nodes).toHaveLength(2);
+      press("Delete");
+      expect(useGesture.getState().pen!.path.nodes).toHaveLength(1);
+      expect(byId("r")).toBeTruthy();
+    });
+  });
+
+  describe("while the points of a path are edited", () => {
+    const edit = () => {
+      open([path(), rect()]);
+      startPathEdit("p");
+    };
+
+    it("Escape leaves point editing and keeps the path selected", () => {
+      edit();
+      press("Escape");
+      expect(usePathEdit.getState().id).toBeNull();
+      expect(state().selection).toEqual(["p"]);
+      press("Escape");
+      expect(state().selection).toEqual([]);
+    });
+
+    it("Delete takes the selected points away, not the path", () => {
+      edit();
+      selectNodes([1]);
+      expect(press("Delete")).toBe(true);
+      expect(nodes()).toHaveLength(2);
+      expect(byId("p")).toBeTruthy();
+      press("Backspace");
+      expect(nodes()).toHaveLength(2); // nothing is selected now
+    });
+
+    it("the arrows move the selected points, a pixel or ten with Shift, and the path when no point is selected", () => {
+      edit();
+      selectNodes([1]);
+      const before = nodes()[1].x;
+      press("ArrowRight");
+      expect(nodes()[1].x - before).toBeCloseTo(1, 1);
+      press("ArrowRight", { shiftKey: true });
+      expect(nodes()[1].x - before).toBeCloseTo(11, 1);
+      selectNodes([]);
+      const x = byId("p").x;
+      press("ArrowLeft");
+      expect(byId("p").x).toBe(x - 1);
+    });
+
+    it("Tab walks through the points, and Enter is done", () => {
+      edit();
+      press("Tab");
+      expect(usePathEdit.getState().selected).toEqual([0]);
+      press("Tab", { shiftKey: true });
+      expect(usePathEdit.getState().selected).toEqual([2]);
+      expect(press("Enter")).toBe(true);
+      expect(usePathEdit.getState().id).toBeNull();
+    });
   });
 });
 

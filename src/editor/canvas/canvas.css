@@ -23,6 +23,7 @@
 .cf-workspace--tool-text,
 .cf-workspace--tool-shape,
 .cf-workspace--tool-line,
+.cf-workspace--tool-pen,
 .cf-workspace--tool-draw {
   cursor: crosshair;
 }
@@ -171,6 +172,98 @@
   height: 100%;
   overflow: visible;
   pointer-events: none;
+}
+.cf-pathedit {
+  position: absolute;
+  pointer-events: none;
+}
+.cf-pathedit__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.cf-pathedit__outline {
+  fill: none;
+  stroke: var(--c-ring);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cf-pathedit__segment {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+  cursor: copy;
+}
+.cf-pathedit__stem {
+  stroke: var(--c-ring);
+  stroke-width: 1;
+}
+.cf-pathedit__handle {
+  fill: #fff;
+  stroke: var(--c-ring);
+  stroke-width: 1.5;
+  pointer-events: all;
+  cursor: move;
+}
+.cf-pathedit__anchor {
+  fill: #fff;
+  stroke: var(--c-ring);
+  stroke-width: 1.5;
+  pointer-events: all;
+  cursor: move;
+}
+.cf-pathedit__anchor.is-selected {
+  fill: var(--c-ring);
+  stroke: #fff;
+}
+.cf-penpreview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.cf-penpreview__path,
+.cf-penpreview__rubber {
+  fill: none;
+  stroke: var(--c-ring);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cf-penpreview__rubber {
+  stroke-dasharray: 5 4;
+  opacity: 0.85;
+}
+.cf-penpreview__handle line {
+  stroke: var(--c-ring);
+  stroke-width: 1;
+}
+.cf-penpreview__handle circle {
+  fill: #fff;
+  stroke: var(--c-ring);
+  stroke-width: 1.5;
+}
+.cf-penpreview__node {
+  fill: #fff;
+  stroke: var(--c-ring);
+  stroke-width: 1.5;
+}
+.cf-penpreview__node.is-last {
+  fill: var(--c-ring);
+}
+.cf-penpreview__node.is-closing {
+  fill: var(--c-ring);
+  stroke: #fff;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(1.7);
 }
 .cf-drawpreview polyline {
   fill: none;

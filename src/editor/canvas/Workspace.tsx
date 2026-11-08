@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { useEditor } from "@/core/store";
 import { attachController } from "./controller";
 import { CropOverlay } from "./CropOverlay";
+import { PathEditOverlay } from "./PathEditOverlay";
 import { GestureHud, GesturePreview, SelectionOverlay, SnapGuides } from "./SelectionOverlay";
 import { PageView } from "./PageView";
 import { usePreview } from "./preview";
@@ -112,6 +113,7 @@ export function Workspace({ children }: { children?: ReactNode }) {
             <SelectionOverlay />
             <GesturePreview />
             <CropOverlay />
+            <PathEditOverlay />
             <TextEditorOverlay />
           </div>
         </div>

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type WheelEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { findElement } from "@/core/ops";
+import { elementPath } from "@/core/penShape";
 import { useActivePage, useEditor, useSelectedElements } from "@/core/store";
 import type {
   ChartElement,
@@ -25,8 +26,10 @@ import type {
   TextElement,
 } from "@/core/types";
 import { useGesture } from "@/editor/canvas/gestureStore";
+import { usePathEdit } from "@/editor/canvas/pathEditStore";
 import { AltTextDialog } from "./AltTextDialog";
 import { CropBar, FrameBar, ImageBar } from "./bars/ImageBar";
+import { PathBar } from "./bars/PathBar";
 import { GraphicBar } from "./bars/GraphicBar";
 import { DataBar, GroupBar, LockedBar, MultiBar, PageBar } from "./bars/MiscBars";
 import { LineBar, ShapeBar } from "./bars/ShapeBar";
@@ -46,9 +49,11 @@ interface Resolved {
 }
 
 /** Decides which toolbar the current selection / mode needs. */
-function resolveBar(page: Page, targets: DesignElement[], selection: string[], cropId: string | null): Resolved {
+function resolveBar(page: Page, targets: DesignElement[], selection: string[], cropId: string | null, pathEditId: string | null): Resolved {
   const crop = cropId ? findElement(page, cropId) : null;
   if (crop?.type === "image" && crop.src) return { label: "Crop controls", kind: "crop", content: <CropBar el={crop} /> };
+  const editing = pathEditId ? findElement(page, pathEditId) : null;
+  if (editing?.type === "shape" && elementPath(editing)) return { label: "Point editing controls", kind: "path", content: <PathBar el={editing} /> };
 
   if (!targets.length) return { label: "Page controls", kind: "page", content: <PageBar background={page.background} /> };
 
@@ -98,6 +103,7 @@ export function FloatingToolbar() {
   const mode = useEditor((s) => s.mode);
   const presenting = useEditor((s) => s.presenting);
   const cropId = useEditor((s) => s.croppingId);
+  const pathEditId = usePathEdit((s) => s.id);
   const editingId = useEditor((s) => s.editingTextId);
   const selection = useEditor(useShallow((s) => s.selection));
   const gesture = useGesture((s) => s.active);
@@ -109,7 +115,7 @@ export function FloatingToolbar() {
     // A text edited inside a group is the real target even though the group is what stays selected.
     const editing = editingId ? findElement(page, editingId) : null;
     const targets = editing?.type === "text" ? [editing] : selected;
-    bar = resolveBar(page, targets, selection, cropId);
+    bar = resolveBar(page, targets, selection, cropId, pathEditId);
   }
 
   return (

@@ -14,6 +14,9 @@ import * as ops from "@/core/ops";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { DesignElement, GroupElement, ID, Point, Rect } from "@/core/types";
 import { getDrawStroke } from "@/editor/panels/shared/drawSettings";
+import { elementPath } from "@/core/penShape";
+import { stopPathEdit, startPathEdit, usePathEdit } from "./pathEditStore";
+import { cancelPen, finishPen, penDrag, penHover, penPress } from "./penTool";
 import { insertImageFiles, insertPayload, readDragPayload, DRAG_MIME } from "../insert";
 import { selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
@@ -116,7 +119,12 @@ interface CreateG extends Base {
   points: Point[];
   moved: boolean;
 }
-type Gesture = PanG | MarqueeG | MoveG | ResizeG | RotateG | LineG | CreateG;
+/** The Pen tool is shaping a point it just placed: the drag pulls its handles out. */
+interface PenG extends Base {
+  kind: "pen";
+  index: number;
+}
+type Gesture = PanG | MarqueeG | MoveG | ResizeG | RotateG | LineG | CreateG | PenG;
 
 /* ------------------------------------------------------------------ */
 
@@ -228,6 +236,11 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     }
     if (s.croppingId && !target.closest("[data-cf-crop]")) act().endCrop();
     else if (s.croppingId) return;
+    // pressing anywhere but on the points of a path that is open for point editing is done with it, and goes on as usual
+    if (usePathEdit.getState().id) {
+      if (target.closest("[data-cf-pathedit]")) return;
+      stopPathEdit();
+    }
 
     if (e.button === 1 || spaceDown || s.tool === "hand") {
       e.preventDefault();
@@ -244,6 +257,10 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       return;
     }
     if (s.mode === "view") return;
+    if (s.tool === "pen") {
+      startPen(e);
+      return;
+    }
     if (s.tool !== "select") {
       startCreate(e, s.tool);
       return;
@@ -348,6 +365,15 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     }
   }
 
+  function startPen(e: PointerEvent) {
+    e.preventDefault();
+    const press = penPress(toDesign(e), { zoom: zoom(), shift: e.shiftKey });
+    if (!press) return;
+    gesture = { kind: "pen", pointerId: e.pointerId, index: press.shaping };
+    host.setPointerCapture(e.pointerId);
+    useGesture.getState().set({ active: true });
+  }
+
   function startCreate(e: PointerEvent, tool: "text" | "shape" | "line" | "draw" | "select" | "hand") {
     if (tool === "select" || tool === "hand") return;
     e.preventDefault();
@@ -362,6 +388,10 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   function onPointerMove(e: PointerEvent) {
     const g = gesture;
     if (!g) {
+      if (st().tool === "pen") {
+        penHover(toDesign(e), e.shiftKey);
+        return;
+      }
       lastHoverEvent = e;
       if (!hoverRaf) hoverRaf = requestAnimationFrame(updateHover);
       return;
@@ -389,6 +419,9 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
         break;
       case "create":
         doCreateMove(g, e);
+        break;
+      case "pen":
+        penDrag(g.index, toDesign(e), zoom());
         break;
     }
   }
@@ -770,7 +803,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
 
   function onDoubleClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (target.closest("[data-cf-ui],[data-cf-handle],[data-cf-text-editor],[data-cf-crop]")) return;
+    if (target.closest("[data-cf-ui],[data-cf-handle],[data-cf-text-editor],[data-cf-crop],[data-cf-pathedit]")) return;
     const s = st();
     if (!s.design || s.mode === "view" || s.tool !== "select") return;
     const pt = toDesign(e);
@@ -781,6 +814,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       act().startTextEdit(hit.id);
     } else if (hit.type === "image" && hit.src) {
       act().startCrop(hit.id);
+    } else if (hit.type === "shape" && elementPath(hit)) {
+      startPathEdit(hit.id);
     } else if (hit.type === "group") {
       const inner = pickInside(hit, pt);
       if (inner?.type === "text") {
@@ -879,6 +914,12 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
+  // A path that is being placed is made when another tool is chosen, and dropped when the page or the design changes under it.
+  const stopWatchingTool = useEditor.subscribe((s, prev) => {
+    if (prev.tool === "pen" && s.tool !== "pen") finishPen(false, true);
+    else if (prev.activePageId !== s.activePageId || (prev.design && !s.design)) cancelPen();
+  });
+
   return {
     zoomAround,
     destroy() {
@@ -893,6 +934,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       host.removeEventListener("drop", onDrop);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      stopWatchingTool();
+      cancelPen();
       if (hoverRaf) cancelAnimationFrame(hoverRaf);
     },
   };

@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { useEditor, type ToolId } from "@/core/store";
-import { ColorPicker, ColorSwatch, IconButton, IconClose, IconPen, IconSelect, IconShapes, IconText, Popover, Slider, Tooltip, cx } from "@/ui";
+import { ColorPicker, ColorSwatch, IconBrush, IconButton, IconClose, IconPenTool, IconSelect, IconShapes, IconText, Popover, Slider, Tooltip, cx } from "@/ui";
 import { autoDrawWidth, setDrawSettings, useDrawSettings } from "../shared/drawSettings";
 import { IconSlash } from "../shared/icons";
 import { ShapePreview } from "../shared/ShapePreview";
@@ -28,7 +28,7 @@ const TOOL_SHAPES: Array<{ id: string; name: string }> = [
 
 const PEN_COLORS = ["#0e1318", "#e5484d", "#f59e0b", "#facc15", "#16a34a", "#12c2b9", "#3b82f6", "#7c3aed", "#ec4899", "#ffffff"];
 
-type Flyout = "draw" | "shape" | null;
+type Flyout = "draw" | "pen" | "shape" | null;
 
 interface ToolDef {
   id: ToolId;
@@ -42,7 +42,8 @@ interface ToolDef {
 
 const TOOLS: ToolDef[] = [
   { id: "select", label: "Select", icon: <IconSelect />, tint: "var(--c-ink-2)" },
-  { id: "draw", label: "Draw", icon: <IconPen />, tint: "var(--c-danger)", flyout: "draw" },
+  { id: "draw", label: "Draw", icon: <IconBrush />, tint: "var(--c-danger)", flyout: "draw" },
+  { id: "pen", label: "Pen", shortcut: "P", icon: <IconPenTool />, tint: "var(--c-primary)", flyout: "pen" },
   { id: "shape", label: "Shape", icon: <IconShapes />, tint: "var(--c-ink)", flyout: "shape" },
   { id: "line", label: "Line", shortcut: "L", icon: <IconSlash />, tint: "var(--c-blue)" },
   { id: "text", label: "Text", shortcut: "T", icon: <IconText />, tint: "var(--c-primary)" },
@@ -50,7 +51,7 @@ const TOOLS: ToolDef[] = [
 
 /**
  * The floating vertical tool palette (opened by the "Tools" rail tab). Choosing a tool calls `actions.setTool`; the
- * canvas controller does the drawing. Draw and Shape open a small flyout for pen options / the shape to draw.
+ * canvas controller does the drawing. Draw and Pen open a small flyout for the stroke they make, Shape one for the shape to draw.
  * The palette stays open while a tool is active; Esc returns to Select (handled by the editor hotkeys).
  */
 export function ToolsPalette({ onClose }: { onClose: () => void }) {
@@ -134,9 +135,21 @@ export function ToolsPalette({ onClose }: { onClose: () => void }) {
         placement="right-start"
         offset={12}
         className="cf-tools__flyout cf-tools__flyout--pen"
+        aria-label="Draw options"
+      >
+        <StrokeFlyout title="Draw" hint="Drag on the page to draw freehand." />
+      </Popover>
+
+      <Popover
+        open={flyout === "pen"}
+        anchor={anchors.current.pen ?? null}
+        onClose={() => setFlyout(null)}
+        placement="right-start"
+        offset={12}
+        className="cf-tools__flyout cf-tools__flyout--pen"
         aria-label="Pen options"
       >
-        <PenFlyout />
+        <StrokeFlyout title="Pen" hint="Click to place a corner, drag to pull out a curve. Click the first point to close the path, and Enter to finish it." />
       </Popover>
     </div>
   );
@@ -175,10 +188,10 @@ function ShapeFlyout({ current, onPick }: { current: string | null; onPick: (kin
 }
 
 /* ------------------------------------------------------------------ */
-/* Pen flyout                                                           */
+/* Draw and Pen flyout: the colour and width of the stroke they make          */
 /* ------------------------------------------------------------------ */
 
-function PenFlyout() {
+function StrokeFlyout({ title, hint }: { title: string; hint: string }) {
   const settings = useDrawSettings();
   const designWidth = useEditor((s) => s.design?.width ?? 1920);
   const [custom, setCustom] = useState(false);
@@ -188,7 +201,8 @@ function PenFlyout() {
 
   return (
     <div className="cf-flyout">
-      <p className="cf-flyout__title">Pen</p>
+      <p className="cf-flyout__title">{title}</p>
+      <p className="cf-flyout__hint">{hint}</p>
       <div className="cf-flyout__preview" aria-hidden="true">
         <svg viewBox="0 0 200 48" width="100%" height="48" preserveAspectRatio="none">
           <path
@@ -201,7 +215,7 @@ function PenFlyout() {
           />
         </svg>
       </div>
-      <div className="cf-flyout__colors" role="group" aria-label="Pen colour">
+      <div className="cf-flyout__colors" role="group" aria-label={`${title} colour`}>
         {PEN_COLORS.map((c) => (
           <ColorSwatch key={c} color={c} size={26} selected={settings.color.toLowerCase() === c} title={c} onClick={() => setDrawSettings({ color: c })} />
         ))}

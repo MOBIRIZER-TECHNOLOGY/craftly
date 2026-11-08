@@ -4,8 +4,12 @@
  */
 import { createLine, createShape, createText } from "@/core/factory";
 import { findElement } from "@/core/ops";
+import { elementPath } from "@/core/penShape";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import { measureTextElement } from "@/render/textLayout";
+import { pathEditKey } from "./canvas/pathEditActions";
+import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore";
+import { backspacePen, finishPen, hasPenDraft } from "./canvas/penTool";
 import { stopPreview, usePreview } from "./canvas/preview";
 import { insertImageFiles } from "./insert";
 import { isInteractiveControl, isTyping, markSelectAllOnEdit } from "./canvas/controller";
@@ -46,6 +50,8 @@ function onKeyDown(e: KeyboardEvent) {
     if (usePreview.getState().preview) stopPreview();
     else if (s.editingTextId) a.endTextEdit();
     else if (s.croppingId) a.endCrop();
+    else if (hasPenDraft()) finishPen(false);
+    else if (usePathEdit.getState().id) stopPathEdit();
     else if (s.tool !== "select") a.setTool("select");
     else if (s.context) a.closeContext();
     else if (s.selection.length) a.clearSelection();
@@ -72,6 +78,21 @@ function onKeyDown(e: KeyboardEvent) {
     return;
   }
   if (s.mode === "view") return;
+
+  // while a path is being placed, Enter makes it and Backspace takes the last point back; while its points are edited the
+  // keys move, delete and walk through them (src/editor/canvas/penTool.ts, pathEditActions.ts)
+  if (!mod && !e.altKey) {
+    if (hasPenDraft() && (key === "enter" || key === "delete" || key === "backspace")) {
+      e.preventDefault();
+      if (key === "enter") finishPen(false);
+      else backspacePen();
+      return;
+    }
+    if (pathEditKey(e)) {
+      e.preventDefault();
+      return;
+    }
+  }
 
   if (mod && key === "a") {
     e.preventDefault();
@@ -131,6 +152,9 @@ function onKeyDown(e: KeyboardEvent) {
     } else if (el?.type === "image" && el.src) {
       e.preventDefault();
       a.startCrop(el.id);
+    } else if (el?.type === "shape" && elementPath(el)) {
+      e.preventDefault();
+      startPathEdit(el.id);
     }
   } else if (key === "tab") {
     // Tab is the keyboard's way round the page, so the canvas only borrows it while the canvas has the focus. From the page
@@ -160,6 +184,9 @@ function onKeyDown(e: KeyboardEvent) {
     } else if (key === "l") {
       e.preventDefault();
       addCentered("line");
+    } else if (key === "p") {
+      e.preventDefault();
+      a.setTool("pen");
     } else if (e.key === "?") {
       a.openDialog("shortcuts");
     }

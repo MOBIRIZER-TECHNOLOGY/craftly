@@ -119,6 +119,15 @@ The dialog was built the day after the audit, to its rules:
 - **The update notice** (2026-11-08, "A new version of Craftly is ready. Reload to use it.") is a toast: a polite `status` in the Notifications region, so a screen reader announces it when it appears without taking the focus, with a **Reload** button and a close button that a keyboard reaches by Tab (the region is the last thing on the page). It stays until it is dismissed, so it is not missed. Not measured with a screen reader.
 - **Not measured:** axe-core was not run on this dialog (the first audit's permission to fetch it is used up), so its contrast comes from the tokens, not from the screen.
 
+## Added after the audit: the Pen tool (2026-11-08)
+
+- **Placing points is for the pointer.** A click or a drag puts down a point; there is no keyboard way to place one (the same holds for the freehand Draw tool). `Enter`, `Esc` and `Backspace` finish or undo what the pointer started, and the shortcut `P` picks the tool up, but a person who cannot use a pointer cannot make a path with the Pen. What is listed under Known limits says so.
+- **Editing the points of a path is operable from the keyboard.** `Enter` on a selected path (or the **Edit points** button, which is a named toolbar button) opens it; `Tab` and `Shift+Tab` walk through the points, the arrows move the selected one by 1 px (`Shift`: 10 px), `Delete` removes it and `Enter` or `Esc` leaves. **Corner**, **Smooth**, **Delete point**, **Close path** and **Done** are text buttons with names and tooltips, in a toolbar named "Point editing controls" (`PathBar.test.tsx`, `PathEditOverlay.test.tsx` and `pathEditActions.dom.test.ts` pin the keys). What the keys cannot do is pull a handle out: a curve is made by dragging.
+- **The toolbar says what is selected.** Its caption is a polite live region: "Select a point to edit it", "Point 2 of 3, corner" (or smooth), "2 points selected", so a screen reader announces the choice as the keys move it.
+- **The points drawn over the page are not read.** The SVG of the preview and of the point editor is `aria-hidden`: its points and handles are targets for the pointer, and the keys and the toolbar do the same work with names. Like the canvas itself it tells a screen reader nothing about the shape.
+- **Colours.** The points, handles and the preview use `--c-ring` (`#8b3dff`) with a white fill or a white outline, like the selection's handles. Their contrast with whatever the page shows behind them was not measured, and cannot be: the page can be any colour.
+- **Not measured:** the new toolbar and the tool's options with a screen reader, and with axe-core (the permission to fetch it that the first audit used is spent). The 24 px rule of `e2e/a11y.cjs` was not run with the point toolbar open.
+
 ## What is left
 
 Nothing in this document is waiting for a decision. What follows was left alone on purpose, or cannot be settled without a person or a device.
@@ -139,6 +148,7 @@ Nothing in this document is waiting for a decision. What follows was left alone 
 ### Known limits
 
 - **The design canvas is invisible to a screen reader.** It is a `canvas` hidden from assistive technology. A keyboard user can walk the elements of the page with Tab, move them with the arrow keys and edit text with Enter, but nobody who cannot see the page can learn what is on it. The Layers tab is the start of an answer; a text outline of the page is the real one (listed in the roadmap).
+- **Drawing needs a pointer.** The Pen and the freehand Draw tool place their points by pointer only, and a curve (a handle) can only be pulled with one. Everything else about a path, down to moving its points, can be done from the keyboard.
 - **400 % zoom** (a 360 px wide window) leaves the editor without a canvas area; at 200 % it works but is tight. The editor is a two-dimensional layout, for which WCAG's reflow rule allows an exception. The dashboard reflows to 320 px without sideways scrolling.
 - Reduced motion is honoured everywhere by one global rule that makes transitions and animations last a hundredth of a millisecond.
 

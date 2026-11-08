@@ -4,6 +4,8 @@ import { getActivePage, useEditor, useSelectedElements } from "@/core/store";
 import type { DesignElement } from "@/core/types";
 import { handlesFor, selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
+import { usePathEdit } from "./pathEditStore";
+import { PenPreview } from "./PenPreview";
 import { handleFraction, type Handle } from "./resize";
 
 const boxStyle = (b: { x: number; y: number; width: number; height: number; rotation: number }, z: number): CSSProperties => ({
@@ -31,6 +33,7 @@ export function SelectionOverlay() {
   const els = useSelectedElements();
   const editing = useEditor((s) => s.editingTextId);
   const cropping = useEditor((s) => s.croppingId);
+  const pathEditing = usePathEdit((s) => s.id !== null);
   const hoverId = useEditor((s) => s.hoverId);
   const mode = useEditor((s) => s.mode);
   const tool = useEditor((s) => s.tool);
@@ -44,7 +47,7 @@ export function SelectionOverlay() {
 
   const frame = selectionFrame(els);
   const locked = els.some((e) => e.locked);
-  const handles = !cropping && !editing && tool === "select" ? handlesFor(els) : [];
+  const handles = !cropping && !pathEditing && !editing && tool === "select" ? handlesFor(els) : [];
   const single = els.length === 1 ? els[0] : null;
   const isLine = single?.type === "line";
 
@@ -54,7 +57,7 @@ export function SelectionOverlay() {
 
       {els.length > 1 && els.map((e) => <div key={e.id} className="cf-outline cf-outline--item" style={boxStyle(e, zoom)} />)}
 
-      {frame && !isLine && !cropping && (
+      {frame && !isLine && !cropping && !pathEditing && (
         <div className={`cf-sel${locked ? " cf-sel--locked" : ""}${editing ? " cf-sel--editing" : ""}`} style={boxStyle(frame, zoom)}>
           <div className="cf-sel__outline" />
           {handles.map((h) => {
@@ -120,6 +123,7 @@ export function GesturePreview() {
   const path = useGesture((s) => s.drawPath);
   return (
     <>
+      <PenPreview />
       {marquee && <div className="cf-marquee" style={{ left: marquee.x * zoom, top: marquee.y * zoom, width: marquee.w * zoom, height: marquee.h * zoom }} />}
       {path && path.length > 1 && (
         <svg className="cf-drawpreview">

@@ -9,6 +9,7 @@ import { getActions, useEditor } from "@/core/store";
 import { canvasDesign, mountWorkspace, selectIds } from "@/test/canvasUtils";
 import { setContextMenuHandler, takePendingCaret } from "./controller";
 import { useGesture } from "./gestureStore";
+import { stopPathEdit, usePathEdit } from "./pathEditStore";
 
 // the machine may be busy: give waitFor more than its default second
 configure({ asyncUtilTimeout: 20_000 });
@@ -25,6 +26,7 @@ const shapes = () => [
 
 afterEach(() => {
   delete (document as unknown as Record<string, unknown>).caretRangeFromPoint;
+  act(() => stopPathEdit());
 });
 
 describe("selecting by clicking", () => {
@@ -403,6 +405,8 @@ describe("double click", () => {
   const text = () => createText({ id: "t", text: "Hello there", x: 100, y: 400, width: 300, fontSize: 40 });
   const photo = () => createImage({ id: "img", src: "https://example.test/p.jpg", x: 500, y: 300, width: 200, height: 150, naturalWidth: 400, naturalHeight: 300 });
   const frame = () => createImage({ id: "frame", src: null, x: 500, y: 100, width: 200, height: 150, naturalWidth: 1, naturalHeight: 1, isFrame: true });
+  const curve = (path = "M0 0 C50 0 100 50 100 100 L0 100 Z") =>
+    createShape("path", { id: "pth", x: 100, y: 100, width: 200, height: 100, fill: { type: "solid", color: "#0e1318" }, path });
   const grouped = () =>
     createGroup([createText({ id: "inner", text: "Inside", x: 10, y: 10, width: 200, fontSize: 30 }), createShape("rect", { id: "bar", x: 10, y: 80, width: 200, height: 20 })], {
       id: "grp",
@@ -454,6 +458,31 @@ describe("double click", () => {
     const rig = await mountWorkspace(canvasDesign([frame()]));
     rig.dblclick(600, 175);
     expect(useEditor.getState().croppingId).toBeNull();
+  });
+
+  it("opens the points of a path", async () => {
+    const rig = await mountWorkspace(canvasDesign([curve()]));
+    rig.dblclick(200, 150);
+    expect(usePathEdit.getState().id).toBe("pth");
+    expect(sel()).toEqual(["pth"]);
+  });
+
+  it("does not open the points of a path that cannot be edited point by point", async () => {
+    const rig = await mountWorkspace(canvasDesign([curve("M0 0 A50 50 0 0 1 100 100 Z")]));
+    rig.dblclick(200, 150);
+    expect(usePathEdit.getState().id).toBeNull();
+  });
+
+  it("does not open the points of a shape that is not a path", async () => {
+    const rig = await mountWorkspace(canvasDesign(shapes()));
+    rig.dblclick(200, 150);
+    expect(usePathEdit.getState().id).toBeNull();
+  });
+
+  it("does not open the points of a locked path", async () => {
+    const rig = await mountWorkspace(canvasDesign([createShape("path", { id: "pth", x: 100, y: 100, width: 200, height: 100, path: "M0 0 L100 0 L100 100 Z", locked: true })]));
+    rig.dblclick(250, 125);
+    expect(usePathEdit.getState().id).toBeNull();
   });
 
   it("edits the text inside a group while the group stays the selection", async () => {

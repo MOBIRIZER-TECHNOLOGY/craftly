@@ -27,7 +27,7 @@ export function canvasDesign(elements: DesignElement[] = [], extra: Partial<Desi
 /** The module level stores the canvas keeps outside the document store; tests start from their initial values. */
 export function resetCanvasStores(): void {
   useView.setState({ ...initialMetrics });
-  useGesture.setState({ marquee: null, hud: null, drawPath: null, active: false });
+  useGesture.setState({ marquee: null, hud: null, drawPath: null, pen: null, active: false });
   usePreview.setState({ preview: null });
   setContextMenuHandler(null);
 }

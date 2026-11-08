@@ -43,7 +43,7 @@ export type ContextPanelState =
   | { kind: "data" }
   | { kind: "animate"; tab: "element" | "page" };
 
-export type ToolId = "select" | "text" | "shape" | "line" | "draw" | "hand";
+export type ToolId = "select" | "text" | "shape" | "line" | "draw" | "pen" | "hand";
 
 export type DialogName = "resize" | "shortcuts" | "findReplace" | "download" | "share" | "settings" | "versions" | "rename" | "newDesign" | "models";
 

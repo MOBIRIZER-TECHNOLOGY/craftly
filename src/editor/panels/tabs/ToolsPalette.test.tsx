@@ -28,9 +28,9 @@ async function openPalette() {
 }
 
 describe("<ToolsPalette>", () => {
-  it("lists the five tools with the current one pressed", async () => {
+  it("lists the six tools with the current one pressed", async () => {
     await openPalette();
-    const names = ["Select", "Draw", "Shape", "Line", "Text"];
+    const names = ["Select", "Draw", "Pen", "Shape", "Line", "Text"];
     expect(
       within(screen.getByRole("toolbar", { name: "Tools" }))
         .getAllByRole("button")
@@ -162,10 +162,52 @@ describe("<ToolsPalette>", () => {
   });
 
   describe("the pen", () => {
+    it("chooses the pen and opens its options in one click, with the hint for placing points", async () => {
+      const user = await openPalette();
+      await user.click(tool("Pen"));
+      const flyout = await screen.findByRole("dialog", { name: "Pen options" });
+      expect(state().tool).toBe("pen");
+      expect(tool("Pen").getAttribute("aria-expanded")).toBe("true");
+      expect(within(flyout).getByText("Pen")).toBeTruthy();
+      expect(within(flyout).getByText(/Click to place a corner, drag to pull out a curve/)).toBeTruthy();
+      expect(within(flyout).getByRole("group", { name: "Pen colour" })).toBeTruthy();
+    });
+
+    it("shares its colour and width with Draw, so a path and a freehand stroke match", async () => {
+      const user = await openPalette();
+      await user.click(tool("Pen"));
+      const flyout = await screen.findByRole("dialog", { name: "Pen options" });
+      await user.click(within(flyout).getByRole("button", { name: "#e5484d" }));
+      expect(drawSettings.color).toBe("#e5484d");
+      await user.click(tool("Draw"));
+      const draw = await screen.findByRole("dialog", { name: "Draw options" });
+      expect(within(draw).getByRole("button", { name: "#e5484d" }).getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("names the shortcut P in its tooltip", async () => {
+      const user = await openPalette();
+      await user.hover(tool("Pen"));
+      const tip = await screen.findByRole("tooltip");
+      expect(tip.textContent).toContain("Pen");
+      // the key, on its own, not the first letter of the name
+      expect(within(tip).getByText("P")).toBeTruthy();
+    });
+
+    it("closes its options when another tool is chosen", async () => {
+      const user = await openPalette();
+      await user.click(tool("Pen"));
+      await screen.findByRole("dialog", { name: "Pen options" });
+      await user.click(tool("Line"));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Pen options" })).toBeNull());
+      expect(state().tool).toBe("line");
+    });
+  });
+
+  describe("drawing freehand", () => {
     async function openPen() {
       const user = await openPalette();
       await user.click(tool("Draw"));
-      const flyout = await screen.findByRole("dialog", { name: "Pen options" });
+      const flyout = await screen.findByRole("dialog", { name: "Draw options" });
       return { user, flyout };
     }
     const preview = (flyout: HTMLElement) => flyout.querySelector(".cf-flyout__preview path") as SVGPathElement;
@@ -174,20 +216,21 @@ describe("<ToolsPalette>", () => {
       const { flyout } = await openPen();
       expect(state().tool).toBe("draw");
       expect(tool("Draw").getAttribute("aria-expanded")).toBe("true");
-      expect(within(flyout).getByText("Pen")).toBeTruthy();
-      expect(within(flyout).getByRole("group", { name: "Pen colour" })).toBeTruthy();
+      expect(within(flyout).getByText("Draw")).toBeTruthy();
+      expect(within(flyout).getByText("Drag on the page to draw freehand.")).toBeTruthy();
+      expect(within(flyout).getByRole("group", { name: "Draw colour" })).toBeTruthy();
     });
 
     it("closes the options when the pen is clicked again", async () => {
       const { user } = await openPen();
       await user.click(tool("Draw"));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Pen options" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Draw options" })).toBeNull());
       expect(state().tool).toBe("draw");
     });
 
     it("offers ten colours with the current one marked, and shows the stroke in the chosen colour", async () => {
       const { user, flyout } = await openPen();
-      const swatches = within(within(flyout).getByRole("group", { name: "Pen colour" }))
+      const swatches = within(within(flyout).getByRole("group", { name: "Draw colour" }))
         .getAllByRole("button")
         .filter((b) => /^#/.test(b.getAttribute("aria-label") ?? ""));
       expect(swatches).toHaveLength(10);
@@ -261,7 +304,7 @@ describe("<ToolsPalette>", () => {
       const user = await openPalette();
       act(() => state().actions.closeDesign());
       await user.click(tool("Draw"));
-      const flyout = await screen.findByRole("dialog", { name: "Pen options" });
+      const flyout = await screen.findByRole("dialog", { name: "Draw options" });
       expect(within(flyout).getByText(`${autoDrawWidth(1920)} px`)).toBeTruthy();
       expect(within(flyout).getByRole("slider", { name: "Width" }).getAttribute("aria-valuemax")).toBe(String(Math.round(1920 * 0.03)));
     });
@@ -269,11 +312,11 @@ describe("<ToolsPalette>", () => {
     it("closes on Escape and when the page is clicked", async () => {
       const { user } = await openPen();
       await user.keyboard("{Escape}");
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Pen options" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Draw options" })).toBeNull());
       await user.click(tool("Draw"));
-      await screen.findByRole("dialog", { name: "Pen options" });
+      await screen.findByRole("dialog", { name: "Draw options" });
       await user.click(document.body);
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Pen options" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Draw options" })).toBeNull());
     });
   });
 });
