@@ -70,7 +70,9 @@ function AboutBody() {
         The AI photo tools are the one exception: with your permission they download each model once, from {modelHost(MODELS[0]!)}, and then work offline. Your designs and photos
         are never sent.
       </p>
-      <p className="cf-about__text">Clearing your browser's site data removes them, so download the designs you care about from the editor to keep a copy.</p>
+      <p className="cf-about__text">
+        Clearing your browser's site data removes all of it, so keep a copy: Back up &amp; restore, in the account menu, saves everything in one file.
+      </p>
 
       <div className="cf-about__storage">
         <span className="cf-about__storage-icon" aria-hidden="true">

@@ -40,6 +40,31 @@ describe("main", () => {
     expect(document.getElementById("root")?.querySelector(".cf-dash")).toBeTruthy();
   });
 
+  it("tells the person to reload when another tab upgrades the library under this one", async () => {
+    await boot("#/trash");
+    // the page has read the library, so this tab holds a connection to the database
+    await screen.findByText("The trash is empty");
+    try {
+      // what a newer release does the first time it changes the stores: it asks for a higher version of the database
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open("craftly", 2);
+        request.onsuccess = () => {
+          request.result.close();
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+      // (the apps of the tests before this one still hold a connection and say it too: more than one notice is fine)
+      expect((await screen.findAllByText("Craftly was updated in another tab. Reload this tab to keep working.")).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByRole("button", { name: "Reload" }).length).toBeGreaterThanOrEqual(1);
+    } finally {
+      await new Promise<void>((resolve) => {
+        const request = indexedDB.deleteDatabase("craftly");
+        request.onsuccess = request.onerror = request.onblocked = () => resolve();
+      });
+    }
+  });
+
   it("exposes the editor store on the window while developing, for scripted tests and the console", async () => {
     await boot();
     await waitFor(() => expect(exposedStore()).toBeTruthy());
@@ -62,15 +87,18 @@ describe("main", () => {
   });
 
   describe("offline support", () => {
+    /** What a registration offers a page that has nothing waiting. */
+    const registration = () => ({ waiting: null, installing: null, addEventListener: () => undefined, removeEventListener: () => undefined, update: async () => undefined });
+
     function fakeServiceWorker(register: () => Promise<unknown>) {
       const spy = vi.fn(register);
-      Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { register: spy } });
+      Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { register: spy, controller: null } });
       return spy;
     }
 
     it("registers the service worker once the page has loaded in a production build", async () => {
       vi.stubEnv("PROD", true);
-      const register = fakeServiceWorker(() => Promise.resolve({}));
+      const register = fakeServiceWorker(() => Promise.resolve(registration()));
       await boot();
       expect(register).not.toHaveBeenCalled();
       window.dispatchEvent(new Event("load"));
@@ -89,7 +117,7 @@ describe("main", () => {
     });
 
     it("does not register it while developing, where it would fight hot reloading", async () => {
-      const register = fakeServiceWorker(() => Promise.resolve({}));
+      const register = fakeServiceWorker(() => Promise.resolve(registration()));
       await boot();
       window.dispatchEvent(new Event("load"));
       expect(register).not.toHaveBeenCalled();

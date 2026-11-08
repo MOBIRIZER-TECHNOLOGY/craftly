@@ -99,6 +99,30 @@ describe("toast", () => {
       advance(250);
       expect(messages()).toEqual(["toast 2", "toast 3", "toast 4", "toast 5"]);
     });
+
+    it("retires the toasts that leave by themselves before one that stays until it is dismissed, so a notice nobody has answered is not pushed out", () => {
+      render(<ToastHost />);
+      run(() => {
+        toast.info("toast stays", { duration: 0 });
+        for (const name of ["b", "c", "d", "e"]) toast.info(`toast ${name}`);
+      });
+      expect(toastEl("toast b").classList.contains("is-leaving")).toBe(true);
+      expect(toastEl("toast stays").classList.contains("is-leaving")).toBe(false);
+      advance(250);
+      expect(messages()).toEqual(["toast stays", "toast c", "toast d", "toast e"]);
+    });
+
+    it("never retires the toast that has just been raised, even when the others all stay until dismissed", () => {
+      render(<ToastHost />);
+      run(() => {
+        for (const name of ["1", "2", "3", "4"]) toast.info(`toast ${name}`, { duration: 0 });
+        toast.info("toast newest");
+      });
+      expect(toastEl("toast newest").classList.contains("is-leaving")).toBe(false);
+      expect(toastEl("toast 1").classList.contains("is-leaving")).toBe(true);
+      advance(250);
+      expect(messages()).toEqual(["toast 2", "toast 3", "toast 4", "toast newest"]);
+    });
   });
 
   describe("dismissing", () => {

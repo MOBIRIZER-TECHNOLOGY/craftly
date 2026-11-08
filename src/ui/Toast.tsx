@@ -59,9 +59,11 @@ function show(options: ToastOptions): number {
   const id = sequence;
   items = [...items, { ...options, id, kind: options.kind ?? "info", duration: options.duration ?? 4000, leaving: false }];
   emit();
-  // Keep the stack short: retire the oldest toasts first.
-  const live = items.filter((item) => !item.leaving);
-  for (const old of live.slice(0, Math.max(0, live.length - MAX_VISIBLE))) dismiss(old.id);
+  // Keep the stack short: retire the oldest toasts first, those that leave by themselves before those that stay until they
+  // are dismissed (a notice that nobody has answered must not be pushed out by chatter), and never the one just raised.
+  const others = items.filter((item) => !item.leaving && item.id !== id);
+  const retire = [...others.filter((item) => item.duration > 0), ...others.filter((item) => item.duration <= 0)];
+  for (const old of retire.slice(0, Math.max(0, others.length + 1 - MAX_VISIBLE))) dismiss(old.id);
   return id;
 }
 

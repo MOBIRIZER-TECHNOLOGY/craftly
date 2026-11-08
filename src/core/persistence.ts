@@ -6,37 +6,78 @@
  *  assets     uploaded files as Blobs       (key: id)
  *  versions   design snapshots              (key: id = `${designId}:${ts}`)
  *  meta       small key/value settings      (key: string)
+ *
+ * Every store here is part of the library backup (src/export/backup.ts, docs/BACKUP.md), or is left out of it there on
+ * purpose: when a store or a `meta` key is added, decide which.
  */
+
+import { openDatabase, type DbStep } from "./schema/database";
 
 export type StoreName = "designs" | "summaries" | "folders" | "assets" | "versions" | "meta";
 
 const DB_NAME = "craftly";
-const DB_VERSION = 1;
 const STORES: StoreName[] = ["designs", "summaries", "folders", "assets", "versions", "meta"];
+
+/**
+ * One step per version of the database: step n takes it from version n - 1 to n, and the version is the number of steps
+ * (src/core/schema/database.ts runs them, all in one upgrade transaction). A step that has shipped is never edited: a new
+ * store, an index, or records that have to move is the NEXT step, with a test that builds the database as the step before
+ * it left it (docs/MIGRATIONS.md). Changes to what is inside a design are not made here but by a design migration.
+ */
+export const DB_STEPS: readonly DbStep[] = [
+  // 1: the first release
+  (db) => {
+    for (const name of STORES) {
+      if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, name === "meta" ? undefined : { keyPath: "id" });
+    }
+  },
+];
+export const DB_VERSION = DB_STEPS.length;
+
+/** What the app wants to hear about a database that other tabs share (src/databaseNotices.ts shows it to the person). */
+export interface DatabaseWatcher {
+  /** a tab of an older release keeps an upgrade of the database waiting */
+  blocked?(): void;
+  /** that wait is over */
+  unblocked?(): void;
+  /** another tab upgrades the database: write what is unsaved now, this tab's connection is closed afterwards */
+  replaced?(): Promise<void> | void;
+}
+
+const watchers = new Set<DatabaseWatcher>();
+
+export function watchDatabase(watcher: DatabaseWatcher): () => void {
+  watchers.add(watcher);
+  return () => watchers.delete(watcher);
+}
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 export function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    if (typeof indexedDB === "undefined") {
-      reject(new Error("IndexedDB is not available in this browser."));
-      return;
-    }
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      for (const name of STORES) {
-        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, name === "meta" ? undefined : { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("Could not open the local database."));
+  let waited = false;
+  const opening: Promise<IDBDatabase> = openDatabase({
+    name: DB_NAME,
+    steps: DB_STEPS,
+    onBlocked: () => {
+      waited = true;
+      watchers.forEach((watcher) => watcher.blocked?.());
+    },
+    onReplaced: () => Promise.all([...watchers].map((watcher) => watcher.replaced?.())).then(() => undefined),
+    // the next call opens a new connection (and finds out whether the database is still one this release can use)
+    onClosed: () => {
+      if (dbPromise === opening) dbPromise = null;
+    },
   });
-  dbPromise.catch(() => {
+  const finished = () => {
+    if (waited) watchers.forEach((watcher) => watcher.unblocked?.());
+  };
+  opening.then(finished, finished);
+  opening.catch(() => {
     dbPromise = null;
   });
-  return dbPromise;
+  dbPromise = opening;
+  return opening;
 }
 
 function wrap<T>(req: IDBRequest<T>): Promise<T> {
@@ -54,6 +95,13 @@ export async function dbGet<T>(store: StoreName, key: string): Promise<T | undef
 export async function dbGetAll<T>(store: StoreName): Promise<T[]> {
   const db = await openDb();
   return wrap<T[]>(db.transaction(store, "readonly").objectStore(store).getAll());
+}
+
+/** The keys of a store, without reading the values (a store of pictures stays on disk). */
+export async function dbGetAllKeys(store: StoreName): Promise<string[]> {
+  const db = await openDb();
+  const keys = await wrap<IDBValidKey[]>(db.transaction(store, "readonly").objectStore(store).getAllKeys());
+  return keys.map(String);
 }
 
 /** `key` is only used by the out-of-line `meta` store. */

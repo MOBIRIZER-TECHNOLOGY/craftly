@@ -4,6 +4,7 @@
  * None of these are React components; they read the store imperatively and report with toasts.
  */
 import { duplicateDesign, restoreFromTrash, saveDesign } from "@/core/library";
+import { requestSave, waitForSaved } from "@/core/saveNow";
 import { getActivePage, useEditor } from "@/core/store";
 import { downloadBlob } from "@/export/exporters";
 import { exportProjectFile } from "@/export/projectFile";
@@ -11,31 +12,8 @@ import { renderPageToCanvas } from "@/render/renderPage";
 import { designPath, navigate } from "@/router";
 import { confirm as askConfirm, toast } from "@/ui";
 
-/** Asks the autosave service to persist the open design now (it also reacts to Ctrl+S). */
-export function requestSave(): void {
-  window.dispatchEvent(new CustomEvent("craftly:save-now"));
-}
-
-/** Resolves when the open design has been written to IndexedDB (or the save failed / took too long). */
-export function waitForSaved(timeoutMs = 6000): Promise<"saved" | "error" | "timeout"> {
-  return new Promise((resolve) => {
-    let timer = 0;
-    let unsubscribe: () => void = () => {};
-    const done = (result: "saved" | "error" | "timeout") => {
-      unsubscribe();
-      window.clearTimeout(timer);
-      resolve(result);
-    };
-    unsubscribe = useEditor.subscribe((s) => {
-      if (s.saveState === "saved") done("saved");
-      else if (s.saveState === "error") done("error");
-    });
-    timer = window.setTimeout(() => done("timeout"), timeoutMs);
-    const now = useEditor.getState().saveState;
-    if (now === "saved") done("saved");
-    else if (now === "error") done("error");
-  });
-}
+// saving the open design and waiting for it live in core so that the update prompt can use them without the editor
+export { requestSave, waitForSaved };
 
 /** File > Save: flush now and tell the user how it went. */
 export async function saveNow(): Promise<void> {

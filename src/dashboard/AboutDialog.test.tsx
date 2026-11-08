@@ -30,7 +30,7 @@ describe("<AboutDialog>", () => {
     expect(within(dialog()).getByText("Design anything, right in your browser.")).toBeTruthy();
     expect(dialog().textContent).toContain("Everything you make here is stored on this device.");
     expect(dialog().textContent).toContain("nothing is sent to a server or an account");
-    expect(dialog().textContent).toContain("download the designs you care about");
+    expect(dialog().textContent).toContain("Back up & restore, in the account menu, saves everything in one file");
   });
 
   it("is plain about the one thing that is downloaded: each AI model, once, with permission", () => {

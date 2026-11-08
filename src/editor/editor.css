@@ -70,6 +70,12 @@
 }
 
 /* a design from the library opens in a blink: only show the spinner when it takes longer than that */
+.cf-editor-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
 .cf-editor-state > .cf-spinner {
   animation: cf-editor-reveal var(--dur) var(--ease) 180ms both;
 }

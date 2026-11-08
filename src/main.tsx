@@ -4,6 +4,11 @@ import "./styles/base.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { installDatabaseNotices } from "./databaseNotices";
+import { registerServiceWorker } from "./serviceWorker";
+
+// Another tab upgrading the library, or holding up this tab's own upgrade, is told to the person (src/databaseNotices.ts).
+installDatabaseNotices();
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
@@ -11,10 +16,11 @@ createRoot(document.getElementById("root") as HTMLElement).render(
   </StrictMode>,
 );
 
-// Offline support: the service worker is only registered in production builds (it would fight Vite's HMR in dev).
+// Offline support: the service worker is only registered in production builds (it would fight Vite's HMR in dev). A new
+// build waits until the person presses Reload (src/serviceWorker.ts).
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
+    registerServiceWorker(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
       /* offline support is optional */
     });
   });

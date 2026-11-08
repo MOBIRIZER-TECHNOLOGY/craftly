@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { wipeDatabase } from "@/test/logicDb";
-import { dbDelete, dbDeleteMany, dbGet, dbGetAll, dbPut, dbPutMany, metaGet, metaSet, openDb } from "./persistence";
+import { dbDelete, dbDeleteMany, dbGet, dbGetAll, dbGetAllKeys, dbPut, dbPutMany, metaGet, metaSet, openDb } from "./persistence";
 
 describe("the local database", () => {
   beforeEach(async () => {
@@ -48,6 +48,15 @@ describe("the local database", () => {
     await dbPut("folders", { id: "a" });
     await dbPut("folders", { id: "b" });
     expect((await dbGetAll<{ id: string }>("folders")).map((f) => f.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("lists the keys of a store without reading the values, and nothing for an empty one", async () => {
+    expect(await dbGetAllKeys("assets")).toEqual([]);
+    await dbPut("assets", { id: "a_1", blob: "x" });
+    await dbPut("assets", { id: "a_2", blob: "y" });
+    expect((await dbGetAllKeys("assets")).sort()).toEqual(["a_1", "a_2"]);
+    await dbPut("meta", 1, "setting");
+    expect(await dbGetAllKeys("meta")).toEqual(["setting"]);
   });
 
   it("deletes one value, quietly when it is not there", async () => {
@@ -186,7 +195,7 @@ describe("when the database misbehaves", () => {
         queueMicrotask(() => fire(r, "onerror"));
         return r;
       };
-      const store = { get: request, getAll: request, put: request, delete: request };
+      const store = { get: request, getAll: request, getAllKeys: request, put: request, delete: request };
       const database = {
         createObjectStore: vi.fn(),
         objectStoreNames: { contains: () => true },
@@ -201,7 +210,9 @@ describe("when the database misbehaves", () => {
           const r: Record<string, unknown> = {};
           queueMicrotask(() => {
             r.result = database;
-            fire(r, "onupgradeneeded", "onsuccess");
+            r.transaction = {};
+            (r.onupgradeneeded as (event: { oldVersion: number }) => void)({ oldVersion: 0 });
+            fire(r, "onsuccess");
           });
           return r;
         },
@@ -214,6 +225,7 @@ describe("when the database misbehaves", () => {
       const db = await fresh();
       await expect(db.dbGet("designs", "d")).rejects.toBe(reason);
       await expect(db.dbGetAll("designs")).rejects.toBe(reason);
+      await expect(db.dbGetAllKeys("designs")).rejects.toBe(reason);
       await expect(db.dbPut("designs", { id: "d" })).rejects.toBe(reason);
       await expect(db.dbDelete("designs", "d")).rejects.toBe(reason);
       await expect(db.dbPutMany([{ store: "designs", value: { id: "d" } }])).rejects.toBe(reason);

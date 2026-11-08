@@ -38,6 +38,9 @@ More helpers sit next to it, one file (or two) per area of the app:
 | `tabsHarness.tsx` | the left rail and its panels (`mountPanels` lays out the rail, the side panel and the toast, confirm and menu hosts) |
 | `dashuiUtils.tsx`, `dashuiLayout.ts` | the UI kit and the dashboard (global hosts, a stand-in for the file dialog, mounting the app on a hash route, layout stubs) |
 | `logicPaint.ts`, `logicDb.ts` | painter, export and core tests that need no editor (a paint-state spy on the recording canvas, a `DOMMatrix` stand-in, an IndexedDB wipe) |
+| `schema/complete.ts` | `completeDesign()`, `minimalDesign()` and `completeRecords()`: the stored formats with every optional field set, checked by the compiler through `Complete<T>`, so a new optional field cannot be added without the builders and the shape test (`src/core/schema/persistedShapes.test.ts`) hearing about it. `fixtures/schema/` holds the frozen designs and records that a release wrote; they are never edited (its README) |
+| `swHarness.ts` | the service worker (`public/sw.js`) run in a `node:vm` context against an in-memory Cache Storage (names in the order the caches were made) and a network that can be switched off, with its listeners fired by hand |
+| `zipBuilder.ts` | ZIP archives made the way other tools make them (deflate, extra fields, comments, damaged headers), written separately from `src/export/zip.ts` so that the reader is not only tested against the writer that made its input |
 
 ## Conventions
 

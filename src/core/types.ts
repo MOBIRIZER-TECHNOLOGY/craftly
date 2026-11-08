@@ -432,8 +432,11 @@ export interface Design {
   trashedAt: number | null;
   /** ruler guides in design px */
   guides?: { vertical: number[]; horizontal: number[] };
-  /** schema version for migrations */
-  version: 1;
+  /**
+   * The format of this document (src/core/schema/design.ts): CURRENT_DESIGN_VERSION when this build wrote it. A design read
+   * from storage or a file passes through `migrateDesign` first, so the editor only ever holds the current version.
+   */
+  version: number;
 }
 
 /** Light-weight record used by the dashboard (no page content). */
@@ -451,6 +454,11 @@ export interface DesignSummary {
   trashedAt: number | null;
   /** small JPEG data URL of page 1 */
   thumbnail?: string;
+  /**
+   * The `version` of the stored design this record was made from (a record without one is from before it was kept: 1).
+   * Saving refuses to write over a design that a newer release stored, without reading the design to find out.
+   */
+  schema?: number;
 }
 
 export interface Folder {

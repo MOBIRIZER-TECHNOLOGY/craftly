@@ -102,18 +102,18 @@ are the exception to the AI line.
 | UI | React 19, plain CSS files with design tokens (no CSS-in-JS, no Tailwind) |
 | State | Zustand store + immer for document edits |
 | Canvas | One custom 2D canvas renderer (shared by the editor, thumbnails, the presenter and the raster, PDF and animated exports; SVG export has its own writer, `export/svg*.ts`) with HTML/SVG overlays for selection and text editing |
-| Persistence | IndexedDB (designs, folders, assets, brand kit, versions) |
+| Persistence | IndexedDB (designs, folders, assets, brand kit, versions) through numbered database steps; every stored format has a version and migration steps ([`MIGRATIONS.md`](MIGRATIONS.md)); the whole library can be written to one ZIP and restored ([`BACKUP.md`](BACKUP.md)) |
 | Fonts | `@fontsource` / `@fontsource-variable` packages, loaded lazily with the FontFace API |
 | Icons | `lucide-react` for UI chrome, `lucide` raw icon nodes for the design "Icons" library |
 | On-device AI | `onnxruntime-web` (WebGPU) in a Web Worker; each model is fetched once, after the user agrees (section 10) |
-| Offline | A service worker (`public/sw.js`) and a `precache.json` that the build writes (`vite.config.ts`) |
+| Offline | A service worker (`public/sw.js`) and a `precache.json` that the build writes (`vite.config.ts`); a new build waits until the person presses Reload ([`UPDATES.md`](UPDATES.md)) |
 | Tests | Vitest 5 with V8 coverage: pure logic in Node, every screen in jsdom with React Testing Library (`src/test/` holds the harness); scripted browser journeys with playwright-core in `e2e/` |
 
 ## 3. Folder map and ownership
 
 ```
 src/
-  main.tsx, App.tsx, router.ts app shell; the hash router (#/, #/projects[/folderId], #/templates[/categoryId], #/brand, #/trash, #/design/:id)
+  main.tsx, App.tsx, router.ts, serviceWorker.ts, settleSaves.ts, databaseNotices.ts app shell (serviceWorker.ts registers the worker and offers a waiting new build; databaseNotices.ts tells the person when another tab upgrades or holds up the database; settleSaves.ts writes the open design before either); the hash router (#/, #/projects[/folderId], #/templates[/categoryId], #/brand, #/trash, #/design/:id)
   styles/                      tokens.css, base.css (design tokens, resets, scrollbars)
   ui/                          reusable, app-agnostic components (Button, Popover, Menu, Modal, Slider, ColorPicker ...)
   core/                        framework-free model + logic
@@ -124,6 +124,9 @@ src/
     textMetrics.ts             pluggable text measurer
     store.ts                   Zustand editor store: document, selection, clipboard, history, view, panels
     persistence.ts library.ts  IndexedDB + design library service
+    schema/                    the migration runner, the design format and the database upgrade (MIGRATIONS.md)
+    storage.ts                 what the browser says about storage (estimate, persisted) and the one request to keep it
+    saveNow.ts                 save the open design now and wait for it (the File menu, the update prompt)
   render/                      canvas renderer
     renderPage.ts              renderPage(ctx, ...) - the single paint routine
     textLayout.ts drawText.ts drawBlocks.ts  rich text layout + effects, tables and charts
@@ -142,7 +145,7 @@ src/
     dialogs/                   download, resize, find and replace, keyboard shortcuts, version history, on-device models
     present/                   full-screen presenter: PresentPlayer (frame loop), playbackPlan (pure rules)
   dashboard/                   Home, Projects, Templates, Brand, Trash, CreateDialog
-  export/                      png / jpg / pdf / svg / zip, animated gif + webm (animated/), Download panel, project files
+  export/                      png / jpg / pdf / svg / zip, animated gif + webm (animated/), Download panel, project files, library backup (zipRead, backupFormat, backup; see BACKUP.md)
   ml/                          on-device AI: registry, download + store, worker + engine, compositing, the jobs (section 10)
   data/                        catalogues: designTypes, shapes, fonts (via render/fonts), graphics, icons, photos,
                                backgrounds, palettes, filters, textCombos, templates/

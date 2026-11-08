@@ -174,7 +174,7 @@ describe("<Shell>", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Import project file", "About Craftly"]);
+      ).toEqual(["Import project file", "Back up & restore", "About Craftly"]);
     });
 
     it("also offers Trash in the phone header, where the tab bar has no room for it", async () => {
@@ -187,7 +187,7 @@ describe("<Shell>", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Import project file", "Trash", "About Craftly"]);
+      ).toEqual(["Import project file", "Back up & restore", "Trash", "About Craftly"]);
       await user.click(within(menu).getByRole("menuitem", { name: "Trash" }));
       expect(window.location.hash).toBe("#/trash");
     });
@@ -212,6 +212,29 @@ describe("<Shell>", () => {
       expect(await screen.findByRole("dialog", { name: "About Craftly" })).toBeTruthy();
       await user.click(screen.getByRole("button", { name: "Close" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    });
+
+    it("opens the Back up & restore dialog, and closes it again", async () => {
+      const user = userEvent.setup();
+      mountShell();
+      await user.click(within(railNav()).getByRole("button", { name: "Account" }));
+      await user.click(screen.getByRole("menuitem", { name: "Back up & restore" }));
+      expect(await screen.findByRole("dialog", { name: "Back up & restore" })).toBeTruthy();
+      await user.click(screen.getByRole("button", { name: "Close" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    });
+
+    it("opens it from the phone header too, and again after it was closed", async () => {
+      const user = userEvent.setup();
+      mountShell();
+      for (let visit = 0; visit < 2; visit += 1) {
+        const [, phoneAccount] = screen.getAllByRole("button", { name: "Account" });
+        await user.click(phoneAccount);
+        await user.click(within(screen.getByRole("menu", { name: "Account" })).getByRole("menuitem", { name: "Back up & restore" }));
+        expect(await screen.findByRole("dialog", { name: "Back up & restore" })).toBeTruthy();
+        await user.click(screen.getByRole("button", { name: "Close" }));
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      }
     });
 
     describe("importing a project file", () => {

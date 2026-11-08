@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DATABASE_NEWER_MESSAGE } from "@/core/schema/database";
 import { setMedia } from "@/test/media";
 import { Carousel } from "./Carousel";
 import { designsStore } from "./data";
@@ -117,6 +118,19 @@ describe("<StorageNotice>", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Craftly can't reach this browser's local storage.");
     expect(alert.textContent).toContain("(IndexedDB is not available in this browser.)");
+  });
+
+  it("asks for a reload, with no advice about private windows, when the library was saved by a newer Craftly", async () => {
+    const user = userEvent.setup();
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    render(<StorageNotice detail={DATABASE_NEWER_MESSAGE} />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain(DATABASE_NEWER_MESSAGE);
+    expect(alert.textContent).not.toContain("private window");
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it("tries to read the library again from the button", async () => {

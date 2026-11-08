@@ -3,11 +3,12 @@
  * the editor, the dashboard and a saved design all still open. Needs a PRODUCTION build (the worker is not registered
  * by the dev server):  npm run build && npm run preview   then   BASE=http://127.0.0.1:4173 OFFLINE=1 npm run e2e
  */
+const fs = require("node:fs");
 const { launch, BASE } = require("./lib.cjs");
 
 (async () => {
   const browser = await launch();
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
   const page = await ctx.newPage();
   const logs = [];
   const results = [];
@@ -77,6 +78,29 @@ const { launch, BASE } = require("./lib.cjs");
         return canvases > 0 ? "PASS saved design reopens offline" : "FAIL saved design reopens offline  (no canvas)";
       })
       .catch((e) => "FAIL saved design reopens offline  -> " + e.message.split("\n")[0]),
+  );
+
+  // the Back up & restore dialog is code that loads when it is first opened: it has to be in the stored build too
+  results.push(
+    await (async () => {
+      try {
+        await page.evaluate(() => {
+          location.hash = "#/";
+        });
+        await page.getByText("What will you design today?").waitFor({ timeout: 10000 });
+        await page.getByRole("button", { name: "Account" }).first().click();
+        await page.getByRole("menuitem", { name: "Back up & restore" }).click();
+        const dialog = page.getByRole("dialog", { name: "Back up & restore" });
+        await dialog.waitFor({ timeout: 10000 });
+        const [download] = await Promise.all([page.waitForEvent("download", { timeout: 20000 }), dialog.getByRole("button", { name: "Download backup" }).click()]);
+        const head = fs.readFileSync(await download.path()).subarray(0, 4);
+        return head[0] === 0x50 && head[1] === 0x4b && head[2] === 3 && head[3] === 4
+          ? "PASS Back up & restore opens and makes a backup offline"
+          : "FAIL Back up & restore opens and makes a backup offline  (the file is not a ZIP)";
+      } catch (e) {
+        return "FAIL Back up & restore opens and makes a backup offline  -> " + e.message.split("\n")[0];
+      }
+    })(),
   );
 
   console.log(results.join("\n"));

@@ -1,7 +1,10 @@
 import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createGroup, createPage, createShape } from "@/core/factory";
-import { getDesign, getSummary, saveDesign } from "@/core/library";
+import { getDesign, getSummary, saveDesign, summarize } from "@/core/library";
+import { dbGet, dbPut } from "@/core/persistence";
+import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
+import { MigrationError } from "@/core/schema/migrator";
 import { getActions, useEditor } from "@/core/store";
 import { renderPageToCanvas } from "@/render/renderPage";
 import { setMedia } from "@/test/media";
@@ -16,6 +19,10 @@ configure({ asyncUtilTimeout: 20_000 });
 vi.mock("@/core/library", async (importOriginal) => {
   const library = await importOriginal<typeof import("@/core/library")>();
   return { ...library, saveDesign: vi.fn(library.saveDesign) };
+});
+vi.mock("@/core/schema/design", async (importOriginal) => {
+  const schema = await importOriginal<typeof import("@/core/schema/design")>();
+  return { ...schema, migrateDesign: vi.fn(schema.migrateDesign) };
 });
 vi.mock("@/render/renderPage", async (importOriginal) => {
   const painter = await importOriginal<typeof import("@/render/renderPage")>();
@@ -139,6 +146,47 @@ describe("loading", () => {
     expect(screen.getByText(/looks damaged/)).toBeTruthy();
     expect(state().design).toBeNull();
     expect(screen.getByRole("button", { name: "Back to home" })).toBeTruthy();
+  });
+
+  it("asks for a reload when the design was saved by a newer Craftly, and does not touch it", async () => {
+    const design = sampleDesign({ title: "From the future" });
+    const future = { ...design, version: CURRENT_DESIGN_VERSION + 1, somethingNew: { a: 1 } };
+    await dbPut("designs", future);
+    await dbPut("summaries", { ...summarize(design), schema: CURRENT_DESIGN_VERSION + 1 });
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    try {
+      render(<Editor designId={design.id} />);
+      expect(await screen.findByText("Update Craftly to open this design")).toBeTruthy();
+      expect(screen.getByText(/saved by a newer version of Craftly than the one running in this tab/)).toBeTruthy();
+      expect(state().design).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+      expect(reload).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole("button", { name: "Back to home" }));
+      expect(window.location.hash).toBe("#/");
+      await flush(6);
+      expect(await dbGet("designs", design.id)).toEqual(future);
+      expect(vi.mocked(saveDesign)).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("says why when a design cannot be brought up to date, and does not touch it", async () => {
+    const design = sampleDesign({ title: "Cannot be converted" });
+    await saveDesign(design);
+    vi.mocked(saveDesign).mockClear();
+    vi.mocked(migrateDesign).mockImplementationOnce(() => {
+      throw new MigrationError("failed", "design", "Craftly could not bring this design up to date (format 1 to 2).", { step: 1 });
+    });
+    render(<Editor designId={design.id} />);
+    expect(await screen.findByText("We couldn't bring this design up to date")).toBeTruthy();
+    expect(screen.getByText(/format 1 to 2/)).toBeTruthy();
+    expect(screen.getByText(/Nothing has been changed/)).toBeTruthy();
+    expect(state().design).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Back to home" })).toBeTruthy();
+    expect(vi.mocked(saveDesign)).not.toHaveBeenCalled();
   });
 
   it("treats a library that cannot be read as a missing design", async () => {

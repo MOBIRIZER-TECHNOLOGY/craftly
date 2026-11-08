@@ -19,6 +19,7 @@ Craftly runs entirely in the browser and has no server, so the interesting probl
 - script injection through an imported `.craftly` project file, an uploaded SVG, or template or catalogue data
 - data leaving the device when it should not, or an on-device model downloaded without the person agreeing
 - a model file accepted although its size or SHA-256 differs from the one pinned in `src/ml/registry.ts`, or a model added from a file (File > On-device models > Add from a file) that is used unchecked
+- a crafted backup file (a ZIP chosen under Back up & restore) that crashes the restore, brings in an id that breaks a link or a file name, stores something that is not a design, or makes the app use unbounded memory or time (the reader refuses encrypted and ZIP64 archives, checks every file's CRC-32, limits what a compressed file may unpack to, and treats the manifest and every design as untrusted; see `docs/BACKUP.md`)
 - the service worker or its caches serving something other than the app
 - weaknesses in how designs and uploads are stored in the browser
 - a known vulnerability in a package that ships in the app (see `THIRD-PARTY-NOTICES.md`)

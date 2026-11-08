@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { wipeDatabase } from "@/test/logicDb";
 import { createDesign, createGroup, createPage, createShape, createText } from "./factory";
 import {
@@ -12,6 +12,7 @@ import {
   getBrandKit,
   getDesign,
   getRecentColors,
+  getStoredBrandKit,
   getSummary,
   getVersion,
   listDesigns,
@@ -23,6 +24,7 @@ import {
   renameDesign,
   renameFolder,
   restoreFromTrash,
+  restoreRecords,
   saveDesign,
   saveVersion,
   setBrandKit,
@@ -61,6 +63,7 @@ describe("summaries", () => {
       starred: true,
       trashedAt: 99,
       thumbnail: undefined,
+      schema: design.version,
     });
   });
 
@@ -344,6 +347,12 @@ describe("brand kit and recent colours", () => {
     expect(heard).toHaveBeenCalledTimes(1);
   });
 
+  it("can tell a brand kit that was saved from the default one that is shown when there is none", async () => {
+    expect(await getStoredBrandKit()).toBeUndefined();
+    await setBrandKit({ colors: ["#123456"], fonts: [], logos: [] });
+    expect(await getStoredBrandKit()).toEqual({ colors: ["#123456"], fonts: [], logos: [] });
+  });
+
   it("remembers recent colours, newest first, each only once whatever its case", async () => {
     expect(await getRecentColors()).toEqual([]);
     await pushRecentColor("#FF0000");
@@ -412,5 +421,63 @@ describe("version history", () => {
     expect(versions[0].label).toBe("v27");
     expect(versions[24].label).toBe("v3");
     expect(await listVersions(other.id)).toHaveLength(1);
+  });
+});
+
+describe("restoring records from a backup", () => {
+  it("stores designs with their dashboard summary and thumbnail, folders and versions in one go", async () => {
+    const design = make({ title: "Back again", folderId: "f_back", starred: true, trashedAt: 55 });
+    const version = { id: `${design.id}:1`, designId: design.id, createdAt: 1, label: "old", design: make({ id: design.id, title: "Back again (old)" }) };
+    await restoreRecords({
+      designs: [{ design, thumbnail: "data:image/jpeg;base64,AAAA" }],
+      folders: [{ id: "f_back", name: "Brought back", createdAt: 3, parentId: null }],
+      versions: [version],
+    });
+    expect(await getDesign(design.id)).toEqual(design);
+    expect(await getSummary(design.id)).toMatchObject({
+      id: design.id,
+      title: "Back again",
+      folderId: "f_back",
+      starred: true,
+      trashedAt: 55,
+      thumbnail: "data:image/jpeg;base64,AAAA",
+    });
+    expect((await listFolders()).map((f) => f.name)).toEqual(["Brought back"]);
+    expect((await listVersions(design.id)).map((v) => v.label)).toEqual(["old"]);
+    expect((await getVersion(version.id))?.design.title).toBe("Back again (old)");
+  });
+
+  it("leaves the thumbnail out when there is none", async () => {
+    const design = make();
+    await restoreRecords({ designs: [{ design }] });
+    expect((await getSummary(design.id))?.thumbnail).toBeUndefined();
+  });
+
+  it("tells subscribers once, however much was stored, and not at all when there was nothing to store", async () => {
+    const heard = vi.fn();
+    const stop = subscribeLibrary(heard);
+    await restoreRecords({ designs: [{ design: make() }, { design: make() }, { design: make() }], folders: [{ id: "f_x", name: "X", createdAt: 1, parentId: null }] });
+    expect(heard).toHaveBeenCalledTimes(1);
+    await restoreRecords({});
+    await restoreRecords({ designs: [], folders: [], versions: [] });
+    stop();
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("keeping the library", () => {
+  afterEach(() => {
+    delete (navigator as unknown as { storage?: unknown }).storage;
+  });
+
+  it("asks the browser not to clear it, the first time a design is saved", async () => {
+    const persist = vi.fn(async () => true);
+    Object.defineProperty(navigator, "storage", { configurable: true, value: { persisted: async () => false, persist } });
+    await saveDesign(make());
+    await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+    await saveDesign(make());
+    await saveDesign(make());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(persist).toHaveBeenCalledTimes(1);
   });
 });

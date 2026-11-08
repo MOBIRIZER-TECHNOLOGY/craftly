@@ -217,16 +217,5 @@ export async function copyPageAsImage(design: Design, pageIndex: number): Promis
   }
 }
 
-/** Saves a Blob through a temporary link (the browser's normal download). */
-export function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.rel = "noopener";
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
-}
+// saving a Blob as a download lives apart so the dashboard can use it without loading the export engine
+export { downloadBlob } from "./download";

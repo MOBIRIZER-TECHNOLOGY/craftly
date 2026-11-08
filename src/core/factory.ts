@@ -4,6 +4,7 @@
  */
 import { cloneDeep } from "./clone";
 import { uid } from "./ids";
+import { CURRENT_DESIGN_VERSION } from "./schema/design";
 import { extractSvgColors, normalizeSvg } from "./svg";
 import type {
   ChartElement,
@@ -282,7 +283,7 @@ export function createDesign(init: { title?: string; typeId?: string; width: num
     folderId: null,
     starred: false,
     trashedAt: null,
-    version: 1,
+    version: CURRENT_DESIGN_VERSION,
   };
 }
 

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Avatar,
   BrandMark,
   Button,
+  IconArchive,
   IconBrand,
   IconButton,
   IconChevronDown,
@@ -26,6 +27,9 @@ import { AboutDialog } from "./AboutDialog";
 import { openCreateDialog } from "./createDialogState";
 import { pickFiles } from "./files";
 import "./Shell.css";
+
+// the backup code (the ZIP writer and reader, the library reader) is only loaded when someone opens the dialog
+const BackupDialog = lazy(() => import("./BackupDialog").then((m) => ({ default: m.BackupDialog })));
 
 type NavId = "home" | "projects" | "templates" | "brand" | "trash";
 
@@ -85,10 +89,21 @@ function importProject(): void {
 function useAccountMenu(includeTrash: boolean) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [backupLoaded, setBackupLoaded] = useState(false);
 
   const items: MenuEntry[] = [
     { type: "label", label: "On this device" },
     { id: "import", label: "Import project file", icon: <IconUpload aria-hidden="true" />, onSelect: importProject },
+    {
+      id: "backup",
+      label: "Back up & restore",
+      icon: <IconArchive aria-hidden="true" />,
+      onSelect: () => {
+        setBackupLoaded(true);
+        setBackupOpen(true);
+      },
+    },
     ...(includeTrash ? [{ id: "trash", label: "Trash", icon: <IconTrash aria-hidden="true" />, onSelect: () => navigate("/trash") }] : []),
     { id: "about", label: "About Craftly", icon: <IconInfo aria-hidden="true" />, onSelect: () => setAboutOpen(true) },
   ];
@@ -97,6 +112,11 @@ function useAccountMenu(includeTrash: boolean) {
     <>
       <MenuPopover open={anchor !== null} anchor={anchor} onClose={() => setAnchor(null)} items={items} placement="top-start" aria-label="Account" />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      {backupLoaded ? (
+        <Suspense fallback={null}>
+          <BackupDialog open={backupOpen} onClose={() => setBackupOpen(false)} />
+        </Suspense>
+      ) : null}
     </>
   );
   return { anchor, setAnchor, popover };

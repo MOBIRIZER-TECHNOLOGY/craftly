@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getDesign, saveDesign } from "@/core/library";
+import { MigrationError } from "@/core/schema/migrator";
 import { useEditor } from "@/core/store";
 import { renderPageToCanvas } from "@/render/renderPage";
 import { navigate } from "@/router";
-import { Button, EmptyState, IconHome, IconSearch, Spinner, cx } from "@/ui";
+import { Button, EmptyState, IconHome, IconSearch, IconWarning, Spinner, cx } from "@/ui";
 import { installAutosave } from "./autosave";
 import { BottomBar } from "./bottombar/BottomBar";
 import { NotesPanel } from "./bottombar/NotesPanel";
@@ -22,7 +23,8 @@ import { TopBar } from "./topbar/TopBar";
 import { printDesign } from "./topbar/designActions";
 import "./editor.css";
 
-type Status = "loading" | "ready" | "missing" | "broken";
+/** `newer`: saved by a newer Craftly than this tab runs. `failed`: it could not be brought up to the format this one uses. Neither touches what is stored. */
+type Status = "loading" | "ready" | "missing" | "broken" | "newer" | "failed";
 
 /**
  * The autosave service only reacts to changes and timers; when the editor is left (Home, another design, closing
@@ -54,6 +56,7 @@ function EditorState({ children }: { children: ReactNode }) {
 /** The whole editor for one design: loads it from the library, installs the global services and lays out the chrome. */
 export function Editor({ designId }: { designId: string }) {
   const [status, setStatus] = useState<Status>("loading");
+  const [detail, setDetail] = useState("");
 
   /* the keyboard and the right-click menu of the whole editor */
   useEffect(() => {
@@ -125,8 +128,12 @@ export function Editor({ designId }: { designId: string }) {
           setStatus("broken");
         }
       })
-      .catch(() => {
-        if (!cancelled) setStatus("missing");
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        if (error instanceof MigrationError) {
+          setDetail(error.message);
+          setStatus(error.code === "newer" ? "newer" : "failed");
+        } else setStatus("missing");
       });
     return () => {
       cancelled = true;
@@ -157,6 +164,35 @@ export function Editor({ designId }: { designId: string }) {
     return (
       <EditorState>
         <Spinner size={32} label="Opening your design" />
+      </EditorState>
+    );
+  }
+
+  if (status === "newer" || status === "failed") {
+    const newer = status === "newer";
+    return (
+      <EditorState>
+        <EmptyState
+          icon={<IconWarning />}
+          title={newer ? "Update Craftly to open this design" : "We couldn't bring this design up to date"}
+          text={
+            newer
+              ? "It was saved by a newer version of Craftly than the one running in this tab. Reload to get the newest version, then open it again. The design has not been changed."
+              : `${detail} Nothing has been changed, and your other designs are not affected.`
+          }
+          action={
+            <div className="cf-editor-state__actions">
+              {newer ? (
+                <Button variant="primary" onClick={() => window.location.reload()}>
+                  Reload
+                </Button>
+              ) : null}
+              <Button variant={newer ? "secondary" : "primary"} icon={<IconHome aria-hidden="true" />} onClick={() => navigate("/")}>
+                Back to home
+              </Button>
+            </div>
+          }
+        />
       </EditorState>
     );
   }

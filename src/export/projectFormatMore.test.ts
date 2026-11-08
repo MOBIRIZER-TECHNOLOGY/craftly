@@ -8,6 +8,8 @@ import {
   isUsableElement,
   mimeOfDataUrl,
   parseProjectFile,
+  parseStoredDesign,
+  ProjectFileError,
   projectFileName,
   serializeProjectFile,
   type ProjectAsset,
@@ -174,5 +176,40 @@ describe("data addresses", () => {
     expect(projectFileName("  ")).toBe("Untitled design.craftly");
     expect(projectFileName("Trailing dots...")).toBe("Trailing dots.craftly");
     expect(projectFileName(undefined as unknown as string)).toBe("Untitled design.craftly");
+  });
+});
+
+describe("reading a design the way the library stores it", () => {
+  const stored = (patch: (raw: Record<string, unknown>) => void = () => undefined): Record<string, unknown> => {
+    const raw = JSON.parse(JSON.stringify(design())) as Record<string, unknown>;
+    patch(raw);
+    return raw;
+  };
+
+  it("keeps the id, the dates and the library data that a project file would reset", () => {
+    const raw = stored((r) => Object.assign(r, { id: "d_kept", createdAt: 11, updatedAt: 22, folderId: "f_1", starred: true, trashedAt: 33 }));
+    expect(parseStoredDesign(raw)).toMatchObject({ id: "d_kept", title: "T", createdAt: 11, updatedAt: 22, folderId: "f_1", starred: true, trashedAt: 33, version: 1 });
+  });
+
+  it("falls back to the plain values for library data that is not usable", () => {
+    const raw = stored((r) => Object.assign(r, { folderId: 5, starred: "yes", trashedAt: "yesterday" }));
+    expect(parseStoredDesign(raw)).toMatchObject({ folderId: null, starred: false, trashedAt: null });
+  });
+
+  it("still drops what would crash the painter and repairs a page without a background", () => {
+    const raw = stored((r) => {
+      const page = (r.pages as Array<Record<string, unknown>>)[0];
+      page.elements = [{ id: "e", type: "text" }, JSON.parse(JSON.stringify(createShape("rect")))];
+      page.background = 7;
+    });
+    const result = parseStoredDesign(raw);
+    expect(result.pages[0].elements.map((el) => el.type)).toEqual(["shape"]);
+    expect(result.pages[0].background).toEqual({ type: "solid", color: "#ffffff" });
+  });
+
+  it("refuses anything that is not a design", () => {
+    for (const value of [null, 5, "text", [], {}, stored((r) => (r.pages = [])), stored((r) => (r.width = 0)), stored((r) => (r.height = "tall"))]) {
+      expect(() => parseStoredDesign(value), JSON.stringify(value)?.slice(0, 40)).toThrow(ProjectFileError);
+    }
   });
 });

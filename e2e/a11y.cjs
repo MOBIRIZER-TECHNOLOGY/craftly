@@ -168,6 +168,29 @@ const results = [];
     return "back on Account";
   });
 
+  await step("dashboard: Back up & restore takes the keyboard in, and Escape gives it back to the Account button", async () => {
+    await page.goto(BASE + "/#/", { waitUntil: "load" });
+    await page.getByText("What will you design today?").waitFor({ timeout: 20000 });
+    await wait(800);
+    await page
+      .getByRole("button", { name: /account/i })
+      .first()
+      .focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("menuitem", { name: /Back up & restore/ }).focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Back up & restore" });
+    await dialog.waitFor({ timeout: 8000 });
+    await wait(500);
+    const inside = await page.evaluate(() => !!document.activeElement && !!document.activeElement.closest("[role=dialog]"));
+    if (!inside) throw new Error("the keyboard stayed outside the dialog");
+    await page.keyboard.press("Escape");
+    await wait(700);
+    const now = await focused();
+    if (now !== "Account") throw new Error("the keyboard went to: " + now);
+    return "in, and back on Account";
+  });
+
   await step("dashboard: the headline (gradient text) reaches 3:1 and the initial of the account avatar 4.5:1, measured from the pixels", async () => {
     const headline = await gradientTextContrast(".cf-hero__title");
     if (headline < 3) throw new Error(`the headline is ${headline.toFixed(2)}:1 at its worst`);

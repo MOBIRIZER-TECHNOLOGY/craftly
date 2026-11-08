@@ -1,15 +1,26 @@
 /*
- * Craftly service worker - makes the whole app work offline after the first visit.
- *  - install: stores the app shell and every file the build produced (listed in precache.json)
+ * Craftly service worker - makes the whole app work offline after the first visit, and updates it without pulling the
+ * code out from under a tab that is open.
+ *  - install: stores the app shell and every file the build produced (listed in precache.json), then WAITS. A new worker
+ *    does not replace the running one by itself, so every open tab keeps the code it started with (and the files that
+ *    code may still ask for) until the person presses Reload in the app, or closes the tabs
+ *  - message: a page that wants the new version sends "SKIP_WAITING"; "VERSION" asks which build this worker is, on the
+ *    port that comes with the message, so a page can tell whether it already runs it (src/serviceWorker.ts)
+ *  - activate: claims the open pages and deletes the caches of older builds, except the build that ran before this one:
+ *    a tab that is still open on it may ask for one more of its files
  *  - navigation requests: network first, fall back to the cached app shell
- *  - same-origin assets: cache first, filled lazily for anything that was not precached
+ *  - same-origin assets: cache first (any build's cache), filled lazily for anything that was not precached
  *  - WebAssembly files (the ONNX runtime of the on-device photo tools) go to a cache of their own: they are fetched on
  *    first use, not on the first visit, and a new build keeps them because their names change only with their content
  * Designs and uploads live in IndexedDB, so nothing else is needed to keep working offline.
- * The build replaces the build id below, so every new build installs a fresh worker and drops the old cache.
+ * The build replaces the build id below (and the same id in index.html and precache.json), so every new build installs a
+ * fresh worker.
  */
-const VERSION = "craftly-__BUILD_ID__";
+const BUILD_ID = "__BUILD_ID__";
+const VERSION = "craftly-" + BUILD_ID;
 const RUNTIME = "craftly-runtime";
+// an empty cache whose name records which build took over last: the build that was running before this one
+const ACTIVE = "craftly-active-";
 const isRuntimeFile = (url) => url.pathname.endsWith(".wasm");
 // AI model files (about 90 MB) are kept by the app itself, in its own database: a copy here would double the storage
 const isModelFile = (url) => url.pathname.endsWith(".onnx");
@@ -35,17 +46,29 @@ self.addEventListener("install", (event) => {
       } catch {
         /* dev server or unusual hosting: assets are cached lazily instead */
       }
-      await self.skipWaiting();
+      // no skipWaiting() here: see the message handler
     })(),
   );
 });
 
+self.addEventListener("message", (event) => {
+  const message = event.data;
+  if (!message || typeof message !== "object") return;
+  if (message.type === "SKIP_WAITING") self.skipWaiting();
+  else if (message.type === "VERSION" && event.ports && event.ports[0]) event.ports[0].postMessage({ build: BUILD_ID });
+});
+
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== RUNTIME).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
+    (async () => {
+      const names = await caches.keys();
+      // the marker of the build that ran before this one says which files a tab that is still open on it may need
+      const before = names.find((name) => name.startsWith(ACTIVE));
+      const keep = new Set([VERSION, RUNTIME, ACTIVE + BUILD_ID, before ? "craftly-" + before.slice(ACTIVE.length) : null]);
+      await Promise.all(names.filter((name) => !keep.has(name)).map((name) => caches.delete(name)));
+      await caches.open(ACTIVE + BUILD_ID);
+      await self.clients.claim();
+    })(),
   );
 });
 

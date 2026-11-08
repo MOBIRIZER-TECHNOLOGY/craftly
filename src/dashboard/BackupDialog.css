@@ -1,0 +1,159 @@
+/* "Back up & restore": two cards (back up, restore), the same dialog showing progress, the outcome or what went wrong. */
+
+.cf-backup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cf-backup__lead {
+  color: var(--c-ink-2);
+  line-height: 1.55;
+}
+
+.cf-backup__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+}
+
+.cf-backup__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  line-height: 1.3;
+}
+
+.cf-backup__text {
+  color: var(--c-ink-2);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.cf-backup__when {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+}
+
+.cf-backup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cf-backup__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+  color: var(--c-ink-2);
+  line-height: 1.5;
+  list-style: none;
+}
+
+.cf-backup__facts:empty {
+  display: none;
+}
+
+.cf-backup__done,
+.cf-backup__reading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cf-backup__done-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  color: var(--c-success-ink);
+}
+
+.cf-backup__problem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--c-danger-soft);
+}
+
+.cf-backup__problem-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  color: var(--c-danger-ink);
+}
+
+/* ---- storage ---- */
+
+.cf-backup__storage {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+}
+
+.cf-backup__storage-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.cf-backup__storage-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cf-backup__storage-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.cf-backup__storage-title {
+  font-weight: var(--fw-semibold);
+}
+
+.cf-backup__storage-sub {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.cf-backup__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--c-warning-soft);
+  box-shadow: inset 0 0 0 1px var(--c-warning);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cf-backup__warning svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--c-warning-ink);
+}

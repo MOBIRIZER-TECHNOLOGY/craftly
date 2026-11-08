@@ -83,23 +83,5 @@ export async function deleteStoredModel(id: ModelId): Promise<void> {
 
 /* ---------------- how much room there is, and whether the browser may clear it ---------------- */
 
-export interface StorageStatus {
-  usage?: number;
-  quota?: number;
-  persisted?: boolean;
-}
-
-const browserStorage = (): StorageManager | undefined => (typeof navigator === "undefined" ? undefined : navigator.storage);
-
-export async function storageStatus(storage: StorageManager | undefined = browserStorage()): Promise<StorageStatus> {
-  if (!storage) return {};
-  const [estimate, persisted] = await Promise.all([storage.estimate?.().catch(() => undefined), storage.persisted?.().catch(() => undefined)]);
-  return { usage: estimate?.usage, quota: estimate?.quota, persisted };
-}
-
-/** Asks the browser not to clear our data when space runs low (Safari drops script-written data after a week otherwise). */
-export async function requestPersistence(storage: StorageManager | undefined = browserStorage()): Promise<boolean> {
-  if (!storage?.persist) return false;
-  if (await storage.persisted?.()) return true;
-  return storage.persist();
-}
+// what the browser says about the storage it gives this site, and the request to keep it, are shared with the library backup
+export { requestPersistence, storageStatus, type StorageStatus } from "@/core/storage";

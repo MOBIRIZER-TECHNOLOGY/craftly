@@ -3,7 +3,7 @@
  * and referenced from documents as `asset:<id>`.
  */
 import { uid } from "./ids";
-import { dbDelete, dbGet, dbGetAll, dbPut } from "./persistence";
+import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany } from "./persistence";
 import { parseViewBox } from "./svg";
 import type { Asset } from "./types";
 
@@ -55,6 +55,13 @@ export async function addAssetFromFile(file: File): Promise<Asset> {
   await dbPut("assets", asset);
   emit();
   return asset;
+}
+
+/** Stores uploads from a backup as they are (ids kept) in one transaction and tells subscribers once. */
+export async function restoreAssets(assets: Asset[]): Promise<void> {
+  if (!assets.length) return;
+  await dbPutMany(assets.map((value) => ({ store: "assets" as const, value })));
+  emit();
 }
 
 export async function listAssets(): Promise<Asset[]> {

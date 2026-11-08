@@ -6,13 +6,24 @@
  *   { craftly: 1, exportedAt, design, assets: { [assetId]: { name, mime, width, height, dataUrl } } }
  */
 import { pageDuration } from "@/core/animation";
+import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
+import { createMigrator, MigrationError, type MigrationStep } from "@/core/schema/migrator";
 import { MAX_TRANSITION_DURATION } from "@/core/transition";
 import type { AnimDirection, Design, DesignElement, Fill, Page, PageTransition } from "@/core/types";
 
+/**
+ * The version of the file around the design (`craftly`). The design inside has a version of its own
+ * (src/core/schema/design.ts) and is brought up to date on its own. Changing how the file is laid out (not what is in a
+ * design) is a step here: docs/MIGRATIONS.md.
+ */
 export const PROJECT_FORMAT_VERSION = 1;
+export const PROJECT_MIGRATIONS: readonly MigrationStep[] = [];
+const projectMigrator = createMigrator({ kind: "project", field: "craftly", current: PROJECT_FORMAT_VERSION, steps: PROJECT_MIGRATIONS });
+
 export const PROJECT_FILE_EXTENSION = ".craftly";
 export const NOT_A_PROJECT_MESSAGE = "That does not look like a Craftly project file";
 export const NEWER_PROJECT_MESSAGE = "This project was saved by a newer version of Craftly. Update the app, then try again.";
+export const UPDATE_PROJECT_MESSAGE = "This project could not be brought up to date for this version of Craftly.";
 
 export interface ProjectAsset {
   name: string;
@@ -184,7 +195,10 @@ function sanitizePageTiming(p: Record<string, unknown>): Pick<Page, "duration" |
   return timing;
 }
 
-function sanitizeDesign(raw: Record<string, unknown>): Design {
+/** `keepLibraryData`: a design read back from the library (a backup) keeps its folder, star and trash state; one from a project file starts fresh. */
+function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false): Design {
+  // first the design is brought up to the current version (a `MigrationError` for a newer one), then it is checked
+  const raw = migrateDesign(stored).design as unknown as Record<string, unknown>;
   const width = raw.width;
   const height = raw.height;
   if (!isNum(width) || !isNum(height) || width < 1 || height < 1 || width > 100000 || height > 100000) throw new ProjectFileError();
@@ -216,11 +230,27 @@ function sanitizeDesign(raw: Record<string, unknown>): Design {
     pages,
     createdAt: isNum(raw.createdAt) ? raw.createdAt : now,
     updatedAt: isNum(raw.updatedAt) ? raw.updatedAt : now,
-    folderId: null,
-    starred: false,
-    trashedAt: null,
-    version: 1,
+    folderId: keepLibraryData && typeof raw.folderId === "string" ? raw.folderId : null,
+    starred: keepLibraryData && raw.starred === true,
+    trashedAt: keepLibraryData && isNum(raw.trashedAt) ? raw.trashedAt : null,
+    version: CURRENT_DESIGN_VERSION,
   };
+}
+
+/**
+ * A design as the library stores it (what a backup holds), brought up to the current version and checked as strictly as a
+ * project file's: unusable elements are dropped, but the id, the dates and the folder / star / trash state are kept.
+ * Throws `ProjectFileError` for a design that is damaged, and the `MigrationError` ("newer") for one that a newer release
+ * made, which is not damaged and which the caller counts apart.
+ */
+export function parseStoredDesign(value: unknown): Design {
+  if (!isObject(value)) throw new ProjectFileError();
+  try {
+    return sanitizeDesign(value, true);
+  } catch (error) {
+    if (error instanceof MigrationError && error.code !== "newer") throw new ProjectFileError();
+    throw error;
+  }
 }
 
 /** Parses and validates a project file's text. Throws `ProjectFileError` with a message fit for a toast. */
@@ -232,12 +262,18 @@ export function parseProjectFile(text: string): ProjectFile {
     throw new ProjectFileError();
   }
   if (!isObject(raw) || !isNum(raw.craftly) || !isObject(raw.design)) throw new ProjectFileError();
-  if (raw.craftly > PROJECT_FORMAT_VERSION) throw new ProjectFileError(NEWER_PROJECT_MESSAGE);
-  if (raw.craftly < 1) throw new ProjectFileError();
-  const design = sanitizeDesign(raw.design);
+  let envelope: Record<string, unknown>;
+  let design: Design;
+  try {
+    envelope = projectMigrator.migrate(raw).doc;
+    design = sanitizeDesign(envelope.design as Record<string, unknown>);
+  } catch (error) {
+    if (!(error instanceof MigrationError)) throw error;
+    throw new ProjectFileError(error.code === "newer" ? NEWER_PROJECT_MESSAGE : error.code === "failed" ? UPDATE_PROJECT_MESSAGE : NOT_A_PROJECT_MESSAGE);
+  }
   const assets: Record<string, ProjectAsset> = {};
-  if (isObject(raw.assets)) {
-    for (const [id, value] of Object.entries(raw.assets)) {
+  if (isObject(envelope.assets)) {
+    for (const [id, value] of Object.entries(envelope.assets)) {
       if (!isObject(value) || typeof value.dataUrl !== "string" || !/^data:[^,]*,/.test(value.dataUrl)) continue;
       assets[id] = {
         name: typeof value.name === "string" && value.name ? value.name : "Image",
@@ -248,12 +284,12 @@ export function parseProjectFile(text: string): ProjectFile {
       };
     }
   }
-  return { craftly: raw.craftly, exportedAt: typeof raw.exportedAt === "string" ? raw.exportedAt : new Date(0).toISOString(), design, assets };
+  return { craftly: PROJECT_FORMAT_VERSION, exportedAt: typeof envelope.exportedAt === "string" ? envelope.exportedAt : new Date(0).toISOString(), design, assets };
 }
 
 /** A design ready to be saved as a brand new library entry. */
 export function prepareImportedDesign(design: Design, id: string, now: number = Date.now()): Design {
-  return { ...design, id, createdAt: now, updatedAt: now, folderId: null, starred: false, trashedAt: null, version: 1 };
+  return { ...design, id, createdAt: now, updatedAt: now, folderId: null, starred: false, trashedAt: null, version: CURRENT_DESIGN_VERSION };
 }
 
 /* ------------------------------------------------------------------ */

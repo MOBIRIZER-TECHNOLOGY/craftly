@@ -8,11 +8,13 @@ import type { Plugin } from "vite";
 
 /**
  * Offline support: lists every file the build produced in `precache.json` (so the service worker can store the whole
- * app on the first visit) and stamps the service worker with a build id (so a new build installs a new worker).
+ * app on the first visit) and stamps the service worker with a build id (so a new build installs a new worker). The page
+ * gets the same id in a meta tag, which is how a tab tells that it runs the build a waiting worker carries
+ * (`src/serviceWorker.ts`).
  * WebAssembly files (the ONNX runtime, 28.7 MB) are listed apart under `runtime`: most visitors never use the tools that
  * need them, so the service worker keeps them only after first use, and across updates.
  */
-function offlineSupport(): Plugin {
+export function offlineSupport(): Plugin {
   let outDir = "dist";
   let root = process.cwd();
   let buildId = "dev";
@@ -33,8 +35,10 @@ function offlineSupport(): Plugin {
       this.emitFile({ type: "asset", fileName: "precache.json", source: JSON.stringify({ buildId, files, runtime }) });
     },
     closeBundle() {
-      const sw = resolve(root, outDir, "sw.js");
-      if (existsSync(sw)) writeFileSync(sw, readFileSync(sw, "utf8").replaceAll("__BUILD_ID__", buildId));
+      for (const name of ["sw.js", "index.html"]) {
+        const file = resolve(root, outDir, name);
+        if (existsSync(file)) writeFileSync(file, readFileSync(file, "utf8").replaceAll("__BUILD_ID__", buildId));
+      }
     },
   };
 }
