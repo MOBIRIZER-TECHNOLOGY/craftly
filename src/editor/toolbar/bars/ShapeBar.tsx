@@ -1,9 +1,10 @@
 /** Contextual toolbars of shapes and lines. */
 import { elementPath } from "@/core/penShape";
+import { getActivePage, useEditor } from "@/core/store";
 import { startPathEdit } from "@/editor/canvas/pathEditStore";
 import { getShape } from "@/render/shapePaths";
 import type { ArrowKind, LineElement, ShapeElement, StrokeStyle } from "@/core/types";
-import { Divider, IconChevronDown, IconCurve, type MenuEntry } from "@/ui";
+import { Divider, IconChevronDown, IconCombine, IconCurve, type MenuEntry } from "@/ui";
 import {
   BorderPopover,
   CopyStyleButton,
@@ -20,6 +21,7 @@ import {
   capFor,
   type BarProps,
 } from "../common";
+import { combineMenuItems } from "../combine";
 import { ArrowheadPreview, IconStrokeStyle, IconStrokeWeight } from "../icons";
 import { MenuButton, PopoverButton, SliderField, TBIcon, TBText, toggleContext, useContextActive } from "../kit";
 import { MIXED_SWATCH_CSS, editElements, only, uniform } from "../selection";
@@ -44,7 +46,19 @@ export function ShapeBar({ els, ids, copyEnabled }: BarProps<ShapeElement> & Ext
           Edit points
         </TBText>
       )}
-      {ids.length > 1 && <MultiActions ids={ids} />}
+      {ids.length > 1 && (
+        <>
+          <MultiActions ids={ids} />
+          <MenuButton
+            label="Combine"
+            tip="Join the selected shapes into one, or cut one out of another"
+            icon={<IconCombine />}
+            iconRight={<IconChevronDown />}
+            text="Combine"
+            items={() => combineMenuItems(getActivePage(useEditor.getState()), ids)}
+          />
+        </>
+      )}
       <Divider vertical className="cf-tb__div" />
       <CopyStyleButton els={els} enabled={copyEnabled} />
       <MoreButton />

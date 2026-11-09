@@ -15,7 +15,7 @@ beforeEach(async () => {
 });
 afterEach(() => restoreLayout());
 
-const square = () => createShape("rect", { x: 100, y: 100, width: 200, height: 200 });
+const square = (extra: Partial<ShapeElement> = {}) => createShape("rect", { x: 100, y: 100, width: 200, height: 200, ...extra });
 const photo = () => createImage({ src: "https://example.test/p.jpg", x: 400, y: 100, width: 200, height: 150, naturalWidth: 400, naturalHeight: 300 });
 const workspace = () => document.querySelector("[data-cf-workspace]") as HTMLElement;
 const menu = () => screen.getByRole("menu", { name: "Context menu" });
@@ -278,5 +278,66 @@ describe("the group menu", () => {
     rightClick();
     expect(within(menu()).queryByRole("menuitem", { name: /^Group/ })).toBeNull();
     expect(item(/^Ungroup/)).toBeTruthy();
+  });
+});
+
+describe("combining and converting shapes from the menu", () => {
+  const overlapping = (extra: Partial<ShapeElement> = {}) => [square(), createShape("rect", { x: 200, y: 200, width: 200, height: 200, ...extra })];
+  const submenu = () => within(screen.getAllByRole("menu").at(-1)!);
+
+  it("combines several shapes from the sub-menu", async () => {
+    const user = userEvent.setup();
+    const [a, b] = await open(overlapping());
+    act(() => store().actions.select([a.id, b.id]));
+    rightClick();
+    await user.click(item("Combine shapes"));
+    expect(
+      submenu()
+        .getAllByRole("menuitem")
+        .map((i) => i.textContent),
+    ).toEqual(["UnionJoin into one", "SubtractCut out the front", "IntersectKeep the overlap", "ExcludeRemove the overlap"]);
+    await user.click(submenu().getByRole("menuitem", { name: /^Union/ }));
+    await waitFor(() => expect(paintOrder()).toHaveLength(1));
+    expect(live(store().selection[0])).toMatchObject({ shape: "path" });
+  });
+
+  it("switches Combine shapes off while a shape is locked, and leaves it out for one shape and for other kinds of element", async () => {
+    const user = userEvent.setup();
+    const [a, b, p] = await open([...overlapping({ locked: true }), photo()]);
+    act(() => store().actions.select([a.id, b.id]));
+    rightClick();
+    expect(item("Combine shapes").getAttribute("aria-disabled")).toBe("true");
+    await user.keyboard("{Escape}");
+    act(() => store().actions.select([a.id]));
+    rightClick();
+    expect(within(menu()).queryByRole("menuitem", { name: "Combine shapes" })).toBeNull();
+    await user.keyboard("{Escape}");
+    act(() => store().actions.select([a.id, p.id]));
+    rightClick();
+    expect(within(menu()).queryByRole("menuitem", { name: "Combine shapes" })).toBeNull();
+  });
+
+  it("writes a shape as a path", async () => {
+    const user = userEvent.setup();
+    const [a] = await open(overlapping());
+    act(() => store().actions.select([a.id]));
+    rightClick();
+    await user.click(item("Convert to path"));
+    await waitFor(() => expect(live(a.id)).toMatchObject({ shape: "path" }));
+    expect(store().selection).toEqual([a.id]);
+  });
+
+  it("leaves Convert to path out for a path and for a photo, and switches it off for a locked shape", async () => {
+    const user = userEvent.setup();
+    const [path, p, locked] = await open([createShape("path", { x: 0, y: 0, width: 50, height: 50, path: "M0 0 L100 0 L100 100 Z" }), photo(), square({ locked: true })]);
+    for (const id of [path.id, p.id]) {
+      act(() => store().actions.select([id]));
+      rightClick();
+      expect(within(menu()).queryByRole("menuitem", { name: "Convert to path" })).toBeNull();
+      await user.keyboard("{Escape}");
+    }
+    act(() => store().actions.select([locked.id]));
+    rightClick();
+    expect(item("Convert to path").getAttribute("aria-disabled")).toBe("true");
   });
 });

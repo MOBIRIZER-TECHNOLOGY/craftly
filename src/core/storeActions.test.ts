@@ -677,6 +677,62 @@ describe("editing elements", () => {
       expect(s().design).toBe(before);
     });
   });
+
+  describe("replacing elements with one", () => {
+    beforeEach(() => open([rect("a", 0, 0), rect("b", 200, 0), rect("c", 400, 0)]));
+
+    it("puts it where the top-most of them was, selects it and gives it an id of its own", () => {
+      const id = a().replaceElements(["a", "c"], rect("made", 10, 10, 30, 30));
+      expect(id).not.toBe("");
+      expect(id).not.toBe("made");
+      expect(page().elements.map((e) => e.id)).toEqual(["b", id]);
+      expect(el(id)).toMatchObject({ x: 10, y: 10, width: 30, height: 30 });
+      expect(s().selection).toEqual([id]);
+      expect(s().focusGroupId).toBeNull();
+    });
+
+    it("is one step of history", () => {
+      a().replaceElements(["a", "b"], rect("made"));
+      expect(s().past).toHaveLength(1);
+      a().undo();
+      expect(page().elements.map((e) => e.id)).toEqual(["a", "b", "c"]);
+    });
+
+    it("works on a page that is not the open one, and leaves the open page and its selection alone", () => {
+      const other = a().addPage({ page: createPage({ elements: [rect("x", 0, 0), rect("y", 50, 0)] }) }); // pages get new ids when added
+      const [x, y] = pageOf(s().design, other)!.elements.map((e) => e.id);
+      a().setActivePage("p1");
+      a().select(["b"]);
+      const id = a().replaceElements([x, y], rect("made"), other);
+      expect(pageOf(s().design, other)!.elements.map((e) => e.id)).toEqual([id]);
+      expect(page().elements.map((e) => e.id)).toEqual(["a", "b", "c"]);
+      expect(s().activePageId).toBe("p1");
+      expect(s().selection).toEqual(["b"]);
+    });
+
+    it("does nothing when there is nothing to replace, an element is missing, locked or inside a group, or the page is not there", () => {
+      const check = (ids: string[], pageId?: string) => {
+        const before = s().design;
+        expect(a().replaceElements(ids, rect("made"), pageId)).toBe("");
+        expect(s().design).toBe(before);
+        expect(s().past).toEqual([]);
+      };
+      check([]);
+      check(["a", "nope"]);
+      check(["a", "b"], "nope");
+      open([rect("a", 0, 0, 100, 50, { locked: true }), rect("b", 200, 0)]);
+      check(["a", "b"]);
+      open([createGroup([rect("in", 0, 0)], { id: "g" }), rect("out", 300, 0)]);
+      check(["in", "out"]);
+    });
+
+    it("does nothing while the document is only being viewed", () => {
+      a().setMode("view");
+      const before = s().design;
+      expect(a().replaceElements(["a", "b"], rect("made"))).toBe("");
+      expect(s().design).toBe(before);
+    });
+  });
 });
 
 describe("guides", () => {

@@ -4,7 +4,7 @@ Written 2026-11-08. The Craftly side comes from its own code and documents (the 
 
 A companion report compares Craftly with Canva, the product it is modelled on: [`Craftly versus Canva feature gaps.md`](Craftly%20versus%20Canva%20feature%20gaps.md).
 
-**Update, later on 2026-11-08:** the first of the vector gaps below has been closed. Craftly now has a **Pen tool with point editing** (corner and smooth points, handles, add and delete points, close a path, from the keyboard too; see the README). Where this report says "no pen tool" or "no node editing", read it as it stood in the morning. Boolean operations, turning a preset shape into editable points, SVG import as paths, text on a path, blend modes and several fills and strokes are still open.
+**Update, later on 2026-11-08:** the first of the vector gaps below has been closed. Craftly now has a **Pen tool with point editing** (corner and smooth points, handles, add and delete points, close a path, from the keyboard too; see the README). Where this report says "no pen tool" or "no node editing", read it as it stood in the morning. **Update, 2026-11-09:** boolean operations are closed too. **Combine** (union, subtract, intersect, exclude) makes one path of several shapes, and **Convert to path** turns a preset shape into editable points (see the README). Turning text into points, SVG import as paths, text on a path, blend modes and several fills and strokes are still open.
 
 ## 1. The short answer
 
@@ -118,7 +118,7 @@ The overlap is the "make a graphic or a deck" work that Figma Slides, Figma Buzz
 | Basic object editing | Select, resize, rotate, group, align, distribute, layers, lock, snapping, rulers, guides | The same, plus constraints, multi-edit, nested selection, measurements *(known)* | Figma (depth); even on basics |
 | Layout system | Absolute positioning only | Auto layout, grids, constraints, responsive frames | Figma only |
 | Components, styles, variables | None; a brand kit (colours, fonts, logos) and text style presets | Components, variants, slots, styles, variables with modes, shared libraries | Figma only |
-| Vector editing | 47 preset shapes, a freehand pen, and (added later on 2026-11-08) a Pen tool with point editing; no boolean operations | Vector tools, Vectorize, brushes, variable-width strokes, text on a path, repeats | Figma |
+| Vector editing | 47 preset shapes, a freehand pen, and (added later on 2026-11-08) a Pen tool with point editing; (added 2026-11-09) union, subtract, intersect and exclude, and Convert to path | Vector tools, Vectorize, brushes, variable-width strokes, text on a path, repeats | Figma |
 | Fills and effects | Solid and gradient fills, shadow, opacity, photo filters, nine text effects; no blend modes | Multiple fills and strokes, blur, progressive blur, noise, texture, glass, shaders, blend modes *(known)* | Figma |
 | Typography | 44 Latin families, styles, lists, spacing, curved text, nine effects; no weight picker, no custom fonts, no right-to-left or non-Latin text | Text styles, variable fonts and OpenType *(known)*, local and custom fonts *(known)*, text on a path, international text | Figma |
 | Images and photo editing | Upload, crop, adjustments, duotone, frames, replace; remove background, blur background, colour pop, upscale on the device | Image fills, crop, adjustments *(known)*; Weave and Buzz AI tools in the cloud (swap background, aspect ratio, upscale, generate) | Even on basics; Figma on AI breadth, Craftly on privacy |
@@ -157,7 +157,7 @@ The overlap is the "make a graphic or a deck" work that Figma Slides, Figma Buzz
 
 ## 6. What Figma has that Craftly does not, in order of what would matter to Craftly's users
 
-1. **Vector depth:** a pen tool with node editing (done, 2026-11-08) and boolean operations, blend modes, multiple fills and strokes, SVG import. These are the gaps a designer meets first, and they need no backend.
+1. **Vector depth:** a pen tool with node editing (done, 2026-11-08), boolean operations (done, 2026-11-09), blend modes, multiple fills and strokes, SVG import. These are the gaps a designer meets first, and they need no backend.
 2. **Reusable styles:** text and colour styles, and eventually components. Craftly has a brand kit but no way to restyle many objects at once from one definition.
 3. **Layout help:** constraints and a simple auto layout, and snapping to a grid, margins and equal spacing.
 4. **Typography:** a weight picker, custom font upload, non-Latin scripts and right-to-left text.
@@ -170,7 +170,7 @@ The overlap is the "make a graphic or a deck" work that Figma Slides, Figma Buzz
 Do not follow Figma into product design. The overlap worth owning is the band that Figma Slides, Figma Buzz and Figma Draw share with Canva: finished graphics and decks, made quickly, with good content, and now with private AI. Three things follow:
 
 - **Keep the advantage Figma cannot copy:** offline, private, no account, free of credits. Make it visible in the product and in the README.
-- **Close the cheap gaps first:** a pen tool (done, 2026-11-08) and boolean operations, blend modes, link editing, grid and margin snapping, a font weight picker, SVG import. They make the editor feel complete to someone coming from Figma or Illustrator, and none needs a server.
+- **Close the cheap gaps first:** a pen tool (done, 2026-11-08), boolean operations (done, 2026-11-09), blend modes, link editing, grid and margin snapping, a font weight picker, SVG import. They make the editor feel complete to someone coming from Figma or Illustrator, and none needs a server.
 - **Decide on collaboration deliberately.** It is the one thing every user of Figma expects and the one thing that would need an account system and a backend. The ROADMAP already treats it as a separate product decision (P2).
 
 ## 8. Sources

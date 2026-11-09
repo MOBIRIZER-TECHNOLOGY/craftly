@@ -205,6 +205,22 @@ export function ungroup(page: Page, groupId: ID): ID[] {
   return out.map((c) => c.id);
 }
 
+/**
+ * Replaces the elements `ids` by `el`, which takes the paint position of the top-most of them, so that what was above them
+ * stays above. Only elements at the top level of the page are replaced. Returns false, and changes nothing, when there is no
+ * id, an id is not on the page or one of the elements is inside a group.
+ */
+export function replaceElements(page: Page, ids: ID[], el: DesignElement): boolean {
+  const hits = [...new Set(ids)].map((id) => locate(page.elements, id));
+  if (!hits.length || hits.some((h) => !h || h.parent)) return false;
+  const found = (hits as Located[]).sort((a, b) => a.index - b.index);
+  const top = found[found.length - 1].index;
+  const removedBefore = found.filter((h) => h.index < top).length;
+  for (const h of [...found].reverse()) page.elements.splice(h.index, 1);
+  page.elements.splice(top - removedBefore, 0, el);
+  return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* align / distribute                                                  */
 /* ------------------------------------------------------------------ */

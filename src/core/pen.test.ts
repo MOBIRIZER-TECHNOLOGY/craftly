@@ -5,6 +5,8 @@ import {
   closePath,
   deleteNodes,
   denormalizePath,
+  fitPaths,
+  inBoxSpace,
   insertNode,
   moveHandle,
   moveNodes,
@@ -536,5 +538,40 @@ describe("normalizePath and denormalizePath", () => {
       if (path.nodes[i].handleOut) near(n.handleOut!, path.nodes[i].handleOut!, 1);
       if (path.nodes[i].handleIn) near(n.handleIn!, path.nodes[i].handleIn!, 1);
     }
+  });
+});
+
+describe("inBoxSpace", () => {
+  it("puts the pixels of a box into its 0..100 space, and denormalizePath takes them back", () => {
+    const path = open(node(20, 10, null, { x: 5, y: 2 }), node(60, 40, { x: -5, y: -2 }, null));
+    const inside = inBoxSpace(path, 80, 40);
+    expect(inside.nodes[1]).toEqual(node(75, 100, { x: -6.25, y: -5 }, null));
+    const back = denormalizePath(inside, 80, 40);
+    near(back.nodes[0], path.nodes[0]);
+    near(back.nodes[1].handleIn!, path.nodes[1].handleIn!);
+  });
+});
+
+describe("fitPaths", () => {
+  const square = (x: number, y: number, size: number) => closed(node(x, y), node(x + size, y), node(x + size, y + size), node(x, y + size));
+
+  it("fits several pieces into one box, each where it was", () => {
+    const { d, box } = fitPaths([square(0, 0, 10), square(20, 20, 10)]);
+    expect(box).toEqual({ x: 0, y: 0, w: 30, h: 30 });
+    expect(d).toBe("M0 0 L33.333 0 L33.333 33.333 L0 33.333 L0 0 Z M66.667 66.667 L100 66.667 L100 100 L66.667 100 L66.667 66.667 Z");
+  });
+
+  it("is what normalizePath does for one piece", () => {
+    const path = open(node(50, 20, null, { x: 10, y: 6 }), node(150, 80, { x: -10, y: -6 }, null));
+    expect(fitPaths([path])).toEqual(normalizePath(path));
+  });
+
+  it("takes the box of the curves of all the pieces, at least a pixel each way", () => {
+    expect(fitPaths([open(node(5, 5), node(5, 5))]).box).toEqual({ x: 5, y: 5, w: 1, h: 1 });
+    expect(fitPaths([open(node(0, 0), node(10, 0)), open(node(0, 40), node(10, 40))]).box).toEqual({ x: 0, y: 0, w: 10, h: 40 });
+  });
+
+  it("has a box of a pixel and no data when there are no pieces", () => {
+    expect(fitPaths([])).toEqual({ d: "", box: { x: 0, y: 0, w: 1, h: 1 } });
   });
 });

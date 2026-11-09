@@ -402,17 +402,32 @@ const scaleNodes = (path: PenPath, sx: number, sy: number, ox: number, oy: numbe
 });
 
 /**
- * The path as a shape stores it: its tight box (at least a pixel each way) and the path data in that box's 0..100 space.
- * The curves may reach outside 0..100 with their handles; only the curve itself decides the box.
+ * Several pieces as a shape stores them: their common tight box (at least a pixel each way) and the data of every piece in
+ * that box's 0..100 space, one after the other. The curves may reach outside 0..100 with their handles; only the curves
+ * themselves decide the box.
  */
-export function normalizePath(path: PenPath): { d: string; box: Rect } {
-  const bounds = pathBounds(path);
-  const box = { x: bounds.x, y: bounds.y, w: Math.max(bounds.w, MIN_EXTENT), h: Math.max(bounds.h, MIN_EXTENT) };
-  return { d: pathToString(scaleNodes(path, 100 / box.w, 100 / box.h, box.x, box.y)), box };
+export function fitPaths(paths: readonly PenPath[]): { d: string; box: Rect } {
+  if (!paths.length) return { d: "", box: { x: 0, y: 0, w: MIN_EXTENT, h: MIN_EXTENT } };
+  const bounds = paths.map(pathBounds);
+  const x = Math.min(...bounds.map((b) => b.x));
+  const y = Math.min(...bounds.map((b) => b.y));
+  const box = {
+    x,
+    y,
+    w: Math.max(Math.max(...bounds.map((b) => b.x + b.w)) - x, MIN_EXTENT),
+    h: Math.max(Math.max(...bounds.map((b) => b.y + b.h)) - y, MIN_EXTENT),
+  };
+  return { d: paths.map((p) => pathToString(scaleNodes(p, 100 / box.w, 100 / box.h, box.x, box.y))).join(" "), box };
 }
+
+/** The path as a shape stores it: its tight box (at least a pixel each way) and the path data in that box's 0..100 space. */
+export const normalizePath = (path: PenPath): { d: string; box: Rect } => fitPaths([path]);
 
 /** Every coordinate and handle multiplied by `factor` (the path as drawn at a zoom). */
 export const scalePath = (path: PenPath, factor: number): PenPath => scaleNodes(path, factor, factor, 0, 0);
+
+/** Pixels in a box of `width` x `height` (origin at the box's top-left) as nodes in 0..100 space: the other way of `denormalizePath`. */
+export const inBoxSpace = (path: PenPath, width: number, height: number): PenPath => scaleNodes(path, 100 / width, 100 / height, 0, 0);
 
 /** Nodes in 0..100 space back to pixels in a box of `width` x `height` (origin at the box's top-left). */
 export function denormalizePath(path: PenPath, width: number, height: number): PenPath {

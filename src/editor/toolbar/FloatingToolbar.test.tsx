@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createChart, createFrame, createGraphic, createGroup, createImage, createLine, createShape, createTable, createText } from "@/core/factory";
@@ -280,6 +280,28 @@ describe("shape toolbar", () => {
     await user.click(screen.getByRole("menuitem", { name: "Bottom" }));
     await user.click(btn("Group"));
     expect(live<GroupElement>(store().selection[0]).children).toHaveLength(3);
+  });
+
+  it("combines several shapes into one from the Combine menu, and offers it only for several", async () => {
+    const user = userEvent.setup();
+    const [a, b] = [box({ x: 0, y: 0, width: 100, height: 100 }), box({ x: 50, y: 50, width: 100, height: 100 })];
+    mount([a, b]);
+    await user.click(btn("Combine"));
+    expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual([
+      "UnionJoin into one",
+      "SubtractCut out the front",
+      "IntersectKeep the overlap",
+      "ExcludeRemove the overlap",
+    ]);
+    await user.click(screen.getByRole("menuitem", { name: /^Subtract/ }));
+    await waitFor(() => expect(store().design!.pages[0].elements).toHaveLength(1));
+    expect(store().design!.pages[0].elements[0]).toMatchObject({ shape: "path", x: 0, y: 0, width: 100, height: 100 });
+    expect(has("Combine")).toBe(false); // the one shape that is left
+  });
+
+  it("leaves Combine out for a single shape", () => {
+    mount([box()]);
+    expect(has("Combine")).toBe(false);
   });
 });
 

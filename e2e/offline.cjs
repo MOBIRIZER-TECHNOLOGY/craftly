@@ -103,6 +103,52 @@ const { launch, BASE } = require("./lib.cjs");
     })(),
   );
 
+  // combining shapes loads the geometry library (paper.js) when it is first used: that chunk has to be in the stored build too.
+  // This step puts its shapes on the page through the store, so it needs the build of e2e/README.md (VITE_EXPOSE_STORE=1).
+  results.push(
+    await (async () => {
+      try {
+        await page.keyboard.press("Escape"); // the dialog of the step before is still open
+        await page.getByRole("dialog", { name: "Back up & restore" }).waitFor({ state: "hidden", timeout: 5000 });
+        await page.getByText("Recent designs").waitFor({ timeout: 10000 });
+        await page.locator("a[href*='#/design/']").first().click();
+        await page.locator(".cf-workspace").waitFor({ timeout: 15000 });
+        await page.waitForTimeout(1200);
+        await page.evaluate(() => {
+          const { actions } = window.__editor.getState();
+          const square = (x, y) => ({
+            id: "x",
+            type: "shape",
+            shape: "rect",
+            x,
+            y,
+            width: 400,
+            height: 400,
+            rotation: 0,
+            opacity: 1,
+            fill: { type: "solid", color: "#d9222a" },
+            stroke: null,
+            radius: 0,
+          });
+          actions.select(actions.addElements([square(400, 200), square(600, 400)], { center: false, select: false }));
+        });
+        await page.getByRole("toolbar", { name: "Selected element common controls" }).getByRole("button", { name: "Combine", exact: true }).click();
+        await page.getByRole("menuitem", { name: /^Union/ }).click();
+        await page.waitForFunction(
+          () => {
+            const s = window.__editor.getState();
+            return s.design.pages.find((p) => p.id === s.activePageId).elements.some((e) => e.shape === "path");
+          },
+          null,
+          { timeout: 15000 },
+        );
+        return "PASS Combine shapes works offline";
+      } catch (e) {
+        return "FAIL Combine shapes works offline  -> " + e.message.split("\n")[0];
+      }
+    })(),
+  );
+
   console.log(results.join("\n"));
   console.log("CONSOLE:", JSON.stringify(logs.slice(0, 6)));
   if (results.some((r) => r.startsWith("FAIL")) || logs.length) process.exitCode = 1;

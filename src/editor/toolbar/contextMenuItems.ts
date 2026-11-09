@@ -4,6 +4,7 @@
  * of the floating and mini toolbars.
  */
 import { createElement, type ComponentType } from "react";
+import { shapesToCombine } from "@/core/combine";
 import { canArrange } from "@/core/ops";
 import { getActivePage, getSelectedElements, type EditorState } from "@/core/store";
 import type { Point } from "@/core/types";
@@ -17,8 +18,10 @@ import {
   IconBackground,
   IconBringForward,
   IconBringToFront,
+  IconCombine,
   IconCopy,
   IconCopyStyle,
+  IconCurve,
   IconDuplicate,
   IconEyeOff,
   IconFilePlus,
@@ -36,6 +39,7 @@ import {
   type MenuEntry,
 } from "@/ui";
 import { openAltTextDialog } from "./altText";
+import { canConvertToPath, combineMenuItems, convertToPath } from "./combine";
 import { IconAccessibility } from "./icons";
 import { pickImageFor } from "./imageFile";
 
@@ -144,6 +148,12 @@ export function buildContextMenuItems(state: EditorState, opts: ContextMenuOptio
   }
   if (hasGroup) {
     items.push({ id: "ungroup", label: "Ungroup", icon: ic(IconUngroup), shortcut: "Ctrl+Shift+G", onSelect: () => a.ungroupSelection() });
+  }
+  if (els.length >= 2 && els.every((e) => e.type === "shape")) {
+    items.push({ id: "combine", label: "Combine shapes", icon: ic(IconCombine), disabled: !shapesToCombine(page, ids), submenu: combineMenuItems(page, ids) });
+  }
+  if (els.some((e) => e.type === "shape" && e.shape !== "path")) {
+    items.push({ id: "convert-to-path", label: "Convert to path", icon: ic(IconCurve), disabled: !canConvertToPath(page, ids), onSelect: () => void convertToPath(ids) });
   }
 
   items.push(

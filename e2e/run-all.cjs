@@ -13,6 +13,7 @@ const journeys = [
     "designs and a library from another version: an old design opens whole, a newer one is refused and left alone, a backup keeps it as stored, another tab upgrading the database makes this tab save first and say so",
   ],
   ["pen.cjs", "the Pen tool and the points of a path: place points, pull a curve, close, undo, edit points, add and delete one, export as SVG, reload"],
+  ["combine.cjs", "combine shapes (union, subtract, intersect, exclude) read from the pixels, a turned shape, nothing in common, convert to path, undo, reload"],
   ["animate.cjs", "element and page animations, timing, transitions, preview, motion templates"],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
   ["animated-export.cjs", "animated GIF and WebM downloads: structure, length, loop, decoded by the browser, cancel"],

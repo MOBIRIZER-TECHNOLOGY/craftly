@@ -171,6 +171,12 @@ export interface EditorActions {
   renameElement(id: ID, name: string): void;
   /** replace the image of an image element / frame (keeps the box, resets crop) */
   replaceImage(id: ID, src: string, naturalWidth: number, naturalHeight: number): void;
+  /**
+   * Takes elements off a page (the open one unless `pageId` says otherwise) and puts a copy of `el`, with an id of its own, where
+   * the top-most of them was: one undo step, and the new element is selected when the page is the open one. Returns its id, or ""
+   * when nothing was done (an element is missing, locked or inside a group).
+   */
+  replaceElements(ids: ID[], el: DesignElement, pageId?: ID): ID;
 
   /* ruler guides ("v" = vertical line at x, "h" = horizontal line at y, design px) */
   addGuide(axis: "v" | "h", pos: number): void;
@@ -717,6 +723,19 @@ export const useEditor = create<EditorState>()((set, get) => {
     },
     renameElement(id, name) {
       withActivePage((page) => ops.patchElements(page as Page, [id], { name: name.trim() || undefined }));
+    },
+    replaceElements(ids, el, pageId) {
+      const target = pageId ?? get().activePageId;
+      const item = cloneElement(el);
+      let done = false;
+      commit((d) => {
+        const page = d.pages.find((p) => p.id === target);
+        if (!page || ids.some((id) => ops.findElement(page as Page, id)?.locked)) return;
+        done = ops.replaceElements(page as Page, ids, item);
+      });
+      if (!done) return "";
+      if (target === get().activePageId) set({ selection: [item.id], focusGroupId: null });
+      return item.id;
     },
     replaceImage(id, src, naturalWidth, naturalHeight) {
       withActivePage((page) => {

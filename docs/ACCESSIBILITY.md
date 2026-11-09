@@ -128,6 +128,13 @@ The dialog was built the day after the audit, to its rules:
 - **Colours.** The points, handles and the preview use `--c-ring` (`#8b3dff`) with a white fill or a white outline, like the selection's handles. Their contrast with whatever the page shows behind them was not measured, and cannot be: the page can be any colour.
 - **Not measured:** the new toolbar and the tool's options with a screen reader, and with axe-core (the permission to fetch it that the first audit used is spent). The 24 px rule of `e2e/a11y.cjs` was not run with the point toolbar open.
 
+## Added after the audit: Combine and Convert to path (2026-11-09)
+
+- **Both are named, ordinary controls.** **Combine** is a toolbar menu button (shown when two or more unlocked shapes are selected) whose menu has Union, Subtract, Intersect and Exclude, each with a few words of hint ("Join into one", "Cut out the front", "Keep the overlap", "Remove the overlap"); the right-click menu has **Combine shapes** (a sub-menu) and **Convert to path**. A choice that cannot be made is switched off in the menu, not hidden, so the keyboard walk through the menu is the same every time. `FloatingToolbar.test.tsx` and `contextMenu.test.tsx` open them by role and name.
+- **What happens is said.** A combine that leaves nothing, or that is thrown away because the shapes changed while it ran, shows a toast ("These shapes do not overlap, so there is nothing to keep."); a toast is a live region (`status`, or `alert` for the failure to load the geometry), so a screen reader hears it. A combine that works is silent, like Group: the new shape is selected and the toolbar follows it.
+- **The result is read like any shape.** It has no name of its own and takes the alternative text of the shape at the back (`alt`), which may no longer describe it: check it after combining.
+- **Not measured:** the new menus with a screen reader, and with axe-core (the permission to fetch it that the first audit used is spent).
+
 ## What is left
 
 Nothing in this document is waiting for a decision. What follows was left alone on purpose, or cannot be settled without a person or a device.

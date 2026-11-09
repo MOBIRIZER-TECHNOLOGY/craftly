@@ -64,8 +64,9 @@ export default defineConfig({
   build: { target: "es2022", chunkSizeWarningLimit: 1500 },
   // the on-device model worker splits its code (the runtime loads on demand), which needs module workers
   worker: { format: "es" },
-  // the runtime finds its WebAssembly file next to its own script, which pre-bundling would move
-  optimizeDeps: { include: ["lucide", "qrcode-generator"], exclude: ["onnxruntime-web"] },
+  // the runtime finds its WebAssembly file next to its own script, which pre-bundling would move. Libraries that load on first
+  // use are listed so that the dev server prepares them at the start: one that it finds while the page runs makes it reload the page.
+  optimizeDeps: { include: ["lucide", "qrcode-generator", "paper/dist/paper-core"], exclude: ["onnxruntime-web"] },
   test: {
     // importing the renderer loads the whole font table, which is slow while many workers start at once
     testTimeout: 30_000,

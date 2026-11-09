@@ -13,6 +13,7 @@ import {
   moveToIndex,
   removeElements,
   reorder,
+  replaceElements,
   resizeDesign,
   topLevelIds,
   ungroup,
@@ -78,6 +79,42 @@ describe("z-order", () => {
     const p = pageWith(4);
     moveToIndex(p, "e3", 0);
     expect(ids(p)).toEqual(["e3", "e0", "e1", "e2"]);
+  });
+});
+
+describe("replacing elements", () => {
+  const fresh = () => createShape("path", { id: "new", x: 0, y: 0, width: 10, height: 10, path: "M0 0 L100 100" });
+
+  it("puts the new element where the top-most of the replaced ones was, so what was above them stays above", () => {
+    const p = pageWith(5);
+    expect(replaceElements(p, ["e1", "e3"], fresh())).toBe(true);
+    expect(ids(p)).toEqual(["e0", "e2", "new", "e4"]);
+  });
+
+  it("does not mind the order of the ids, or an id that is given twice", () => {
+    const p = pageWith(5);
+    expect(replaceElements(p, ["e3", "e1", "e3"], fresh())).toBe(true);
+    expect(ids(p)).toEqual(["e0", "e2", "new", "e4"]);
+  });
+
+  it("replaces a single element in place", () => {
+    const p = pageWith(4);
+    expect(replaceElements(p, ["e2"], fresh())).toBe(true);
+    expect(ids(p)).toEqual(["e0", "e1", "new", "e3"]);
+  });
+
+  it("changes nothing when there is nothing to replace, or an id is not on the page", () => {
+    const p = pageWith(3);
+    expect(replaceElements(p, [], fresh())).toBe(false);
+    expect(replaceElements(p, ["e1", "nope"], fresh())).toBe(false);
+    expect(ids(p)).toEqual(["e0", "e1", "e2"]);
+  });
+
+  it("changes nothing when one of the elements is inside a group", () => {
+    const p = pageWith(3);
+    const g = groupElements(p, ["e0", "e1"])!;
+    expect(replaceElements(p, ["e0", "e2"], fresh())).toBe(false);
+    expect(ids(p)).toEqual([g.id, "e2"]);
   });
 });
 

@@ -206,6 +206,11 @@ export {
 
   /* ---- arrange and transform ---- */
   Group as IconGroup,
+  Combine as IconCombine,
+  SquaresUnite as IconUnion,
+  SquaresSubtract as IconSubtract,
+  SquaresIntersect as IconIntersect,
+  SquaresExclude as IconExclude,
   Ungroup as IconUngroup,
   BringToFront as IconBringToFront,
   SendToBack as IconSendToBack,
