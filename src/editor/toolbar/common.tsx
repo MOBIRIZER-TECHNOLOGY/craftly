@@ -3,8 +3,9 @@
  * flip, align, border and corner radius, plus the "..." menu.
  */
 import type { CSSProperties, ReactElement } from "react";
+import { connectable } from "@/core/connectors";
 import { DEFAULT_INK } from "@/core/factory";
-import { getActions, useEditor } from "@/core/store";
+import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { DesignElement, ID, ImageElement, ShapeElement, Stroke, StrokeStyle } from "@/core/types";
 import {
   Button,
@@ -15,6 +16,7 @@ import {
   IconAlignObjRight,
   IconAlignObjTop,
   IconChevronDown,
+  IconConnect,
   IconCopyStyle,
   IconCornerRadius,
   IconDistributeH,
@@ -154,6 +156,7 @@ export function FlipMenu() {
 /** Group + Align, offered whenever several elements are selected. */
 export function MultiActions({ ids }: { ids: ID[] }) {
   const a = getActions();
+  const canConnect = useEditor((s) => !!connectable(getActivePage(s), ids));
   const align = (mode: "left" | "center" | "right" | "top" | "middle" | "bottom", label: string, icon: ReactElement): MenuEntry => ({
     id: `align-${mode}`,
     label,
@@ -192,6 +195,15 @@ export function MultiActions({ ids }: { ids: ID[] }) {
         Group
       </TBText>
       <MenuButton label="Align" tip="Align the selected elements to each other" icon={<IconAlignObjLeft />} iconRight={<IconChevronDown />} text="Align" items={items} />
+      {canConnect && (
+        <TBText
+          icon={<IconConnect />}
+          tip="Draw an arrow from the first selected element to the second. It stays attached when they move."
+          onClick={() => a.connect(ids[0], ids[1])}
+        >
+          Connect
+        </TBText>
+      )}
     </>
   );
 }

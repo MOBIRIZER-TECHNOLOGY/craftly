@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { recordProblem } from "@/core/problems";
 import { Button, IconRefresh, IconWarning } from "@/ui";
 import { EmptyHint } from "./EmptyHint";
 
@@ -29,6 +30,7 @@ export class PanelBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error(`The ${this.props.label} panel failed:`, error, info.componentStack);
+    recordProblem("panel", error);
   }
 
   componentDidUpdate(prev: Props) {

@@ -1,4 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { clearProblems, listProblems } from "@/core/problems";
+import { isCrashing, markCrashing } from "@/core/recovery";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { ErrorBoundary } from "./ErrorBoundary";
 
@@ -13,6 +15,10 @@ let consoleError: MockInstance<typeof console.error>;
 
 beforeEach(() => {
   explode = true;
+  localStorage.clear();
+  sessionStorage.clear();
+  clearProblems();
+  markCrashing(false);
   // React reports every caught error to the console: keep the test output quiet and check what is logged
   consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
@@ -137,5 +143,89 @@ describe("<ErrorBoundary>", () => {
     );
     expect(screen.getByText("counter")).toBeTruthy();
     expect(mounts).toBe(2);
+  });
+});
+
+describe("<ErrorBoundary> and the problem it writes down", () => {
+  it("writes the crash into the list of problems on this device, as a stopped screen", () => {
+    render(
+      <ErrorBoundary>
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    const [problem] = listProblems();
+    expect(problem).toMatchObject({ kind: "screen", message: "kaboom: the canvas ran out of cheese", count: 1 });
+    expect(screen.getByText("Report this problem")).toBeTruthy();
+  });
+
+  it("knows that the editor is going away because the screen stopped, until the person goes on", () => {
+    render(
+      <ErrorBoundary>
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    expect(isCrashing()).toBe(true);
+    explode = false;
+    fireEvent.click(screen.getByRole("button", { name: "Go to your projects" }));
+    expect(isCrashing()).toBe(false);
+  });
+
+  it("lets go of that when another screen is chosen", () => {
+    const { rerender } = render(
+      <ErrorBoundary resetKey="design/a">
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    expect(isCrashing()).toBe(true);
+    explode = false;
+    rerender(
+      <ErrorBoundary resetKey="home/">
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    expect(isCrashing()).toBe(false);
+  });
+
+  it("knows which design it was, and says that Craftly stopped again when the same design stops it twice in a row", () => {
+    const first = render(
+      <ErrorBoundary designId="d1">
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Craftly stopped unexpectedly.");
+    first.unmount();
+    render(
+      <ErrorBoundary designId="d1">
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Craftly stopped again when this design was opened.");
+  });
+
+  it("counts only the design that stopped, and nothing when no design was open", () => {
+    const first = render(
+      <ErrorBoundary designId="d1">
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    first.unmount();
+    render(
+      <ErrorBoundary designId="d2">
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Craftly stopped unexpectedly.");
+    expect(sessionStorage.getItem("craftly.crashes.v1")).toContain("d1");
+    expect(sessionStorage.getItem("craftly.crashes.v1")).toContain("d2");
+  });
+
+  it("does not look for versions or count anything for a screen that is not a design", () => {
+    render(
+      <ErrorBoundary designId={null}>
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    expect(screen.queryByText("Go back to an earlier version")).toBeNull();
+    expect(sessionStorage.getItem("craftly.crashes.v1")).toBeNull();
   });
 });

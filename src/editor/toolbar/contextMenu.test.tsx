@@ -317,6 +317,37 @@ describe("combining and converting shapes from the menu", () => {
     expect(within(menu()).queryByRole("menuitem", { name: "Combine shapes" })).toBeNull();
   });
 
+  it("connects two selected elements with an arrow, in the order they were selected", async () => {
+    const user = userEvent.setup();
+    const [a, b] = await open([square({ x: 0, y: 0 }), photo()]);
+    act(() => store().actions.select([b.id, a.id]));
+    rightClick();
+    await user.click(item(/^Connect/));
+    const arrow = live(store().selection[0]);
+    expect(arrow).toMatchObject({ type: "line", endArrow: "arrow", start: { elementId: b.id }, end: { elementId: a.id } });
+    expect(paintOrder()).toHaveLength(3);
+  });
+
+  it("leaves Connect out for one element, for three, and when one of two is a line", async () => {
+    const user = userEvent.setup();
+    const [a, b, c] = await open([square({ x: 0, y: 0 }), square({ x: 400, y: 0 }), square({ x: 800, y: 0 })]);
+    act(() => store().actions.select([a.id]));
+    rightClick();
+    expect(within(menu()).queryByRole("menuitem", { name: /^Connect/ })).toBeNull();
+    await user.keyboard("{Escape}");
+    act(() => store().actions.select([a.id, b.id, c.id]));
+    rightClick();
+    expect(within(menu()).queryByRole("menuitem", { name: /^Connect/ })).toBeNull();
+    await user.keyboard("{Escape}");
+    act(() => store().actions.select([a.id, b.id]));
+    rightClick();
+    await user.click(item(/^Connect/));
+    const arrow = store().selection[0];
+    act(() => store().actions.select([a.id, arrow]));
+    rightClick();
+    expect(within(menu()).queryByRole("menuitem", { name: /^Connect/ })).toBeNull();
+  });
+
   it("writes a shape as a path", async () => {
     const user = userEvent.setup();
     const [a] = await open(overlapping());

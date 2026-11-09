@@ -8,6 +8,7 @@ import {
   hsvToHex,
   hsvToRgb,
   isLight,
+  isPlainColor,
   lighten,
   luminance,
   mix,
@@ -239,5 +240,42 @@ describe("fadedInk", () => {
     expect(contrastRatio(fadedInk("#ffffff", "#7c3aed", 0.3, 3), "#7c3aed")).toBeGreaterThanOrEqual(3);
     expect(fadedInk("#ffffff", "#7c3aed", 2)).toBe("#ffffff");
     expect(fadedInk("#000000", "#ffffff", -1, 1)).toBe("#ffffff");
+  });
+});
+
+describe("isPlainColor: a colour that is safe to put into the attribute of some markup as it stands", () => {
+  it.each(["#abc", "#abcd", "#AABBCC", "#aabbccdd", "rgb(1, 2, 3)", "rgba(10,20,30,0.5)", "RGB(1 2 3 / 50%)", "rgba( 1 , 2 , 3 , .5 )", "transparent", "black", "White"])(
+    "accepts %s",
+    (value) => {
+      expect(isPlainColor(value)).toBe(true);
+    },
+  );
+
+  it.each([
+    ["nothing", ""],
+    ["a number", 5],
+    ["nothing at all", undefined],
+    ["a colour of five digits", "#12345"],
+    ["a colour that is not hex", "#12345g"],
+    ["a name that is not known", "rebeccapurple"],
+    ["a colour with a quote in it", 'red" onload="x'],
+    ["rgb with one number too many", "rgb(1,2,3,4,5)"],
+    ["rgb with something after it", 'rgb(1,2,3)" x="1'],
+    ["rgb with a quote tucked behind a number", 'rgb(1,2,3,4")'],
+    ["rgb with a word in it", "rgb(1,2,x)"],
+    ["a reference", "url(#a)"],
+    ["a reference to another file", "url(https://evil.test/p)"],
+    ["a variable", "var(--c)"],
+    ["a colour that is far too long", `#${"a".repeat(100)}`],
+    ["spaces that go on and on", `rgb(1${" ".repeat(60)}2 3)`],
+  ])("refuses %s", (_what, value) => {
+    expect(isPlainColor(value)).toBe(false);
+  });
+
+  it("is quick about a long run of spaces, which a pattern could take for ever over", () => {
+    const started = Date.now();
+    expect(isPlainColor(`rgb(1${" ".repeat(60)}x`)).toBe(false);
+    expect(isPlainColor(`rgb(1${" ".repeat(100_000)}x`)).toBe(false);
+    expect(Date.now() - started).toBeLessThan(200);
   });
 });

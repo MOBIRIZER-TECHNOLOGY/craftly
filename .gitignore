@@ -4,3 +4,5 @@ dist-*
 *.log
 .DS_Store
 coverage
+# data of the server for shared designs (npm run server)
+live-data/

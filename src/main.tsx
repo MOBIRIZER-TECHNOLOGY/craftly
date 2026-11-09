@@ -5,10 +5,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { installDatabaseNotices } from "./databaseNotices";
+import { installProblemCatcher } from "./problemCatcher";
 import { registerServiceWorker } from "./serviceWorker";
 
 // Another tab upgrading the library, or holding up this tab's own upgrade, is told to the person (src/databaseNotices.ts).
 installDatabaseNotices();
+
+// What nothing else catches (an error in a handler, a failure that nothing waited for) is written down on this device, where
+// "Report a problem" shows it (src/problemCatcher.ts, docs/CRASH-RECOVERY.md).
+installProblemCatcher();
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>

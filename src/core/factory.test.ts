@@ -295,4 +295,18 @@ describe("cloning", () => {
     copy.elements.pop();
     expect(page.elements).toHaveLength(2);
   });
+
+  it("keeps the lines of a copied page attached to the copies of their shapes", () => {
+    const page = createPage({
+      id: "page",
+      elements: [
+        createShape("rect", { id: "a" }),
+        createShape("rect", { id: "b" }),
+        createLine({ id: "l", start: { elementId: "a", anchor: "auto" }, end: { elementId: "b", anchor: "right" } }),
+      ],
+    });
+    const [a, b, line] = clonePage(page).elements;
+    expect(line).toMatchObject({ start: { elementId: a.id, anchor: "auto" }, end: { elementId: b.id, anchor: "right" } });
+    expect(page.elements[2]).toMatchObject({ start: { elementId: "a" }, end: { elementId: "b" } });
+  });
 });

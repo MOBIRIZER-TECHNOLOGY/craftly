@@ -51,6 +51,12 @@ describe("<App>", () => {
     restore();
   });
 
+  it("opens the page for a link to a shared design on a #/join/<token> route, and says when the link is not one of ours", async () => {
+    await mountApp("#/join/not-a-link-we-made");
+    expect(await screen.findByText(/not a link that Craftly made/, undefined, { timeout: 15_000 })).toBeTruthy();
+    expect(screen.getByText("This shared design could not be opened")).toBeTruthy();
+  });
+
   it("goes from the editor back to the dashboard when the route changes", async () => {
     const restore = stubLayout();
     const design = sampleDesign({ id: "app-route-2", title: "Back and forth" });

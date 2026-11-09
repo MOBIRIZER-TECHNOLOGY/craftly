@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeProblemsDialog, useProblemsDialog } from "@/components/problemsDialogState";
 import { createDesign, createPage } from "@/core/factory";
 import { createFolder, getDesign, listDesigns, listFolders } from "@/core/library";
 import { dbPut } from "@/core/persistence";
@@ -201,6 +202,16 @@ describe("<FileMenu>: the design", () => {
     await openMenu(user);
     await user.click(item(/^Print/));
     expect(printDesign).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds Report a problem under Help", async () => {
+    await mount();
+    const user = userEvent.setup({ delay: null });
+    await openMenu(user);
+    await user.click(item(/^Help/));
+    await user.click(item(/^Report a problem/));
+    expect(useProblemsDialog.getState().open).toBe(true);
+    act(() => closeProblemsDialog());
   });
 
   it("finds the keyboard shortcuts under Help", async () => {

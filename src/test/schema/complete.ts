@@ -136,7 +136,15 @@ function completeElements(): Complete<DesignElement>[] {
       path: "M0 0",
       params: { sides: 4 },
     },
-    { ...base("l_1"), type: "line", stroke, startArrow: "triangle", endArrow: "open-arrow" },
+    {
+      ...base("l_1"),
+      type: "line",
+      stroke,
+      startArrow: "triangle",
+      endArrow: "open-arrow",
+      start: { elementId: "s_1", anchor: "auto" },
+      end: { elementId: "s_5", anchor: "left" },
+    },
     {
       ...base("i_1"),
       type: "image",
@@ -192,7 +200,7 @@ function completeElements(): Complete<DesignElement>[] {
           curve: 0,
           list: "bullet",
         },
-        { ...base("l_2"), type: "line", stroke, startArrow: "none", endArrow: "arrow" },
+        { ...base("l_2"), type: "line", stroke, startArrow: "none", endArrow: "arrow", start: { elementId: "s_1", anchor: "top" }, end: { elementId: "s_5", anchor: "bottom" } },
       ],
     },
     {
@@ -271,6 +279,7 @@ export function completeDesign(): Complete<Design> {
     starred: true,
     trashedAt: 1_700_000_900_000,
     guides: { vertical: [100, 960], horizontal: [200, 540] },
+    live: { server: "https://live.example.test", room: "r_complete", key: "k_complete", role: "edit", viewKey: "v_complete" },
     version: 1,
   };
 }

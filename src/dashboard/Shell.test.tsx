@@ -6,6 +6,7 @@ import * as projectFile from "@/export/projectFile";
 import { exportProjectFile } from "@/export/projectFile";
 import { Hosts, dismissOpenDialogs, emptyLibrary, seedDesign, stubFilePicker } from "@/test/dashuiUtils";
 import { toast } from "@/ui";
+import { closeProblemsDialog, useProblemsDialog } from "@/components/problemsDialogState";
 import { closeCreateDialog, useCreateDialog } from "./createDialogState";
 import { Shell, activeNav } from "./Shell";
 
@@ -174,7 +175,7 @@ describe("<Shell>", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Import project file", "Back up & restore", "About Craftly"]);
+      ).toEqual(["Import project file", "Back up & restore", "Report a problem", "About Craftly"]);
     });
 
     it("also offers Trash in the phone header, where the tab bar has no room for it", async () => {
@@ -187,7 +188,7 @@ describe("<Shell>", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Import project file", "Back up & restore", "Trash", "About Craftly"]);
+      ).toEqual(["Import project file", "Back up & restore", "Trash", "Report a problem", "About Craftly"]);
       await user.click(within(menu).getByRole("menuitem", { name: "Trash" }));
       expect(window.location.hash).toBe("#/trash");
     });
@@ -202,6 +203,15 @@ describe("<Shell>", () => {
       await user.click(wide);
       expect(wide.getAttribute("aria-expanded")).toBe("true");
       expect(screen.getByRole("menu", { name: "Account" })).toBeTruthy();
+    });
+
+    it("opens the Report a problem dialog", async () => {
+      const user = userEvent.setup();
+      mountShell();
+      await user.click(within(railNav()).getByRole("button", { name: "Account" }));
+      await user.click(screen.getByRole("menuitem", { name: "Report a problem" }));
+      expect(useProblemsDialog.getState().open).toBe(true);
+      act(() => closeProblemsDialog());
     });
 
     it("opens the About dialog", async () => {

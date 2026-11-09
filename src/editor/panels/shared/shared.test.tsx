@@ -11,6 +11,7 @@ import { ChipRow } from "./ChipRow";
 import { DraggableItem } from "./DraggableItem";
 import { EmptyHint } from "./EmptyHint";
 import { ItemGrid, LazyBox, Masonry, VirtualGrid } from "./ItemGrid";
+import { clearProblems, listProblems } from "@/core/problems";
 import { PanelBoundary } from "./PanelBoundary";
 import { PanelHeader } from "./PanelHeader";
 import { Panel, PanelLink, PanelScroll, PanelSection, PanelTop, usePanelScroller } from "./PanelLayout";
@@ -775,6 +776,17 @@ describe("<PanelBoundary>", () => {
 
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  it("writes a panel that stopped into the problems on this device, so that it can be reported", () => {
+    localStorage.clear();
+    clearProblems();
+    render(
+      <PanelBoundary resetKey="text" label="Text">
+        <Boom explode />
+      </PanelBoundary>,
+    );
+    expect(listProblems()[0]).toMatchObject({ kind: "panel", message: "the catalogue is broken" });
   });
 
   it("shows the panel while it works", () => {

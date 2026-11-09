@@ -3,6 +3,7 @@
  * store runs them inside an immer draft (and tests run them on a clone).
  */
 import { cloneDeep } from "./clone";
+import { rebindClones, retargetLines } from "./connectors";
 import { cloneElement, createGroup } from "./factory";
 import { boundsOfElements, boxBounds, boxCenter, rotatePoint } from "./geometry";
 import { uid } from "./ids";
@@ -207,17 +208,19 @@ export function ungroup(page: Page, groupId: ID): ID[] {
 
 /**
  * Replaces the elements `ids` by `el`, which takes the paint position of the top-most of them, so that what was above them
- * stays above. Only elements at the top level of the page are replaced. Returns false, and changes nothing, when there is no
- * id, an id is not on the page or one of the elements is inside a group.
+ * stays above, and takes over the lines that were attached to them. Only elements at the top level of the page are replaced.
+ * Returns false, and changes nothing, when there is no id, an id is not on the page or one of the elements is inside a group.
  */
 export function replaceElements(page: Page, ids: ID[], el: DesignElement): boolean {
-  const hits = [...new Set(ids)].map((id) => locate(page.elements, id));
+  const unique = [...new Set(ids)];
+  const hits = unique.map((id) => locate(page.elements, id));
   if (!hits.length || hits.some((h) => !h || h.parent)) return false;
   const found = (hits as Located[]).sort((a, b) => a.index - b.index);
   const top = found[found.length - 1].index;
   const removedBefore = found.filter((h) => h.index < top).length;
   for (const h of [...found].reverse()) page.elements.splice(h.index, 1);
   page.elements.splice(top - removedBefore, 0, el);
+  retargetLines(page.elements, unique, el.id);
   return true;
 }
 
@@ -277,6 +280,8 @@ export function distributeElements(page: Page, ids: ID[], axis: "horizontal" | "
 /** Clones the elements just above their originals, offset by (dx, dy). Returns the new ids. */
 export function duplicateElements(page: Page, ids: ID[], dx = 24, dy = 24): ID[] {
   const out: ID[] = [];
+  const originals: DesignElement[] = [];
+  const copies: DesignElement[] = [];
   const tops = topLevelIds(page, ids);
   const groups = new Map<DesignElement[], Array<{ index: number; el: DesignElement }>>();
   for (const id of tops) {
@@ -293,11 +298,14 @@ export function duplicateElements(page: Page, ids: ID[], dx = 24, dy = 24): ID[]
       c.y += dy;
       c.locked = false;
       out.push(c.id);
+      originals.push(el);
+      copies.push(c);
       return c;
     });
     const insertAt = items[items.length - 1].index + 1;
     list.splice(insertAt, 0, ...clones);
   }
+  rebindClones(originals, copies);
   return out;
 }
 
@@ -482,5 +490,6 @@ export function clonePageWithIds(page: Page): Page {
     if (e.type === "group") e.children.forEach(refresh);
   };
   copy.elements.forEach(refresh);
+  rebindClones(page.elements, copy.elements);
   return copy;
 }

@@ -3,6 +3,7 @@
  * dashboard thumbnail fresh and records version-history snapshots.
  */
 import { saveDesign, saveVersion } from "@/core/library";
+import { recordProblem } from "@/core/problems";
 import { useEditor } from "@/core/store";
 import { renderPageToCanvas } from "@/render/renderPage";
 
@@ -50,7 +51,8 @@ export function installAutosave(): () => void {
       }
       const cur = useEditor.getState();
       cur.actions.setSaveState(cur.design === design ? "saved" : "unsaved");
-    } catch {
+    } catch (error) {
+      recordProblem("save", error); // the top bar says that saving failed; the problem is written down for the report
       useEditor.getState().actions.setSaveState("error");
     } finally {
       saving = false;

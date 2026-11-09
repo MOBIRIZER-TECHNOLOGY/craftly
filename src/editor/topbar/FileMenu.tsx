@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { openProblemsDialog } from "@/components/problemsDialogState";
 import { listFolders } from "@/core/library";
 import { useEditor, type EditorState } from "@/core/store";
 import type { Folder } from "@/core/types";
@@ -13,6 +14,7 @@ import {
   IconFilePlus,
   IconHelp,
   IconHistory,
+  IconBug,
   IconLaptop,
   IconMoveToFolder,
   IconPageStrip,
@@ -197,7 +199,10 @@ export function FileMenu({ onRename, onUpload }: FileMenuProps) {
       id: "help",
       label: "Help",
       icon: <IconHelp aria-hidden="true" />,
-      submenu: [{ id: "shortcuts", label: "Keyboard shortcuts", shortcut: "?", onSelect: () => actions.openDialog("shortcuts") }],
+      submenu: [
+        { id: "shortcuts", label: "Keyboard shortcuts", shortcut: "?", onSelect: () => actions.openDialog("shortcuts") },
+        { id: "problems", label: "Report a problem", icon: <IconBug aria-hidden="true" />, onSelect: () => openProblemsDialog() },
+      ],
     },
   ];
 

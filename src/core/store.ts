@@ -10,17 +10,20 @@
  *    `beginTransaction()` / `endTransaction()` so they become ONE undo step,
  *    or pass `{ coalesce: "key" }` for repeated discrete edits.
  */
+import { applyOps, diffDesign, type Op } from "@/collab/ops";
+import { withShared } from "@/collab/session";
 import { animatableElements, getPageAnimationPreset, MAX_PAGE_DURATION, MIN_PAGE_DURATION, pageAnimationFor, type AnimPhase } from "./animation";
 import { cloneDeep } from "./clone";
 import { produce, type Draft } from "immer";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { useMemo } from "react";
-import { createPage, cloneElement, solid } from "./factory";
+import { connectable, rebindClones, reflowLines } from "./connectors";
+import { createPage, cloneElement, createLine, DEFAULT_INK, solid } from "./factory";
 import { boundsOfElements } from "./geometry";
 import { uid } from "./ids";
 import * as ops from "./ops";
-import type { Design, DesignElement, ElementAnimation, Fill, ID, Page, PageTransition, Point, SizeUnit, TextElement, TextParagraph } from "./types";
+import type { Anchor, Design, DesignElement, ElementAnimation, Fill, ID, LiveLink, Page, PageTransition, Point, SizeUnit, TextElement, TextParagraph } from "./types";
 import { alignAnchor, measureTextElement } from "@/render/textLayout";
 import { onFontsChange } from "@/render/fonts";
 import { rotatePoint } from "./geometry";
@@ -89,6 +92,8 @@ export interface EditorState {
   future: Design[];
   canUndo: boolean;
   canRedo: boolean;
+  /** the design is being edited together with other people: undo and redo then take back this person's own steps (see startLive) */
+  live: boolean;
 
   saveState: "saved" | "saving" | "unsaved" | "error";
   lastSavedAt: number;
@@ -100,6 +105,17 @@ export interface EditorState {
   styleClipboard: Record<string, unknown> | null;
   /** "Add page" menu / template picker support: last template page applied */
   actions: EditorActions;
+}
+
+/** What the store tells the connection to the people who share the design with this person (src/collab): every change, as the design before and after. */
+export interface LiveBridge {
+  change(before: Design, after: Design): void;
+}
+
+/** One step of this person's own work in a shared design, as operations: to do it again, and to take it back. */
+interface LiveStep {
+  forward: Op[];
+  inverse: Op[];
 }
 
 export interface AddOptions {
@@ -124,6 +140,17 @@ export interface EditorActions {
   updateMeta(patch: Partial<Pick<Design, "starred" | "folderId" | "trashedAt">>): void;
   resizeDesign(width: number, height: number, scaleContent: boolean, unit?: SizeUnit): void;
   replaceDesign(design: Design): void;
+  /**
+   * The design is shared with other people from now on: every change is told to the bridge, and undo and redo take back this person's
+   * own steps (as operations, so that another person's changes since are not undone). The history so far is dropped.
+   */
+  startLive(bridge: LiveBridge): void;
+  /** Back to a design of one's own: the connection is detached and the history is empty. */
+  stopLive(): void;
+  /** The design as the people who share it now have it: shown at once, without a step of undo and without being told back. */
+  applyShared(shared: Design): void;
+  /** Where this design is shared, or null: stored with the design on this device, never sent. */
+  setLiveLink(link: LiveLink | null): void;
 
   /* pages */
   setActivePage(id: ID): void;
@@ -152,6 +179,13 @@ export interface EditorActions {
   /* elements */
   addElements(els: DesignElement[], opts?: AddOptions): ID[];
   addElement(el: DesignElement, opts?: AddOptions): ID;
+  /**
+   * Draws an arrow from one element of the open page to another and attaches it to both: it follows them when they move, change
+   * size or turn (src/core/connectors.ts). The sides are the ones that face each other unless `fromAnchor` / `toAnchor` say
+   * otherwise. Returns the id of the line, "" when the elements cannot be joined (the same one twice, one that is not at the top
+   * level of the page, a line) or the document is only being viewed.
+   */
+  connect(fromId: ID, toId: ID, opts?: { fromAnchor?: Anchor; toAnchor?: Anchor }): ID;
   updateElements(ids: ID[], patch: Partial<DesignElement> | ((el: DesignElement) => void), opts?: UpdateOptions): void;
   updateSelection(patch: Partial<DesignElement> | ((el: DesignElement) => void), opts?: UpdateOptions): void;
   /** Like `updateElements` for a page that may not be the open one: a slow job finishing after the person turned the page. */
@@ -339,6 +373,18 @@ export const useEditor = create<EditorState>()((set, get) => {
   let txnDepth = 0;
   let txnBase: Design | null = null;
   let lastCoalesce: { key: string; at: number } | null = null;
+  // a design that is shared: the connection, and this person's own steps (undo and redo are theirs alone)
+  let bridge: LiveBridge | null = null;
+  let liveUndo: LiveStep[] = [];
+  let liveRedo: LiveStep[] = [];
+  let txnSteps: LiveStep[] = [];
+  const joinSteps = (a: LiveStep, b: LiveStep): LiveStep => ({ forward: [...a.forward, ...b.forward], inverse: [...b.inverse, ...a.inverse] });
+  const detachLive = () => {
+    bridge = null;
+    liveUndo = [];
+    liveRedo = [];
+    txnSteps = [];
+  };
 
   /** the page strip and bottom bar sit outside the workspace, so the viewport already excludes them */
   const stripHeight = () => 0;
@@ -353,32 +399,103 @@ export const useEditor = create<EditorState>()((set, get) => {
     const s = get();
     if (!s.design || s.mode === "view") return false;
     const base = s.design;
-    let next = produce(base, (d) => {
+    const produced = produce(base, (d) => {
       recipe(d);
     });
-    if (next === base) return false;
-    next = normalizeTexts(next, base);
+    if (produced === base) return false;
+    settle(base, produced, opts);
+    return true;
+  }
+
+  /**
+   * A change of the document that has been made: what the editor works out by itself (text boxes, attached lines), the history, and
+   * the people who share the design. record: false leaves the history alone (undo and redo themselves).
+   */
+  function settle(base: Design, produced: Design, opts: UpdateOptions & { record?: boolean } = {}): void {
+    const s = get();
+    let next = reflowLines(normalizeTexts(produced, base), base);
     next = produce(next, (d) => {
       d.updatedAt = Date.now();
     });
 
     let past = s.past;
     let future = s.future;
-    if (txnDepth > 0) {
-      // inside a transaction: history is handled by endTransaction
-    } else {
-      const now = Date.now();
-      const merge = opts.coalesce && lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.at < 1200;
-      if (merge) {
-        lastCoalesce = { key: opts.coalesce as string, at: now };
-      } else {
-        past = [...past.slice(-(HISTORY_LIMIT - 1)), base];
-        future = [];
-        lastCoalesce = opts.coalesce ? { key: opts.coalesce, at: now } : null;
+    let canUndo: boolean;
+    let canRedo: boolean;
+    let told = false;
+    if (bridge) {
+      // shared: history is made of this person's own steps as operations; a change that is not for the others (a star) is not a step
+      const forward = diffDesign(base, next);
+      if (forward.length) {
+        told = true;
+        if (opts.record !== false) recordLive({ forward, inverse: diffDesign(next, base) }, opts);
       }
+      canUndo = liveUndo.length > 0;
+      canRedo = liveRedo.length > 0;
+    } else {
+      if (txnDepth > 0) {
+        // inside a transaction: history is handled by endTransaction
+      } else {
+        const now = Date.now();
+        const merge = opts.coalesce && lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.at < 1200;
+        if (merge) {
+          lastCoalesce = { key: opts.coalesce as string, at: now };
+        } else {
+          past = [...past.slice(-(HISTORY_LIMIT - 1)), base];
+          future = [];
+          lastCoalesce = opts.coalesce ? { key: opts.coalesce, at: now } : null;
+        }
+      }
+      canUndo = past.length > 0;
+      canRedo = future.length > 0;
     }
-    set({ design: next, past, future, canUndo: past.length > 0, canRedo: future.length > 0, docVersion: s.docVersion + 1, saveState: "unsaved" });
-    return true;
+    set({ design: next, past, future, canUndo, canRedo, docVersion: s.docVersion + 1, saveState: "unsaved" });
+    if (told) bridge?.change(base, next);
+  }
+
+  /** This person's own step in a shared design: one with the others of a gesture or of edits that are coalesced. */
+  function recordLive(step: LiveStep, opts: UpdateOptions): void {
+    if (txnDepth > 0) {
+      txnSteps.push(step);
+      return;
+    }
+    const now = Date.now();
+    const merge = opts.coalesce && lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.at < 1200 && liveUndo.length > 0;
+    if (merge) {
+      lastCoalesce = { key: opts.coalesce as string, at: now };
+      liveUndo = [...liveUndo.slice(0, -1), joinSteps(liveUndo[liveUndo.length - 1], step)];
+    } else {
+      liveUndo = [...liveUndo.slice(-(HISTORY_LIMIT - 1)), step];
+      liveRedo = [];
+      lastCoalesce = opts.coalesce ? { key: opts.coalesce, at: now } : null;
+    }
+  }
+
+  /** Undo or redo of this person's own step in a shared design: the operations of the step, applied to the design as it is now. */
+  function liveStep(way: "undo" | "redo"): void {
+    const s = get();
+    const step = (way === "undo" ? liveUndo : liveRedo).at(-1);
+    if (!step || !s.design) return;
+    if (way === "undo") {
+      liveUndo = liveUndo.slice(0, -1);
+      liveRedo = [...liveRedo.slice(-(HISTORY_LIMIT - 1)), step];
+    } else {
+      liveRedo = liveRedo.slice(0, -1);
+      liveUndo = [...liveUndo.slice(-(HISTORY_LIMIT - 1)), step];
+    }
+    lastCoalesce = null;
+    const next = applyOps(s.design, way === "undo" ? step.inverse : step.forward);
+    if (next !== s.design) settle(s.design, next, { record: false });
+    const now = get();
+    const activeId = now.design && pageOf(now.design, now.activePageId) ? now.activePageId : (now.design?.pages[0].id ?? "");
+    set({
+      canUndo: liveUndo.length > 0,
+      canRedo: liveRedo.length > 0,
+      activePageId: activeId,
+      selection: sanitizeSelection(now.design, activeId, now.selection),
+      editingTextId: null,
+      croppingId: null,
+    });
   }
 
   const activePage = (): Page | null => {
@@ -403,7 +520,8 @@ export const useEditor = create<EditorState>()((set, get) => {
   const actions: EditorActions = {
     /* ---------------- document ---------------- */
     openDesign(design) {
-      const normalized = normalizeTexts(design, null, true);
+      const normalized = reflowLines(normalizeTexts(design, null, true), null);
+      detachLive();
       txnDepth = 0;
       txnBase = null;
       lastCoalesce = null;
@@ -425,6 +543,7 @@ export const useEditor = create<EditorState>()((set, get) => {
         future: [],
         canUndo: false,
         canRedo: false,
+        live: false,
         saveState: "saved",
         docVersion: s.docVersion + 1,
         context: null,
@@ -435,7 +554,45 @@ export const useEditor = create<EditorState>()((set, get) => {
       });
     },
     closeDesign() {
-      set({ design: null, selection: [], past: [], future: [], canUndo: false, canRedo: false, editingTextId: null, croppingId: null, context: null });
+      detachLive();
+      set({ design: null, selection: [], past: [], future: [], canUndo: false, canRedo: false, live: false, editingTextId: null, croppingId: null, context: null });
+    },
+    startLive(next) {
+      detachLive();
+      bridge = next;
+      lastCoalesce = null;
+      set({ live: true, past: [], future: [], canUndo: false, canRedo: false });
+    },
+    stopLive() {
+      detachLive();
+      set({ live: false, past: [], future: [], canUndo: false, canRedo: false });
+    },
+    applyShared(shared) {
+      const s = get();
+      if (!bridge || !s.design) return;
+      const merged = withShared(s.design, shared);
+      if (merged === s.design) return;
+      // what is derived is worked out here and not sent: the sizes of texts and the lines that follow shapes
+      const design = reflowLines(normalizeTexts(merged, s.design), null);
+      const activeId = pageOf(design, s.activePageId) ? s.activePageId : design.pages[0].id;
+      const open = pageOf(design, activeId)!.elements;
+      const there = (id: ID | null) => (id && ops.locate(open, id) ? id : null);
+      set({
+        design,
+        activePageId: activeId,
+        selection: sanitizeSelection(design, activeId, s.selection),
+        editingTextId: there(s.editingTextId),
+        croppingId: there(s.croppingId),
+        focusGroupId: there(s.focusGroupId),
+        docVersion: s.docVersion + 1,
+        saveState: "unsaved",
+      });
+    },
+    setLiveLink(link) {
+      const s = get();
+      if (!s.design) return;
+      const { live: _live, ...rest } = s.design;
+      set({ design: link ? { ...rest, live: link } : rest, saveState: "unsaved", docVersion: s.docVersion + 1 });
     },
     setTitle(title) {
       commit((d) => {
@@ -617,6 +774,7 @@ export const useEditor = create<EditorState>()((set, get) => {
       if (!design || !els.length) return [];
       const pageId = opts.pageId ?? s.activePageId;
       const items = els.map((e) => cloneElement(e));
+      rebindClones(els, items);
       placeElements(items, design, opts);
       commit((d) => {
         const p = d.pages.find((x) => x.id === pageId);
@@ -628,6 +786,24 @@ export const useEditor = create<EditorState>()((set, get) => {
     },
     addElement(el, opts) {
       return actions.addElements([el], opts)[0] ?? "";
+    },
+    connect(fromId, toId, opts = {}) {
+      const s = get();
+      const page = activePage();
+      if (!s.design || !page || !connectable(page, [fromId, toId])) return "";
+      // the same weight as the arrows of the Elements panel; the geometry is set by `commit`, which aims every attached line
+      const line = createLine({
+        stroke: { color: DEFAULT_INK, width: Math.max(4, Math.round(Math.min(s.design.width, s.design.height) * 0.006)), style: "solid", cap: "round" },
+        endArrow: "arrow",
+        start: { elementId: fromId, anchor: opts.fromAnchor ?? "auto" },
+        end: { elementId: toId, anchor: opts.toAnchor ?? "auto" },
+      });
+      const done = commit((d) => {
+        d.pages.find((p) => p.id === page.id)?.elements.push(line as Draft<DesignElement>);
+      });
+      if (!done) return "";
+      set({ selection: [line.id], focusGroupId: null });
+      return line.id;
     },
     updateElements(ids, patch, opts) {
       withActivePage((page) => ops.patchElements(page as Page, ids, patch as never), opts);
@@ -878,6 +1054,7 @@ export const useEditor = create<EditorState>()((set, get) => {
         c.locked = false;
         return c;
       });
+      rebindClones(clip.elements, copies);
       if (at) {
         actions.addElements(copies, { at });
       } else {
@@ -917,6 +1094,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     /* ---------------- history ---------------- */
     undo() {
       const s = get();
+      if (bridge) return txnDepth > 0 ? undefined : liveStep("undo");
       if (txnDepth > 0 || !s.past.length || !s.design) return;
       const prev = s.past[s.past.length - 1];
       const past = s.past.slice(0, -1);
@@ -939,6 +1117,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     },
     redo() {
       const s = get();
+      if (bridge) return txnDepth > 0 ? undefined : liveStep("redo");
       if (txnDepth > 0 || !s.future.length || !s.design) return;
       const next = s.future[0];
       const future = s.future.slice(1);
@@ -970,6 +1149,17 @@ export const useEditor = create<EditorState>()((set, get) => {
       const s = get();
       const base = txnBase;
       txnBase = null;
+      if (bridge) {
+        // a gesture is one step of this person's own work, whatever the others did while it lasted
+        const steps = txnSteps;
+        txnSteps = [];
+        if (!steps.length) return;
+        liveUndo = [...liveUndo.slice(-(HISTORY_LIMIT - 1)), steps.reduce(joinSteps)];
+        liveRedo = [];
+        lastCoalesce = null;
+        set({ canUndo: true, canRedo: false });
+        return;
+      }
       if (!base || !s.design || base === s.design) return;
       const past = [...s.past.slice(-(HISTORY_LIMIT - 1)), base];
       lastCoalesce = null;
@@ -1041,7 +1231,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     onFontsChange(() => {
       const s = get();
       if (!s.design) return;
-      const fixed = normalizeTexts(s.design, null, true);
+      const fixed = reflowLines(normalizeTexts(s.design, null, true), s.design);
       if (fixed !== s.design) {
         const patch = { design: fixed, docVersion: s.docVersion + 1 };
         // keep history snapshots consistent so undo does not resurrect stale boxes
@@ -1080,6 +1270,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     future: [],
     canUndo: false,
     canRedo: false,
+    live: false,
     saveState: "saved",
     lastSavedAt: 0,
     docVersion: 0,

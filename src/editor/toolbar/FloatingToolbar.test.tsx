@@ -303,6 +303,35 @@ describe("shape toolbar", () => {
     mount([box()]);
     expect(has("Combine")).toBe(false);
   });
+
+  it("joins two shapes with an arrow from the first selected to the second, and selects the arrow", async () => {
+    const user = userEvent.setup();
+    const [a, b] = [box({ x: 0, y: 0, width: 100, height: 50 }), box({ x: 300, y: 0, width: 100, height: 50 })];
+    mount([a, b], [b, a]); // b was selected first
+    await user.click(btn("Connect"));
+    const arrow = live<LineElement>(store().selection[0]);
+    expect(arrow).toMatchObject({ type: "line", endArrow: "arrow", start: { elementId: b.id }, end: { elementId: a.id } });
+    expect(store().design!.pages[0].elements).toHaveLength(3);
+    expect(kind()).toBe("line"); // the arrow is what is selected now
+  });
+
+  it("offers Connect for exactly two, and not for one, three, or a line among them", () => {
+    const [a, b, c] = [box({ x: 0 }), box({ x: 300 }), box({ x: 600 })];
+    const view = mount([a, b, c], [a]);
+    expect(has("Connect")).toBe(false);
+    view.unmount();
+    mount([a, b, c], [a, b, c]);
+    expect(has("Connect")).toBe(false);
+  });
+
+  it("offers Connect for a shape and a text, and not for a shape and a line", () => {
+    const [a, text, line] = [box({ x: 0 }), createText({ text: "Hi", x: 400, y: 0 }), createLine({ x: 0, y: 300 })];
+    const view = mount([a, text, line], [a, text]);
+    expect(has("Connect")).toBe(true);
+    view.unmount();
+    mount([a, text, line], [a, line]);
+    expect(has("Connect")).toBe(false);
+  });
 });
 
 describe("line toolbar", () => {
@@ -557,7 +586,7 @@ describe("other toolbars", () => {
     const user = userEvent.setup();
     const [s, t] = [box(), createText({ text: "x", x: 500, y: 300 })];
     mount([s, t]);
-    expect(names()).toEqual(["Group", "Align", "Transparency", "Animate", "Position", "More actions"]);
+    expect(names()).toEqual(["Group", "Align", "Connect", "Transparency", "Animate", "Position", "More actions"]);
     await user.click(btn("Group"));
     expect(store().selection).toHaveLength(1);
   });

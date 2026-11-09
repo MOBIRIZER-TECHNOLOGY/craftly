@@ -135,6 +135,13 @@ The dialog was built the day after the audit, to its rules:
 - **The result is read like any shape.** It has no name of its own and takes the alternative text of the shape at the back (`alt`), which may no longer describe it: check it after combining.
 - **Not measured:** the new menus with a screen reader, and with axe-core (the permission to fetch it that the first audit used is spent).
 
+## Added after the audit: the crash screen and Report a problem (2026-11-09, not audited)
+
+- **The crash screen.** The heading, the explanation and the error message are one `role="alert"` region, so a screen reader reads them when the screen appears; the keyboard is put on **Reload Craftly** (the screen that had it is gone). The versions and the report are native `details` and `summary` elements, folded away; the list of versions opens by itself after a repeated stop. `CrashScreen.test.tsx` checks the focus and the texts.
+- **The Report a problem dialog** is a modal like the others (focus kept inside, Escape closes). Its list of problems is a `listbox` named "Problems on this device" with `option` rows and `aria-selected`; **Close** exists twice (the round button and the footer), as in other dialogs. The report is a scrolling `pre` with a name ("What a report holds") that the keyboard can reach (`tabIndex` 0, with the reason in a lint comment).
+- **The toast** for something that nothing caught is an `alert` toast with a **Details** button, so it is announced and the way to the details is a button, not a link.
+- **Not measured:** none of this with a screen reader or axe-core (the permission to fetch it that the first audit used is spent), the colours of the new styles (`ErrorBoundary.css`, `ReportPanel.css`, `problemsDialog.css`), the dialog at 594 px, and the 24 px rule of `e2e/a11y.cjs` with the dialog open.
+
 ## What is left
 
 Nothing in this document is waiting for a decision. What follows was left alone on purpose, or cannot be settled without a person or a device.

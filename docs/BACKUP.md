@@ -10,9 +10,9 @@ Everything Craftly stores lives in the browser (IndexedDB). Clearing the site's 
 
 ## What is in a backup
 
-In: every design, the trash included, with its pages, folder, star and dates, as stored; the dashboard preview of each design; every uploaded picture, byte for byte, also those that no design uses; folders; the brand kit (only when this browser saved one of its own); and the saved versions of each design (the Version history list, up to 25 per design).
+In: every design, the trash included, with its pages, folder, star and dates, as stored; the dashboard preview of each design; every uploaded picture, byte for byte, also those that no design uses; folders; the brand kit (only when this browser saved one of its own); and the saved versions of each design (the Version history list, up to 25 per design; the versions that crash recovery makes, "Before the problem" and "Before going back", are in it like any other, see [`CRASH-RECOVERY.md`](CRASH-RECOVERY.md)).
 
-Not in: favourite templates, recent colours, the editor's own preferences (such as whether the left bar is open), the on-device AI models (88.1 MB and 4.9 MB: **File > On-device models** downloads them again) and the app itself.
+Not in: the list of problems that Craftly wrote down on this device (`localStorage`, key `craftly.problems.v1`), the crash counts of a tab (`sessionStorage`, key `craftly.crashes.v1`), favourite templates, recent colours, the editor's own preferences (such as whether the left bar is open), the on-device AI models (88.1 MB and 4.9 MB: **File > On-device models** downloads them again) and the app itself.
 
 ## The file
 

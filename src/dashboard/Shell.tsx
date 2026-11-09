@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { openProblemsDialog } from "@/components/problemsDialogState";
 import {
   Avatar,
   BrandMark,
@@ -9,6 +10,7 @@ import {
   IconChevronDown,
   IconFolder,
   IconHome,
+  IconBug,
   IconInfo,
   IconPanelClose,
   IconPanelOpen,
@@ -105,6 +107,7 @@ function useAccountMenu(includeTrash: boolean) {
       },
     },
     ...(includeTrash ? [{ id: "trash", label: "Trash", icon: <IconTrash aria-hidden="true" />, onSelect: () => navigate("/trash") }] : []),
+    { id: "problems", label: "Report a problem", icon: <IconBug aria-hidden="true" />, onSelect: () => openProblemsDialog() },
     { id: "about", label: "About Craftly", icon: <IconInfo aria-hidden="true" />, onSelect: () => setAboutOpen(true) },
   ];
 

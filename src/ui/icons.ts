@@ -134,6 +134,7 @@ export {
 
   /* ---- status ---- */
   Info as IconInfo,
+  Bug as IconBug,
   TriangleExclamationPoint as IconWarning,
   CircleExclamationPoint as IconAlert,
   CircleCheck as IconSuccess,
@@ -207,6 +208,7 @@ export {
   /* ---- arrange and transform ---- */
   Group as IconGroup,
   Combine as IconCombine,
+  Workflow as IconConnect,
   SquaresUnite as IconUnion,
   SquaresSubtract as IconSubtract,
   SquaresIntersect as IconIntersect,

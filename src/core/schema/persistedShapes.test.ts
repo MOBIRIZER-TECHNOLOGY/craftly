@@ -37,7 +37,24 @@ const difference = (a: string[], b: string[]) => a.filter((line) => !b.includes(
  * (older designs never get it), so everything that reads it needs a default; one that the code stopped writing may still be in
  * what is stored. Whatever is not optional is not a line here but a new version and a migration step.
  */
-const ADDED: Record<string, string[]> = { design: [], summary: [], folder: [], brandKit: [], version: [], upload: [] };
+/** A line's `start` and `end` (2026-11-09, src/core/connectors.ts): the elements that an end is attached to. Optional for good: an older design has free ends. */
+const LINE_ATTACHMENTS = [
+  "$.pages[].elements[].children[].end.anchor: string",
+  "$.pages[].elements[].children[].end.elementId: string",
+  "$.pages[].elements[].children[].end: object",
+  "$.pages[].elements[].children[].start.anchor: string",
+  "$.pages[].elements[].children[].start.elementId: string",
+  "$.pages[].elements[].children[].start: object",
+  "$.pages[].elements[].end.anchor: string",
+  "$.pages[].elements[].end.elementId: string",
+  "$.pages[].elements[].end: object",
+  "$.pages[].elements[].start.anchor: string",
+  "$.pages[].elements[].start.elementId: string",
+  "$.pages[].elements[].start: object",
+];
+/** A design's `live` (2026-11-09, docs/COLLABORATION.md): where it is shared with other people, kept on this device only. Optional for good: a design that is not shared has none. */
+const LIVE_LINK = ["$.live.key: string", "$.live.role: string", "$.live.room: string", "$.live.server: string", "$.live.viewKey: string", "$.live: object"];
+const ADDED: Record<string, string[]> = { design: [...LIVE_LINK, ...LINE_ATTACHMENTS], summary: [], folder: [], brandKit: [], version: [], upload: [] };
 const DROPPED: Record<string, string[]> = { design: [], summary: [], folder: [], brandKit: [], version: [], upload: [] };
 
 const WHAT_NEXT =

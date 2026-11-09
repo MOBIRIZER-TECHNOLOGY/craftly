@@ -55,6 +55,16 @@ export function toHex(c: RGBA, withAlpha = false): string {
   return withAlpha && c.a < 1 ? base + hex2(c.a * 255) : base;
 }
 
+const PLAIN_COLOR = /^(#[0-9a-f]{3,8}|[a-z]{3,30}|rgba?\(\s*[\d.%+-]+(\s*[,/\s]\s*[\d.%+-]+){2,3}\s*\))$/i;
+
+/**
+ * Whether a colour is written plainly (#hex, a name the editor knows, rgb() or rgba() with numbers). That is what makes it safe to
+ * put into the attribute of some markup as it stands: a colour from a design that somebody else made is text that could be anything.
+ */
+export function isPlainColor(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 64 && PLAIN_COLOR.test(value) && parseColor(value) !== null;
+}
+
 /** Any colour string -> #rrggbb (alpha dropped). Falls back to the input. */
 export function normalizeHex(input: string): string {
   const c = parseColor(input);

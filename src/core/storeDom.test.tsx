@@ -2,8 +2,10 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setTextMeasurer } from "@/core/textMetrics";
 import { ensureFont } from "@/render/fonts";
+import { lineEndpoints } from "./connectors";
 import { createDesign, createPage, createShape, createText } from "./factory";
 import { pageOf, useActivePage, useEditor, useSelectedElements } from "./store";
+import type { LineElement } from "./types";
 
 const a = () => useEditor.getState().actions;
 const s = () => useEditor.getState();
@@ -120,6 +122,26 @@ describe("when a font finishes loading", () => {
     expect(s().docVersion).toBe(versionBefore + 1);
     expect(s().past).toHaveLength(stepsBefore);
     expect(s().saveState).toBe("unsaved");
+  });
+
+  it("aims the lines that are attached to a text at its new size", async () => {
+    act(() => {
+      a().addElement(createText({ id: "t", text: "Hello", fontSize: 40, x: 0, y: 0 }), { center: false });
+    });
+    const textId = page().elements.at(-1)!.id;
+    let lineId = "";
+    act(() => {
+      lineId = a().connect(textId, "r2");
+    });
+    const startOf = () => lineEndpoints(page().elements.find((e) => e.id === lineId) as LineElement).start;
+    const before = startOf();
+    setTextMeasurer({ width: (_font, text) => text.length * 30, metrics: () => ({ ascent: 30, descent: 10 }) });
+    await ensureFont("Montserrat", 400, false);
+    const text = page().elements.find((e) => e.id === textId)!;
+    expect(text.width).toBe(150);
+    // the line leaves from the right-hand side of the text, which has moved
+    expect(startOf().x).toBeCloseTo(text.x + text.width, 6);
+    expect(startOf().x).toBeGreaterThan(before.x);
   });
 
   it("still tells the editor to repaint when nothing needed measuring again", async () => {

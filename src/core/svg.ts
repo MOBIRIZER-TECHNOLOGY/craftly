@@ -3,7 +3,7 @@
  * (icons, illustrations, stickers, QR codes). Shared by the canvas renderer,
  * the SVG exporter and the recolour UI.
  */
-import { parseColor, toHex } from "./color";
+import { isPlainColor, parseColor, toHex } from "./color";
 
 const COLOR_PROPS = "fill|stroke|stop-color|flood-color|color";
 const ATTR_RE = new RegExp(`\\b(${COLOR_PROPS})\\s*=\\s*(["'])(.*?)\\2`, "gi");
@@ -37,14 +37,19 @@ export function extractSvgColors(svg: string): string[] {
   return found.slice(0, 12);
 }
 
-/** Replaces colours according to `map` (keys as returned by extractSvgColors). */
+/**
+ * Replaces colours according to `map` (keys as returned by extractSvgColors). A replacement goes into the markup as it stands, so
+ * only a colour that is written plainly is put in: the map of a design that somebody else made could hold anything, and anything
+ * is markup of its own once it is inside an attribute.
+ */
 export function recolorSvg(svg: string, map: Record<string, string> | undefined): string {
   if (!map) return svg;
   const keys = Object.keys(map);
   if (!keys.length) return svg;
   const swap = (raw: string) => {
     const k = svgColorKey(raw);
-    return k && map[k] ? map[k] : raw;
+    const to = k ? map[k] : undefined;
+    return isPlainColor(to) ? to : raw;
   };
   return svg
     .replace(ATTR_RE, (_all, prop: string, q: string, val: string) => `${prop}=${q}${swap(val)}${q}`)

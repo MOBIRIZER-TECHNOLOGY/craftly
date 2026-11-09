@@ -82,6 +82,31 @@ describe("recolorSvg", () => {
   it("recolours currentColor", () => {
     expect(recolorSvg(`<svg stroke="currentColor"/>`, { currentColor: "#ff00ff" })).toBe(`<svg stroke="#ff00ff"/>`);
   });
+
+  it("puts a colour into the markup only when it is written as a colour: a design can come from anybody", () => {
+    const hostile = [
+      'red" onmouseover="alert(1)',
+      '#111111"/><script>alert(1)</script><rect fill="#111111',
+      '#111111"/onload="alert(1)',
+      "url(https://evil.test/p.svg#a)",
+      "#11111",
+      "rgb(1,2,3,4,5)",
+      'rgb(1,2,3)" x="1',
+      "",
+      "x".repeat(5000),
+    ];
+    for (const to of hostile) {
+      expect(recolorSvg(`<svg><rect fill="#ff0000" stroke='#00FF00'/></svg>`, { "#ff0000": to, "#00ff00": to }), to.slice(0, 40)).toBe(
+        `<svg><rect fill="#ff0000" stroke='#00FF00'/></svg>`,
+      );
+    }
+  });
+
+  it("takes the colours that the editor writes", () => {
+    for (const to of ["#abc", "#abcd", "#aabbcc", "#aabbccdd", "rgb(1, 2, 3)", "rgba(10,20,30,0.5)", "rgb(1 2 3 / 50%)", "transparent", "black", "white"]) {
+      expect(recolorSvg(`<svg><rect fill="#ff0000"/></svg>`, { "#ff0000": to })).toBe(`<svg><rect fill="${to}"/></svg>`);
+    }
+  });
 });
 
 describe("setSvgStrokeWidth", () => {

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useEditor } from "@/core/store";
 import { DownloadPanel } from "@/export/DownloadPanel";
+import { LiveSection } from "../live/LiveSection";
 import { Button, IconArrowLeft, IconButton, IconDownload, IconExport, IconFileImage, IconInfo, IconPlay, IconPrint, IconShare, Popover, Spinner } from "@/ui";
 import { copyPageAsImage, printDesign, saveProjectFile } from "./designActions";
 import "./share.css";
@@ -81,6 +82,7 @@ export function SharePanel({ onClose }: { onClose: () => void }) {
           />
           <Tile icon={<IconFileImage aria-hidden="true" />} label="Copy as image" busy={busy === "image"} onClick={() => void run("image", copyPageAsImage)} />
         </div>
+        <LiveSection />
         <p className="cf-share__note">
           <IconInfo className="cf-share__note-icon" aria-hidden="true" />
           <span>

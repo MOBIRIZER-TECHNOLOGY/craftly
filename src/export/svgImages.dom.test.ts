@@ -465,6 +465,47 @@ describe("graphics", () => {
     expect(svg).toContain("xlink:href='#local'");
   });
 
+  it("removes event handlers however they are written: after a slash, with no quotes, in capitals", async () => {
+    const dirty = `<svg viewBox="0 0 10 10"/onload="a1()"><g/onclick="a2()"><circle onmouseover=a3() r="5"/><rect ONFOCUS = "a4()" width="1" height="1"/><path d="M0 0" onclick='a5()'/></g></svg>`;
+    const { svg } = await toSvg(pageOf([graphic(dirty)]));
+    for (const call of ["a1()", "a2()", "a3()", "a4()", "a5()"]) expect(svg).not.toContain(call);
+    expect(svg).not.toMatch(/[\s/]on(load|click|mouseover|focus)/i);
+    expect(svg).toContain("<circle");
+    expect(svg).toContain("<path");
+  });
+
+  it("removes what taking one thing out leaves behind: a tag or a handler that was built around another", async () => {
+    const dirty = `<svg viewBox="0 0 10 10"><scr<script></script>ipt>alert(1)</scr<script></script>ipt><circle r="5" on onclick="x()"click="alert(2)"/></svg>`;
+    const { svg } = await toSvg(pageOf([graphic(dirty)]));
+    expect(svg).not.toContain("<script");
+    expect(svg).not.toContain("alert");
+    expect(svg).not.toMatch(/onclick/i);
+  });
+
+  it("removes a script that is never closed or that closes itself, and a page inside the drawing the same way", async () => {
+    const dirty = `<svg viewBox="0 0 10 10"><script href="#x"/><circle r="5"/><script>unclosed(1)<foreignObject><div onclick="y()"/></svg>`;
+    const { svg } = await toSvg(pageOf([graphic(dirty)]));
+    expect(svg).not.toMatch(/<\/?script/i);
+    expect(svg).not.toMatch(/foreignObject/i);
+    expect(svg).toContain("<circle");
+  });
+
+  it("leaves out a graphic that keeps growing what it is cleaned of, which is not a drawing", async () => {
+    let bomb = "<script></script>";
+    for (let i = 0; i < 20; i++) bomb = `<scr${bomb}ipt></script>`;
+    const { svg } = await toSvg(pageOf([graphic(`<svg viewBox="0 0 10 10"><circle r="5"/>${bomb}</svg>`)]));
+    expect(svg).not.toContain("<circle");
+    expect(svg).not.toContain("script");
+  });
+
+  it("does not let the replacement colours of a graphic bring markup of their own", async () => {
+    const hostile = { "#ff0000": '#111111"/onload="a1()', "#00ff00": 'red" onmouseover="a2()' };
+    const { svg } = await toSvg(pageOf([graphic(`<svg viewBox="0 0 10 10"><rect fill="#ff0000" stroke="#00ff00" width="5" height="5"/></svg>`, { colors: hostile })]));
+    expect(svg).not.toContain("a1()");
+    expect(svg).not.toContain("a2()");
+    expect(svg).toContain('fill="#ff0000"');
+  });
+
   it("leaves style rules alone when they name no classes", async () => {
     const { svg } = await toSvg(pageOf([graphic(`<svg viewBox="0 0 10 10"><style>circle{fill:red}</style><circle r="5"/></svg>`)]));
     expect(svg).toContain("<style>circle{fill:red}</style>");

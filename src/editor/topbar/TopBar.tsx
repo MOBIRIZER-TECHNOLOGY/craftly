@@ -27,6 +27,7 @@ import {
   type MenuEntry,
 } from "@/ui";
 import { FileMenu } from "./FileMenu";
+import { LiveBadge } from "../live/LiveSection";
 import { SharePopover } from "./SharePopover";
 import { requestSave } from "./designActions";
 import "./topbar.css";
@@ -302,6 +303,7 @@ export function TopBar() {
         <TitleField ref={titleRef} />
       </div>
       <div className="cf-topbar__group cf-topbar__group--end">
+        <LiveBadge />
         <PresentButton />
         <SharePopover />
       </div>

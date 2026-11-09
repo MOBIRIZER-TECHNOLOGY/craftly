@@ -1,60 +1,67 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Button } from "@/ui";
-import "./ErrorBoundary.css";
+import { recordProblem, type Problem } from "@/core/problems";
+import { markCrashing, noteCrash } from "@/core/recovery";
+import { CrashScreen } from "./CrashScreen";
 
 interface Props {
   children: ReactNode;
   /** reset when this key changes (e.g. the route), so navigating away clears the error */
   resetKey?: string;
+  /** the design that is open, when the screen is the editor: what is counted and offered after a crash is about it */
+  designId?: string | null;
 }
 
 interface State {
   error: Error | null;
+  problem: Problem | null;
+  crashes: number;
 }
 
+const CLEAR: State = { error: null, problem: null, crashes: 0 };
+
 /**
- * Last line of defence: a rendering error shows a calm recovery screen instead of a
- * blank page. Designs are autosaved, so reloading never loses more than a moment of work.
+ * Last line of defence: a rendering error shows a calm recovery screen instead of a blank page (src/components/CrashScreen.tsx,
+ * docs/CRASH-RECOVERY.md). The error is written down on this device, and the editor is told that it is going away because the
+ * screen stopped, so that it does not write over the last saved state with the one that may have caused it.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = CLEAR;
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    // before anything below is unmounted: the editor's cleanup asks (see persistOnLeave)
+    markCrashing(true);
     return { error };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Craftly crashed:", error, info.componentStack);
+    const designId = this.props.designId;
+    this.setState({ problem: recordProblem("screen", error), crashes: designId ? noteCrash(designId) : 0 });
   }
 
   componentDidUpdate(prev: Props) {
-    if (this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null });
+    if (this.state.error && prev.resetKey !== this.props.resetKey) this.recover();
+  }
+
+  private recover() {
+    markCrashing(false);
+    this.setState(CLEAR);
   }
 
   render() {
-    if (!this.state.error) return this.props.children;
+    const { error, problem, crashes } = this.state;
+    if (!error) return this.props.children;
     return (
-      <div className="cf-crash" role="alert">
-        <div className="cf-crash__card">
-          <h1>Something went wrong</h1>
-          <p>Craftly hit an unexpected problem. Your designs are saved on this device, so nothing you finished is lost.</p>
-          <pre className="cf-crash__detail">{this.state.error.message}</pre>
-          <div className="cf-crash__actions">
-            <Button variant="primary" onClick={() => window.location.reload()}>
-              Reload Craftly
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                window.location.hash = "#/";
-                this.setState({ error: null });
-              }}
-            >
-              Go to your projects
-            </Button>
-          </div>
-        </div>
-      </div>
+      <CrashScreen
+        error={error}
+        problem={problem}
+        designId={this.props.designId ?? null}
+        crashes={crashes}
+        onGoToProjects={() => {
+          window.location.hash = "#/";
+          this.recover();
+        }}
+      />
     );
   }
 }

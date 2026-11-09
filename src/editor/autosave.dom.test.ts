@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape } from "@/core/factory";
 import { saveDesign, saveVersion } from "@/core/library";
+import { clearProblems, listProblems } from "@/core/problems";
 import { getActions, useEditor } from "@/core/store";
 import type { Design } from "@/core/types";
 import { renderPageToCanvas } from "@/render/renderPage";
@@ -51,6 +52,7 @@ let stop: () => void;
 
 beforeEach(() => {
   useEditor.setState(useEditor.getInitialState(), true);
+  clearProblems();
   vi.mocked(saveDesign).mockClear();
   vi.mocked(saveVersion).mockClear();
   vi.mocked(renderPageToCanvas).mockClear();
@@ -140,6 +142,7 @@ describe("failures and overlapping saves", () => {
     edit("Fails");
     await vi.advanceTimersByTimeAsync(700);
     expect(state().saveState).toBe("error");
+    expect(listProblems()[0]).toMatchObject({ kind: "save", message: "quota exceeded" }); // written down, for the report
     edit("Works");
     await vi.advanceTimersByTimeAsync(700);
     expect(saves()).toHaveLength(2);

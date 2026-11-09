@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getDesign, saveDesign } from "@/core/library";
+import { isCrashing, keepBeforeProblem } from "@/core/recovery";
 import { MigrationError } from "@/core/schema/migrator";
 import { useEditor } from "@/core/store";
 import { renderPageToCanvas } from "@/render/renderPage";
@@ -11,6 +12,7 @@ import { NotesPanel } from "./bottombar/NotesPanel";
 import { Workspace } from "./canvas/Workspace";
 import { DialogHost } from "./dialogs/DialogHost";
 import { installHotkeys } from "./hotkeys";
+import { connectLive } from "./live/connection";
 import { GridView } from "./pages/GridView";
 import { PageStrip } from "./pages/PageStrip";
 import { LeftRail } from "./panels/LeftRail";
@@ -29,12 +31,17 @@ type Status = "loading" | "ready" | "missing" | "broken" | "newer" | "failed";
 /**
  * The autosave service only reacts to changes and timers; when the editor is left (Home, another design, closing
  * the route) with edits that were not written yet, store them here so nothing typed in the last second is lost.
+ * When the editor goes away because its screen stopped, the state on the screen may be what stopped it: the stored one
+ * (the last autosave) is kept as a version first, so that a design that stops Craftly again can be taken back to it
+ * (src/core/recovery.ts, docs/CRASH-RECOVERY.md).
  */
 function persistOnLeave(): void {
   const s = useEditor.getState();
   const design = s.design;
   if (!design || s.saveState === "saved" || s.saveState === "saving") return;
+  const stopped = isCrashing();
   void (async () => {
+    if (stopped) await keepBeforeProblem(design.id).catch(() => undefined);
     let thumb: string | undefined;
     try {
       thumb = (await renderPageToCanvas(design, design.pages[0], { width: 420 })).toDataURL("image/jpeg", 0.82);
@@ -142,6 +149,13 @@ export function Editor({ designId }: { designId: string }) {
       useEditor.getState().actions.closeDesign();
     };
   }, [designId]);
+
+  /* a design that is shared stays in step with the server for as long as it is open */
+  const link = useEditor((s) => s.design?.live ?? null);
+  useEffect(() => {
+    if (status !== "ready" || !link) return;
+    return connectLive(link);
+  }, [status, link]);
 
   /* the browser tab shows the design's name */
   const title = useEditor((s) => s.design?.title);

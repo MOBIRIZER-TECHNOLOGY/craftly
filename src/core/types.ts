@@ -253,12 +253,27 @@ export interface ShapeElement extends ElementBase {
 
 export type ArrowKind = "none" | "arrow" | "triangle" | "open-arrow" | "circle" | "square" | "diamond" | "bar";
 
+/** Where on an element a line is attached: the middle of one of its sides, or "auto" for the side that faces the other end. */
+export type Anchor = "auto" | "top" | "right" | "bottom" | "left";
+
+/** An end of a line that is attached to an element of the same page. */
+export interface LineBinding {
+  elementId: ID;
+  anchor: Anchor;
+}
+
 export interface LineElement extends ElementBase {
   type: "line";
   /** `width` is the line length; `height` is always 0. The line runs from (x, y) to (x+width, y) before rotation. */
   stroke: Stroke;
   startArrow: ArrowKind;
   endArrow: ArrowKind;
+  /**
+   * The ends that are attached to elements of the page (src/core/connectors.ts): such an end follows its element when that moves,
+   * changes size or turns, and the line goes when the element does. Null or absent: a free end, at the place that the line puts it.
+   */
+  start?: LineBinding | null;
+  end?: LineBinding | null;
 }
 
 /* ---- images & frames ---- */
@@ -413,6 +428,20 @@ export interface Page {
 
 export type SizeUnit = "px" | "in" | "mm" | "cm";
 
+/**
+ * Where a design that is edited together with other people lives on a server (src/collab, docs/COLLABORATION.md): the server's
+ * address (http:// or https://; the socket is on the same address), the room, the key that was given for it and what that key
+ * allows. The person who started sharing also keeps the key that only lets people look, to hand it out again. Kept on this device
+ * with the design and never sent to anyone; a copy of the design in a backup or a file carries the keys.
+ */
+export interface LiveLink {
+  server: string;
+  room: string;
+  key: string;
+  role: "edit" | "view";
+  viewKey?: string;
+}
+
 export interface Design {
   id: ID;
   title: string;
@@ -432,6 +461,8 @@ export interface Design {
   trashedAt: number | null;
   /** ruler guides in design px */
   guides?: { vertical: number[]; horizontal: number[] };
+  /** present while the design is shared with other people; see `LiveLink` */
+  live?: LiveLink;
   /**
    * The format of this document (src/core/schema/design.ts): CURRENT_DESIGN_VERSION when this build wrote it. A design read
    * from storage or a file passes through `migrateDesign` first, so the editor only ever holds the current version.

@@ -1,7 +1,8 @@
 import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createGroup, createPage, createShape } from "@/core/factory";
-import { getDesign, getSummary, saveDesign, summarize } from "@/core/library";
+import { getDesign, getSummary, getVersion, listVersions, saveDesign, summarize } from "@/core/library";
+import { keepBeforeProblem, markCrashing } from "@/core/recovery";
 import { dbGet, dbPut } from "@/core/persistence";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
 import { MigrationError } from "@/core/schema/migrator";
@@ -19,6 +20,10 @@ configure({ asyncUtilTimeout: 20_000 });
 vi.mock("@/core/library", async (importOriginal) => {
   const library = await importOriginal<typeof import("@/core/library")>();
   return { ...library, saveDesign: vi.fn(library.saveDesign) };
+});
+vi.mock("@/core/recovery", async (importOriginal) => {
+  const recovery = await importOriginal<typeof import("@/core/recovery")>();
+  return { ...recovery, keepBeforeProblem: vi.fn(recovery.keepBeforeProblem) };
 });
 vi.mock("@/core/schema/design", async (importOriginal) => {
   const schema = await importOriginal<typeof import("@/core/schema/design")>();
@@ -42,6 +47,7 @@ beforeEach(async () => {
   vi.mocked(saveDesign).mockClear();
   vi.mocked(renderPageToCanvas).mockClear();
   vi.mocked(printDesign).mockClear();
+  vi.mocked(keepBeforeProblem).mockClear();
 });
 
 afterEach(() => {
@@ -233,6 +239,48 @@ describe("loading", () => {
     await waitFor(() => expect(state().design?.id).toBe("design-b"));
     await waitFor(async () => expect((await getDesign("design-a"))?.title).toBe("A, edited"));
     expect(state().saveState).toBe("saved");
+  });
+});
+
+describe("going away because the screen stopped", () => {
+  afterEach(() => markCrashing(false));
+
+  it("keeps the last saved state as a version before it writes the one that was on the screen, which may be what stopped it", async () => {
+    const { design, unmount } = await mountEditor(sampleDesign({ title: "Saved title" }));
+    act(() => actions().setTitle("On the screen when it stopped"));
+    markCrashing(true);
+    unmount();
+    await waitFor(async () => expect((await getDesign(design.id))?.title).toBe("On the screen when it stopped"));
+    const kept = (await listVersions(design.id)).find((v) => v.label === "Before the problem");
+    expect(kept).toBeTruthy();
+    expect((await getVersion(kept!.id))!.design.title).toBe("Saved title");
+  });
+
+  it("makes no version when the person simply leaves", async () => {
+    const { design, unmount } = await mountEditor(sampleDesign({ title: "Saved title" }));
+    act(() => actions().setTitle("Edited, then left"));
+    unmount();
+    await waitFor(async () => expect((await getDesign(design.id))?.title).toBe("Edited, then left"));
+    expect(await listVersions(design.id)).toEqual([]);
+    expect(keepBeforeProblem).not.toHaveBeenCalled();
+  });
+
+  it("keeps nothing when everything was saved already: the stored state is the one that was on the screen", async () => {
+    const { design, unmount } = await mountEditor();
+    markCrashing(true);
+    unmount();
+    await flush();
+    expect(await listVersions(design.id)).toEqual([]);
+    expect(keepBeforeProblem).not.toHaveBeenCalled();
+  });
+
+  it("still writes the state that was on the screen when the old one could not be kept", async () => {
+    vi.mocked(keepBeforeProblem).mockRejectedValueOnce(new Error("no room"));
+    const { design, unmount } = await mountEditor(sampleDesign({ title: "Saved title" }));
+    act(() => actions().setTitle("Still written"));
+    markCrashing(true);
+    unmount();
+    await waitFor(async () => expect((await getDesign(design.id))?.title).toBe("Still written"));
   });
 });
 

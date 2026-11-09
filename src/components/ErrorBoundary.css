@@ -39,3 +39,37 @@
   gap: 10px;
   flex-wrap: wrap;
 }
+.cf-crash__more {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--c-line);
+}
+.cf-crash__more summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+.cf-crash__more[open] summary {
+  margin-bottom: 10px;
+}
+.cf-crash__more p {
+  margin: 0 0 12px;
+  font-size: var(--fs-sm);
+}
+.cf-crash__versions {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cf-crash__versions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  color: var(--c-ink-2);
+}

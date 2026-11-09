@@ -1,11 +1,13 @@
 import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearProblems, listProblems } from "@/core/problems";
 
 type EditorHook = { getState: () => unknown };
 const exposedStore = () => (window as unknown as { __editor?: EditorHook }).__editor;
 
-/** Every "load" listener main.tsx adds to the window (the window outlives each test, so they are removed again). */
+/** Every "load" listener main.tsx adds to the window (the window outlives each test, so they are removed again), and the ones that catch problems. */
 let loadListeners: EventListenerOrEventListenerObject[] = [];
+let problemListeners: Array<[string, EventListenerOrEventListenerObject]> = [];
 
 /** Put an empty #root in the page and run main.tsx on it, as index.html does. */
 async function boot(hash = "#/trash") {
@@ -20,15 +22,20 @@ async function boot(hash = "#/trash") {
 beforeEach(() => {
   delete (window as unknown as { __editor?: unknown }).__editor;
   loadListeners = [];
+  problemListeners = [];
+  localStorage.clear();
+  clearProblems();
   const add = window.addEventListener.bind(window);
   vi.spyOn(window, "addEventListener").mockImplementation((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
     if (type === "load") loadListeners.push(listener);
+    if (type === "error" || type === "unhandledrejection") problemListeners.push([type, listener]);
     add(type, listener, options);
   });
 });
 
 afterEach(() => {
   for (const listener of loadListeners) window.removeEventListener("load", listener);
+  for (const [type, listener] of problemListeners) window.removeEventListener(type, listener);
   vi.unstubAllEnvs();
   delete (navigator as unknown as { serviceWorker?: unknown }).serviceWorker;
 });
@@ -63,6 +70,13 @@ describe("main", () => {
         request.onsuccess = request.onerror = request.onblocked = () => resolve();
       });
     }
+  });
+
+  it("writes down a failure that nothing waited for, from the start, so that it can be reported", async () => {
+    await boot("#/trash");
+    await screen.findByText("The trash is empty");
+    window.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("a failure nothing waited for") }));
+    expect(listProblems()[0]).toMatchObject({ kind: "promise", message: "a failure nothing waited for", route: "trash" });
   });
 
   it("exposes the editor store on the window while developing, for scripted tests and the console", async () => {

@@ -219,21 +219,41 @@ function scopeIds(inner: string, prefix: string): string {
   return out;
 }
 
+/** The most times a piece of markup is cleaned again; a drawing that still changes after that keeps growing what it is cleaned of. */
+const MAX_CLEANINGS = 16;
+
 /**
- * Drops anything active or external from inlined markup: scripts, event handlers, foreign objects, remote hrefs,
- * `@import` rules and `url(...)` references that leave the document.
+ * Drops anything active or external from inlined markup: scripts, event handlers (however they are written: after a space or a
+ * slash, in quotes or without), foreign objects, remote hrefs, `@import` rules and `url(...)` references that leave the document.
+ * Taking one thing out can leave another made of what was around it (`<scr<script></script>ipt>`), so it goes on until the markup no
+ * longer changes; markup that never settles is not a drawing and comes back empty. (Graphics that arrive from other people are
+ * refused before this, by `svgProblem`; this is for what is already in a design, whoever put it there.)
  */
 function sanitizeInline(markup: string): string {
-  return markup
-    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, "")
-    .replace(/<foreignObject\b[\s\S]*?<\/foreignObject\s*>/gi, "")
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "")
-    .replace(/@import[^;{]*;?/gi, "")
-    .replace(/url\(\s*(["']?)(?!#|data:)[^)]*\)/gi, "none")
-    .replace(/\s(xlink:href|href)\s*=\s*("([^"]*)"|'([^']*)')/gi, (all, _name: string, _q: string, a: string | undefined, b: string | undefined) => {
-      const value = (a ?? b ?? "").trim();
-      return value.startsWith("#") || /^data:image\//i.test(value) ? all : "";
-    });
+  // whole scripts and foreign objects first, with what is inside them, until none is left...
+  const blocks = (text: string) => text.replace(/<script\b[\s\S]*?<\/script\s*>/gi, "").replace(/<foreignObject\b[\s\S]*?<\/foreignObject\s*>/gi, "");
+  // ...then what is left of the rest: tags that are never closed or that close themselves, handlers, and addresses that leave the drawing
+  const rest = (text: string) =>
+    text
+      .replace(/<\/?(?:script|foreignObject)\b[^>]*>/gi, "")
+      .replace(/[\s/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      .replace(/@import[^;{]*;?/gi, "")
+      .replace(/url\(\s*(["']?)(?!#|data:)[^)]*\)/gi, "none")
+      .replace(/\s(xlink:href|href)\s*=\s*("([^"]*)"|'([^']*)')/gi, (all, _name: string, _q: string, a: string | undefined, b: string | undefined) => {
+        const value = (a ?? b ?? "").trim();
+        return value.startsWith("#") || /^data:image\//i.test(value) ? all : "";
+      });
+  const settle = (text: string, clean: (text: string) => string): string | null => {
+    let out = text;
+    for (let pass = 0; pass < MAX_CLEANINGS; pass++) {
+      const next = clean(out);
+      if (next === out) return out;
+      out = next;
+    }
+    return null;
+  };
+  const whole = settle(markup, blocks);
+  return (whole === null ? null : settle(whole, rest)) ?? "";
 }
 
 /**

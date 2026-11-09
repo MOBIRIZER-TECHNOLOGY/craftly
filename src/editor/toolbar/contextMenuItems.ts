@@ -5,6 +5,7 @@
  */
 import { createElement, type ComponentType } from "react";
 import { shapesToCombine } from "@/core/combine";
+import { connectable } from "@/core/connectors";
 import { canArrange } from "@/core/ops";
 import { getActivePage, getSelectedElements, type EditorState } from "@/core/store";
 import type { Point } from "@/core/types";
@@ -19,6 +20,7 @@ import {
   IconBringForward,
   IconBringToFront,
   IconCombine,
+  IconConnect,
   IconCopy,
   IconCopyStyle,
   IconCurve,
@@ -151,6 +153,9 @@ export function buildContextMenuItems(state: EditorState, opts: ContextMenuOptio
   }
   if (els.length >= 2 && els.every((e) => e.type === "shape")) {
     items.push({ id: "combine", label: "Combine shapes", icon: ic(IconCombine), disabled: !shapesToCombine(page, ids), submenu: combineMenuItems(page, ids) });
+  }
+  if (connectable(page, ids)) {
+    items.push({ id: "connect", label: "Connect", hint: "Arrow", icon: ic(IconConnect), onSelect: () => a.connect(ids[0], ids[1]) });
   }
   if (els.some((e) => e.type === "shape" && e.shape !== "path")) {
     items.push({ id: "convert-to-path", label: "Convert to path", icon: ic(IconCurve), disabled: !canConvertToPath(page, ids), onSelect: () => void convertToPath(ids) });

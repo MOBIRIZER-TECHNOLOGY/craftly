@@ -3,6 +3,7 @@
  * instead of writing object literals so new fields get defaults everywhere.
  */
 import { cloneDeep } from "./clone";
+import { rebindClones } from "./connectors";
 import { uid } from "./ids";
 import { CURRENT_DESIGN_VERSION } from "./schema/design";
 import { extractSvgColors, normalizeSvg } from "./svg";
@@ -308,6 +309,7 @@ export function clonePage(page: Page): Page {
     if (e.type === "group") e.children.forEach(refresh);
   };
   copy.elements.forEach(refresh);
+  rebindClones(page.elements, copy.elements);
   return copy;
 }
 

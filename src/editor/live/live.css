@@ -1,0 +1,87 @@
+/* "Work together" in the Share panel, and the state of the connection in the top bar */
+
+.cf-live {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--c-line);
+}
+
+.cf-live__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cf-live__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  line-height: 1.3;
+}
+
+.cf-live__text {
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cf-live__problem {
+  color: var(--c-danger-ink);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.cf-live__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cf-live__ask {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cf-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 11rem;
+  overflow: hidden;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cf-live-badge__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f5a623;
+}
+
+.cf-live-badge--live .cf-live-badge__dot {
+  background: #3ddc84;
+}
+
+.cf-live-badge--denied .cf-live-badge__dot,
+.cf-live-badge--off .cf-live-badge__dot {
+  background: #ff6b6b;
+}
+
+@media (max-width: 899px) {
+  .cf-live-badge {
+    max-width: 6rem;
+  }
+}

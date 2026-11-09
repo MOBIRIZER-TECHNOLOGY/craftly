@@ -39,7 +39,7 @@ describe("<SharePopover>", () => {
     const labels = within(popover())
       .getAllByRole("button")
       .map((b) => b.textContent);
-    expect(labels).toEqual(["Download", "Present", "Save project file", "Print", "Copy as image"]);
+    expect(labels).toEqual(["Download", "Present", "Save project file", "Print", "Copy as image", "Start live session"]);
     expect(within(popover()).getByText(/Craftly keeps your designs on this device/)).toBeTruthy();
   });
 

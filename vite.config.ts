@@ -3,8 +3,59 @@ import react from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath, URL } from "node:url";
 import type { Plugin } from "vite";
+
+const REPORT_BODY_LIMIT = 20_000;
+
+/** What the development server does with a report that the page sends to /__report: it checks that it is JSON of a sensible size and prints it. */
+export async function answerReport(req: IncomingMessage, res: ServerResponse, log: (text: string) => void): Promise<void> {
+  if (req.method !== "POST") {
+    res.statusCode = 405;
+    res.setHeader("Allow", "POST");
+    res.end();
+    return;
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > REPORT_BODY_LIMIT) {
+      res.statusCode = 413;
+      res.end();
+      return;
+    }
+    chunks.push(chunk as Buffer);
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  try {
+    JSON.parse(text);
+  } catch {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  log(`A problem report arrived at /__report:\n${text}`);
+  res.statusCode = 204;
+  res.end();
+}
+
+/**
+ * The development server answers a report that the page sends to /__report (src/core/problems.ts gives the page that address
+ * while developing), so that the whole flow, the Send button, the request and the toast, can be tried without a server of one's
+ * own. It prints the report in the terminal and keeps nothing. A production build has no such address unless the site that
+ * hosts it names one (docs/CRASH-RECOVERY.md).
+ */
+export function devReportEndpoint(log: (text: string) => void = (text) => console.log(text)): Plugin {
+  return {
+    name: "craftly-dev-report-endpoint",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use("/__report", (req, res) => void answerReport(req, res, log));
+    },
+  };
+}
 
 /**
  * Offline support: lists every file the build produced in `precache.json` (so the service worker can store the whole
@@ -44,7 +95,7 @@ export function offlineSupport(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), offlineSupport()],
+  plugins: [react(), offlineSupport(), devReportEndpoint()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
@@ -98,6 +149,8 @@ export default defineConfig({
         // the worker's entry and the loader of the real ONNX runtime need a real browser: e2e/ml.cjs runs them
         "src/ml/worker.ts",
         "src/ml/ortRuntime.ts",
+        // the entry point of the server for shared designs: it only reads the environment and listens (src/server/live.ts is what is tested)
+        "src/server/main.ts",
         "src/**/*.d.ts",
       ],
       reporter: ["text-summary", "html", "json-summary"],
