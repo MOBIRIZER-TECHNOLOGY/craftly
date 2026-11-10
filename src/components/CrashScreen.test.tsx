@@ -1,21 +1,16 @@
 /** The screen that replaces Craftly when it stops: what happened, how to get back to work, and how to get a design out. */
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape } from "@/core/factory";
 import * as library from "@/core/library";
-import { getDesign, listVersions, saveDesign, saveVersion } from "@/core/library";
+import { saveDesign } from "@/core/library";
 import { clearProblems, recordProblem } from "@/core/problems";
-import { downloadBlob } from "@/export/download";
 import { wipeDatabase } from "@/test/logicDb";
 import { clearToasts } from "@/test/tabsHarness";
 import { ToastHost } from "@/ui";
 import { CrashScreen } from "./CrashScreen";
 
-vi.mock("@/export/download", () => ({ downloadBlob: vi.fn() }));
-
 const reload = vi.fn();
-const tick = () => new Promise((resolve) => setTimeout(resolve, 3));
 const time = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -25,7 +20,6 @@ beforeEach(async () => {
   clearProblems();
   clearToasts();
   reload.mockReset();
-  vi.mocked(downloadBlob).mockClear();
   vi.stubGlobal("location", { ...window.location, reload, hash: "#/design/x" });
 });
 
@@ -113,46 +107,11 @@ describe("<CrashScreen> on a design", () => {
     expect(screen.getByText("Go back to an earlier version").closest("details")!.open).toBe(true);
   });
 
-  it("lists the earlier versions with where each came from", async () => {
-    const design = await storedDesign(3);
-    await saveVersion(design, "Before the problem");
-    await tick();
-    await saveVersion({ ...design, updatedAt: design.updatedAt + 1 });
-    show({ designId: design.id, crashes: 2 });
-    const rows = await screen.findAllByRole("listitem");
-    expect(rows).toHaveLength(2);
-    expect(rows[0].textContent).toContain("Saved automatically");
-    expect(rows[1].textContent).toContain("Before the problem");
-  });
-
-  it("says that there is nothing to go back to when there are no versions", async () => {
+  it("has the way back for the design on it: its earlier versions and a copy of it to save", async () => {
     const design = await storedDesign();
     show({ designId: design.id, crashes: 2 });
     expect(await screen.findByText("There are no earlier versions of this design yet.")).toBeTruthy();
-  });
-
-  it("puts the chosen version in the design and reloads", async () => {
-    const user = userEvent.setup();
-    const design = await storedDesign(3);
-    await saveVersion(design, "Before the problem");
-    await saveDesign({ ...design, pages: [createPage({ elements: [createShape("ellipse", { width: 4, height: 4 })] })], updatedAt: design.updatedAt + 9_000 });
-    show({ designId: design.id, crashes: 2 });
-    await user.click(await screen.findByRole("button", { name: "Use this version" }));
-    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
-    expect((await getDesign(design.id))!.pages[0].elements).toHaveLength(3);
-    expect((await listVersions(design.id)).map((v) => v.label)).toContain("Before going back");
-  });
-
-  it("says so, and does not reload, when the version could not be put back", async () => {
-    const user = userEvent.setup();
-    const design = await storedDesign();
-    await saveVersion(design, "Before the problem");
-    show({ designId: design.id, crashes: 2 });
-    const button = await screen.findByRole("button", { name: "Use this version" });
-    await wipeDatabase(); // the version is gone by the time it is chosen
-    await user.click(button);
-    expect(await screen.findByText("That version could not be restored. Try another one.")).toBeTruthy();
-    expect(reload).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Save a copy of the design to a file" })).toBeTruthy();
   });
 
   it("still says what happened, with no saved time and nothing to go back to, when the library cannot be read", async () => {
@@ -169,25 +128,5 @@ describe("<CrashScreen> on a design", () => {
       summary.mockRestore();
       versions.mockRestore();
     }
-  });
-
-  it("saves a copy of the design to a file, without opening it", async () => {
-    const user = userEvent.setup();
-    const design = await storedDesign();
-    show({ designId: design.id, crashes: 2 });
-    await user.click(await screen.findByRole("button", { name: "Save a copy of the design to a file" }));
-    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1));
-    const [blob, name] = vi.mocked(downloadBlob).mock.calls[0];
-    expect(name).toMatch(/^Poster.*\.craftly$/);
-    expect(JSON.parse(await blob.text()).design.title).toBe("Poster");
-    expect(await screen.findByText("Saved a copy of the design")).toBeTruthy();
-  });
-
-  it("says so when the copy could not be saved", async () => {
-    const user = userEvent.setup();
-    show({ designId: "not-stored", crashes: 2 });
-    await user.click(await screen.findByRole("button", { name: "Save a copy of the design to a file" }));
-    expect(await screen.findByText("The copy could not be saved.")).toBeTruthy();
-    expect(downloadBlob).not.toHaveBeenCalled();
   });
 });

@@ -9,9 +9,8 @@
  * in the toast with its details, and what an extension throws ignored; "Report a problem" from the account menu and from the File
  * menu; a part of the app that cannot be fetched.
  *
- * A state that stops the screen and is stored as well cannot be tried here: no such state is known that opens again (a stored
- * design that `openDesign` refuses gives "We couldn't open this design", which is not a stop of the screen). That the stored state
- * is kept as a version before the one on the screen is written over it is shown by the unit test of the editor.
+ * A state that stops the screen and is stored as well makes a design that `openDesign` refuses: the screen then says "We couldn't
+ * open this design", and has the way back, the earlier versions (the step near the end of the first half).
  *
  * The page's reports go to /__report (the development server's own address, or the one that the build was made with:
  * VITE_CRAFTLY_REPORT_URL=/__report, see e2e/README.md); the request is answered here, by the browser's routing, so that nothing
@@ -347,6 +346,57 @@ let shotN = 0;
       .catch(() => undefined);
     if ((await crashScreen().count()) !== 0) throw new Error("the crash screen is still there");
     return page.url().replace(BASE, "");
+  });
+
+  /* ---------------- a design that is stored damaged ---------------- */
+  /** whether a design in the library has pages with no elements: what the editor writes over the design when the screen stops with such a state */
+  const storedDamaged = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          const open = indexedDB.open("craftly");
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const all = open.result.transaction("designs", "readonly").objectStore("designs").getAll();
+            all.onsuccess = () => resolve(all.result.some((d) => d.pages.some((p) => p.elements === null)));
+            all.onerror = () => reject(all.error);
+          };
+        }),
+    );
+  await step("a design that was stored damaged is refused with the way back on the screen that says so: the earlier versions, read and put back", async () => {
+    await page.goto(designUrl, { waitUntil: "load" });
+    await openEditor();
+    // this time nothing keeps the state from being stored (no function in it): the editor keeps the stored design as a version, then writes this over it
+    await page.evaluate(() => {
+      window.__editor.setState((s) => ({ design: { ...s.design, pages: s.design.pages.map((p) => ({ ...p, elements: null })) }, saveState: "unsaved" }));
+    });
+    await crashScreen().waitFor({ timeout: 10000 });
+    for (let i = 0; i < 50 && !(await storedDamaged()); i++) await wait(200);
+    if (!(await storedDamaged())) throw new Error("the damaged state was not written over the design");
+    await page.getByRole("button", { name: "Reload Craftly" }).click();
+    await page.getByText("We couldn't open this design").waitFor({ timeout: 20000 });
+    const panel = page.locator(".cf-editor-state details", { hasText: "Go back to an earlier version" });
+    if (!(await panel.evaluate((d) => d.open))) throw new Error("the earlier versions are not open");
+    const rows = await panel.locator(".cf-crash__versions li").allInnerTexts();
+    if (!rows.some((r) => /Before the problem/.test(r))) throw new Error("rows: " + rows.join(" | "));
+    await shot("cannot-open");
+    // readable, big enough, and on a phone it fits
+    const seen = await inspect(".cf-editor-state");
+    if (seen.faint.length) throw new Error("text that is hard to read: " + seen.faint.join("; "));
+    if (seen.small.length) throw new Error("controls under 24 px: " + seen.small.join("; "));
+    await page.setViewportSize({ width: 375, height: 700 });
+    const narrow = await inspect(".cf-editor-state");
+    await shot("cannot-open-375");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    if (narrow.scrolls || narrow.outside.length) throw new Error("it does not fit a phone: " + (narrow.outside.join("; ") || "the page scrolls sideways"));
+    // the version from before the problem is put back, and the design opens with its shapes
+    // (every stop kept one: the newest is a copy of the design as it was stored before the damaged state was written over it)
+    await panel.locator(".cf-crash__versions li", { hasText: "Before the problem" }).first().getByRole("button", { name: "Use this version" }).click();
+    await openEditor();
+    const n = await shapesOnPage();
+    if (n !== 3) throw new Error("shapes after going back: " + n);
+    if (await storedDamaged()) throw new Error("the design is still stored damaged");
+    return "refused, read, put back: " + n + " shapes";
   });
 
   /* ---------------- what nothing caught ---------------- */

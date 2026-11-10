@@ -1,7 +1,7 @@
 import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createGroup, createPage, createShape } from "@/core/factory";
-import { getDesign, getSummary, getVersion, listVersions, saveDesign, summarize } from "@/core/library";
+import { getDesign, getSummary, getVersion, listVersions, saveDesign, saveVersion, summarize } from "@/core/library";
 import { keepBeforeProblem, markCrashing } from "@/core/recovery";
 import { dbGet, dbPut } from "@/core/persistence";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
@@ -139,6 +139,7 @@ describe("loading", () => {
     render(<Editor designId="nope" />);
     expect(await screen.findByText("We couldn't find this design")).toBeTruthy();
     expect(screen.getByText(/may have been deleted/)).toBeTruthy();
+    expect(screen.queryByText("Go back to an earlier version")).toBeNull(); // there is no design to go back in
     fireEvent.click(screen.getByRole("button", { name: "Back to home" }));
     expect(window.location.hash).toBe("#/");
     expect(state().design).toBeNull();
@@ -154,6 +155,36 @@ describe("loading", () => {
     expect(screen.getByRole("button", { name: "Back to home" })).toBeTruthy();
   });
 
+  it("gives a damaged design a way back: its earlier versions, open, and the one that is chosen put back", async () => {
+    const good = sampleDesign({ title: "Poster" });
+    await saveDesign(good);
+    await saveVersion(good, "Before the problem");
+    await saveDesign({ ...good, pages: [] }); // what the editor wrote when the screen stopped
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    try {
+      render(<Editor designId={good.id} />);
+      expect(await screen.findByText("We couldn't open this design")).toBeTruthy();
+      expect(screen.getByText(/Go back to an earlier version below/)).toBeTruthy();
+      expect(screen.getByText("Go back to an earlier version").closest("details")!.open).toBe(true);
+      expect((await screen.findByText(/Before the problem/)).closest("li")).toBeTruthy();
+      fireEvent.click(await screen.findByRole("button", { name: "Use this version" }));
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+      expect((await getDesign(good.id))!.pages).toHaveLength(good.pages.length);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("says that a damaged design has no earlier versions when it has none, and still offers a copy of it", async () => {
+    const broken = { ...createDesign({ title: "Damaged", width: 800, height: 600 }), id: "damaged-alone", pages: [] };
+    await saveDesign(broken);
+    render(<Editor designId="damaged-alone" />);
+    await screen.findByText("We couldn't open this design");
+    expect(await screen.findByText("There are no earlier versions of this design yet.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save a copy of the design to a file" })).toBeTruthy();
+  });
+
   it("asks for a reload when the design was saved by a newer Craftly, and does not touch it", async () => {
     const design = sampleDesign({ title: "From the future" });
     const future = { ...design, version: CURRENT_DESIGN_VERSION + 1, somethingNew: { a: 1 } };
@@ -165,6 +196,7 @@ describe("loading", () => {
       render(<Editor designId={design.id} />);
       expect(await screen.findByText("Update Craftly to open this design")).toBeTruthy();
       expect(screen.getByText(/saved by a newer version of Craftly than the one running in this tab/)).toBeTruthy();
+      expect(screen.queryByText("Go back to an earlier version")).toBeNull(); // a reload is the way on, not an older version
       expect(state().design).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Reload" }));
       expect(reload).toHaveBeenCalledTimes(1);
@@ -189,6 +221,7 @@ describe("loading", () => {
     expect(await screen.findByText("We couldn't bring this design up to date")).toBeTruthy();
     expect(screen.getByText(/format 1 to 2/)).toBeTruthy();
     expect(screen.getByText(/Nothing has been changed/)).toBeTruthy();
+    expect(screen.queryByText("Go back to an earlier version")).toBeNull();
     expect(state().design).toBeNull();
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
     expect(screen.getByRole("button", { name: "Back to home" })).toBeTruthy();

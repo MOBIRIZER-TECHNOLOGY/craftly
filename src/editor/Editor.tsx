@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { RecoveryPanel } from "@/components/RecoveryPanel";
 import { getDesign, saveDesign } from "@/core/library";
 import { isCrashing, keepBeforeProblem } from "@/core/recovery";
 import { MigrationError } from "@/core/schema/migrator";
@@ -220,12 +221,19 @@ export function Editor({ designId }: { designId: string }) {
           text={
             status === "missing"
               ? "It may have been deleted, or it was saved in another browser. Head home to open one of your designs or start a new one."
-              : "Its file looks damaged. Head home to open another design - your other designs are not affected."
+              : "Its file looks damaged. Go back to an earlier version below, or head home to open another design - your other designs are not affected."
           }
           action={
-            <Button variant="primary" icon={<IconHome aria-hidden="true" />} onClick={() => navigate("/")}>
-              Back to home
-            </Button>
+            <>
+              <Button variant="primary" icon={<IconHome aria-hidden="true" />} onClick={() => navigate("/")}>
+                Back to home
+              </Button>
+              {status === "broken" ? (
+                <div className="cf-editor-state__recovery">
+                  <RecoveryPanel designId={designId} open />
+                </div>
+              ) : null}
+            </>
           }
         />
       </EditorState>

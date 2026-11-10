@@ -76,6 +76,12 @@
   justify-content: center;
   gap: 8px;
 }
+/* the way back for a design that cannot be opened: under the button, as wide as a phone allows up to 420 px */
+.cf-editor-state__recovery {
+  width: min(420px, 100%);
+  margin-top: 16px;
+  text-align: left;
+}
 .cf-editor-state > .cf-spinner {
   animation: cf-editor-reveal var(--dur) var(--ease) 180ms both;
 }

@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { getDesign } from "@/core/library";
 import { kindOfLoadFailure, type Problem } from "@/core/problems";
-import { earlierVersions, goBackToVersion, savedAt, type EarlierVersion } from "@/core/recovery";
-import { downloadBlob } from "@/export/download";
-import { Button, toast } from "@/ui";
+import { savedAt } from "@/core/recovery";
+import { Button } from "@/ui";
+import { RecoveryPanel } from "./RecoveryPanel";
 import { ReportPanel } from "./ReportPanel";
 import "./ErrorBoundary.css";
 
@@ -19,7 +18,6 @@ interface Props {
 }
 
 const savedTime = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
-const versionTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 /**
  * What a person sees when Craftly stops (docs/CRASH-RECOVERY.md): what happened, how to go on, and for a design how to go back
@@ -28,8 +26,6 @@ const versionTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", ti
 export function CrashScreen({ error, problem, designId, crashes, onGoToProjects }: Props) {
   const reload = useRef<HTMLButtonElement>(null);
   const [saved, setSaved] = useState<number | null>(null);
-  const [versions, setVersions] = useState<EarlierVersion[] | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
   const loadFailure = kindOfLoadFailure(error.message);
 
   // the screen that had the keyboard is gone
@@ -42,43 +38,10 @@ export function CrashScreen({ error, problem, designId, crashes, onGoToProjects 
       (at) => live && setSaved(at),
       () => undefined,
     );
-    void earlierVersions(designId).then(
-      (list) => live && setVersions(list),
-      () => live && setVersions([]),
-    );
     return () => {
       live = false;
     };
   }, [designId]);
-
-  const goBack = async (id: string, version: EarlierVersion) => {
-    setBusy(version.id);
-    try {
-      if (await goBackToVersion(id, version.id)) {
-        window.location.reload();
-        return;
-      }
-    } catch {
-      /* said below */
-    }
-    setBusy(null);
-    toast.error("That version could not be restored. Try another one.");
-  };
-
-  const saveCopy = async (id: string) => {
-    setBusy("copy");
-    try {
-      const design = await getDesign(id);
-      if (!design) throw new Error("The design is not stored.");
-      const { exportProjectFile, projectFileName } = await import("@/export/projectFile");
-      downloadBlob(await exportProjectFile(design), projectFileName(design.title));
-      toast.success("Saved a copy of the design");
-    } catch {
-      toast.error("The copy could not be saved.");
-    } finally {
-      setBusy(null);
-    }
-  };
 
   let text = "Craftly hit an unexpected problem. Your designs are saved on this device, so nothing you finished is lost.";
   if (loadFailure) text = "Check your connection, then reload. Your designs are saved on this device.";
@@ -103,32 +66,7 @@ export function CrashScreen({ error, problem, designId, crashes, onGoToProjects 
             Go to your projects
           </Button>
         </div>
-        {designId ? (
-          <details className="cf-crash__more" open={crashes >= 2}>
-            <summary>Go back to an earlier version</summary>
-            {versions === null ? (
-              <p>Looking for earlier versions…</p>
-            ) : versions.length === 0 ? (
-              <p>There are no earlier versions of this design yet.</p>
-            ) : (
-              <ul className="cf-crash__versions">
-                {versions.map((version) => (
-                  <li key={version.id}>
-                    <span>
-                      {versionTime.format(version.at)} · {version.label}
-                    </span>
-                    <Button size="sm" loading={busy === version.id} disabled={busy !== null} onClick={() => void goBack(designId, version)}>
-                      Use this version
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Button variant="secondary" size="sm" loading={busy === "copy"} disabled={busy !== null} onClick={() => void saveCopy(designId)}>
-              Save a copy of the design to a file
-            </Button>
-          </details>
-        ) : null}
+        {designId ? <RecoveryPanel designId={designId} open={crashes >= 2} /> : null}
         {problem ? (
           <details className="cf-crash__more">
             <summary>Report this problem</summary>
