@@ -43,12 +43,14 @@ const base = (): Design =>
   createDesign({ title: "Shared", width: 1000, height: 600, pages: [createPage({ id: "p", elements: [createShape("rect", { id: "a", x: 0, y: 0, width: 100, height: 50 })] })] });
 const welcome = (rev = 0, lastSeq = 0, design = base()): ServerMsg => ({ t: "welcome", role: "edit", rev, lastSeq, design });
 
+const KEY = "s3cret-key";
 let sockets: FakeSocket[];
 let changes: number;
 let statuses: Array<[LiveStatus, string | null]>;
 const make = (extra: Partial<ConstructorParameters<typeof Live>[0]> = {}) =>
   new Live({
-    url: "ws://server.test/ws?room=r&key=k",
+    url: "ws://server.test/ws?room=r",
+    key: KEY,
     client: "me",
     createSocket: (url) => {
       const s = new FakeSocket(url);
@@ -78,16 +80,31 @@ describe("connecting", () => {
     const live = make();
     live.start();
     expect(sockets).toHaveLength(1);
-    expect(last().url).toBe("ws://server.test/ws?room=r&key=k");
+    expect(last().url).toBe("ws://server.test/ws?room=r");
     expect(live.status).toBe("connecting");
     last().open();
-    expect(last().sent).toEqual([{ t: "join", client: "me" }]);
+    expect(last().sent).toEqual([{ t: "join", client: "me", key: KEY }]);
     last().say(welcome(4));
     expect(live.status).toBe("live");
     expect(live.session.rev).toBe(4);
     expect(live.design?.title).toBe("Shared");
     expect(changes).toBe(1);
     expect(statuses).toEqual([["live", null]]);
+  });
+
+  it("shows the key in the first message of every connection and in no address", () => {
+    const live = make();
+    live.start();
+    last().open();
+    last().say(welcome());
+    last().lose();
+    vi.advanceTimersByTime(500);
+    last().open();
+    expect(sockets).toHaveLength(2);
+    for (const socket of sockets) {
+      expect(socket.sent).toEqual([{ t: "join", client: "me", key: KEY }]);
+      expect(socket.url).not.toContain(KEY);
+    }
   });
 
   it("does not open a second socket when it is started twice", () => {
@@ -136,7 +153,7 @@ describe("sending", () => {
     const before = base();
     const after = { ...before, title: "Renamed" };
     live.edit(before, after); // the design has not arrived: queued
-    expect(last().sent).toEqual([{ t: "join", client: "me" }]);
+    expect(last().sent).toEqual([{ t: "join", client: "me", key: KEY }]);
     last().say(welcome(0, 0, before));
     expect(last().sent.at(-1)).toMatchObject({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "Renamed" } }] });
     live.edit(after, { ...after, title: "Again" });
@@ -211,7 +228,7 @@ describe("coming back", () => {
     expect(sockets).toHaveLength(1);
     expect(live.status).toBe("closed");
     live.edit(base(), { ...base(), title: "x" });
-    expect(last().sent).toEqual([{ t: "join", client: "me" }]);
+    expect(last().sent).toEqual([{ t: "join", client: "me", key: KEY }]);
   });
 
   it("is told it is not wanted, and stops trying", () => {

@@ -3,7 +3,8 @@
  * links; a second person opens the edit link and is in the same design; a third opens the view link and can only look. What one does
  * with the real pointer shows up for the others, changes made at the same moment on different properties both survive, undo takes
  * back only the person's own change, a person who reloads comes back to the live design, and stopping to share sends the others away
- * and leaves everyone their own copy.
+ * and leaves everyone their own copy. Whatever a socket is opened with, no key is in its address: each connection shows its key in its
+ * first message.
  *
  * The server is the real one (`npm run server:build`, then dist-server/live.mjs, started here with a folder of its own, on a free
  * port or on LIVE_PORT when the page is served under a Content-Security-Policy that names the origin of the server); the editor is
@@ -66,7 +67,16 @@ async function startServer() {
       if (m.type() === "error" && !/WebSocket|ERR_CONNECTION|Failed to load resource/.test(m.text())) logs.push(`${name} console.error: ` + m.text().slice(0, 240));
     });
     page.on("pageerror", (e) => logs.push(`${name} PAGEERROR ` + e.message.slice(0, 240)));
-    return { ctx, page, name };
+    // every socket the page opens: its address, and the first thing it says
+    const sockets = [];
+    page.on("websocket", (ws) => {
+      const entry = { url: ws.url(), first: null };
+      sockets.push(entry);
+      ws.on("framesent", (frame) => {
+        if (entry.first === null) entry.first = String(frame.payload);
+      });
+    });
+    return { ctx, page, name, sockets };
   };
   const [ann, bob, cat] = [await open("ann"), await open("bob"), await open("cat")];
   const shot = (who, name) => who.page.screenshot({ path: OUT + String(++shotN).padStart(2, "0") + "-" + who.name + "-" + name + ".png" });
@@ -321,6 +331,28 @@ async function startServer() {
     if (a.els.length !== 3 || b.els.length !== 3) throw new Error("a copy was lost: " + JSON.stringify([a.els.length, b.els.length]));
     await shot(bob, "sent-away");
     return "Ann: own again, Bob: sent away, both keep their 2 boxes and the arrow";
+  });
+
+  /* ---------------- the keys ---------------- */
+  await step("the keys are in the first message of every connection and in no address", async () => {
+    const keyOf = (link) => JSON.parse(Buffer.from(link.split("#/join/")[1], "base64url").toString("utf8")).k;
+    const keys = [keyOf(editLink), keyOf(viewLink)];
+    // the sockets to the live server; the dev server's own hot-reload socket is none of them
+    const live = server.address.replace(/^http/, "ws");
+    const all = [ann, bob, cat].flatMap((who) => who.sockets.filter((s) => s.url.startsWith(live)).map((s) => ({ who: who.name, ...s })));
+    if (all.length < 5) throw new Error("only " + all.length + " connections were seen");
+    for (const s of all) {
+      if (!s.url.includes("room=")) throw new Error(`${s.who}: no room in ${s.url}`);
+      if (keys.some((k) => s.url.includes(k)) || /[?&]key=/.test(s.url)) throw new Error(`${s.who}: a key is in the address ${s.url}`);
+      let first = null;
+      try {
+        first = JSON.parse(s.first);
+      } catch {
+        /* not JSON */
+      }
+      if (!first || first.t !== "join" || !keys.includes(first.key)) throw new Error(`${s.who}: the first message is not a join with a key: ${String(s.first).slice(0, 80)}`);
+    }
+    return `${all.length} connections, each with its key in the first message`;
   });
 
   await step("no errors reached the console", async () => {

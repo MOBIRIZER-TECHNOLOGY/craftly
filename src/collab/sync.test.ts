@@ -30,7 +30,7 @@ class Browser {
     readonly id: string,
     readonly role: Role = "edit",
   ) {
-    this.session = new Session({ client: id, send: (m) => this.up.push(m) });
+    this.session = new Session({ client: id, key: "k", send: (m) => this.up.push(m) });
     this.shown = room.design;
     this.connect();
     this.flush();
@@ -224,7 +224,7 @@ describe("a refused change", () => {
     const room = new Room(start(), 3);
     const me = new Browser(room, "me", "view");
     me.down = [];
-    room.receive(me.peer, { t: "join", client: "me" });
+    room.receive(me.peer, { t: "join", client: "me", key: "k" });
     expect(me.down).toEqual([{ t: "welcome", role: "view", rev: 3, lastSeq: 0, design: room.design }]);
   });
 
@@ -330,7 +330,7 @@ describe("a session that has heard more than it should", () => {
   const live = () => {
     const room = new Room(start(), 5);
     const sent: ClientMsg[] = [];
-    const session = new Session({ client: "me", send: (m) => sent.push(m) });
+    const session = new Session({ client: "me", key: "k", send: (m) => sent.push(m) });
     session.open();
     session.receive({ t: "welcome", role: "edit", rev: 5, lastSeq: 0, design: room.design });
     sent.length = 0;
@@ -356,13 +356,13 @@ describe("a session that has heard more than it should", () => {
     expect(sent).toEqual([{ t: "ops", seq: 1, ops: [{ k: "el.del", page: "p", id: "a" }] }]);
     sent.length = 0;
     session.receive({ t: "ack", seq: 1, rev: 9 }); // revisions 6 to 8 went missing
-    expect(sent).toEqual([{ t: "join", client: "me" }]);
+    expect(sent).toEqual([{ t: "join", client: "me", key: "k" }]);
     expect(session.status).toBe("joining");
     // while it waits for the design, what else arrives is of no use, and does not make it ask again
     expect(session.receive({ t: "ops", rev: 10, ops: [] })).toEqual({ changed: false, ended: null });
     expect(session.receive({ t: "ack", seq: 7, rev: 4 })).toEqual({ changed: false, ended: null });
     expect(session.receive({ t: "rejected", seq: 1, reason: "x" })).toEqual({ changed: false, ended: null });
-    expect(sent).toEqual([{ t: "join", client: "me" }]);
+    expect(sent).toEqual([{ t: "join", client: "me", key: "k" }]);
     expect(session.pending).toBe(1);
   });
 
@@ -376,7 +376,7 @@ describe("a session that has heard more than it should", () => {
   it("numbers its changes after the last one the server has seen from a browser of the same name, so that none is taken for a repeat", () => {
     const room = new Room(start(), 0, { me: 5 });
     const sent: ClientMsg[] = [];
-    const session = new Session({ client: "me", send: (m) => sent.push(m) });
+    const session = new Session({ client: "me", key: "k", send: (m) => sent.push(m) });
     const peer: Peer = { send: (m) => void session.receive(m) };
     session.open();
     room.join(peer, "me", "edit");
@@ -391,7 +391,7 @@ describe("a session that has heard more than it should", () => {
 
 describe("a browser that is turned away", () => {
   it("is told why, and does nothing more", () => {
-    const session = new Session({ client: "x", send: () => undefined });
+    const session = new Session({ client: "x", key: "k", send: () => undefined });
     expect(session.receive({ t: "denied", reason: "no-access" })).toEqual({ changed: false, ended: "no-access" });
     expect(session.status).toBe("ended");
     session.open();
@@ -406,12 +406,12 @@ describe("a browser that is turned away", () => {
 
   it("ignores a pong and what arrives before the design", () => {
     const sent: ClientMsg[] = [];
-    const session = new Session({ client: "x", send: (m) => sent.push(m) });
+    const session = new Session({ client: "x", key: "k", send: (m) => sent.push(m) });
     expect(session.receive({ t: "pong" })).toEqual({ changed: false, ended: null });
     expect(session.receive({ t: "ops", rev: 1, ops: [] })).toEqual({ changed: false, ended: null });
     expect(session.design).toBeNull();
     session.open();
-    expect(sent).toEqual([{ t: "join", client: "x" }]);
+    expect(sent).toEqual([{ t: "join", client: "x", key: "k" }]);
   });
 });
 

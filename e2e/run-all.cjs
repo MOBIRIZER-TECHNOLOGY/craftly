@@ -23,6 +23,10 @@ const journeys = [
     "hostile.cjs",
     "a link that leads to a server that cannot be trusted: a design with code in it is refused in words and nothing of it is kept, an honest server opens the design, the same server turning hostile is left at once and the design stays as it was",
   ],
+  [
+    "crash.cjs",
+    "when Craftly stops: the screen and when the design was saved, the problem written down, the report read, copied, downloaded and sent only on Send, a second stop that says so, going back to a version, a copy of the design as a file, errors that nothing caught, Report a problem in both menus, a part that cannot be fetched (needs VITE_CRAFTLY_REPORT_URL=/__report in a production build, see e2e/README.md)",
+  ],
   ["animate.cjs", "element and page animations, timing, transitions, preview, motion templates"],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
   ["animated-export.cjs", "animated GIF and WebM downloads: structure, length, loop, decoded by the browser, cancel"],

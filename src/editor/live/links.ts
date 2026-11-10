@@ -35,10 +35,13 @@ export function normalizeServer(typed: string): string | null {
 /** An address of the server's interface. */
 export const apiUrl = (server: string, path: string): string => `${server}${path}`;
 
-/** The address of the socket of a room, with the key in it. */
-export function websocketUrl(link: Pick<LiveLink, "server" | "room" | "key">): string {
+/**
+ * The address of the socket of a room. The key is not in it: an address is written in the logs of every server and proxy that it
+ * passes, so the key is shown in the first message instead (`join`, src/collab/protocol.ts).
+ */
+export function websocketUrl(link: Pick<LiveLink, "server" | "room">): string {
   const base = link.server.replace(/^http/i, "ws");
-  return `${base}/ws?room=${encodeURIComponent(link.room)}&key=${encodeURIComponent(link.key)}`;
+  return `${base}/ws?room=${encodeURIComponent(link.room)}`;
 }
 
 const toBase64Url = (text: string) => btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

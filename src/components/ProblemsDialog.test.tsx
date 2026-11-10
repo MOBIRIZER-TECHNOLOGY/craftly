@@ -24,7 +24,7 @@ const record = (kind: Parameters<typeof recordProblem>[0], message: string, now:
 const dialog = () => screen.getByRole("dialog", { name: "Report a problem" });
 /** the dialog has two buttons called Close: the round one in the corner and the one in the footer */
 const footerClose = () => within(dialog()).getAllByRole("button", { name: "Close" }).at(-1)!;
-const rows = () => within(screen.getByRole("listbox", { name: "Problems on this device" })).getAllByRole("option");
+const rows = () => within(screen.getByRole("list", { name: "Problems on this device" })).getAllByRole("button");
 
 describe("<ProblemsDialog>", () => {
   it("shows nothing while it is closed", () => {
@@ -51,7 +51,8 @@ describe("<ProblemsDialog>", () => {
     expect(list[0].textContent).toContain("newer failure");
     expect(list[0].textContent).toContain("×2");
     expect(list[1].textContent).toContain("Something failed");
-    expect(list[0].getAttribute("aria-selected")).toBe("true");
+    expect(list[0].getAttribute("aria-current")).toBe("true");
+    expect(list[1].getAttribute("aria-current")).toBeNull();
     expect(screen.getByLabelText("What a report holds").textContent).toBe(reportText({ ...newest, count: 2, at: 100_000_001 }));
   });
 
@@ -62,8 +63,8 @@ describe("<ProblemsDialog>", () => {
     render(<ProblemsDialog open problemId={null} onClose={() => undefined} />);
     await user.click(rows()[1]);
     expect(screen.getByLabelText("What a report holds").textContent).toBe(reportText(old));
-    expect(rows()[1].getAttribute("aria-selected")).toBe("true");
-    expect(rows()[0].getAttribute("aria-selected")).toBe("false");
+    expect(rows()[1].getAttribute("aria-current")).toBe("true");
+    expect(rows()[0].getAttribute("aria-current")).toBeNull();
   });
 
   it("starts on the problem it was asked about", () => {

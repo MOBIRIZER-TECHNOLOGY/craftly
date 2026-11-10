@@ -44,13 +44,12 @@ export function ProblemsDialog({ open, problemId, onClose }: Props) {
     >
       {selected ? (
         <div className="cf-problems">
-          <ul className="cf-problems__list" role="listbox" aria-label="Problems on this device">
+          <ul className="cf-problems__list" aria-label="Problems on this device">
             {problems.map((p) => (
-              <li key={p.id} role="presentation">
+              <li key={p.id}>
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={p.id === selected.id}
+                  aria-current={p.id === selected.id ? "true" : undefined}
                   className={cx("cf-problems__row", p.id === selected.id && "is-selected")}
                   onClick={() => setChosen(p.id)}
                 >

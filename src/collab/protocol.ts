@@ -4,7 +4,8 @@
  * what the server sends (`parseServerMsg`), because a link names the server and anybody can make a link. No DOM and no Node API
  * in here: it runs on both ends.
  *
- * The flow: a client joins (the room and its key are in the address it connects to), is answered with the whole design, its
+ * The flow: a client connects to the address of a room and joins by showing its key in its first message (not in the address, which
+ * every server and proxy that it passes writes in a log), is answered with the whole design, its
  * revision and the last numbered batch of its own that the server has applied, and then sends its changes as numbered batches
  * of operations (see ops.ts). The server applies each batch in the order it arrives, answers the sender with `ack` and sends the
  * same operations to everyone else. A batch that is applied twice (a client that sends again after a lost connection) does no
@@ -22,7 +23,11 @@ export const canEdit = (role: Role): boolean => role === "edit";
 export type DeniedReason = "no-access" | "not-found" | "bad-request" | "server-full" | "too-large" | "invalid";
 const DENIED_REASONS: ReadonlySet<string> = new Set<DeniedReason>(["no-access", "not-found", "bad-request", "server-full", "too-large", "invalid"]);
 
-export type ClientMsg = { t: "join"; client: string } | { t: "ops"; seq: number; ops: Op[] } | { t: "ping" };
+/** The longest key that a browser may show; the server's are 22 characters, and the editor reads links with keys of up to 100. */
+export const MAX_KEY_LENGTH = 200;
+
+/** `join` shows the key, in the first message of every connection and never in an address, which every server and proxy that it passes writes in a log. */
+export type ClientMsg = { t: "join"; client: string; key: string } | { t: "ops"; seq: number; ops: Op[] } | { t: "ping" };
 
 export type ServerMsg =
   | { t: "welcome"; role: Role; rev: number; lastSeq: number; design: Design }

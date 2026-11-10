@@ -67,11 +67,12 @@ jobs:
           done
           npm run e2e
       - name: Run the journeys again on a production build, with the offline check
-        # the build that people get: minified, with the service worker (the store handle the journeys read is switched on for this copy only)
+        # the build that people get: minified, with the service worker (the store handle the journeys read, and the address that the Send button of the problem report posts to, which crash.cjs answers itself, are switched on for this copy only)
         env:
           CHROME_PATH: /usr/bin/google-chrome
           E2E_OUT: ${{ runner.temp }}/e2e-production
           VITE_EXPOSE_STORE: "1"
+          VITE_CRAFTLY_REPORT_URL: "/__report"
         run: |
           npx vite build --outDir dist-e2e
           npx vite preview --outDir dist-e2e --host 127.0.0.1 --port 4174 > "$RUNNER_TEMP/preview.log" 2>&1 &

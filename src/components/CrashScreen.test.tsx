@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape } from "@/core/factory";
+import * as library from "@/core/library";
 import { getDesign, listVersions, saveDesign, saveVersion } from "@/core/library";
 import { clearProblems, recordProblem } from "@/core/problems";
 import { downloadBlob } from "@/export/download";
@@ -152,6 +153,22 @@ describe("<CrashScreen> on a design", () => {
     await user.click(button);
     expect(await screen.findByText("That version could not be restored. Try another one.")).toBeTruthy();
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("still says what happened, with no saved time and nothing to go back to, when the library cannot be read", async () => {
+    const summary = vi.spyOn(library, "getSummary").mockRejectedValueOnce(new Error("The library is not available"));
+    const versions = vi.spyOn(library, "listVersions").mockRejectedValueOnce(new Error("The library is not available"));
+    try {
+      const design = await storedDesign();
+      show({ designId: design.id, crashes: 1 });
+      expect(await screen.findByText("There are no earlier versions of this design yet.")).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toContain("Craftly stopped unexpectedly. Your design is saved on this device, so reloading");
+      expect(screen.getByRole("alert").textContent).not.toContain("last saved at");
+      expect(screen.getByRole("button", { name: "Reload Craftly" })).toBeTruthy();
+    } finally {
+      summary.mockRestore();
+      versions.mockRestore();
+    }
   });
 
   it("saves a copy of the design to a file, without opening it", async () => {

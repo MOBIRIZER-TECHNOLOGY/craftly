@@ -17,6 +17,8 @@ export type SessionStatus = "offline" | "joining" | "live" | "ended";
 export interface SessionOptions {
   /** Names this page load to the server, which numbers its batches by it. */
   client: string;
+  /** What lets this browser in: shown in the first message of every connection, never in an address. */
+  key: string;
   send(msg: ClientMsg): void;
 }
 
@@ -64,7 +66,7 @@ export class Session {
   open(): void {
     if (this.status === "ended") return;
     this.status = "joining";
-    this.opts.send({ t: "join", client: this.opts.client });
+    this.opts.send({ t: "join", client: this.opts.client, key: this.opts.key });
   }
 
   /** The connection is gone; whatever was not confirmed is kept and sent again when there is another. */
@@ -151,7 +153,7 @@ export class Session {
   /** Something does not add up: ask for the design again. */
   private resync(): Outcome {
     this.status = "joining";
-    this.opts.send({ t: "join", client: this.opts.client });
+    this.opts.send({ t: "join", client: this.opts.client, key: this.opts.key });
     return NOTHING;
   }
 }

@@ -22,7 +22,7 @@ const code = [{ k: "el.set", page: "p", id: "a", set: { src: "javascript:alert(1
 
 function start() {
   const sent: ClientMsg[] = [];
-  const session = new Session({ client: "me", send: (m) => sent.push(m) });
+  const session = new Session({ client: "me", key: "k", send: (m) => sent.push(m) });
   session.open();
   return { session, sent };
 }
@@ -48,7 +48,7 @@ describe("a welcome that cannot be trusted", () => {
     expect(session.server).toBeNull();
     expect(session.design).toBeNull();
     expect(session.role).toBeNull();
-    expect(sent).toEqual([{ t: "join", client: "me" }]);
+    expect(sent).toEqual([{ t: "join", client: "me", key: "k" }]);
   });
 
   it("does not send what a person made while it was away to a server that has shown what it is", () => {
@@ -56,7 +56,7 @@ describe("a welcome that cannot be trusted", () => {
     session.receive(welcome(withGraphic("<svg><script/></svg>")));
     session.edit(base(), { ...base(), title: "Changed" });
     session.open();
-    expect(sent).toEqual([{ t: "join", client: "me" }]);
+    expect(sent).toEqual([{ t: "join", client: "me", key: "k" }]);
     expect(session.status).toBe("ended");
   });
 });
@@ -171,7 +171,8 @@ describe("the connection to a server that cannot be trusted", () => {
   let statuses: Array<[LiveStatus, string | null]>;
   const make = () =>
     new Live({
-      url: "ws://server.test/ws?room=r&key=k",
+      url: "ws://server.test/ws?room=r",
+      key: "k",
       client: "me",
       createSocket: () => {
         const s = new FakeSocket();
@@ -207,7 +208,7 @@ describe("the connection to a server that cannot be trusted", () => {
     expect(sockets[0].readyState).toBe(3);
     vi.advanceTimersByTime(120_000);
     expect(sockets).toHaveLength(1);
-    expect(sockets[0].sent).toEqual([{ t: "join", client: "me" }]); // no ping, nothing more
+    expect(sockets[0].sent).toEqual([{ t: "join", client: "me", key: "k" }]); // no ping, nothing more
   });
 
   it("is closed for good at operations it cannot use, and what was shown stays", () => {

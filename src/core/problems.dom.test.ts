@@ -1,6 +1,6 @@
 /** The log of problems on this device (localStorage, so that it still works when IndexedDB is what failed) and the one way out of it. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PROBLEM_LIMIT, clearProblems, listProblems, markProblemSent, recordProblem, reportEndpoint, reportText, sendReport } from "./problems";
+import { PROBLEM_LIMIT, clearProblems, currentEnvironment, listProblems, markProblemSent, recordProblem, reportEndpoint, reportText, sendReport } from "./problems";
 
 const KEY = "craftly.problems.v1";
 const error = (message: string) => new Error(message);
@@ -79,6 +79,43 @@ describe("recording a problem", () => {
     expect(listProblems().map((p) => p.message)).toEqual(["no room"]);
   });
 
+  it("keeps the newest problems in memory for as long as the browser will not store them, and stores them again once it will", () => {
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("full", "QuotaExceededError");
+    });
+    recordProblem("script", error("one"), { now: 1 });
+    recordProblem("script", error("two"), { now: 2 });
+    expect(listProblems().map((p) => p.message)).toEqual(["two", "one"]);
+    set.mockRestore();
+    recordProblem("script", error("three"), { now: 3 });
+    expect(listProblems().map((p) => p.message)).toEqual(["three", "two", "one"]);
+    expect((JSON.parse(localStorage.getItem(KEY)!) as Array<{ message: string }>).map((p) => p.message)).toEqual(["three", "two", "one"]);
+    localStorage.removeItem(KEY); // storing works again, so what is stored is the truth again, whatever the page remembers
+    expect(listProblems()).toEqual([]);
+  });
+
+  it("forgets what it kept in memory when the list is cleared, even if the browser will not be read afterwards", () => {
+    recordProblem("script", error("old"), { now: 1 });
+    clearProblems();
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("denied", "SecurityError");
+    });
+    try {
+      expect(listProblems()).toEqual([]);
+    } finally {
+      get.mockRestore();
+    }
+  });
+
+  it("does not bring back a list that was cleared elsewhere, in another tab say, when it writes the next problem", () => {
+    recordProblem("script", error("old"), { now: 1000 });
+    localStorage.removeItem(KEY); // the copy of this page must not come back
+    expect(listProblems()).toEqual([]);
+    recordProblem("script", error("new"), { now: 2000 });
+    expect(listProblems().map((p) => p.message)).toEqual(["new"]);
+    expect((JSON.parse(localStorage.getItem(KEY)!) as Array<{ message: string }>).map((p) => p.message)).toEqual(["new"]);
+  });
+
   it("starts again from an empty list when what is stored cannot be read", () => {
     localStorage.setItem(KEY, "{not json");
     expect(listProblems()).toEqual([]);
@@ -96,6 +133,29 @@ describe("recording a problem", () => {
     clearProblems();
     expect(listProblems()).toEqual([]);
     expect(localStorage.getItem(KEY)).toBeNull();
+  });
+});
+
+describe("the build a report names", () => {
+  const stamp = (content?: string) => {
+    document.head.querySelectorAll('meta[name="craftly-build"]').forEach((meta) => meta.remove());
+    if (content === undefined) return;
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "craftly-build");
+    meta.setAttribute("content", content);
+    document.head.append(meta);
+  };
+
+  it("is the id stamped into the page, and says dev when there is none or the stamp was never filled in", () => {
+    stamp();
+    expect(currentEnvironment().build).toBe("dev");
+    stamp("__BUILD_ID__");
+    expect(currentEnvironment().build).toBe("dev");
+    stamp("  ");
+    expect(currentEnvironment().build).toBe("dev");
+    stamp(" 20261109-ab12 ");
+    expect(currentEnvironment().build).toBe("20261109-ab12");
+    stamp();
   });
 });
 

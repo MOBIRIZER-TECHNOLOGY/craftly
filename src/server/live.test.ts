@@ -56,7 +56,8 @@ async function makeRoom(b: Booted, d: Design = design()): Promise<Made> {
 
 function join(b: Booted, room: string, key: string, client?: string) {
   const live = new Live({
-    url: `${b.ws}?room=${encodeURIComponent(room)}&key=${encodeURIComponent(key)}`,
+    url: `${b.ws}?room=${encodeURIComponent(room)}`,
+    key,
     client,
     createSocket: (url) => new WebSocket(url) as unknown as SocketLike,
     onChange: () => undefined,
@@ -75,16 +76,17 @@ async function until(what: string, check: () => boolean | Promise<boolean>, ms =
   throw new Error(`waited for ${what}`);
 }
 
-/** A bare socket, to say what a page of this app would never say. */
-function raw(b: Booted, room: string, key: string) {
-  const ws = new WebSocket(`${b.ws}?room=${room}&key=${key}`);
+/** A bare socket, to say what a page of this app would never say. Its address names the room only, as a page's does; `join` shows the key. */
+function raw(b: Booted, room: string, key: string, address = `${b.ws}?room=${encodeURIComponent(room)}`) {
+  const ws = new WebSocket(address);
   sockets.push(ws);
   const heard: ServerMsg[] = [];
   let closed: number | null = null;
   ws.on("message", (d) => heard.push(JSON.parse(d.toString()) as ServerMsg));
   ws.on("close", (code) => (closed = code));
   const opened = new Promise<void>((resolve) => ws.on("open", () => resolve()));
-  return { ws, heard, opened, closed: () => closed, say: (m: unknown) => ws.send(typeof m === "string" ? m : JSON.stringify(m)) };
+  const say = (m: unknown) => ws.send(typeof m === "string" ? m : JSON.stringify(m));
+  return { ws, heard, opened, closed: () => closed, say, join: (client: string) => say({ t: "join", client, key }) };
 }
 
 const rename = (d: Design, title: string): Design => ({ ...d, title });
@@ -205,12 +207,78 @@ describe("getting in", () => {
     const made = await makeRoom(b);
     const bad = raw(b, made.room, made.editKey);
     await bad.opened;
-    bad.say({ t: "join", client: "../x" });
+    bad.join("../x");
     await until("the refusal", () => bad.heard.some((m) => m.t === "denied"));
     expect(bad.heard.find((m) => m.t === "denied")).toEqual({ t: "denied", reason: "bad-request" });
     const [one, two, three] = [join(b, made.room, made.editKey), join(b, made.room, made.editKey), join(b, made.room, made.editKey)];
     await until("the third", () => [one, two, three].filter((l) => l.status === "denied").length === 1);
     expect([one, two, three].find((l) => l.status === "denied")?.denied).toBe("server-full");
+  });
+
+  it("takes the key from the first message and not from the address: a key in the address lets nobody in", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey, `${b.ws}?room=${made.room}&key=${made.editKey}`);
+    await s.opened;
+    s.say({ t: "join", client: "no-key" }); // the address holds the key, the message does not
+    await until("the refusal", () => s.closed() === 4003);
+    expect(s.heard).toEqual([{ t: "denied", reason: "no-access" }]);
+  });
+
+  it.each<[string, unknown]>([
+    ["no key", undefined],
+    ["a key that is empty", ""],
+    ["a key that is not a text", 5],
+    ["a key that is a list", ["x"]],
+    ["a key that is far too long", "k".repeat(5000)],
+  ])("turns away a join with %s", async (_what, key) => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.say({ t: "join", client: "odd", key });
+    await until("the refusal", () => s.closed() === 4003);
+    expect(s.heard).toEqual([{ t: "denied", reason: "no-access" }]);
+  });
+
+  it("sends away a connection that does not show its key soon enough, and leaves alone one that does", async () => {
+    const b = await boot({ joinWaitMs: 60 });
+    const made = await makeRoom(b);
+    const silent = raw(b, made.room, made.editKey);
+    const prompt = raw(b, made.room, made.editKey);
+    await Promise.all([silent.opened, prompt.opened]);
+    prompt.join("on-time");
+    await until("the silent one to be sent away", () => silent.closed() === 4003);
+    expect(silent.heard).toEqual([{ t: "denied", reason: "bad-request" }]);
+    await until("the welcome", () => prompt.heard.some((m) => m.t === "welcome"));
+    await new Promise((r) => setTimeout(r, 150)); // the wait is over for both, and well past
+    expect(prompt.closed()).toBeNull();
+  });
+
+  it("does not count those who wait for a place against those who have one", async () => {
+    const b = await boot({ maxPeersPerRoom: 1 });
+    const made = await makeRoom(b);
+    const waiting = raw(b, made.room, made.editKey);
+    await waiting.opened;
+    const guest = join(b, made.room, made.editKey);
+    await until("a place for the guest", () => guest.status === "live");
+    expect(waiting.closed()).toBeNull();
+  });
+
+  it("gives a place back when a person leaves", async () => {
+    const b = await boot({ maxPeersPerRoom: 2 });
+    const made = await makeRoom(b);
+    const [one, two] = [join(b, made.room, made.editKey), join(b, made.room, made.editKey)];
+    await until("both in", () => one.status === "live" && two.status === "live");
+    const third = join(b, made.room, made.editKey);
+    await until("the third to be turned away", () => third.status === "denied");
+    expect(third.denied).toBe("server-full");
+    one.stop();
+    await until("a place to come free", async () => {
+      const next = join(b, made.room, made.editKey);
+      await until("an answer", () => next.status === "live" || next.status === "denied");
+      return next.status === "live";
+    });
   });
 
   it("ignores what is said before the client has joined", async () => {
@@ -220,10 +288,12 @@ describe("getting in", () => {
     await early.opened;
     early.say({ t: "ops", seq: 1, ops: [{ k: "el.del", page: "p", id: "a" }] });
     early.say("this is not json {");
-    early.say({ t: "join", client: "early" });
+    early.say({ t: "ping" }); // nobody is answered before the key has been shown
+    early.join("early");
     await until("the welcome", () => early.heard.some((m) => m.t === "welcome"));
     const welcome = early.heard.find((m) => m.t === "welcome") as Extract<ServerMsg, { t: "welcome" }>;
     expect(welcome.rev).toBe(0);
+    expect(early.heard.map((m) => m.t)).toEqual(["welcome"]);
     expect(welcome.design.pages[0].elements.map((e) => e.id)).toEqual(["a", "b"]);
   });
 });
@@ -284,7 +354,7 @@ describe("editing together", () => {
     expect(viewer.session.pending).toBe(0);
     const sneaky = raw(b, made.room, made.viewKey);
     await sneaky.opened;
-    sneaky.say({ t: "join", client: "sneaky" });
+    sneaky.join("sneaky");
     await until("the welcome", () => sneaky.heard.some((m) => m.t === "welcome"));
     sneaky.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "Vandalised" } }] } satisfies ClientMsg);
     await until("the refusal", () => sneaky.heard.some((m) => m.t === "rejected"));
@@ -297,11 +367,11 @@ describe("editing together", () => {
     const made = await makeRoom(b);
     const first = raw(b, made.room, made.editKey);
     await first.opened;
-    first.say({ t: "join", client: "same-client" });
+    first.join("same-client");
     await until("the first welcome", () => first.heard.some((m) => m.t === "welcome"));
     const second = raw(b, made.room, made.editKey);
     await second.opened;
-    second.say({ t: "join", client: "same-client" });
+    second.join("same-client");
     await until("the old one to be closed", () => first.closed() === 4000);
     await until("the second welcome", () => second.heard.some((m) => m.t === "welcome"));
   });
@@ -332,6 +402,17 @@ describe("a room that outlives the server", () => {
     expect((await storage.load(made.room))?.design.title).toBe("After");
   });
 
+  it("does not keep a room in memory for a visitor who was turned away or who never joined", async () => {
+    const b = await boot({ idleCloseMs: 20, joinWaitMs: 60 });
+    const made = await makeRoom(b);
+    const stranger = join(b, made.room, "wrong-key");
+    await until("the stranger to be sent away", () => stranger.status === "denied");
+    const silent = raw(b, made.room, made.editKey);
+    await silent.opened;
+    await until("the silent one to be sent away", () => silent.closed() === 4003);
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+  });
+
   it("leaves memory when nobody is in it, and is loaded again for the next visitor", async () => {
     const b = await boot({ idleCloseMs: 20 });
     const made = await makeRoom(b);
@@ -347,6 +428,19 @@ describe("a room that outlives the server", () => {
 });
 
 describe("stopping to share", () => {
+  it("sends away a connection that has not shown its key yet, as well as the people who are in", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    const ann = join(b, made.room, made.editKey);
+    await until("live", () => ann.status === "live");
+    const waiting = raw(b, made.room, made.editKey);
+    await waiting.opened;
+    const ok = await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.editKey } });
+    expect(ok.status).toBe(200);
+    await until("the waiting connection to be sent away", () => waiting.closed() === 4004);
+    expect(waiting.heard).toEqual([{ t: "denied", reason: "not-found" }]);
+  });
+
   it("needs the key that edits, sends everybody away, and forgets the design", async () => {
     const b = await boot();
     const made = await makeRoom(b);
@@ -407,7 +501,7 @@ describe("what it will not stand for", () => {
     const made = await makeRoom(b);
     const s = raw(b, made.room, made.editKey);
     await s.opened;
-    s.say({ t: "join", client: "big" });
+    s.join("big");
     await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
     s.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "x".repeat(5000) } }] });
     await until("the connection to be closed", () => s.closed() === 1009);
@@ -418,7 +512,7 @@ describe("what it will not stand for", () => {
     const made = await makeRoom(b);
     const s = raw(b, made.room, made.editKey);
     await s.opened;
-    s.say({ t: "join", client: "fast" });
+    s.join("fast");
     for (let i = 0; i < 20; i++) s.say({ t: "ping" });
     await until("the connection to be closed", () => s.closed() === 1008);
   });
@@ -428,7 +522,7 @@ describe("what it will not stand for", () => {
     const made = await makeRoom(b);
     const s = raw(b, made.room, made.editKey);
     await s.opened;
-    s.say({ t: "join", client: "odd" });
+    s.join("odd");
     await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
     s.say({ t: "ops", seq: 1, ops: [{ k: "el.set", page: "p", id: "a", set: { src: "javascript:alert(1)" } }] });
     await until("the refusal", () => s.heard.some((m) => m.t === "rejected"));
@@ -443,7 +537,7 @@ describe("what it will not stand for", () => {
     const made = await makeRoom(b);
     const s = raw(b, made.room, made.editKey);
     await s.opened;
-    s.say({ t: "join", client: "odd" });
+    s.join("odd");
     await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
     const markup = ['<svg/onload="alert(1)"/>', "<svg><g onclick=alert(1)></g></svg>", '<svg><g ONCLICK="x"/></svg>', '<svg><linearGradient href="&#106;avascript:x"/></svg>'];
     markup.forEach((svg, i) => s.say({ t: "ops", seq: i + 1, ops: [{ k: "el.add", page: "p", parent: null, index: 0, el: { id: `g${i}`, type: "graphic", svg } }] }));

@@ -22,8 +22,10 @@ export interface SocketLike {
 }
 
 export interface LiveOptions {
-  /** The whole address, with the room and the key in it: ws://host/ws?room=...&key=... */
+  /** The address of the room: ws://host/ws?room=... The key is not in it, for every server and proxy that an address passes writes it in a log. */
   url: string;
+  /** What lets this person in: shown in the first message of every connection. */
+  key: string;
   /** Names this page load to the server; another one is made when none is given. */
   client?: string;
   createSocket?: (url: string) => SocketLike;
@@ -54,7 +56,7 @@ export class Live {
 
   constructor(private opts: LiveOptions) {
     const client = opts.client ?? newName();
-    this.session = new Session({ client, send: (msg) => this.send(msg) });
+    this.session = new Session({ client, key: opts.key, send: (msg) => this.send(msg) });
   }
 
   /** The design to show: what the server has confirmed with this person's unconfirmed changes on top. */

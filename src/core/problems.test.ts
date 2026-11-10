@@ -113,6 +113,8 @@ describe("routeOf", () => {
     expect(routeOf("#/")).toBe("home");
     expect(routeOf("")).toBe("home");
     expect(routeOf("#/something-else/42")).toBe("other");
+    expect(routeOf("#")).toBe("home");
+    expect(routeOf("#about")).toBe("other");
   });
 });
 
@@ -126,6 +128,14 @@ describe("describeBrowser", () => {
     expect(describeBrowser("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15")).toBe("Safari 26 on macOS");
     expect(describeBrowser("Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36")).toBe("Chrome 152 on Android");
     expect(describeBrowser("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36")).toBe("Chrome 152 on Linux");
+    expect(describeBrowser("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/152.0.0.0 Mobile/15E148 Safari/604.1")).toBe(
+      "Chrome 152 on iOS",
+    );
+    expect(describeBrowser("Mozilla/5.0 (X11; CrOS x86_64 16000.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36")).toBe("Chrome 152 on ChromeOS");
+  });
+
+  it("leaves the system out when it cannot tell what it is", () => {
+    expect(describeBrowser("Mozilla/5.0 (PlayStation 5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15")).toBe("Safari 26");
   });
 
   it("does not guess when it does not know", () => {

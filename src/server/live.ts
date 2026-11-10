@@ -7,17 +7,18 @@
  * HTTP:  POST /api/rooms {design}        makes a room from a design: { room, editKey, viewKey } (the keys are shown once)
  *        DELETE /api/rooms/:id           with the edit key in `x-craftly-key`: stops sharing and sends everyone away
  *        GET /api/health
- * WebSocket: /ws?room=<id>&key=<key>     then the messages of src/collab/protocol.ts
+ * WebSocket: /ws?room=<id>               then a join with the key as the first message, then the rest of src/collab/protocol.ts
  *
  * The keys are random and only their hashes are stored. The room's id is random too: a link with an id and a key is all it takes to
- * get in, so a link is a secret.
+ * get in, so a link is a secret. The key is never in an address, which every server and proxy that it passes writes in a log: a browser
+ * shows it in its first message, soon after it has connected, and a connection that does not is sent away.
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { diffDesign } from "@/collab/ops";
-import { checkOps, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
+import { checkOps, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
 import { Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
 import { ROOM_ID, type LiveStorage, type RoomRecord } from "./storage";
@@ -36,6 +37,8 @@ export interface LiveServerOptions {
   saveDelayMs?: number;
   /** How long a room with nobody in it stays in memory. */
   idleCloseMs?: number;
+  /** How long a connection may take to show its key (its first message) before it is sent away. */
+  joinWaitMs?: number;
   /** Messages a connection may send: a burst, then so many a second. */
   rate?: { burst: number; perSecond: number };
 }
@@ -56,6 +59,7 @@ const DEFAULTS = {
   maxDesignBytes: 16 * 1024 * 1024,
   saveDelayMs: 300,
   idleCloseMs: 60_000,
+  joinWaitMs: 10_000,
   rate: { burst: 200, perSecond: 100 },
 };
 
@@ -72,7 +76,10 @@ interface Loaded {
   id: string;
   room: Room;
   record: RoomRecord;
+  /** Every connection that found the room, whether or not it has shown its key yet. */
   sockets: Set<WebSocket>;
+  /** The connections that have shown a key: the people in the room. */
+  members: Set<WebSocket>;
   saveTimer: ReturnType<typeof setTimeout> | null;
   idleTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -93,7 +100,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   };
 
   const open = (id: string, record: RoomRecord): Loaded => {
-    const l: Loaded = { id, room: new Room(record.design, record.rev, record.seqs), record, sockets: new Set(), saveTimer: null, idleTimer: null };
+    const l: Loaded = { id, room: new Room(record.design, record.rev, record.seqs), record, sockets: new Set(), members: new Set(), saveTimer: null, idleTimer: null };
     l.room.onChange = () => {
       if (!l.saveTimer) l.saveTimer = setTimeout(() => void save(l).catch(() => undefined), o.saveDelayMs);
     };
@@ -266,10 +273,16 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       socket.destroy();
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws) => void connection(ws, url.searchParams.get("room") ?? "", url.searchParams.get("key") ?? ""));
+    wss.handleUpgrade(req, socket, head, (ws) => void connection(ws, url.searchParams.get("room") ?? ""));
   });
 
-  const connection = async (ws: WebSocket, roomId: string, key: string) => {
+  /** What a key allows in a room: editing, looking, or (null) nothing. A key that is no text, or too long to be one, allows nothing. */
+  const roleOf = (l: Loaded, key: unknown): Role | null => {
+    if (typeof key !== "string" || key.length > MAX_KEY_LENGTH) return null;
+    return sameHash(l.record.editHash, key) ? "edit" : sameHash(l.record.viewHash, key) ? "view" : null;
+  };
+
+  const connection = async (ws: WebSocket, roomId: string) => {
     sockets.add(ws);
     ws.on("close", () => sockets.delete(ws));
     ws.on("error", () => undefined);
@@ -286,17 +299,18 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     }
     if (ws.readyState !== ws.OPEN) return;
     if (!l) return deny(ws, "not-found");
-    const role: Role | null = sameHash(l.record.editHash, key) ? "edit" : sameHash(l.record.viewHash, key) ? "view" : null;
-    if (!role) return deny(ws, "no-access");
-    if (l.sockets.size >= o.maxPeersPerRoom) return deny(ws, "server-full");
-
+    // Nothing in the address lets anybody in: the key comes in the first message, a join, soon after the connection is made. Until it has, the
+    // connection belongs to the room (which stays in memory for it, and sends it away with everybody else) but is not one of the people in it.
     l.sockets.add(ws);
     const peer: Peer = { send: (msg) => send(ws, msg) };
+    const silent = setTimeout(() => deny(ws, "bad-request"), o.joinWaitMs);
     let tokens = o.rate.burst;
     let refilled = Date.now();
     ws.on("close", () => {
+      clearTimeout(silent);
       l.room.leave(peer);
       l.sockets.delete(ws);
+      l.members.delete(ws);
       unloadLater(l);
     });
 
@@ -313,13 +327,20 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       }
       if (!msg || typeof msg !== "object") return;
       if (msg.t === "join") {
+        const role = roleOf(l, msg.key);
+        if (!role) return void deny(ws, "no-access");
         if (typeof msg.client !== "string" || !CLIENT_NAME.test(msg.client)) return void deny(ws, "bad-request");
+        if (!l.members.has(ws)) {
+          if (l.members.size >= o.maxPeersPerRoom) return void deny(ws, "server-full");
+          l.members.add(ws);
+          clearTimeout(silent);
+        }
         for (const old of l.room.join(peer, msg.client, role)) {
           const other = peerSockets.get(old);
           if (other && other !== ws) other.close(4000, "replaced");
         }
         peerSockets.set(peer, ws);
-      } else l.room.receive(peer, msg); // a connection that has not joined is not in the room, which ignores it
+      } else l.room.receive(peer, msg); // a connection that has not joined is not in the room, which ignores it and answers it nothing
     };
     for (const data of early.splice(0)) handle(data);
   };

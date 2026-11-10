@@ -52,6 +52,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   let looking = false;
   const live = new Live({
     url: websocketUrl(link),
+    key: link.key,
     createSocket: env.createSocket,
     onChange: () => {
       const shared = live.design;
@@ -145,6 +146,7 @@ export function joinDesign(link: LiveLink, env: LiveEnv = {}): Promise<{ design:
     };
     const live: Live = new Live({
       url: websocketUrl(link),
+      key: link.key,
       createSocket: env.createSocket,
       onChange: () => {
         const design = live.design;

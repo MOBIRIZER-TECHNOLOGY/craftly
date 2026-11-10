@@ -51,11 +51,10 @@ export function CrashScreen({ error, problem, designId, crashes, onGoToProjects 
     };
   }, [designId]);
 
-  const goBack = async (version: EarlierVersion) => {
-    if (!designId) return;
+  const goBack = async (id: string, version: EarlierVersion) => {
     setBusy(version.id);
     try {
-      if (await goBackToVersion(designId, version.id)) {
+      if (await goBackToVersion(id, version.id)) {
         window.location.reload();
         return;
       }
@@ -66,11 +65,10 @@ export function CrashScreen({ error, problem, designId, crashes, onGoToProjects 
     toast.error("That version could not be restored. Try another one.");
   };
 
-  const saveCopy = async () => {
-    if (!designId) return;
+  const saveCopy = async (id: string) => {
     setBusy("copy");
     try {
-      const design = await getDesign(designId);
+      const design = await getDesign(id);
       if (!design) throw new Error("The design is not stored.");
       const { exportProjectFile, projectFileName } = await import("@/export/projectFile");
       downloadBlob(await exportProjectFile(design), projectFileName(design.title));
@@ -119,14 +117,14 @@ export function CrashScreen({ error, problem, designId, crashes, onGoToProjects 
                     <span>
                       {versionTime.format(version.at)} · {version.label}
                     </span>
-                    <Button size="sm" loading={busy === version.id} disabled={busy !== null} onClick={() => void goBack(version)}>
+                    <Button size="sm" loading={busy === version.id} disabled={busy !== null} onClick={() => void goBack(designId, version)}>
                       Use this version
                     </Button>
                   </li>
                 ))}
               </ul>
             )}
-            <Button variant="secondary" size="sm" loading={busy === "copy"} disabled={busy !== null} onClick={() => void saveCopy()}>
+            <Button variant="secondary" size="sm" loading={busy === "copy"} disabled={busy !== null} onClick={() => void saveCopy(designId)}>
               Save a copy of the design to a file
             </Button>
           </details>

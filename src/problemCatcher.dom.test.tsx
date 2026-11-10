@@ -75,6 +75,19 @@ describe("the problem catcher", () => {
     expect(listProblems()).toHaveLength(2);
   });
 
+  it("does not tell about a problem that came again, even when it was not told the first time", () => {
+    render(<ToastHost />);
+    const same = new Error("the same, twice");
+    markCrashing(true);
+    fail(same); // the crash screen is on show: no notice
+    markCrashing(false);
+    clock += 10_000;
+    fail(same); // written down already: counted, not told as if it were new
+    expect(notices()).toHaveLength(0);
+    expect(listProblems()).toHaveLength(1);
+    expect(listProblems()[0].count).toBe(2);
+  });
+
   it("tells again a minute later, but never more than three times", () => {
     render(<ToastHost />);
     for (let i = 0; i < 5; i++) {

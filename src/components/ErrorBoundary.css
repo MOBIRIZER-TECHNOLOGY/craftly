@@ -48,6 +48,8 @@
   cursor: pointer;
   font-weight: 700;
   color: var(--c-ink);
+  /* a target of at least 24 px (the line alone is 20) */
+  padding: 4px 0;
 }
 .cf-crash__more[open] summary {
   margin-bottom: 10px;

@@ -14,7 +14,14 @@ import { MemoryStorage } from "@/server/storage";
 import { connectLive, joinDesign, shareDesign, stopSharing, useLiveStatus } from "./connection";
 import { joinToken, parseJoinToken, websocketUrl } from "./links";
 
-const env = { createSocket: (url: string) => new WebSocket(url) as unknown as SocketLike };
+/** every address that a socket was opened with */
+const addresses: string[] = [];
+const env = {
+  createSocket: (url: string) => {
+    addresses.push(url);
+    return new WebSocket(url) as unknown as SocketLike;
+  },
+};
 const a = () => useEditor.getState().actions;
 const s = () => useEditor.getState();
 const el = (id: string) => s().design!.pages[0].elements.find((e) => e.id === id)!;
@@ -39,6 +46,7 @@ const stops: Array<() => void> = [];
 const others: Live[] = [];
 
 beforeEach(async () => {
+  addresses.length = 0;
   storage = new MemoryStorage();
   server = createLiveServer({ storage, saveDelayMs: 5 });
   const { port } = await server.listen(0);
@@ -64,7 +72,7 @@ async function until(what: string, check: () => boolean | Promise<boolean>, ms =
 
 /** another person, on a connection of their own */
 function person(link: LiveLink) {
-  const live = new Live({ url: websocketUrl(link), createSocket: env.createSocket, onChange: () => undefined });
+  const live = new Live({ url: websocketUrl(link), key: link.key, createSocket: env.createSocket, onChange: () => undefined });
   others.push(live);
   live.start();
   return live;
@@ -102,6 +110,25 @@ describe("starting to share", () => {
     await expect(shareDesign(`http://127.0.0.1:${port}`, env)).rejects.toThrow(/too big/i);
     await small.close();
     await expect(shareDesign(`${address}/nothing-here`, env)).rejects.toThrow();
+  });
+});
+
+describe("the key", () => {
+  it("travels in the first message and in no address of a socket: not the owner's, a guest's, one who only looks, or the one who joins with a link", async () => {
+    const link = await shareDesign(address, env);
+    stops.push(connectLive(link, env));
+    await until("this person to be live", () => useLiveStatus.getState().status === "live");
+    const looker = person({ ...link, key: link.viewKey!, role: "view" });
+    const guest = person(link);
+    await until("both to be live", () => looker.status === "live" && guest.status === "live");
+    const joined = await joinDesign(parseJoinToken(joinToken(link))!, env);
+    expect(joined.role).toBe("edit");
+    expect(addresses).toHaveLength(4);
+    for (const url of addresses) {
+      expect(url).toContain(link.room);
+      expect(url).not.toContain(link.key);
+      expect(url).not.toContain(link.viewKey!);
+    }
   });
 });
 

@@ -242,10 +242,14 @@ const isProblem = (value: unknown): value is Problem => {
   );
 };
 
+/** True when the last attempt to store the list failed: the copy in memory is then the only one that is up to date. */
+let unstored = false;
+
 function read(): Problem[] {
+  if (unstored) return memory;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === null) return memory;
+    if (raw === null) return []; // never written, or cleared elsewhere (in another tab): the copy in memory must not come back
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter(isProblem) : [];
   } catch {
@@ -257,8 +261,9 @@ function write(list: Problem[]): void {
   memory = list;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    unstored = false;
   } catch {
-    /* the list goes on in memory for as long as the page lives */
+    unstored = true; // the list goes on in memory for as long as the page lives, or until the browser will store it again
   }
 }
 
@@ -267,6 +272,7 @@ export const listProblems = (): Problem[] => read();
 
 export function clearProblems(): void {
   memory = [];
+  unstored = false;
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {

@@ -132,6 +132,7 @@ class Browser {
     this.shown = initial;
     this.session = new Session({
       client: id,
+      key: "k",
       send: (m) => {
         if (!this.connected) return;
         if (m.t === "ops") {

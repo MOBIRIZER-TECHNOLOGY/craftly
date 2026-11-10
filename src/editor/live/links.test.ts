@@ -30,9 +30,21 @@ describe("the address of the server", () => {
   it("gives the addresses of the interface and of the socket", () => {
     expect(apiUrl("https://live.example.test", "/api/rooms")).toBe("https://live.example.test/api/rooms");
     expect(apiUrl("http://127.0.0.1:8787/base", "/api/rooms")).toBe("http://127.0.0.1:8787/base/api/rooms");
-    expect(websocketUrl(link)).toBe("wss://live.example.test/ws?room=TW-FaxWt8edjpnT-bGQyjA&key=WjGO30NJy5udhntaj-8j9w");
-    expect(websocketUrl({ ...link, key: "a&b c" })).toContain("&key=a%26b%20c");
-    expect(websocketUrl({ ...link, server: "http://127.0.0.1:8787" })).toBe("ws://127.0.0.1:8787/ws?room=TW-FaxWt8edjpnT-bGQyjA&key=WjGO30NJy5udhntaj-8j9w");
+    expect(websocketUrl(link)).toBe("wss://live.example.test/ws?room=TW-FaxWt8edjpnT-bGQyjA");
+    const otherKey = { ...link, key: "a&b c" };
+    expect(websocketUrl(otherKey)).toBe("wss://live.example.test/ws?room=TW-FaxWt8edjpnT-bGQyjA");
+    expect(websocketUrl({ ...link, server: "http://127.0.0.1:8787" })).toBe("ws://127.0.0.1:8787/ws?room=TW-FaxWt8edjpnT-bGQyjA");
+  });
+
+  it("names the room and nothing else in the address of the socket: the key goes in the first message, because every server and proxy that an address passes writes it in a log", () => {
+    for (const key of [link.key, "a&b c", "SECRETSECRET"]) {
+      const withKey = { ...link, key };
+      const url = websocketUrl(withKey);
+      expect(url).not.toContain(key);
+      expect(url).not.toContain(encodeURIComponent(key));
+      expect(url).not.toMatch(/key/i);
+      expect(new URL(url).search).toBe(`?room=${link.room}`);
+    }
   });
 });
 
