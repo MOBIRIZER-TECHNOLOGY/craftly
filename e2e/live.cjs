@@ -213,8 +213,9 @@ async function startServer() {
     await ann.page.mouse.move(tx, ty, { steps: 5 });
     await ann.page.mouse.up();
     const mine = await look(ann);
-    const there = await until("the box to move for the other person", bob, (x) => x.els[0].y < 250);
-    if (Math.abs(there.els[0].y - mine.els[0].y) > 1) throw new Error(`ann ${mine.els[0].y}, bob ${there.els[0].y}`);
+    if (!(mine.els[0].y < 250)) throw new Error(`the box did not move for the person who dragged it: y ${mine.els[0].y}`);
+    // a drag is sent while it happens, so the other person also sees the places on the way: wait for the place it ended at
+    await until("the box to be where it was dropped for the other person", bob, (x) => Math.abs(x.els[0].y - mine.els[0].y) <= 1);
     await shot(bob, "after-drag");
     return `y ${mine.els[0].y} for both`;
   });
