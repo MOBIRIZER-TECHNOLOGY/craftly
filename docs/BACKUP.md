@@ -20,7 +20,7 @@ A backup is an ordinary ZIP that any unzip tool opens. Nothing is compressed: pi
 
 ```
 craftly-backup.json            the manifest (always the first file): what is in the archive, and the small things
-designs/<id>.json              one design each, as stored (the same JSON as in a .craftly file, but its pictures are not embedded)
+designs/<id>.json              one design each, with live credentials omitted (pictures are stored separately)
 previews/<id>.jpg              the dashboard thumbnail of a design
 uploads/<id>.<ext>             an uploaded picture, as it was uploaded
 versions/<designId>/<n>.json   one saved version of a design, newest first (n = 0, 1, 2 ...)
@@ -42,6 +42,8 @@ The manifest lists every file, so a restore never has to guess from names:
 ```
 
 `craftlyBackup` is the format version (1). A file with a higher number is refused with "made by a newer version of Craftly", so an old app never half-reads a new file. A design inside a backup has a version of its own (`docs/MIGRATIONS.md`): each is brought up to date as it is restored, and one that a newer release made is left out, counted apart from the damaged ones ("N items were made by a newer version of Craftly and were left out"). A backup copies the designs of the library as they are stored, a newer one included, so nothing an older tab cannot read is lost. Ids are kept as they were: a design, an upload and a folder come back under the ids they had, which is how a design finds its pictures again, a brand kit its logos and a saved version its design. A backup made in one browser and restored in another therefore gives the same links (`#/design/<id>`).
+
+Backups omit active live links and credentials from designs and saved versions. A restored design is an independent local copy. The ZIP includes shared pictures that this browser has already cached in its library. The room on the collaboration server and the tab's pending replay queue are separate. Restore also discards embedded live links from older backups. Handle an older backup that contains keys as a secret.
 
 Limits: one ZIP holds at most 4 GB and 65,535 files. A library that is larger gets a plain message ("larger than one backup file can hold") before any packing, with the advice to delete uploads you no longer need or to save the biggest designs one by one (**Share > Save project file**).
 

@@ -5,12 +5,12 @@
  */
 import { createDesign, createPage, solid } from "./factory";
 import { uid } from "./ids";
-import { dbDelete, dbDeleteMany, dbGet, dbGetAll, dbPut, dbPutMany, metaGet, metaSet, type StoreName } from "./persistence";
+import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany, metaGet, metaSet, openDb, wrap, writeTransaction, type StoreName } from "./persistence";
 import { clonePageWithIds } from "./ops";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "./schema/design";
 import { newerError } from "./schema/migrator";
 import { askForPersistentStorageOnce } from "./storage";
-import type { BrandKit, Design, DesignSummary, Folder, Page, SizeUnit } from "./types";
+import type { Asset, BrandKit, Design, DesignSummary, Folder, Page, SizeUnit } from "./types";
 
 /* ---------------- change notifications ---------------- */
 
@@ -62,48 +62,80 @@ export async function getDesign(id: string): Promise<Design | null> {
 }
 export const getSummary = (id: string) => dbGet<DesignSummary>("summaries", id).then((d) => d ?? null);
 
-/** The first save of an upgraded design keeps what was stored in the version history, so a step that went wrong can be undone. */
-async function keepOriginal(id: string): Promise<void> {
-  const original = await getStoredDesign(id);
-  if (!original) return;
-  const now = Date.now();
-  const record: VersionRecord = { id: `${id}:${now}`, designId: id, createdAt: now, label: "Before the update", design: original };
-  await dbPut("versions", record);
+export class DesignSaveConflict extends Error {
+  constructor(deleted: boolean) {
+    super(
+      deleted
+        ? "This design was deleted in another tab. Download a project file to keep your edits."
+        : "This design changed in another tab. Download a project file to keep your edits.",
+    );
+    this.name = "DesignSaveConflict";
+  }
 }
 
-/**
- * Writes the design and its dashboard record. Never over a design that a newer release stored (this tab is older than the
- * library: it would turn the document back into a format that has lost things), and the first save of a design that was
- * brought up to date keeps what was there. The dashboard record says which version the stored design is, so neither check
- * has to read the design.
- */
-export async function saveDesign(design: Design, thumbnail?: string): Promise<void> {
-  const prev = await getSummary(design.id);
-  const stored = prev?.schema ?? 1;
-  if (prev && stored > CURRENT_DESIGN_VERSION) throw newerError("design", stored, CURRENT_DESIGN_VERSION);
-  if (prev && stored < design.version) await keepOriginal(design.id);
-  await dbPutMany([
-    { store: "designs", value: design },
-    { store: "summaries", value: summarize(design, thumbnail, prev ?? undefined) },
-  ]);
+/** Read the document and its revision from the same database snapshot. */
+export async function getDesignForEditing(id: string): Promise<{ design: Design; revision: string | null } | null> {
+  const tx = (await openDb()).transaction(["designs", "summaries"], "readonly");
+  const [stored, summary] = await Promise.all([wrap<Design | undefined>(tx.objectStore("designs").get(id)), wrap<DesignSummary | undefined>(tx.objectStore("summaries").get(id))]);
+  return stored ? { design: migrateDesign(stored).design, revision: summary?.revision ?? null } : null;
+}
+
+export async function saveDesign(design: Design, thumbnail?: string, expectedRevision?: string | null, assets: Asset[] = []): Promise<string> {
+  const stores: StoreName[] = ["designs", "summaries", "versions"];
+  if (assets.length) stores.push("assets");
+  const revision = await writeTransaction(stores, async (tx) => {
+    const summaries = tx.objectStore("summaries");
+    const designs = tx.objectStore("designs");
+    const prev = await wrap<DesignSummary | undefined>(summaries.get(design.id));
+    if (expectedRevision !== undefined && (!prev || (prev.revision ?? null) !== expectedRevision)) throw new DesignSaveConflict(!prev);
+    const stored = prev?.schema ?? 1;
+    if (prev && stored > CURRENT_DESIGN_VERSION) throw newerError("design", stored, CURRENT_DESIGN_VERSION);
+    if (prev && stored < design.version) {
+      const original = await wrap<Design | undefined>(designs.get(design.id));
+      if (original) {
+        const now = Date.now();
+        const record: VersionRecord = { id: `${design.id}:${now}`, designId: design.id, createdAt: now, label: "Before the update", design: original };
+        tx.objectStore("versions").put(record);
+      }
+    }
+    const summary = { ...summarize(design, thumbnail, prev), revision: uid("revision") };
+    for (const asset of assets) tx.objectStore("assets").add(asset);
+    designs.put(design);
+    summaries.put(summary);
+    return summary.revision;
+  });
   emit();
-  void askForPersistentStorageOnce(); // the first save is when there is something to lose
+  void askForPersistentStorageOnce();
+  return revision;
+}
+
+export async function saveThumbnail(id: string, revision: string, thumbnail: string): Promise<void> {
+  const written = await writeTransaction(["summaries"], async (tx) => {
+    const summaries = tx.objectStore("summaries");
+    const prev = await wrap<DesignSummary | undefined>(summaries.get(id));
+    if (prev?.revision !== revision) return false;
+    summaries.put({ ...prev, thumbnail });
+    return true;
+  });
+  if (written) emit();
 }
 
 export async function updateSummary(id: string, patch: Partial<DesignSummary>): Promise<void> {
-  const design = await getStoredDesign(id);
-  const prev = await getSummary(id);
-  if (!design || !prev) return;
-  const nextDesign: Design = { ...design };
-  if (patch.title !== undefined) nextDesign.title = patch.title;
-  if (patch.starred !== undefined) nextDesign.starred = patch.starred;
-  if (patch.folderId !== undefined) nextDesign.folderId = patch.folderId;
-  if (patch.trashedAt !== undefined) nextDesign.trashedAt = patch.trashedAt;
-  await dbPutMany([
-    { store: "designs", value: nextDesign },
-    { store: "summaries", value: { ...prev, ...patch } },
-  ]);
-  emit();
+  const written = await writeTransaction(["designs", "summaries"], async (tx) => {
+    const designs = tx.objectStore("designs");
+    const summaries = tx.objectStore("summaries");
+    const [design, prev] = await Promise.all([wrap<Design | undefined>(designs.get(id)), wrap<DesignSummary | undefined>(summaries.get(id))]);
+    if (!design || !prev) return false;
+    const nextDesign: Design = { ...design };
+    if (patch.title !== undefined) nextDesign.title = patch.title;
+    if (patch.starred !== undefined) nextDesign.starred = patch.starred;
+    if (patch.folderId !== undefined) nextDesign.folderId = patch.folderId;
+    if (patch.trashedAt !== undefined) nextDesign.trashedAt = patch.trashedAt;
+    designs.put(nextDesign);
+    summaries.put({ ...prev, ...patch, revision: uid("revision") });
+    return true;
+  });
+  if (written) emit();
 }
 
 export const renameDesign = (id: string, title: string) => updateSummary(id, { title: title.trim() || "Untitled design" });
@@ -113,13 +145,13 @@ export const moveToTrash = (id: string) => updateSummary(id, { trashedAt: Date.n
 export const restoreFromTrash = (id: string) => updateSummary(id, { trashedAt: null });
 
 export async function deleteForever(id: string): Promise<void> {
-  await dbDelete("designs", id);
-  await dbDelete("summaries", id);
-  const versions = await dbGetAll<{ id: string; designId: string }>("versions");
-  await dbDeleteMany(
-    "versions",
-    versions.filter((v) => v.designId === id).map((v) => v.id),
-  );
+  await writeTransaction(["designs", "summaries", "versions"], async (tx) => {
+    tx.objectStore("designs").delete(id);
+    tx.objectStore("summaries").delete(id);
+    const versions = tx.objectStore("versions");
+    const records = await wrap<VersionRecord[]>(versions.getAll());
+    for (const version of records) if (version.designId === id) versions.delete(version.id);
+  });
   emit();
 }
 
@@ -141,7 +173,7 @@ export async function duplicateDesign(id: string): Promise<Design | null> {
   const prev = await getSummary(id);
   await dbPutMany([
     { store: "designs", value: copy },
-    { store: "summaries", value: summarize(copy, prev?.thumbnail) },
+    { store: "summaries", value: { ...summarize(copy, prev?.thumbnail), revision: uid("revision") } },
   ]);
   emit();
   return copy;
@@ -183,7 +215,7 @@ export interface RestoredRecords {
 export async function restoreRecords(records: RestoredRecords): Promise<void> {
   const writes: Array<{ store: StoreName; value: unknown }> = [];
   for (const { design, thumbnail } of records.designs ?? []) {
-    writes.push({ store: "designs", value: design }, { store: "summaries", value: summarize(design, thumbnail) });
+    writes.push({ store: "designs", value: design }, { store: "summaries", value: { ...summarize(design, thumbnail), revision: uid("revision") } });
   }
   for (const folder of records.folders ?? []) writes.push({ store: "folders", value: folder });
   for (const version of records.versions ?? []) writes.push({ store: "versions", value: version });
@@ -255,12 +287,21 @@ export interface VersionRecord {
 
 const MAX_VERSIONS = 25;
 
-export async function saveVersion(design: Design, label?: string): Promise<void> {
-  const all = (await dbGetAll<VersionRecord>("versions")).filter((v) => v.designId === design.id).sort((a, b) => b.createdAt - a.createdAt);
-  const rec: VersionRecord = { id: `${design.id}:${Date.now()}`, designId: design.id, createdAt: Date.now(), label, design: structuredClone(design) };
-  await dbPut("versions", rec);
-  const stale = all.slice(MAX_VERSIONS - 1).map((v) => v.id);
-  if (stale.length) await dbDeleteMany("versions", stale);
+export async function saveVersion(design: Design, label?: string, revision?: string): Promise<void> {
+  const stores: StoreName[] = revision === undefined ? ["versions"] : ["versions", "summaries"];
+  await writeTransaction(stores, async (tx) => {
+    if (revision !== undefined) {
+      const summary = await wrap<DesignSummary | undefined>(tx.objectStore("summaries").get(design.id));
+      if (summary?.revision !== revision) return;
+    }
+    const versions = tx.objectStore("versions");
+    const records = await wrap<VersionRecord[]>(versions.getAll());
+    const recent = records.filter((v) => v.designId === design.id).sort((a, b) => b.createdAt - a.createdAt);
+    const now = Date.now();
+    const id = `${design.id}:${now}`;
+    versions.put({ id, designId: design.id, createdAt: now, label, design });
+    for (const stale of recent.filter((record) => record.id !== id).slice(MAX_VERSIONS - 1)) versions.delete(stale.id);
+  });
 }
 
 export async function listVersions(designId: string): Promise<Omit<VersionRecord, "design">[]> {

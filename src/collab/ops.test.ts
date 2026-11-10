@@ -54,6 +54,15 @@ describe("diffDesign", () => {
     expect(diffDesign(unblurred, clean)).toEqual([{ k: "el.set", page: "p", id: "a", unset: ["blur"] }]);
   });
 
+  it("describes a blend mode that is set and one that is taken away, and replaying either gives the design back", () => {
+    const plain = designOf(page("p", [rect("a")]));
+    const blended = withPage(plain, "p", (p) => ({ ...p, elements: p.elements.map((e) => ({ ...e, blend: "multiply" as const })) }));
+    expect(diffDesign(plain, blended)).toEqual([{ k: "el.set", page: "p", id: "a", set: { blend: "multiply" } }]);
+    expect(diffDesign(blended, plain)).toEqual([{ k: "el.set", page: "p", id: "a", unset: ["blend"] }]);
+    expect(applyOps(plain, diffDesign(plain, blended))).toEqual(blended);
+    expect(applyOps(blended, diffDesign(blended, plain))).toEqual(plain);
+  });
+
   it("does not send a property again that has the same content in a new object", () => {
     const d = designOf(page("p", [rect("a", 0, 0, { fill: solid("#ff0000") })]));
     const same = withPage(d, "p", (p) => ({ ...p, elements: p.elements.map((e) => ({ ...e, fill: solid("#ff0000") })) }));

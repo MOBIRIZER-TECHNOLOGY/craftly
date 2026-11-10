@@ -55,6 +55,36 @@ describe("renderExportCanvas", () => {
     expect(spies[0].to("clearRect")).toHaveLength(1);
   });
 
+  describe("elements with a blend mode", () => {
+    const blended = () => createPage({ elements: [createShape("rect", { x: 10, y: 10, width: 30, height: 30, fill: solid("#ff0000"), blend: "multiply" })] });
+
+    it("are mixed on a layer as big as the export, which is let go of when the export is done", async () => {
+      const first = captureContexts();
+      await renderExportCanvas({ width: 100, height: 50 }, blended(), { scale: 2 });
+      const [main, layer] = first;
+      expect(layer.to("clearRect")[0].args).toEqual([0, 0, 200, 100]);
+      expect(layer.to("fill")).toHaveLength(1);
+      expect(main.to("drawImage")[0].state.globalCompositeOperation).toBe("multiply");
+      expect(layer.canvas.width).toBe(0);
+      // the next export makes its own layer
+      const second = captureContexts();
+      await renderExportCanvas({ width: 100, height: 50 }, blended(), { scale: 2 });
+      expect(second[1].canvas).not.toBe(layer.canvas);
+    });
+
+    it("are mixed in every band of a page too large for one pass, on layers as big as a band", async () => {
+      const spies = captureContexts();
+      await renderExportCanvas({ width: 4000, height: 3000 }, blended(), { scale: 1 });
+      const [, band, layer] = spies;
+      expect(band.to("drawImage").map((call) => call.state.globalCompositeOperation)).toEqual(["multiply", "multiply", "multiply"]);
+      expect(layer.to("clearRect").map((call) => call.args)).toEqual([
+        [0, 0, 4000, 1000],
+        [0, 0, 4000, 1000],
+        [0, 0, 4000, 1000],
+      ]);
+    });
+  });
+
   it("refuses when the browser cannot give it a 2D canvas", async () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     await expect(renderExportCanvas({ width: 100, height: 50 }, page(), { scale: 1 })).rejects.toMatchObject({ code: "too-large" });

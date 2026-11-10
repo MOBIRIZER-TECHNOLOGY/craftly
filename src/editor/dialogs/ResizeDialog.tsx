@@ -7,7 +7,7 @@ import { DESIGN_CATEGORY_LABELS, DESIGN_TYPES, describeSize, fromPx, toPx, type 
 import { renderPageToCanvas } from "@/render/renderPage";
 import { designPath, navigate } from "@/router";
 import { Button, Checkbox, IconButton, IconLink, IconUnlink, Modal, NumberField, Select, toast, type SelectOption } from "@/ui";
-import { requestSave } from "../topbar/designActions";
+import { requestSave, waitForSaved } from "../topbar/designActions";
 import "./resizeDialog.css";
 
 const MIN_PX = 40;
@@ -90,7 +90,7 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
       const current = useEditor.getState().design;
       if (!current) return;
       requestSave();
-      await saveDesign(current);
+      if ((await waitForSaved()) !== "saved") throw new Error("The original design could not be saved.");
       const copy = await duplicateDesign(current.id);
       if (!copy) throw new Error("missing");
       applyResize(copy, nw, nh, scale);

@@ -48,7 +48,7 @@ const others: Live[] = [];
 beforeEach(async () => {
   addresses.length = 0;
   storage = new MemoryStorage();
-  server = createLiveServer({ storage, saveDelayMs: 5 });
+  server = createLiveServer({ storage });
   const { port } = await server.listen(0);
   address = `http://127.0.0.1:${port}`;
   useEditor.setState(useEditor.getInitialState(), true);
@@ -176,7 +176,7 @@ describe("working together", () => {
     a().updateElements(["a"], { x: 99 }); // the server is gone: it waits
     expect(el("a").x).toBe(99);
     expect(s().design!.live).toEqual(link);
-    server = createLiveServer({ storage, saveDelayMs: 5 });
+    server = createLiveServer({ storage });
     const { port } = await server.listen(Number(new URL(address).port));
     expect(port).toBe(Number(new URL(address).port));
     await until("this person to be back", () => useLiveStatus.getState().status === "live", 20_000);

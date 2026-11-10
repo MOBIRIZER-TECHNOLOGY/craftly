@@ -121,9 +121,14 @@ export function buildProjectFile(design: Design, assets: Record<string, ProjectA
   return {
     craftly: PROJECT_FORMAT_VERSION,
     exportedAt: now.toISOString(),
-    design: { ...structuredCloneJson(design), folderId: null, starred: false, trashedAt: null },
+    design: { ...structuredCloneJson(portableDesign(design)), folderId: null, starred: false, trashedAt: null },
     assets,
   };
+}
+
+export function portableDesign<T extends Design>(design: T): Omit<T, "live"> {
+  const { live: _live, ...content } = design;
+  return content;
 }
 
 export const serializeProjectFile = (file: ProjectFile): string => JSON.stringify(file);
@@ -220,7 +225,7 @@ function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false
   });
   const now = Date.now();
   return {
-    ...(raw as unknown as Design),
+    ...portableDesign(raw as unknown as Design),
     id: typeof raw.id === "string" && raw.id ? raw.id : `d_${now.toString(36)}`,
     title: typeof raw.title === "string" && raw.title.trim() ? raw.title : "Untitled design",
     typeId: typeof raw.typeId === "string" ? raw.typeId : "custom",

@@ -11,6 +11,7 @@
  * and transitions (see `animated/`), and progress counts frames instead of pages.
  */
 import type { Design } from "@/core/types";
+import { requireExportImages } from "./resources";
 import { ExportError, cancelledError, isCancelled, throwIfAborted } from "./errors";
 import { nextMacrotask } from "./yield";
 import type { AnimResolution } from "./animated/frames";
@@ -174,6 +175,10 @@ export async function exportDesign(design: Design, opts: ExportOptions, onProgre
   if (!resolved.pages.length) throw new ExportError("no-pages", "Select at least one page to download.");
   throwIfAborted(signal);
   try {
+    await requireExportImages(
+      resolved.pages.map((index) => ({ page: design.pages[index], index })),
+      signal,
+    );
     switch (resolved.format) {
       case "png":
       case "jpg":
@@ -199,6 +204,7 @@ export async function exportDesign(design: Design, opts: ExportOptions, onProgre
 export async function pagePngBlob(design: Design, pageIndex: number, scale = 1): Promise<Blob> {
   const page = design.pages[pageIndex];
   if (!page) throw new ExportError("no-pages", "That page does not exist.");
+  await requireExportImages([{ page, index: pageIndex }]);
   const plan = planRaster(design.width, design.height, { format: "png", scale, pdfMode: "standard" });
   return renderPageBlob(design, page, { scale: plan.scale, type: "image/png" });
 }

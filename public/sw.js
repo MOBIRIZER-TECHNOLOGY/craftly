@@ -63,9 +63,9 @@ self.addEventListener("activate", (event) => {
     (async () => {
       const names = await caches.keys();
       // the marker of the build that ran before this one says which files a tab that is still open on it may need
-      const before = names.find((name) => name.startsWith(ACTIVE));
+      const before = names.find((name) => /^craftly-active-[a-f0-9]{10}$/.test(name));
       const keep = new Set([VERSION, RUNTIME, ACTIVE + BUILD_ID, before ? "craftly-" + before.slice(ACTIVE.length) : null]);
-      await Promise.all(names.filter((name) => !keep.has(name)).map((name) => caches.delete(name)));
+      await Promise.all(names.filter((name) => /^craftly-(?:active-)?[a-f0-9]{10}$/.test(name) && !keep.has(name)).map((name) => caches.delete(name)));
       await caches.open(ACTIVE + BUILD_ID);
       await self.clients.claim();
     })(),

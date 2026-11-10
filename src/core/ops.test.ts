@@ -140,6 +140,22 @@ describe("grouping", () => {
     const [a] = ungroup(p, g.id);
     expect(findElement(p, a)!.rotation).toBe(90);
   });
+  it("ungroup gives the children the blend mode of the group, and keeps the one a child has of its own", () => {
+    const p = pageWith(3);
+    const g = groupElements(p, ["e0", "e1", "e2"])!;
+    g.blend = "multiply";
+    g.children[1].blend = "screen";
+    const children = ungroup(p, g.id);
+    expect(children.map((id) => findElement(p, id)!.blend)).toEqual(["multiply", "screen", "multiply"]);
+  });
+  it("ungroup of a group with no blend mode adds none to the children", () => {
+    const p = pageWith(2);
+    const g = groupElements(p, ["e0", "e1"])!;
+    g.children[0].blend = "overlay";
+    const children = ungroup(p, g.id);
+    expect(children.map((id) => findElement(p, id)!.blend)).toEqual(["overlay", undefined]);
+    expect("blend" in findElement(p, children[1])!).toBe(false);
+  });
   it("refuses to group a single element", () => {
     expect(groupElements(pageWith(2), ["e0"])).toBeNull();
   });

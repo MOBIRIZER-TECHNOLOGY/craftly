@@ -16,6 +16,7 @@
  * Differences from the canvas that cannot be avoided are listed in `SvgPageResult.warnings`.
  */
 import { getAsset } from "@/core/assets";
+import { blendOf } from "@/core/blend";
 import type { Design, DesignElement, Fill, GraphicElement, ImageElement, LineElement, Page, ShapeElement, Stroke, TableElement } from "@/core/types";
 import { isNeutral, renderFiltered } from "@/render/imageFilters";
 import { drawableSize, loadImage, type Drawable } from "@/render/images";
@@ -442,8 +443,11 @@ class PageBuilder {
     const transform = transformAttr(el);
     const blur = el.blur && el.blur > 0 ? this.doc.blurFilter(el.blur, { x: 0, y: 0, w: el.width, h: el.height }) : null;
     const label = el.alt ? ` role="img" aria-label="${escAttr(el.alt)}"` : "";
-    const needsGroup = transform || blur || label;
-    let out = needsGroup ? `<g${transform ? ` transform="${transform}"` : ""}${blur ? ` filter="url(#${blur})"` : ""}${label}>${inner}</g>` : inner;
+    // only one of the fifteen names is ever written (never what the field holds), and a group mixes as one
+    const mode = blendOf(el);
+    const blend = mode ? ` style="mix-blend-mode:${mode}"` : "";
+    const needsGroup = transform || blur || label || blend;
+    let out = needsGroup ? `<g${transform ? ` transform="${transform}"` : ""}${blur ? ` filter="url(#${blur})"` : ""}${blend}${label}>${inner}</g>` : inner;
     const url = safeLinkUrl(el.link);
     if (url) out = `<a xlink:href="${escAttr(url)}">${out}</a>`;
     return out;

@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGraphic, createGroup, createImage, createLine, createShape, createText } from "@/core/factory";
 import type { GroupElement } from "@/core/types";
 import { contextOf } from "@/test/canvasMock";
+import { captureContexts } from "@/test/logicPaint";
 import { dragEvent, dragOnto, fakeDataTransfer, live, openElements, paintOrder, showPanel, store } from "@/test/ctxUtils";
 import { resetEditor, stubLayout } from "@/test/helpers";
 import { LayerThumb } from "./LayerThumb";
@@ -460,6 +461,16 @@ describe("Layers tab: thumbnails", () => {
 });
 
 describe("Layer thumbnail", () => {
+  it("shows an element with a blend mode as it is on its own: painted straight, with no layer to mix it on", async () => {
+    const spies = captureContexts();
+    const blended = createShape("rect", { width: 100, height: 100, blend: "multiply" });
+    render(<LayerThumb el={blended} />);
+    await waitFor(() => expect(spies[0]?.to("fill").length ?? 0).toBeGreaterThan(0));
+    expect(spies).toHaveLength(1);
+    expect(spies[0].to("drawImage")).toHaveLength(0);
+    vi.restoreAllMocks();
+  });
+
   it("repaints when the element it shows becomes another kind of element", async () => {
     const shape = createShape("rect", { width: 100, height: 100 });
     const photo = createImage({ src: "https://example.test/p.jpg", width: 100, height: 100, naturalWidth: 100, naturalHeight: 100 });

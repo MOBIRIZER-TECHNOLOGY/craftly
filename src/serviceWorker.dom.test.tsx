@@ -358,11 +358,16 @@ describe("registerServiceWorker", () => {
       }
     });
 
-    it("goes ahead when the save does not finish in time", async () => {
+    it("keeps the page and lets the user retry when the save times out", async () => {
       window.location.hash = "#/design/d1";
       useEditor.setState({ saveState: "unsaved" });
-      const { worker, user } = await prompted({ saveTimeoutMs: 80 });
+      const { worker, user, reload } = await prompted({ saveTimeoutMs: 80 });
       await user.click(reloadButton());
+      const retry = await screen.findByRole("button", { name: "Retry update" });
+      expect(worker.sent).not.toContainEqual({ type: "SKIP_WAITING" });
+      expect(reload).not.toHaveBeenCalled();
+      useEditor.setState({ saveState: "saved" });
+      await user.click(retry);
       await waitFor(() => expect(worker.sent).toContainEqual({ type: "SKIP_WAITING" }));
     });
 

@@ -20,6 +20,8 @@ export interface SessionOptions {
   /** What lets this browser in: shown in the first message of every connection, never in an address. */
   key: string;
   send(msg: ClientMsg): void;
+  outbox?: Outbox;
+  onOutbox?(outbox: Outbox): void;
 }
 
 /** What a message from the server means to whoever shows the design. */
@@ -30,9 +32,16 @@ export interface Outcome {
   ended: DeniedReason | null;
   /** The server let this browser in: the design is there. */
   joined?: boolean;
+  rejected?: string;
 }
 
 const NOTHING: Outcome = { changed: false, ended: null };
+
+export interface Outbox {
+  client: string;
+  nextSeq: number;
+  queue: Batch[];
+}
 
 interface Batch {
   seq: number;
@@ -49,7 +58,16 @@ export class Session {
   private nextSeq = 1;
   private shown: Design | null = null;
 
-  constructor(private opts: SessionOptions) {}
+  constructor(private opts: SessionOptions) {
+    if (opts.outbox) {
+      this.queue = opts.outbox.queue;
+      this.nextSeq = opts.outbox.nextSeq;
+    }
+  }
+
+  private persist(): void {
+    this.opts.onOutbox?.({ client: this.opts.client, nextSeq: this.nextSeq, queue: this.queue });
+  }
 
   /** The design to show: the server's, with this browser's unconfirmed changes on top. */
   get design(): Design | null {
@@ -81,6 +99,7 @@ export class Session {
     if (!ops.length) return;
     const batch = { seq: this.nextSeq++, ops };
     this.queue.push(batch);
+    this.persist();
     this.shown = null;
     if (this.status === "live") this.opts.send({ t: "ops", seq: batch.seq, ops });
   }
@@ -108,7 +127,9 @@ export class Session {
         const before = this.queue.length;
         this.queue = this.queue.filter((b) => b.seq !== msg.seq);
         this.shown = null;
-        return before === this.queue.length ? NOTHING : { changed: true, ended: null };
+        if (before === this.queue.length) return NOTHING;
+        this.persist();
+        return { changed: true, ended: null, rejected: msg.reason };
       }
       case "ops": {
         if (msg.rev <= this.rev) return NOTHING; // heard already
@@ -129,6 +150,7 @@ export class Session {
     // what the server has already applied is in the design it sent; the rest goes again, in order
     this.queue = this.queue.filter((b) => b.seq > msg.lastSeq);
     this.nextSeq = Math.max(this.nextSeq, msg.lastSeq + 1);
+    this.persist();
     this.shown = null;
     for (const batch of this.queue) this.opts.send({ t: "ops", seq: batch.seq, ops: batch.ops });
     return { changed: true, ended: null, joined: true };
@@ -146,6 +168,7 @@ export class Session {
     // the server applied it after everything this browser has heard, so it joins the confirmed design; what is shown does not change
     this.server = applyOps(this.server, first.ops);
     this.queue.shift();
+    this.persist();
     this.rev = rev;
     return NOTHING;
   }

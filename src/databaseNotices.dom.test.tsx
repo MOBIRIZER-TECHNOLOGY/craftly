@@ -21,7 +21,7 @@ vi.mock("./settleSaves", () => ({ settleSaves: vi.fn(async () => undefined) }));
 beforeEach(() => {
   watcher = null;
   stop.mockClear();
-  vi.mocked(settleSaves).mockReset().mockResolvedValue(undefined);
+  vi.mocked(settleSaves).mockReset().mockResolvedValue("saved");
   render(<ToastHost />);
 });
 
@@ -56,7 +56,7 @@ describe("when another tab upgrades the database under this one", () => {
     const reload = vi.fn();
     installDatabaseNotices({ reload });
     let saved!: () => void;
-    vi.mocked(settleSaves).mockImplementation(() => new Promise<void>((resolve) => (saved = resolve)));
+    vi.mocked(settleSaves).mockImplementation(() => new Promise<"saved">((resolve) => (saved = () => resolve("saved"))));
 
     let answered = false;
     const replaced = Promise.resolve(watcher!.replaced!()).then(() => (answered = true));

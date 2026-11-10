@@ -108,6 +108,10 @@ describe("the content of what arrives", () => {
     ],
     ["a property that is not there (JSON leaves it out)", set({ blur: undefined })],
     ["an element with children", add({ type: "group", children: [{ id: "c", type: "shape", x: 1 }] })],
+    ["a blend mode", set({ blend: "multiply" })],
+    ["an element that is added with a blend mode", add({ blend: "soft-light" })],
+    ["a blend mode that is taken away", [{ k: "el.set", page: "p", id: "a", set: {}, unset: ["blend"] }]],
+    ["a blend mode that is not there (JSON says null)", set({ blend: null })],
   ])("accepts %s", (_what, ops) => {
     expect(typeof checkOps(ops)).not.toBe("string");
   });
@@ -137,6 +141,15 @@ describe("the content of what arrives", () => {
     ["markup with a script in a graphic that is added", add({ type: "graphic", svg: "<svg><script>1</script></svg>" })],
     ["markup with a script in a graphic inside a group", add({ type: "group", children: [{ id: "c", type: "graphic", svg: '<svg onload="1"/>' }] })],
     ["markup with a script in a graphic of a page", [{ k: "page.add", page: { id: "p2", elements: [{ id: "g", type: "graphic", svg: "<svg><script/></svg>" }] }, index: 0 }]],
+    ["a blend mode that does not exist", set({ blend: "sparkle" })],
+    ["a blend mode that is written as the absence of one", set({ blend: "normal" })],
+    ["a blend mode with a style after it", set({ blend: "multiply;background:url(https://evil.test/x)" })],
+    ["a blend mode that is a number", set({ blend: 5 })],
+    ["a blend mode that is true", set({ blend: true })],
+    ["a blend mode that is a list", set({ blend: ["multiply"] })],
+    ["a blend mode that is an object", set({ blend: { mode: "multiply" } })],
+    ["a blend mode that does not exist on an element that is added", add({ blend: "sparkle" })],
+    ["a blend mode that does not exist on a child of a group", add({ type: "group", children: [{ id: "c", type: "shape", blend: "sparkle" }] })],
     ["a number that is not finite", set({ x: Number.NaN })],
     ["a value that is a function", set({ x: () => 1 })],
     ["a property called __proto__ in the properties", [{ k: "el.set", page: "p", id: "a", set: parsed('{"__proto__":{"polluted":true}}') }]],
@@ -189,6 +202,17 @@ describe("checkDesign: a design that arrives whole, as the welcome of a server",
     expect(checkDesign(overTheWire(shared()))).toBeNull();
   });
 
+  it("accepts a design whose elements have blend modes, in a group too", () => {
+    expect(
+      checkDesign(
+        withElements([
+          { id: "a", type: "shape", blend: "multiply" },
+          { id: "g", type: "group", children: [{ id: "b", type: "shape", blend: "luminosity" }] },
+        ]),
+      ),
+    ).toBeNull();
+  });
+
   it("accepts groups as deep as an element may be nested", () => {
     expect(checkDesign(withElements(overTheWire([nestedGroups(32)])))).toBeNull();
     expect(checkDesign(withElements(overTheWire([nestedGroups(33)])))).toMatch(/deep/);
@@ -221,6 +245,8 @@ describe("checkDesign: a design that arrives whole, as the welcome of a server",
     ["markup that runs", () => withElements([{ id: "a", type: "graphic", svg: '<svg/onload="1"/>' }])],
     ["markup inside a group", () => withElements([{ id: "g", type: "group", children: [{ id: "a", type: "graphic", svg: "<svg><script/></svg>" }] }])],
     ["a link that is a script", () => withElements([{ id: "a", type: "shape", link: "javascript:alert(1)" }])],
+    ["a blend mode that does not exist", () => withElements([{ id: "a", type: "shape", blend: "sparkle" }])],
+    ["a blend mode that does not exist inside a group", () => withElements([{ id: "g", type: "group", children: [{ id: "a", type: "shape", blend: "<b>" }] }])],
     ["a property called __proto__ at the top", () => JSON.parse('{"__proto__":{"x":1},"title":"t","width":1,"height":1,"pages":[{"id":"p","elements":[]}]}')],
     ["a property called constructor deep inside", () => withElements([{ id: "a", type: "shape", fill: JSON.parse('{"stops":[{"constructor":1}]}') }])],
     ["a value nested far too deep", () => withElements([{ id: "a", type: "shape", fill: Array.from({ length: 200 }).reduce<unknown>((v) => ({ v }), 1) }])],

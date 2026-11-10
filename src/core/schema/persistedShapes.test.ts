@@ -52,9 +52,24 @@ const LINE_ATTACHMENTS = [
   "$.pages[].elements[].start.elementId: string",
   "$.pages[].elements[].start: object",
 ];
-/** A design's `live` (2026-11-09, docs/COLLABORATION.md): where it is shared with other people, kept on this device only. Optional for good: a design that is not shared has none. */
-const LIVE_LINK = ["$.live.key: string", "$.live.role: string", "$.live.room: string", "$.live.server: string", "$.live.viewKey: string", "$.live: object"];
-const ADDED: Record<string, string[]> = { design: [...LIVE_LINK, ...LINE_ATTACHMENTS], summary: [], folder: [], brandKit: [], version: [], upload: [] };
+/** An element's `blend` (2026-11-10, src/core/blend.ts): how it mixes with what is under it. Optional for good: an element with none is Normal. */
+const BLEND = ["$.pages[].elements[].blend: string", "$.pages[].elements[].children[].blend: string"];
+/** A design's `live` (2026-11-09, docs/COLLABORATION.md): where it is shared with other people, kept on this device only. Optional for good: a design that is not shared has none. `ownerKey` (2026-11-10) is the key that ends the sharing; a link without it only leaves the room on this device. */
+const LIVE_LINK = [
+  "$.live.key: string",
+  "$.live.ownerKey: string",
+  "$.live.role: string",
+  "$.live.room: string",
+  "$.live.server: string",
+  "$.live.viewKey: string",
+  "$.live: object",
+];
+/**
+ * A summary's `revision` (2026-11-10, src/core/library.ts): a new one with every write of the design, so that a tab that holds an
+ * older copy does not write over a newer one. Optional for good: a summary stored before it has none, which is read as `null`.
+ */
+const REVISION = ["$.revision: string"];
+const ADDED: Record<string, string[]> = { design: [...LIVE_LINK, ...BLEND, ...LINE_ATTACHMENTS], summary: REVISION, folder: [], brandKit: [], version: [], upload: [] };
 const DROPPED: Record<string, string[]> = { design: [], summary: [], folder: [], brandKit: [], version: [], upload: [] };
 
 const WHAT_NEXT =

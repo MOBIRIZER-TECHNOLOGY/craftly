@@ -4,9 +4,10 @@
  * export.
  */
 import { evaluateAnimation, isHidden, pageDuration, type AnimState } from "@/core/animation";
+import { blendOf } from "@/core/blend";
 import { DEG } from "@/core/geometry";
 import { recolorSvg, setSvgStrokeWidth } from "@/core/svg";
-import type { Design, DesignElement, Fill, GraphicElement, ID, ImageElement, LineElement, Page, Rect, ShapeElement, Stroke } from "@/core/types";
+import type { BlendMode, Design, DesignElement, Fill, GraphicElement, ID, ImageElement, LineElement, Page, Rect, ShapeElement, Stroke } from "@/core/types";
 import { drawChart, drawTable } from "./drawBlocks";
 import { drawTextElement } from "./drawText";
 import { ensureFont, isFontReady } from "./fonts";
@@ -36,6 +37,8 @@ interface Env {
   hide?: ReadonlySet<ID>;
   /** something was not ready yet (image, font) - the caller repaints later */
   pending: boolean;
+  /** how many blended elements the one being painted is inside of: which layer it would be painted on */
+  depth: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -345,6 +348,13 @@ function drawGraphic(ctx: Ctx, el: GraphicElement, env: Env): void {
 
 function drawElement(ctx: Ctx, el: DesignElement, env: Env): void {
   if (el.hidden || env.hide?.has(el.id)) return;
+  const mode = blendOf(el);
+  if (mode && drawBlended(ctx, el, env, mode)) return;
+  drawFramed(ctx, el, env);
+}
+
+/** The element in its own place, turn, size, opacity and blur. */
+function drawFramed(ctx: Ctx, el: DesignElement, env: Env): void {
   ctx.save();
   ctx.translate(el.x + el.width / 2, el.y + el.height / 2);
   if (el.rotation) ctx.rotate(el.rotation * DEG);
@@ -366,6 +376,63 @@ function drawElement(ctx: Ctx, el: DesignElement, env: Env): void {
 }
 
 const reported = new Set<string>();
+
+/* ------------------------------------------------------------------ */
+/* blend modes                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * An element with a blend mode is painted on a layer of its own, which is then laid over what is painted so far the way the
+ * mode mixes the two. A layer is a canvas at least as big as the one that is painted (it grows, and is never made smaller:
+ * a thumbnail painted between two paints of the page would otherwise make it again each time). There is one for each level
+ * of blended elements inside each other: a group that is mixed as one has elements that can have a mode of their own, mixed
+ * on its layer.
+ */
+const layers: HTMLCanvasElement[] = [];
+
+/** Lets go of the layers and of the memory behind them (it can be hundreds of MB after a big export); the next element with a mode makes one again. */
+export function releaseLayers(): void {
+  for (const canvas of layers) canvas.width = canvas.height = 0;
+  layers.length = 0;
+}
+
+/** The layer for this level, big enough for `like`; nothing where no layer can be made: no document, a canvas with no size (which could not be laid over anything), no context. */
+function layerAt(level: number, like: HTMLCanvasElement): { canvas: HTMLCanvasElement; ctx: Ctx } | null {
+  if (typeof document === "undefined" || !like.width || !like.height) return null;
+  const canvas = (layers[level] ??= document.createElement("canvas"));
+  if (canvas.width < like.width) canvas.width = like.width;
+  if (canvas.height < like.height) canvas.height = like.height;
+  const ctx = canvas.getContext("2d");
+  return ctx ? { canvas, ctx } : null;
+}
+
+/** Paints `el` on a layer and lays that over `ctx` as `mode`. False, with nothing painted, when there is no layer to paint on: the element is then painted straight. */
+function drawBlended(ctx: Ctx, el: DesignElement, env: Env, mode: BlendMode): boolean {
+  const { width, height } = ctx.canvas;
+  const layer = layerAt(env.depth, ctx.canvas);
+  if (!layer) return false;
+  const now = ctx.getTransform();
+  const own = layer.ctx;
+  own.save();
+  own.setTransform(1, 0, 0, 1, 0, 0);
+  own.clearRect(0, 0, width, height);
+  // the layer has the transform that the page has now, so the element finds its place in it as it finds it on the page
+  own.setTransform(now.a, now.b, now.c, now.d, now.e, now.f);
+  env.depth++;
+  try {
+    drawFramed(own, el, env);
+  } finally {
+    env.depth--;
+  }
+  own.restore();
+  // laid over in device pixels, inside the clip the page has now and with the opacity that came down from what the element is in
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = mode;
+  ctx.drawImage(layer.canvas, 0, 0, width, height, 0, 0, width, height);
+  ctx.restore();
+  return true;
+}
 
 function paintByType(ctx: Ctx, el: DesignElement, env: Env): void {
   switch (el.type) {
@@ -474,7 +541,7 @@ function drawAnimated(ctx: Ctx, el: DesignElement, env: Env, st: AnimState, unit
  */
 export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, page: Page, opts: RenderOptions): boolean {
   const { scale, clip } = opts;
-  const env: Env = { scale, hide: opts.hide, pending: false };
+  const env: Env = { scale, hide: opts.hide, pending: false, depth: 0 };
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);

@@ -144,8 +144,13 @@ describe("startNewDesign", () => {
 describe("makeCopy", () => {
   it("stores the latest edits, copies the design and opens the copy", async () => {
     const { design } = await open("Original");
+    const stop = installAutosave();
     act(() => actions().setTitle("Original, edited"));
-    await inAct(() => makeCopy());
+    try {
+      await inAct(() => makeCopy());
+    } finally {
+      stop();
+    }
     const all = await listDesigns();
     expect(all).toHaveLength(2);
     const copy = all.find((d) => d.id !== design.id)!;
@@ -179,6 +184,8 @@ describe("makeCopy", () => {
 });
 
 describe("moveToTrash", () => {
+  let stop: (() => void) | undefined;
+  afterEach(() => stop?.());
   it("asks first and leaves the design alone when the person says no", async () => {
     const { design } = await open("Keep me");
     window.location.hash = "#/design/stay";
@@ -194,6 +201,7 @@ describe("moveToTrash", () => {
 
   it("trashes the design, leaves the editor and offers to undo", async () => {
     const { design } = await open("Trash me");
+    stop = installAutosave();
     const done = moveToTrash();
     await screen.findByRole("dialog", { name: "Move to trash?" });
     await userEvent.setup({ delay: null }).click(screen.getByRole("button", { name: "Move to trash" }));
@@ -206,15 +214,17 @@ describe("moveToTrash", () => {
     await waitFor(async () => expect((await getDesign(design.id))?.trashedAt).toBeNull());
   });
 
-  it("still leaves when the trashed state cannot be stored right away (autosave tries again)", async () => {
-    await open("Trash despite");
+  it("stays in the editor when the trashed state cannot be saved", async () => {
+    await open("Trash failure");
+    stop = installAutosave();
+    window.location.hash = "#/design/stay";
     vi.mocked(saveDesign).mockRejectedValueOnce(new Error("quota"));
     const done = moveToTrash();
     await screen.findByRole("dialog", { name: "Move to trash?" });
     await userEvent.setup({ delay: null }).click(screen.getByRole("button", { name: "Move to trash" }));
     await done;
-    expect(window.location.hash).toBe("#/");
-    expect(await screen.findByText("Moved to trash")).toBeTruthy();
+    expect(window.location.hash).toBe("#/design/stay");
+    expect(await screen.findByText(/Could not move this design to the trash/)).toBeTruthy();
   });
 
   it("does nothing without an open design", async () => {

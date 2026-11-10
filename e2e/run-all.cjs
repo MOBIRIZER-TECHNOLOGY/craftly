@@ -14,6 +14,10 @@ const journeys = [
   ],
   ["pen.cjs", "the Pen tool and the points of a path: place points, pull a curve, close, undo, edit points, add and delete one, export as SVG, reload"],
   ["combine.cjs", "combine shapes (union, subtract, intersect, exclude) read from the pixels, a turned shape, nothing in common, convert to path, undo, reload"],
+  [
+    "blend.cjs",
+    "blend modes read from the pixels: the Blend mode box (mouse, keyboard, Normal), all fifteen modes against the compositing standard on the page, in the exported PNG and in the exported SVG, a group mixed as one, a text, transparency, undo, a copy, reload",
+  ],
   ["connect.cjs", "arrows attached to shapes: Connect by mouse, keyboard and menu, dragging a box takes its arrow along (read from the pixels), undo, delete, duplicate, reload"],
   [
     "live.cjs",

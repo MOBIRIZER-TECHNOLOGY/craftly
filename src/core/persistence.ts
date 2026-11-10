@@ -80,11 +80,30 @@ export function openDb(): Promise<IDBDatabase> {
   return opening;
 }
 
-function wrap<T>(req: IDBRequest<T>): Promise<T> {
+export function wrap<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+export async function writeTransaction<T>(stores: StoreName[], write: (tx: IDBTransaction) => Promise<T>): Promise<T> {
+  const tx = (await openDb()).transaction(stores, "readwrite");
+  const done = new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(tx.error ?? new Error("The storage transaction was aborted."));
+  });
+  try {
+    const [result] = await Promise.all([write(tx), done]);
+    return result;
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch {
+      // The browser may already have ended the transaction.
+    }
+    throw error;
+  }
 }
 
 export async function dbGet<T>(store: StoreName, key: string): Promise<T | undefined> {

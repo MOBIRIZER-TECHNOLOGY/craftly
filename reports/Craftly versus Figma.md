@@ -1,5 +1,7 @@
 # Craftly versus Figma
 
+> **Current Craftly status.** The comparison below records its November 8 snapshot. Craftly has since added optional self-hosted live editing, edit and view invites, shared images and blend modes. The comparison tables retain the dated research. See [current features](../README.md) and [verification](../docs/VERIFICATION.md#production-readiness-regressions).
+
 Written 2026-11-08. The Craftly side comes from its own code and documents (the feature inventory of 2026-11-05, re-checked against the code, plus what was added since: the four on-device photo tools, the accessibility work and the verification). The Figma side comes from Figma's own product pages, pricing page, help centre and the Config 2026 recap on its forum, all read on 2026-11-08, plus two third-party sources where Figma's pages were silent (offline use, Specs). Figma ships quickly and several products are in beta: treat its side as a snapshot. Where a Figma capability below is not on the pages that were read but is long established, it is marked *(known, not re-checked)*.
 
 A companion report compares Craftly with Canva, the product it is modelled on: [`Craftly versus Canva feature gaps.md`](Craftly%20versus%20Canva%20feature%20gaps.md).

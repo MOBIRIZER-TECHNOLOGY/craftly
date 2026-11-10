@@ -82,7 +82,12 @@ export async function registerServiceWorker(url: string, options: RegisterOption
   const takeOver = async (worker: ServiceWorker) => {
     if (reloading) return;
     reloading = true;
-    await settleSaves(saveTimeoutMs);
+    if ((await settleSaves(saveTimeoutMs)) !== "saved") {
+      reloading = false;
+      toast.error("Craftly could not save your changes. Save or download a project file before updating.");
+      toast.info(PROMPT, { actionLabel: "Retry update", duration: 0, onAction: () => void takeOver(worker) });
+      return;
+    }
     let reloaded = false;
     let timer = 0;
     const replace = () => {

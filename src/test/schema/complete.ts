@@ -29,6 +29,7 @@ const base = (id: string) => ({
   hidden: true,
   shadow: { color: "rgba(0,0,0,0.35)", blur: 12, x: 4, y: 6 },
   blur: 2,
+  blend: "multiply" as const,
   alt: "Described for people who cannot see it",
   link: "https://example.com/page",
   animation: { in: animation("fade", "up"), out: animation("slide", "left"), loop: animation("pulse", "right") },
@@ -279,7 +280,7 @@ export function completeDesign(): Complete<Design> {
     starred: true,
     trashedAt: 1_700_000_900_000,
     guides: { vertical: [100, 960], horizontal: [200, 540] },
-    live: { server: "https://live.example.test", room: "r_complete", key: "k_complete", role: "edit", viewKey: "v_complete" },
+    live: { server: "https://live.example.test", room: "r_complete", key: "k_complete", role: "edit", ownerKey: "owner-key", viewKey: "v_complete" },
     version: 1,
   };
 }
@@ -388,6 +389,7 @@ export function completeRecords() {
     typeId: design.typeId,
     width: design.width,
     height: design.height,
+    revision: "revision-1",
     pageCount: design.pages.length,
     createdAt: design.createdAt,
     updatedAt: design.updatedAt,

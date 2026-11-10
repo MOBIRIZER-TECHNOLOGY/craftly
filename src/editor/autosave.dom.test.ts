@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape } from "@/core/factory";
-import { saveDesign, saveVersion } from "@/core/library";
+import { saveDesign, saveThumbnail, saveVersion } from "@/core/library";
 import { clearProblems, listProblems } from "@/core/problems";
 import { getActions, useEditor } from "@/core/store";
 import type { Design } from "@/core/types";
@@ -14,7 +14,8 @@ import { installAutosave } from "./autosave";
 
 vi.mock("@/core/library", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/core/library")>()),
-  saveDesign: vi.fn(async () => undefined),
+  saveDesign: vi.fn(async () => "committed"),
+  saveThumbnail: vi.fn(async () => undefined),
   saveVersion: vi.fn(async () => undefined),
 }));
 
@@ -40,8 +41,8 @@ function slowSave() {
   let fail: (e: Error) => void = () => undefined;
   vi.mocked(saveDesign).mockImplementationOnce(
     () =>
-      new Promise<void>((resolve, reject) => {
-        finish = resolve;
+      new Promise<string>((resolve, reject) => {
+        finish = () => resolve("committed");
         fail = reject;
       }),
   );
@@ -54,6 +55,7 @@ beforeEach(() => {
   useEditor.setState(useEditor.getInitialState(), true);
   clearProblems();
   vi.mocked(saveDesign).mockClear();
+  vi.mocked(saveThumbnail).mockClear();
   vi.mocked(saveVersion).mockClear();
   vi.mocked(renderPageToCanvas).mockClear();
   vi.useFakeTimers();
@@ -78,9 +80,9 @@ describe("saving after a change", () => {
     expect(saves()).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(1);
     expect(saves()).toHaveLength(1);
-    const [design, thumbnail] = saves()[0];
+    const [design] = saves()[0];
     expect(design.title).toBe("First");
-    expect(thumbnail).toBe(THUMB);
+    expect(saveThumbnail).toHaveBeenCalledWith(design.id, "committed", THUMB);
     expect(seen).toEqual(["unsaved", "saving", "saved"]);
     expect(state().lastSavedAt).toBeGreaterThan(0);
     unsubscribe();
@@ -114,12 +116,23 @@ describe("saving after a change", () => {
     await vi.advanceTimersByTimeAsync(700);
     edit("Two");
     await vi.advanceTimersByTimeAsync(700);
-    expect(saves().map((c) => c[1])).toEqual([THUMB, undefined]);
+    expect(saveThumbnail).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(4000);
     edit("Three");
     await vi.advanceTimersByTimeAsync(700);
-    expect(saves().map((c) => c[1])).toEqual([THUMB, undefined, THUMB]);
+    expect(saveThumbnail).toHaveBeenCalledTimes(2);
     expect(renderPageToCanvas).toHaveBeenCalledTimes(2);
+  });
+
+  it("commits the design while thumbnail rendering is still pending", async () => {
+    open();
+    stop = installAutosave();
+    vi.mocked(renderPageToCanvas).mockImplementationOnce(() => new Promise(() => undefined));
+    edit("Commit first");
+    await vi.advanceTimersByTimeAsync(700);
+    expect(saves()[0][0].title).toBe("Commit first");
+    expect(state().saveState).toBe("saved");
+    expect(saveThumbnail).not.toHaveBeenCalled();
   });
 
   it("still saves when the thumbnail cannot be drawn", async () => {
@@ -262,7 +275,7 @@ describe("version history", () => {
     await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
     window.dispatchEvent(new CustomEvent("craftly:save-now"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(saves()).toHaveLength(1);
+    expect(saves()).toHaveLength(0);
     expect(saveVersion).not.toHaveBeenCalled();
   });
 });

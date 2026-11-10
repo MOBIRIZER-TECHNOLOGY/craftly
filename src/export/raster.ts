@@ -6,7 +6,7 @@
 import type { Design, Page } from "@/core/types";
 import { fontsEpoch } from "@/render/fonts";
 import { imagesEpoch } from "@/render/images";
-import { renderPage } from "@/render/renderPage";
+import { releaseLayers, renderPage } from "@/render/renderPage";
 import { nextMacrotask } from "./yield";
 import { ExportError, throwIfAborted } from "./errors";
 import { planBands } from "./options";
@@ -93,6 +93,8 @@ export async function renderExportCanvas(design: Pick<Design, "width" | "height"
     }
     band.width = band.height = 0;
   }
+  // the layers that elements with a blend mode were painted on are as big as the export: not kept for the editor
+  releaseLayers();
   throwIfAborted(req.signal);
 
   if (req.flatten) {

@@ -4,6 +4,8 @@ What was checked, what was found, what was fixed, and what is left. The standard
 
 **In short.** A person who uses only a keyboard could not get from the page to the toolbars, menus or panels of the editor: Tab was taken by the canvas. That is fixed, together with eight smaller problems. axe-core then reported 4 rules (it reported 10), two of them the colour and size decisions that have since been applied (in four rounds: the second added the grey on hovered rows, the success and danger badges and the names of the page options buttons, the third the danger red of error messages and of the Delete buttons, the fourth the outline of form fields and the amber of icons): words set in colours under 4.5:1 (the top bar, small grey text, a badge, the brand preview, the dashboard headline, the account initial) and a 22 px button. The same 47 screens were measured again, with a pixel scan, after those changes: 30 distinct lines of text under their contrast became 8, none of which is a defect (see below), and the headline went from 2.77:1 to 3.73:1. axe-core itself was not run again (its one permitted download was used up). Nothing here was tried with a real screen reader, so "works with a screen reader" is not claimed.
 
+**Readiness update.** Edge exercised the failed-save dialog, its **Stay in editor** action, the downloadable draft, and **Retry update** after a failed or stalled save. These are behavioral checks. The new recovery and update flows still need a real screen-reader pass. See [verification](VERIFICATION.md#production-readiness-regressions).
+
 ## How it was checked
 
 | What | How |
@@ -142,6 +144,14 @@ The dialog was built the day after the audit, to its rules:
 - **The toast** for something that nothing caught is an `alert` toast with a **Details** button, so it is announced and the way to the details is a button, not a link.
 - **Measured** in Chrome by `e2e/crash.cjs` (dev server and production build): the contrast of every piece of text on the crash screen and in the dialog against what is behind it (4.5:1, or 3:1 for large text; everything passes), the size of every control (at least 24 px), and the fit of the crash screen and of the screen "We couldn't open this design" at 375 px and of the dialog at 594 px (no sideways scrolling, and the report goes under the list). That found one fault, which is fixed: the headings of the two folded sections were 20 px tall (now 28).
 - **Not measured:** none of this with a screen reader or axe-core (the permission to fetch it that the first audit used is spent), and the contrast of the toast.
+
+## Added after the audit: Blend mode (2026-11-10)
+
+- **A named box in the Transparency popover.** The label "Blend mode" is visible text and the accessible name of the box (a `combobox` that opens a listbox of Normal and the fifteen modes). The box says **Mixed** when the selected elements differ. The keyboard goes slider, number field, box (the focus stays in the popover), ArrowDown opens the list on the chosen mode, typing a name moves to it (`Scr` is Screen), Enter chooses, and Escape closes the list only and puts the focus back on the box; the popover stays open. The button that opens the popover keeps its name, "Transparency", and its tooltip says "Transparency and blend mode".
+- **Measured** by `e2e/blend.cjs` in Chrome (dev server and production build): every piece of text in the popover and in the list has the contrast WCAG AA asks for, every control is at least 24 px (the box is 202 x 27, an option 36 px high), and in a window 375 px wide the popover (233 px) and the list (208 x 320 px, scrolling) fit and a mode can be chosen; the screenshots were looked at. `common.test.tsx` opens the box by role and name.
+- **The slider's thumb is 16 x 16 px**, as it was before (the measuring of this popover found it); the number field beside it does the same job from the keyboard and is larger.
+- **Not measured:** the box with a screen reader, and with axe-core (the permission to fetch it that the first audit used is spent). A mode changes the colours that are drawn, so the contrast of a text over an element with a mode is not what the colours of the two say: nothing in the app checks that (the Check design panel of the plan will look at colours as drawn).
+- **While a text with a mode is edited** the editing box shows it in its own colour (see `docs/BLEND-MODES.md`); the text, its size and its caret are the same.
 
 ## What is left
 

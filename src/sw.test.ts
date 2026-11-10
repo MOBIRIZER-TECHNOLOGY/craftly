@@ -20,7 +20,7 @@ function serveBuild(network: FakeNetwork, build: string, runtime: string[] = [])
     );
 }
 
-const BUILD_CACHES = /^craftly-b\d+$/;
+const BUILD_CACHES = /^craftly-[a-f0-9]{10}$/;
 const builds = async (worker: ReturnType<typeof loadWorker>) => (await worker.caches.keys()).filter((name) => BUILD_CACHES.test(name));
 const text = async (response: Response | undefined) => (await response?.text()) ?? "(no response)";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -131,38 +131,38 @@ describe("the service worker", () => {
       expect(worker.claim).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps its own files, the web assembly cache and the build that ran before it, and drops everything else", async () => {
-      const first = await running("b1");
+    it("keeps its own files, the web assembly cache and the build that ran before it, and leaves unrelated caches alone", async () => {
+      const first = await running("aaaaaaaaaa");
       const stray = await first.caches.open("some-other-cache");
       await stray.put("/x", new Response("x"));
       await (await first.caches.open("craftly-runtime")).put("/assets/ort.wasm", new Response("wasm"));
-      const second = await running("b2", { network: serveBuild(first.network, "b2"), caches: first.caches });
+      const second = await running("bbbbbbbbbb", { network: serveBuild(first.network, "bbbbbbbbbb"), caches: first.caches });
       const names = await second.caches.keys();
-      expect(names).toContain("craftly-b1");
-      expect(names).toContain("craftly-b2");
+      expect(names).toContain("craftly-aaaaaaaaaa");
+      expect(names).toContain("craftly-bbbbbbbbbb");
       expect(names).toContain("craftly-runtime");
-      expect(names).not.toContain("some-other-cache");
+      expect(names).toContain("some-other-cache");
     });
 
     it("keeps only one build back: the one that ran before the build that takes over now", async () => {
-      const first = await running("b1");
-      const second = await running("b2", { network: serveBuild(first.network, "b2"), caches: first.caches });
-      expect(await builds(second)).toEqual(["craftly-b1", "craftly-b2"]);
-      const third = await running("b3", { network: serveBuild(first.network, "b3"), caches: first.caches });
-      expect(await builds(third)).toEqual(["craftly-b2", "craftly-b3"]);
+      const first = await running("aaaaaaaaaa");
+      const second = await running("bbbbbbbbbb", { network: serveBuild(first.network, "bbbbbbbbbb"), caches: first.caches });
+      expect(await builds(second)).toEqual(["craftly-aaaaaaaaaa", "craftly-bbbbbbbbbb"]);
+      const third = await running("cccccccccc", { network: serveBuild(first.network, "cccccccccc"), caches: first.caches });
+      expect(await builds(third)).toEqual(["craftly-bbbbbbbbbb", "craftly-cccccccccc"]);
     });
 
     it("keeps the build whose pages are open, not one that was stored by a worker that never took over", async () => {
-      const first = await running("b1");
-      const waiting = loadWorker({ buildId: "b2", network: serveBuild(first.network, "b2"), caches: first.caches });
-      await waiting.install(); // b2 is stored, then replaced by b3 before it ever ran
-      const third = await running("b3", { network: serveBuild(first.network, "b3"), caches: first.caches });
-      expect(await builds(third)).toEqual(["craftly-b1", "craftly-b3"]);
+      const first = await running("aaaaaaaaaa");
+      const waiting = loadWorker({ buildId: "bbbbbbbbbb", network: serveBuild(first.network, "bbbbbbbbbb"), caches: first.caches });
+      await waiting.install(); // bbbbbbbbbb is stored, then replaced by cccccccccc before it ever ran
+      const third = await running("cccccccccc", { network: serveBuild(first.network, "cccccccccc"), caches: first.caches });
+      expect(await builds(third)).toEqual(["craftly-aaaaaaaaaa", "craftly-cccccccccc"]);
     });
 
     it("has no build to keep the first time", async () => {
-      const worker = await running("b1");
-      expect(await builds(worker)).toEqual(["craftly-b1"]);
+      const worker = await running("aaaaaaaaaa");
+      expect(await builds(worker)).toEqual(["craftly-aaaaaaaaaa"]);
     });
   });
 

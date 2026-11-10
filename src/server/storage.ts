@@ -3,11 +3,17 @@
  * batches it applied from each client, and a hash of each of its two keys (a copy of the files cannot be used to edit or to look).
  */
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Design } from "@/core/types";
 
+export interface SharedAsset {
+  mime: string;
+  base64: string;
+}
+
 export interface RoomRecord {
+  assets?: Record<string, SharedAsset>;
   design: Design;
   rev: number;
   seqs: Record<string, number>;
@@ -15,6 +21,8 @@ export interface RoomRecord {
   editHash: string;
   /** hex SHA-256 of the key that lets a person look */
   viewHash: string;
+  /** Older rooms have no owner credential. */
+  ownerHash?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -24,6 +32,7 @@ export interface LiveStorage {
   save(id: string, record: RoomRecord): Promise<void>;
   remove(id: string): Promise<void>;
   count(): Promise<number>;
+  checkWritable(): Promise<void>;
 }
 
 /** What a room is called: made by the server, long enough not to be guessed, and safe to use as a file name. */
@@ -46,6 +55,9 @@ const looksLikeRecord = (v: unknown): v is RoomRecord => {
 };
 
 export class MemoryStorage implements LiveStorage {
+  async checkWritable() {
+    return Promise.resolve();
+  }
   private rooms = new Map<string, string>();
   async load(id: string) {
     const text = this.rooms.get(id);
@@ -90,19 +102,47 @@ export class FileStorage implements LiveStorage {
     const target = this.path(id);
     await mkdir(this.dir, { recursive: true });
     const temp = `${target}.${randomBytes(6).toString("hex")}.tmp`;
-    await writeFile(temp, JSON.stringify(record), "utf8");
-    await rename(temp, target);
+    try {
+      await writeFile(temp, JSON.stringify(record), { encoding: "utf8", flag: "wx", flush: true });
+      await rename(temp, target);
+      await this.syncDirectory();
+    } finally {
+      await rm(temp, { force: true });
+    }
   }
 
   async remove(id: string): Promise<void> {
     await rm(this.path(id), { force: true });
+    await this.syncDirectory();
+  }
+
+  private async syncDirectory(): Promise<void> {
+    // Windows exposes file flush but does not let Node open a directory for fsync.
+    if (process.platform === "win32") return;
+    const dir = await open(this.dir, "r");
+    try {
+      await dir.sync();
+    } finally {
+      await dir.close();
+    }
+  }
+
+  async checkWritable(): Promise<void> {
+    await mkdir(this.dir, { recursive: true });
+    const probe = join(this.dir, `.health-${randomBytes(8).toString("hex")}`);
+    try {
+      await writeFile(probe, "", { flag: "wx", flush: true });
+    } finally {
+      await rm(probe, { force: true });
+    }
   }
 
   async count(): Promise<number> {
     try {
       return (await readdir(this.dir)).filter((name) => name.endsWith(".json")).length;
-    } catch {
-      return 0;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+      throw error;
     }
   }
 }

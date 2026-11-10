@@ -4,11 +4,19 @@
  * and the history; this module owns the connection (src/collab/live.ts) and tells the store what arrives.
  */
 import { Live, type LiveStatus, type SocketLike } from "@/collab/live";
-import type { DeniedReason, Role } from "@/collab/protocol";
+import { checkOps, type DeniedReason, type Role } from "@/collab/protocol";
+import type { Outbox } from "@/collab/session";
+import { uid } from "@/core/ids";
+import { saveDesign } from "@/core/library";
 import { useEditor } from "@/core/store";
 import type { Design, LiveLink } from "@/core/types";
+import { downloadBlob } from "@/export/download";
+import { exportProjectFile, projectFileName } from "@/export/projectFile";
+import { collectAssetIds, portableDesign } from "@/export/projectFormat";
+import { toast } from "@/ui";
 import { create } from "zustand";
 import { apiUrl, normalizeServer, websocketUrl } from "./links";
+import { sharedMedia } from "./media";
 
 export interface LiveEnv {
   createSocket?: (url: string) => SocketLike;
@@ -47,16 +55,83 @@ export const deniedText = (reason: DeniedReason): string => DENIED[reason];
  * shown, what this person does is sent, and the history becomes this person's own steps. A key that only lets people look makes the
  * design read-only.
  */
+interface StoredOutbox extends Outbox {
+  uploads?: string[];
+}
+
+function readOutbox(key: string): StoredOutbox | undefined {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(key) ?? "null") as StoredOutbox | null;
+    if (!value || !/^[a-f0-9]{16}$/.test(value.client) || !Number.isSafeInteger(value.nextSeq) || !Array.isArray(value.queue)) return;
+    if (!value.queue.every((batch) => batch && Number.isSafeInteger(batch.seq) && typeof checkOps(batch.ops) !== "string")) return;
+    if (value.uploads && (!Array.isArray(value.uploads) || !value.uploads.every((id) => typeof id === "string"))) return;
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
 export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   const actions = () => useEditor.getState().actions;
-  let looking = false;
+  let looking = link.role === "view";
+  if (looking) actions().setMode("view");
+  let closed = false;
+  let warned = false;
+  const key = `craftly:outbox:${useEditor.getState().design?.id}:${link.server}:${link.room}`;
+  const media = sharedMedia(link, env.fetch);
+  const outbox = readOutbox(key);
+  const allowedUploads = new Set(outbox?.uploads);
+  let mediaError = "";
+  const showMediaError = (message: string) => {
+    if (closed || mediaError === message) return;
+    mediaError = message;
+    toast.error(message);
+  };
   const live = new Live({
     url: websocketUrl(link),
     key: link.key,
     createSocket: env.createSocket,
+    outbox,
+    onOutbox(outbox) {
+      try {
+        if (outbox.queue.length) sessionStorage.setItem(key, JSON.stringify({ ...outbox, uploads: [...allowedUploads] }));
+        else {
+          sessionStorage.removeItem(key);
+          allowedUploads.clear();
+        }
+        warned = false;
+      } catch {
+        if (warned || typeof sessionStorage === "undefined") return;
+        warned = true;
+        toast.error("Craftly could not keep unsent changes for a reload. Keep this tab open or download a project file.");
+      }
+    },
+    prepareEdit: (design) => media.upload(design, allowedUploads),
+    onSendError: showMediaError,
+    onRejected(reason) {
+      const design = useEditor.getState().design;
+      if (!design) return;
+      const now = Date.now();
+      const copy: Design = { ...portableDesign(design), id: uid("d"), title: `${design.title} (unsent changes)`, createdAt: now, updatedAt: now, trashedAt: null };
+      void saveDesign(copy).then(
+        () => toast.error(`The server refused an edit: ${reason} A recovery copy is in Projects.`, { duration: 0 }),
+        () =>
+          toast.error(`The server refused an edit: ${reason} Download a recovery copy.`, {
+            duration: 0,
+            actionLabel: "Download copy",
+            onAction: () =>
+              void exportProjectFile(copy)
+                .then((blob) => downloadBlob(blob, projectFileName(copy.title)))
+                .catch(() => toast.error("Could not download the recovery copy.")),
+          }),
+      );
+    },
     onChange: () => {
       const shared = live.design;
-      if (shared) actions().applyShared(shared);
+      if (!shared) return;
+      actions().applyShared(shared);
+      if (collectAssetIds(shared).length)
+        void media.download(shared).catch((error: unknown) => showMediaError(error instanceof Error ? error.message : "Could not load shared images."));
     },
     onStatus: (status, reason) => {
       if (status === "live" && live.session.role === "view" && !looking) {
@@ -67,9 +142,16 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     },
   });
   useLiveStatus.setState({ status: "connecting", reason: null, role: null });
-  actions().startLive({ change: (before, after) => live.edit(before, after) });
+  actions().startLive({
+    change(before, after) {
+      const known = new Set(collectAssetIds(before));
+      for (const id of collectAssetIds(after)) if (!known.has(id)) allowedUploads.add(id);
+      live.edit(before, after);
+    },
+  });
   live.start();
   return () => {
+    closed = true;
     live.stop();
     actions().stopLive();
     if (looking) actions().setMode("edit");
@@ -105,8 +187,17 @@ export async function shareDesign(typedServer: string, env: LiveEnv = {}): Promi
     throw new Error("Couldn't reach the server. Check the address and that the server is running.");
   }
   if (!res.ok) throw new Error(await problemWith(res));
-  const made = (await res.json()) as { room: string; editKey: string; viewKey: string };
-  const link: LiveLink = { server, room: made.room, key: made.editKey, viewKey: made.viewKey, role: "edit" };
+  const made = (await res.json()) as { room: string; editKey: string; viewKey: string; ownerKey: string };
+  const link: LiveLink = { server, room: made.room, key: made.editKey, viewKey: made.viewKey, ownerKey: made.ownerKey, role: "edit" };
+  try {
+    if (collectAssetIds(content).length) await sharedMedia(link, env.fetch).upload(content);
+  } catch (error) {
+    await (env.fetch ?? fetch)(apiUrl(server, `/api/rooms/${encodeURIComponent(link.room)}`), {
+      method: "DELETE",
+      headers: { "x-craftly-key": made.ownerKey },
+    }).catch(() => undefined);
+    throw error;
+  }
   useEditor.getState().actions.setLiveLink(link);
   return link;
 }
@@ -120,11 +211,11 @@ export async function stopSharing(env: LiveEnv = {}): Promise<void> {
   const state = useEditor.getState();
   const link = state.design?.live;
   if (!link) return;
-  // only the person who started sharing (they kept the key that looks) closes the room; somebody who was given a link just leaves it
-  if (link.role === "edit" && link.viewKey) {
+  // Only the owner credential closes the room. An invite holder leaves locally.
+  if (link.role === "edit" && link.ownerKey) {
     let res: Response;
     try {
-      res = await (env.fetch ?? fetch)(apiUrl(link.server, `/api/rooms/${encodeURIComponent(link.room)}`), { method: "DELETE", headers: { "x-craftly-key": link.key } });
+      res = await (env.fetch ?? fetch)(apiUrl(link.server, `/api/rooms/${encodeURIComponent(link.room)}`), { method: "DELETE", headers: { "x-craftly-key": link.ownerKey } });
     } catch {
       throw new Error("Couldn't reach the server, so sharing could not be stopped. The link is still on this design.");
     }

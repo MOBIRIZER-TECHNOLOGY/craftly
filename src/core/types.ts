@@ -90,6 +90,24 @@ export interface Shadow {
 
 export type ElementType = "text" | "shape" | "line" | "image" | "graphic" | "group" | "table" | "chart";
 
+/** How an element mixes its colours with what is under it (src/core/blend.ts). The names are those of a canvas's `globalCompositeOperation` and of a style sheet's `mix-blend-mode`. */
+export type BlendMode =
+  | "darken"
+  | "multiply"
+  | "color-burn"
+  | "lighten"
+  | "screen"
+  | "color-dodge"
+  | "overlay"
+  | "soft-light"
+  | "hard-light"
+  | "difference"
+  | "exclusion"
+  | "hue"
+  | "saturation"
+  | "color"
+  | "luminosity";
+
 export interface ElementBase {
   id: ID;
   type: ElementType;
@@ -111,6 +129,8 @@ export interface ElementBase {
   shadow?: Shadow | null;
   /** gaussian blur applied to the whole element, px */
   blur?: number;
+  /** how the element mixes with what is under it; absent is Normal (a group mixes as one, its elements inside it) */
+  blend?: BlendMode;
   /** accessibility text */
   alt?: string;
   /** optional hyperlink (used by PDF/SVG export and presenting) */
@@ -432,7 +452,7 @@ export type SizeUnit = "px" | "in" | "mm" | "cm";
  * Where a design that is edited together with other people lives on a server (src/collab, docs/COLLABORATION.md): the server's
  * address (http:// or https://; the socket is on the same address), the room, the key that was given for it and what that key
  * allows. The person who started sharing also keeps the key that only lets people look, to hand it out again. Kept on this device
- * with the design and never sent to anyone; a copy of the design in a backup or a file carries the keys.
+ * with the local design. Portable project files and backups omit the link and all its credentials.
  */
 export interface LiveLink {
   server: string;
@@ -440,6 +460,7 @@ export interface LiveLink {
   key: string;
   role: "edit" | "view";
   viewKey?: string;
+  ownerKey?: string;
 }
 
 export interface Design {
@@ -472,6 +493,7 @@ export interface Design {
 
 /** Light-weight record used by the dashboard (no page content). */
 export interface DesignSummary {
+  revision?: string;
   id: ID;
   title: string;
   typeId: string;

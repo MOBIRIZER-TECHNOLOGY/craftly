@@ -1,9 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
+import { BLEND_MODES, blendLabel } from "@/core/blend";
 import { createLine, createShape, createText } from "@/core/factory";
-import type { ShapeElement } from "@/core/types";
-import { live, openElements, typeNumber } from "@/test/ctxUtils";
+import type { DesignElement, ShapeElement } from "@/core/types";
+import { live, openElements, store, typeNumber } from "@/test/ctxUtils";
 import { resetEditor } from "@/test/helpers";
 import { BorderPopover, FillButton, RadiusPopover, Swatch, TransparencyButton, capFor } from "./common";
 import { LineBar } from "./bars/ShapeBar";
@@ -120,5 +121,75 @@ describe("the line bar with nothing selected", () => {
     render(<LineBar els={[]} ids={[]} copyEnabled={false} />);
     await user.click(screen.getByRole("button", { name: "Line weight" }));
     expect(screen.getByRole("slider", { name: "Weight" }).getAttribute("aria-valuenow")).toBe("1");
+  });
+});
+
+describe("<TransparencyButton>: the blend mode", () => {
+  const openPopover = async (user: ReturnType<typeof userEvent.setup>, elements: DesignElement[]) => {
+    openElements(elements, { selected: elements });
+    render(<TransparencyButton els={elements.map((el) => live(el))} ids={elements.map((el) => el.id)} />);
+    await user.click(screen.getByRole("button", { name: "Transparency" }));
+    return screen.getByRole("dialog", { name: "Transparency" });
+  };
+  const box = (dialog: HTMLElement) => within(dialog).getByRole("combobox", { name: "Blend mode" });
+  const choose = async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, name: string) => {
+    await user.click(box(dialog));
+    await user.click(screen.getByRole("option", { name }));
+  };
+
+  it("sits under the transparency, says Normal for an element with no mode and lists Normal and the fifteen modes in order", async () => {
+    const user = userEvent.setup();
+    const dialog = await openPopover(user, [createShape("rect")]);
+    expect(box(dialog).textContent).toContain("Normal");
+    expect(within(dialog).getByText("Blend mode")).toBeTruthy();
+    await user.click(box(dialog));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Normal", ...BLEND_MODES.map((mode) => blendLabel(mode))]);
+  });
+
+  it("says in its tooltip that the button holds the blend mode too", async () => {
+    const user = userEvent.setup();
+    openElements([createShape("rect")], { selected: [] });
+    render(<TransparencyButton els={[]} ids={[]} />);
+    await user.hover(screen.getByRole("button", { name: "Transparency" }));
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Transparency and blend mode");
+  });
+
+  it("shows the mode that an element has", async () => {
+    const user = userEvent.setup();
+    const dialog = await openPopover(user, [createShape("rect", { blend: "color-burn" })]);
+    expect(box(dialog).textContent).toContain("Color burn");
+  });
+
+  it("gives the chosen mode to every selected element, as one step that undo takes back", async () => {
+    const user = userEvent.setup();
+    const a = createShape("rect");
+    const b = createShape("ellipse", { blend: "screen" });
+    const dialog = await openPopover(user, [a, b]);
+    await choose(user, dialog, "Multiply");
+    expect(live(a).blend).toBe("multiply");
+    expect(live(b).blend).toBe("multiply");
+    act(() => store().actions.undo());
+    expect(live(a)).not.toHaveProperty("blend");
+    expect(live(b).blend).toBe("screen");
+  });
+
+  it("says Mixed when the selected elements differ, and Normal takes the mode of every one of them away", async () => {
+    const user = userEvent.setup();
+    const a = createShape("rect", { blend: "multiply" });
+    const b = createShape("rect");
+    const dialog = await openPopover(user, [a, b]);
+    expect(box(dialog).textContent).toContain("Mixed");
+    await choose(user, dialog, "Normal");
+    expect(live(a)).not.toHaveProperty("blend");
+    expect(live(b)).not.toHaveProperty("blend");
+  });
+
+  it("does not change the transparency", async () => {
+    const user = userEvent.setup();
+    const a = createShape("rect", { opacity: 0.4 });
+    const dialog = await openPopover(user, [a]);
+    await choose(user, dialog, "Overlay");
+    expect(live(a).opacity).toBe(0.4);
+    expect(within(dialog).getByRole("slider", { name: "Transparency" }).getAttribute("aria-valuenow")).toBe("40");
   });
 });

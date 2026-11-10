@@ -6,6 +6,7 @@ import { useEditor } from "@/core/store";
 import type { Design } from "@/core/types";
 import { chromeDesign, clearToasts, nextFrame, renderChrome, storeDesign } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor } from "@/test/helpers";
+import { installAutosave } from "@/editor/autosave";
 import { ResizeDialog } from "./ResizeDialog";
 
 // The real library, except that a test can make the copy fail or wait.
@@ -285,10 +286,15 @@ describe("<ResizeDialog>: resizing a copy", () => {
     const onClose = vi.fn();
     const { design } = await mount(onClose, chromeDesign("Copy me"));
     const user = userEvent.setup({ delay: null });
+    const stop = installAutosave();
     act(() => useEditor.getState().actions.setTitle("Copy me, edited"));
     await type(user, "Width", "640");
     await user.click(copyButton());
-    expect(await screen.findByText("Resized copy created (640 × 360 px)")).toBeTruthy();
+    try {
+      expect(await screen.findByText("Resized copy created (640 × 360 px)")).toBeTruthy();
+    } finally {
+      stop();
+    }
     expect(onClose).toHaveBeenCalledTimes(1);
 
     const all = await listDesigns();

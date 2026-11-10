@@ -3,10 +3,11 @@
  * flip, align, border and corner radius, plus the "..." menu.
  */
 import type { CSSProperties, ReactElement } from "react";
+import { BLEND_MODES, blendLabel, blendOf } from "@/core/blend";
 import { connectable } from "@/core/connectors";
 import { DEFAULT_INK } from "@/core/factory";
 import { getActions, getActivePage, useEditor } from "@/core/store";
-import type { DesignElement, ID, ImageElement, ShapeElement, Stroke, StrokeStyle } from "@/core/types";
+import type { BlendMode, DesignElement, ID, ImageElement, ShapeElement, Stroke, StrokeStyle } from "@/core/types";
 import {
   Button,
   IconAlignObjBottom,
@@ -26,8 +27,10 @@ import {
   IconGroup,
   IconMore,
   Segmented,
+  Select,
   cx,
   type MenuEntry,
+  type SelectOption,
 } from "@/ui";
 import { buildContextMenuItems } from "./contextMenuItems";
 import { IconBorderBox, IconChecker, IconStrokeStyle } from "./icons";
@@ -48,28 +51,50 @@ export function Swatch({ css, large, square }: { css: string; large?: boolean; s
 /* transparency / effects / position                                   */
 /* ------------------------------------------------------------------ */
 
+/** Normal, which is no mode and so is not stored, and then the modes in the order of a photo editor's list. */
+const BLEND_OPTIONS: SelectOption<string>[] = [{ value: "normal", label: "Normal" }, ...BLEND_MODES.map((mode) => ({ value: mode, label: blendLabel(mode) }))];
+
 export function TransparencyButton({ els, ids }: BarProps) {
   const opacity = uniform(els, (e) => Math.round(e.opacity * 100));
+  const mode = uniform(els, (e) => blendOf(e) ?? "normal");
   return (
-    <PopoverButton label="Transparency" icon={<IconChecker />} panelClass="cf-tbpop--narrow">
+    <PopoverButton label="Transparency" tip="Transparency and blend mode" icon={<IconChecker />} panelClass="cf-tbpop--narrow">
       {() => (
-        <SliderField
-          label="Transparency"
-          value={opacity.value ?? 100}
-          mixed={opacity.mixed}
-          min={0}
-          max={100}
-          step={1}
-          onChange={(v) =>
-            editElements(
-              ids,
-              (el) => {
-                el.opacity = v / 100;
-              },
-              "opacity",
-            )
-          }
-        />
+        <div className="cf-tbpop__stack">
+          <SliderField
+            label="Transparency"
+            value={opacity.value ?? 100}
+            mixed={opacity.mixed}
+            min={0}
+            max={100}
+            step={1}
+            onChange={(v) =>
+              editElements(
+                ids,
+                (el) => {
+                  el.opacity = v / 100;
+                },
+                "opacity",
+              )
+            }
+          />
+          <div className="cf-tbpop__field">
+            <PopLabel>Blend mode</PopLabel>
+            <Select<string>
+              size="sm"
+              aria-label="Blend mode"
+              value={mode.mixed ? null : (mode.value ?? "normal")}
+              placeholder="Mixed"
+              options={BLEND_OPTIONS}
+              onChange={(chosen) =>
+                editElements(ids, (el) => {
+                  if (chosen === "normal") delete el.blend;
+                  else el.blend = chosen as BlendMode;
+                })
+              }
+            />
+          </div>
+        </div>
       )}
     </PopoverButton>
   );

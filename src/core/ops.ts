@@ -2,6 +2,7 @@
  * Pure document operations. They MUTATE the page/design they are given, so the
  * store runs them inside an immer draft (and tests run them on a clone).
  */
+import { blendOf } from "./blend";
 import { cloneDeep } from "./clone";
 import { rebindClones, retargetLines } from "./connectors";
 import { cloneElement, createGroup } from "./factory";
@@ -199,6 +200,9 @@ export function ungroup(page: Page, groupId: ID): ID[] {
     if (g.flipH) c.flipH = !c.flipH;
     if (g.flipV) c.flipV = !c.flipV;
     c.opacity *= g.opacity;
+    // the group mixed as one; its mode goes to the elements that have none of their own, which looks the nearest to it
+    const mode = blendOf(g);
+    if (mode && !blendOf(c)) c.blend = mode;
     if (g.locked) c.locked = true;
     return c;
   });

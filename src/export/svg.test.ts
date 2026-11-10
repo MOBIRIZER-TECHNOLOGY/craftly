@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { BLEND_MODES } from "@/core/blend";
 import { createChart, createDesign, createGraphic, createGroup, createLine, createPage, createShape, createTable, createText, solid } from "@/core/factory";
 import { newPathShape } from "@/core/penShape";
 import type { DesignElement, Fill, Page, Point, TextEffect } from "@/core/types";
@@ -486,6 +487,75 @@ describe("links and accessibility", () => {
   it("labels elements that have alternative text", async () => {
     const { svg } = await render([createShape("rect", { x: 5, y: 5, width: 50, height: 50, alt: 'A "quoted" <logo>' })]);
     expect(svg).toContain('role="img" aria-label="A &quot;quoted&quot; &lt;logo&gt;"');
+    checkXml(svg);
+  });
+});
+
+describe("blend modes", () => {
+  const box = (init: Parameters<typeof createShape>[1] = {}) => createShape("rect", { x: 10, y: 20, width: 100, height: 50, fill: solid("#ff0000"), ...init });
+
+  it.each(BLEND_MODES)("writes %s as the mix-blend-mode of the group around the element", async (mode) => {
+    const { svg } = await render([box({ blend: mode })]);
+    expect(svg).toContain(`<g transform="translate(10 20)" style="mix-blend-mode:${mode}">`);
+    checkXml(svg);
+  });
+
+  it("makes a group of its own for an element that would have none", async () => {
+    const { svg } = await render([box({ x: 0, y: 0, blend: "multiply" })]);
+    expect(svg).toMatch(/<g style="mix-blend-mode:multiply"><rect /);
+    checkXml(svg);
+  });
+
+  it("writes it on the same group as the turn, the blur and the label of the element", async () => {
+    const { svg } = await render([box({ rotation: 20, blur: 4, alt: "Logo", blend: "overlay" })]);
+    expect(svg).toMatch(/<g transform="[^"]*" filter="url\(#[^)"]+\)" style="mix-blend-mode:overlay" role="img" aria-label="Logo">/);
+    expect((svg.match(/mix-blend-mode/g) ?? []).length).toBe(1);
+    checkXml(svg);
+  });
+
+  it("mixes a group as one: the mode is on the group and not on what it holds", async () => {
+    const group = createGroup([box(), box({ x: 60, fill: solid("#0000ff") })], { x: 0, y: 0, width: 200, height: 100, blend: "multiply" });
+    const { svg } = await render([group]);
+    expect((svg.match(/mix-blend-mode/g) ?? []).length).toBe(1);
+    expect(svg).toMatch(/<g style="mix-blend-mode:multiply"><g transform="translate\(10 20\)"><rect /);
+    checkXml(svg);
+  });
+
+  it("lets an element in a group with a mode have a mode of its own", async () => {
+    const group = createGroup([box({ blend: "screen" })], { x: 0, y: 0, width: 200, height: 100, blend: "multiply" });
+    const { svg } = await render([group]);
+    expect(svg).toContain('style="mix-blend-mode:multiply"');
+    expect(svg).toContain('style="mix-blend-mode:screen"');
+    checkXml(svg);
+  });
+
+  it("keeps the mode inside the link of the element", async () => {
+    const { svg } = await render([box({ link: "https://example.com/", blend: "multiply" })]);
+    expect(svg).toMatch(/<a xlink:href="https:\/\/example.com\/"><g transform="translate\(10 20\)" style="mix-blend-mode:multiply">/);
+    checkXml(svg);
+  });
+
+  it("writes no mode for an element that has none", async () => {
+    const { svg } = await render([box({ rotation: 20 })]);
+    expect(svg).not.toContain("mix-blend-mode");
+    expect(svg).not.toContain("style=");
+  });
+
+  it.each([
+    ["normal, which is no mode", "normal"],
+    ["what a canvas calls no mixing", "source-over"],
+    ["a name that is not a mode", "sparkle"],
+    ["a name that closes the attribute and opens another", 'multiply" onload="alert(1)'],
+    ["a name with a style after it", "multiply;background:url(https://evil.test/x)"],
+    ["a name with markup in it", "multiply</g><script>alert(1)</script>"],
+    ["a number", 7],
+    ["nothing", null],
+  ])("writes nothing of %s, whatever a file or another person put in the field", async (_what, blend) => {
+    const { svg } = await render([box({ blend: blend as never })]);
+    expect(svg).not.toContain("mix-blend-mode");
+    expect(svg).not.toContain("evil.test");
+    expect(svg).not.toContain("onload");
+    expect(svg).not.toContain("<script");
     checkXml(svg);
   });
 });

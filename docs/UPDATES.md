@@ -11,8 +11,8 @@ The worker called `skipWaiting()` the moment it had installed and `clients.claim
 1. **A build is published.** The browser finds the new `sw.js` (it differs by its build id) when a page loads, and a tab that stays open asks for it when it comes back into view (see "Looking for updates").
 2. **The new worker installs and waits.** It stores the app shell and every file of the build in its own cache (`craftly-<id>`), then does nothing more. The worker that runs keeps serving every open tab, from any build's cache, so a tab finds the files its own code asks for.
 3. **A tab that is older than the waiting build says so.** A notice appears, "A new version of Craftly is ready. Reload to use it." with a **Reload** button. It has no time limit (and the toast stack, which keeps at most four toasts, retires toasts that leave by themselves before it, so other messages do not push it out), and it can be dismissed: it does not come back for that build, only for a newer one.
-4. **Reload.** The tab writes the open design (the editor's autosave runs 0.7 s after a change, so a click just after an edit would not be saved otherwise), asks the waiting worker to take over, and reloads once the worker has. Only the tab where Reload was pressed reloads; the other tabs keep their page and their notice.
-5. **The worker takes over.** It claims the open pages and deletes the caches of older builds, except the build that ran before it, so the second tab, still on the old code, still finds its files. The build before that one goes at the next update.
+4. **Reload.** The tab writes the open design (the editor's autosave runs 0.7 s after a change, so a click just after an edit would not be saved otherwise), asks the waiting worker to take over, and reloads once the worker has. If saving fails or times out, the current tab keeps the editor open and offers Retry update. Only the tab where Reload was pressed reloads; the other tabs keep their page and their notice.
+5. **The worker takes over.** It claims the open pages and deletes the caches of older builds, except the build that ran before it, so the second tab, still on the old code, still finds its files. The worker leaves unrelated caches on the same origin alone. The build before that one goes at the next update.
 6. **Nobody presses Reload.** The waiting worker takes over by itself when every tab of the app has been closed, as browsers do, and the next visit runs the new build.
 
 ## A page that already runs the new build is not asked
@@ -29,9 +29,9 @@ A browser checks for a new worker when a page loads, which a long-lived single p
 
 | What happens | What the page does |
 | --- | --- |
-| The waiting worker was replaced by an even newer one before Reload was pressed | It reloads at once: the network-first page is the newest build anyway |
-| The worker does not take over within 5 s | It reloads anyway, so that the button never does nothing |
-| The open design is not saved within 4 s (a very large design, or storage that is blocked) | It goes ahead: the autosave also writes when the page is hidden |
+| The waiting worker was replaced by an even newer one before Reload was pressed | After a successful save, it reloads and fetches the newest page |
+| The worker does not take over within 5 s | After a successful save, it reloads using the active worker |
+| The open design fails to save or its write is still unconfirmed after 4 s | The current editor stays open and shows **Retry update**. The waiting worker stays inactive unless another tab activates it. |
 | The worker does not answer the question which build it is | The notice is shown |
 | `postMessage` to the worker throws | The tab reloads |
 | Another tab pressed Reload | This tab sees its controller change and does **not** reload; it keeps its page and its notice |

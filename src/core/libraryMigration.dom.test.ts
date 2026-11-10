@@ -186,7 +186,7 @@ describe("a dashboard record whose design is not there", () => {
     const old = await store(1, { id: "d_gone" }, true);
     await dbDelete("designs", "d_gone");
     const upgraded = { ...old, version: 3 } as Design;
-    await expect(saveDesign(upgraded)).resolves.toBeUndefined();
+    await saveDesign(upgraded);
     expect(await listVersions("d_gone")).toHaveLength(0);
     expect(await getStoredDesign("d_gone")).toMatchObject({ version: 3 });
   });

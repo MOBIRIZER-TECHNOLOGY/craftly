@@ -1,10 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { RecoveryPanel } from "@/components/RecoveryPanel";
-import { getDesign, saveDesign } from "@/core/library";
+import { getDesignForEditing } from "@/core/library";
 import { isCrashing, keepBeforeProblem } from "@/core/recovery";
 import { MigrationError } from "@/core/schema/migrator";
 import { useEditor } from "@/core/store";
-import { renderPageToCanvas } from "@/render/renderPage";
 import { navigate } from "@/router";
 import { Button, EmptyState, IconHome, IconSearch, IconWarning, Spinner, cx } from "@/ui";
 import { installAutosave } from "./autosave";
@@ -28,34 +27,6 @@ import "./editor.css";
 
 /** `newer`: saved by a newer Craftly than this tab runs. `failed`: it could not be brought up to the format this one uses. Neither touches what is stored. */
 type Status = "loading" | "ready" | "missing" | "broken" | "newer" | "failed";
-
-/**
- * The autosave service only reacts to changes and timers; when the editor is left (Home, another design, closing
- * the route) with edits that were not written yet, store them here so nothing typed in the last second is lost.
- * When the editor goes away because its screen stopped, the state on the screen may be what stopped it: the stored one
- * (the last autosave) is kept as a version first, so that a design that stops Craftly again can be taken back to it
- * (src/core/recovery.ts, docs/CRASH-RECOVERY.md).
- */
-function persistOnLeave(): void {
-  const s = useEditor.getState();
-  const design = s.design;
-  if (!design || s.saveState === "saved" || s.saveState === "saving") return;
-  const stopped = isCrashing();
-  void (async () => {
-    if (stopped) await keepBeforeProblem(design.id).catch(() => undefined);
-    let thumb: string | undefined;
-    try {
-      thumb = (await renderPageToCanvas(design, design.pages[0], { width: 420 })).toDataURL("image/jpeg", 0.82);
-    } catch {
-      /* thumbnails are optional */
-    }
-    try {
-      await saveDesign(design, thumb);
-    } catch {
-      /* nothing more can be done once the editor is gone */
-    }
-  })();
-}
 
 function EditorState({ children }: { children: ReactNode }) {
   return <div className="cf-editor-state">{children}</div>;
@@ -116,21 +87,21 @@ export function Editor({ designId }: { designId: string }) {
   /* load, open, autosave; flush and close on the way out */
   useEffect(() => {
     let cancelled = false;
-    let uninstallAutosave: (() => void) | null = null;
+    let autosave: ReturnType<typeof installAutosave> | null = null;
     setStatus("loading");
-    getDesign(designId)
-      .then((design) => {
+    getDesignForEditing(designId)
+      .then((opened) => {
         if (cancelled) return;
-        if (!design) {
+        if (!opened) {
           setStatus("missing");
           return;
         }
         try {
           const actions = useEditor.getState().actions;
-          actions.openDesign(design);
+          actions.openDesign(opened.design);
           // on a phone the side panel is a sheet over the page: start with it folded away
           if (window.matchMedia("(max-width: 899px)").matches && useEditor.getState().panelOpen) actions.toggle("panelOpen");
-          uninstallAutosave = installAutosave();
+          autosave = installAutosave(opened.revision);
           setStatus("ready");
         } catch {
           setStatus("broken");
@@ -145,8 +116,13 @@ export function Editor({ designId }: { designId: string }) {
       });
     return () => {
       cancelled = true;
-      uninstallAutosave?.();
-      persistOnLeave();
+      const state = useEditor.getState();
+      if (autosave && state.design?.id === designId && state.saveState !== "saved" && state.saveState !== "saving") {
+        const crashed = isCrashing();
+        if (crashed) void keepBeforeProblem(designId).catch(() => undefined);
+        void autosave.flush(!crashed);
+      }
+      autosave?.();
       useEditor.getState().actions.closeDesign();
     };
   }, [designId]);

@@ -6,6 +6,7 @@ import { createDesign, createPage } from "@/core/factory";
 import { createFolder, getDesign, listDesigns, listFolders } from "@/core/library";
 import { dbPut } from "@/core/persistence";
 import { useEditor } from "@/core/store";
+import { installAutosave } from "@/editor/autosave";
 import { chromeDesign, clearToasts, renderChrome, storeDesign } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor } from "@/test/helpers";
 import { FileMenu } from "./FileMenu";
@@ -361,14 +362,20 @@ describe("<FileMenu>: star, move and trash", () => {
 
   it("moves to the trash after asking, and the person can undo it", async () => {
     const { design } = await mount("To the bin");
-    const user = userEvent.setup({ delay: null });
-    await openMenu(user);
-    await user.click(item(/^Move to trash/));
-    await user.click(await screen.findByRole("button", { name: "Move to trash" }));
-    await waitFor(() => expect(window.location.hash).toBe("#/"));
-    expect((await getDesign(design.id))?.trashedAt).toEqual(expect.any(Number));
-    await user.click(await screen.findByRole("button", { name: "Undo" }));
-    await waitFor(async () => expect((await getDesign(design.id))?.trashedAt).toBeNull());
+    // the editor leaves only once the trashed state is stored, and it is the autosave that stores it
+    const stopAutosave = installAutosave();
+    try {
+      const user = userEvent.setup({ delay: null });
+      await openMenu(user);
+      await user.click(item(/^Move to trash/));
+      await user.click(await screen.findByRole("button", { name: "Move to trash" }));
+      await waitFor(() => expect(window.location.hash).toBe("#/"));
+      expect((await getDesign(design.id))?.trashedAt).toEqual(expect.any(Number));
+      await user.click(await screen.findByRole("button", { name: "Undo" }));
+      await waitFor(async () => expect((await getDesign(design.id))?.trashedAt).toBeNull());
+    } finally {
+      stopAutosave();
+    }
   });
 
   it("keeps the design when the person cancels the trash dialog", async () => {

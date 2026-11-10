@@ -3,11 +3,13 @@
  * saving, copying, trashing, printing, copying a page as an image, saving a project file.
  * None of these are React components; they read the store imperatively and report with toasts.
  */
-import { duplicateDesign, restoreFromTrash, saveDesign } from "@/core/library";
+import { duplicateDesign, restoreFromTrash } from "@/core/library";
 import { requestSave, waitForSaved } from "@/core/saveNow";
 import { getActivePage, useEditor } from "@/core/store";
 import { downloadBlob } from "@/export/exporters";
+import { ExportError } from "@/export/errors";
 import { exportProjectFile } from "@/export/projectFile";
+import { requireExportImages } from "@/export/resources";
 import { renderPageToCanvas } from "@/render/renderPage";
 import { designPath, navigate } from "@/router";
 import { confirm as askConfirm, toast } from "@/ui";
@@ -42,8 +44,7 @@ export async function makeCopy(): Promise<void> {
   copying = true;
   requestSave();
   try {
-    // the copy is made from what is stored, so write the in-memory design first
-    await saveDesign(design);
+    if ((await waitForSaved()) !== "saved") throw new Error("The original design could not be saved.");
     const copy = await duplicateDesign(design.id);
     if (!copy) throw new Error("missing");
     navigate(designPath(copy.id));
@@ -65,15 +66,14 @@ export async function moveToTrash(): Promise<void> {
     confirmLabel: "Move to trash",
     danger: true,
   });
-  if (!ok) return;
+  if (!ok || useEditor.getState().design?.id !== design.id) return;
   const id = design.id;
   useEditor.getState().actions.updateMeta({ trashedAt: Date.now() });
-  const trashed = useEditor.getState().design;
   requestSave();
-  try {
-    if (trashed) await saveDesign(trashed);
-  } catch {
-    /* the autosave request above retries */
+  if ((await waitForSaved()) !== "saved") {
+    if (useEditor.getState().design?.id === id) useEditor.getState().actions.updateMeta({ trashedAt: design.trashedAt });
+    toast.error("Could not move this design to the trash because its changes could not be saved.");
+    return;
   }
   navigate("/");
   toast.success("Moved to trash", { actionLabel: "Undo", onAction: () => void restoreFromTrash(id) });
@@ -96,7 +96,11 @@ export async function saveProjectFile(): Promise<void> {
     const blob = await exportProjectFile(design);
     downloadBlob(blob, `${safeFileName(design.title)}.craftly`);
     toast.success("Project file saved to your downloads");
-  } catch {
+  } catch (error) {
+    if (error instanceof ExportError) {
+      toast.error(error.message);
+      return;
+    }
     toast.error("Couldn't create the project file. Try again, or download the design as an image or PDF instead.");
   }
 }
@@ -114,15 +118,21 @@ export async function copyPageAsImage(): Promise<void> {
   }
   try {
     // handing the clipboard a promise keeps the click's permission while the page renders
-    const blob = renderPageToCanvas(design, page, { width: Math.round(Math.min(2400, design.width)) }).then(
-      (canvas) =>
-        new Promise<Blob>((resolve, reject) => {
-          canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("encode"))), "image/png");
-        }),
-    );
+    const blob = requireExportImages([{ page, index: number }])
+      .then(() => renderPageToCanvas(design, page, { width: Math.round(Math.min(2400, design.width)) }))
+      .then(
+        (canvas) =>
+          new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("encode"))), "image/png");
+          }),
+      );
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     toast.success(`Page ${number} copied as an image`);
-  } catch {
+  } catch (error) {
+    if (error instanceof ExportError) {
+      toast.error(error.message);
+      return;
+    }
     toast.error("Couldn't copy the image. Your browser may have blocked clipboard access - try Download instead.");
   }
 }
@@ -175,6 +185,7 @@ export async function printDesign(): Promise<void> {
   const preparing = toast.info("Preparing pages for printing...", { duration: 0 });
   const urls: string[] = [];
   try {
+    await requireExportImages(design.pages.map((page, index) => ({ page, index })));
     const width = Math.round(Math.min(2400, design.width * 2));
     for (const page of design.pages) {
       const canvas = await renderPageToCanvas(design, page, { width });
@@ -184,9 +195,9 @@ export async function printDesign(): Promise<void> {
     }
     toast.dismiss(preparing);
     await printImages(urls, design.width >= design.height, design.title);
-  } catch {
+  } catch (error) {
     toast.dismiss(preparing);
-    toast.error("Couldn't prepare the pages for printing. Try downloading a PDF and printing that.");
+    toast.error(error instanceof ExportError ? error.message : "Couldn't prepare the pages for printing. Try downloading a PDF and printing that.");
   } finally {
     urls.forEach((u) => URL.revokeObjectURL(u));
     printing = false;

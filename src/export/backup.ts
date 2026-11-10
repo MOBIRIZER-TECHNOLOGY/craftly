@@ -42,7 +42,7 @@ import {
 } from "./backupFormat";
 import { bytesToBase64 } from "./encoding";
 import { MigrationError } from "@/core/schema/migrator";
-import { dataUrlToBytes, mimeOfDataUrl, parseStoredDesign, ProjectFileError } from "./projectFormat";
+import { dataUrlToBytes, mimeOfDataUrl, parseStoredDesign, portableDesign, ProjectFileError } from "./projectFormat";
 import { createZip, type ZipInput } from "./zip";
 import { openZip, ZipReadError, type ZipArchive, type ZipReadEntry } from "./zipRead";
 
@@ -172,7 +172,7 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<C
     step();
     if (!design) continue;
     const file = designEntryName(design.id);
-    files.push({ name: file, data: json(design), modified: now });
+    files.push({ name: file, data: json(portableDesign(design)), modified: now });
     const entry: ManifestDesign = {
       id: design.id,
       title: design.title,
@@ -216,7 +216,7 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<C
       step();
       if (!record) continue;
       const file = versionEntryName(designId, index);
-      files.push({ name: file, data: json(record), modified: now });
+      files.push({ name: file, data: json({ ...record, design: portableDesign(record.design) }), modified: now });
       manifestVersions.push({ id: record.id, designId: record.designId, createdAt: record.createdAt, ...(record.label !== undefined ? { label: record.label } : {}), file });
     }
   }

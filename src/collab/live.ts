@@ -6,7 +6,7 @@
  */
 import type { Design } from "@/core/types";
 import type { ClientMsg, DeniedReason } from "./protocol";
-import { Session } from "./session";
+import { Session, type Outbox } from "./session";
 
 export type LiveStatus = "connecting" | "live" | "reconnecting" | "denied" | "closed";
 
@@ -28,6 +28,11 @@ export interface LiveOptions {
   key: string;
   /** Names this page load to the server; another one is made when none is given. */
   client?: string;
+  outbox?: Outbox;
+  onOutbox?(outbox: Outbox): void;
+  prepareEdit?(design: Design): Promise<void>;
+  onRejected?(reason: string): void;
+  onSendError?(reason: string): void;
   createSocket?: (url: string) => SocketLike;
   /** What to show has changed: read `live.design`. */
   onChange(): void;
@@ -53,10 +58,11 @@ export class Live {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private pinger: ReturnType<typeof setInterval> | null = null;
   private lastHeard = 0;
+  private sends = Promise.resolve();
 
   constructor(private opts: LiveOptions) {
-    const client = opts.client ?? newName();
-    this.session = new Session({ client, key: opts.key, send: (msg) => this.send(msg) });
+    const client = opts.outbox?.client ?? opts.client ?? newName();
+    this.session = new Session({ client, key: opts.key, send: (msg) => this.send(msg), outbox: opts.outbox, onOutbox: opts.onOutbox });
   }
 
   /** The design to show: what the server has confirmed with this person's unconfirmed changes on top. */
@@ -74,12 +80,14 @@ export class Live {
       return;
     }
     this.socket = socket;
+    this.sends = Promise.resolve();
     socket.onopen = () => {
       this.lastHeard = Date.now();
       this.session.open();
       this.startPings();
     };
     socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
       this.lastHeard = Date.now();
       let heard: unknown;
       try {
@@ -115,7 +123,25 @@ export class Live {
   }
 
   private send(msg: ClientMsg): void {
-    if (this.socket?.readyState === OPEN) this.socket.send(JSON.stringify(msg));
+    const socket = this.socket;
+    if (socket?.readyState !== OPEN) return;
+    const design = msg.t === "ops" && this.opts.prepareEdit ? this.session.design : null;
+    if (!design) {
+      socket.send(JSON.stringify(msg));
+      return;
+    }
+    this.sends = this.sends
+      .then(async () => {
+        if (socket !== this.socket) return;
+        await this.opts.prepareEdit?.(design);
+        if (socket === this.socket && socket.readyState === OPEN) socket.send(JSON.stringify(msg));
+      })
+      .catch((error: unknown) => {
+        if (socket !== this.socket) return;
+        this.opts.onSendError?.(error instanceof Error ? error.message : "Could not send a shared image.");
+        socket.close();
+        this.lost();
+      });
   }
 
   private hear(heard: unknown): void {
@@ -134,6 +160,7 @@ export class Live {
       this.everLive = true;
       this.setStatus("live");
     }
+    if (outcome.rejected !== undefined) this.opts.onRejected?.(outcome.rejected);
     if (outcome.changed) this.opts.onChange();
   }
 

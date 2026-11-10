@@ -3,7 +3,7 @@
  * and referenced from documents as `asset:<id>`.
  */
 import { uid } from "./ids";
-import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany } from "./persistence";
+import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany, wrap, writeTransaction } from "./persistence";
 import { parseViewBox } from "./svg";
 import type { Asset } from "./types";
 
@@ -38,11 +38,11 @@ export function isAcceptedImage(file: File): boolean {
   return file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|avif|bmp)$/i.test(file.name);
 }
 
-export async function addAssetFromFile(file: File): Promise<Asset> {
+export async function prepareAssetFromFile(file: File, id = uid("a")): Promise<Asset> {
   const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name);
   const size = await measure(file, isSvg);
-  const asset: Asset = {
-    id: uid("a"),
+  return {
+    id,
     name: file.name.replace(/\.[^.]+$/, "") || "Upload",
     kind: isSvg ? "svg" : "image",
     mime: file.type || (isSvg ? "image/svg+xml" : "image/png"),
@@ -52,6 +52,10 @@ export async function addAssetFromFile(file: File): Promise<Asset> {
     createdAt: Date.now(),
     blob: file,
   };
+}
+
+export async function addAssetFromFile(file: File): Promise<Asset> {
+  const asset = await prepareAssetFromFile(file);
   await dbPut("assets", asset);
   emit();
   return asset;
@@ -62,6 +66,17 @@ export async function restoreAssets(assets: Asset[]): Promise<void> {
   if (!assets.length) return;
   await dbPutMany(assets.map((value) => ({ store: "assets" as const, value })));
   emit();
+}
+
+/** Cache a collaborator's image without replacing a local upload with the same id. */
+export async function cacheSharedAsset(asset: Asset): Promise<void> {
+  const added = await writeTransaction(["assets"], async (tx) => {
+    const store = tx.objectStore("assets");
+    if ((await wrap(store.getKey(asset.id))) !== undefined) return false;
+    store.add(asset);
+    return true;
+  });
+  if (added) emit();
 }
 
 export async function listAssets(): Promise<Asset[]> {

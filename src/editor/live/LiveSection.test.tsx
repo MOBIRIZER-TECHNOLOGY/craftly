@@ -14,8 +14,8 @@ import { useLiveStatus } from "./connection";
 import { LiveBadge, LiveSection, liveStatusText } from "./LiveSection";
 import { parseJoinToken } from "./links";
 
-const made = { room: "TW-FaxWt8edjpnT-bGQyjA", editKey: "WjGO30NJy5udhntaj-8j9w", viewKey: "BXQddjRR35eABAbZ6Hib_Q" };
-const link: LiveLink = { server: "https://live.example.test", room: made.room, key: made.editKey, role: "edit", viewKey: made.viewKey };
+const made = { ownerKey: "owner-key", room: "TW-FaxWt8edjpnT-bGQyjA", editKey: "WjGO30NJy5udhntaj-8j9w", viewKey: "BXQddjRR35eABAbZ6Hib_Q" };
+const link: LiveLink = { server: "https://live.example.test", room: made.room, key: made.editKey, role: "edit", viewKey: made.viewKey, ownerKey: made.ownerKey };
 
 const answer = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body }) as unknown as Response;
 let calls: Array<{ url: string; init?: RequestInit }>;
@@ -166,7 +166,7 @@ describe("once it is shared", () => {
     await user.click(within(screen.getByRole("group", { name: "Stop sharing" })).getByRole("button", { name: "Stop sharing" }));
     await waitFor(() => expect(useEditor.getState().design!.live).toBeUndefined());
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ url: `https://live.example.test/api/rooms/${made.room}`, init: { method: "DELETE", headers: { "x-craftly-key": made.editKey } } });
+    expect(calls[0]).toMatchObject({ url: `https://live.example.test/api/rooms/${made.room}`, init: { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } } });
     expect(screen.getByRole("button", { name: "Start live session" })).toBeTruthy();
   });
 

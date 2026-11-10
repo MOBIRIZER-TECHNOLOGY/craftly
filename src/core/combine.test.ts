@@ -244,6 +244,7 @@ describe("combinedShape", () => {
       radius: 12,
       params: { sides: 5 },
       opacity: 0.5,
+      blend: "multiply",
       shadow: { x: 2, y: 3, blur: 4, color: "#000000" },
       alt: "A logo",
       link: "https://example.test",
@@ -260,7 +261,7 @@ describe("combinedShape", () => {
 
   it("keeps the look of the shape at the back, but not its name, because it is a new shape", () => {
     const made = combinedShape(behind(), { x: 0, y: 0, width: 10, height: 10, path: "M0 0 L100 0 L100 100 Z" });
-    expect(made).toMatchObject({ opacity: 0.5, alt: "A logo", link: "https://example.test", fill: solid("#ff0000"), shadow: { blur: 4 } });
+    expect(made).toMatchObject({ opacity: 0.5, blend: "multiply", alt: "A logo", link: "https://example.test", fill: solid("#ff0000"), shadow: { blur: 4 } });
     expect(made).not.toHaveProperty("name");
   });
 

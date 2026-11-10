@@ -147,6 +147,7 @@ function serve(initial) {
     if ((await pageBuild(page1)) !== a.id) throw new Error("the page does not carry the id of build A: " + (await pageBuild(page1)));
     await page1.waitForTimeout(2500);
     if (await prompt(page1).isVisible()) throw new Error("the first visit asks for a reload");
+    await page1.evaluate(() => caches.open("unrelated-app-offline"));
     return "worker and page are build " + a.id;
   });
 
@@ -211,16 +212,57 @@ function serve(initial) {
     return "page build " + b.id + ", no prompt";
   });
 
-  await step("Reload in tab 1 saves an edit that was not saved yet, switches to build B and reloads once", async () => {
-    await page1.getByRole("tab", { name: "Text", exact: true }).click();
-    await page1.getByRole("button", { name: /Add a text box/ }).click();
-    await page1.keyboard.type("Update survives", { delay: 10 });
-    await page1.keyboard.press("Escape");
-    const loaded = page1.waitForEvent("load", { timeout: 30000 });
-    // in one go, so that the autosave (700 ms after the last change) has not run yet
-    const before = await page1.evaluate(() => {
-      const state = window.__editor.getState().saveState;
+  await step("a failed save blocks activation and offers a retry", async () => {
+    await page1.evaluate(() => {
+      const put = IDBObjectStore.prototype.put;
+      window.__restorePut = () => {
+        IDBObjectStore.prototype.put = put;
+      };
+      IDBObjectStore.prototype.put = function (...args) {
+        if (this.name === "designs") throw new DOMException("Injected write failure", "QuotaExceededError");
+        return put.apply(this, args);
+      };
+      window.__editor.getState().actions.setTitle("Unsaved during update");
       document.querySelector(".cf-toast__action").click();
+    });
+    await page1.locator(".cf-toast:not(.is-leaving)").getByRole("button", { name: "Retry update" }).waitFor();
+    if ((await controllerBuild(page1)) !== a.id || (await pageBuild(page1)) !== a.id) throw new Error("the page updated after a failed save");
+    await page1.evaluate(() => window.__restorePut());
+    return "old page and worker remain active";
+  });
+
+  await step("an unconfirmed save times out without activating the new worker", async () => {
+    await page1.evaluate(() => {
+      const transaction = IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction = function (stores, mode, options) {
+        const tx = transaction.call(this, stores, mode, options);
+        if (mode === "readwrite" && Array.from(stores).includes("designs")) {
+          IDBDatabase.prototype.transaction = transaction;
+          Object.defineProperty(tx, "oncomplete", {
+            set(handler) {
+              window.__finishSave = () => handler.call(tx, new Event("complete"));
+            },
+          });
+        }
+        return tx;
+      };
+      window.__editor.getState().actions.setTitle("Waiting for save confirmation");
+      [...document.querySelectorAll(".cf-toast:not(.is-leaving) .cf-toast__action")].find((button) => button.textContent === "Retry update").click();
+    });
+    await page1.locator(".cf-toast:not(.is-leaving)").getByRole("button", { name: "Retry update" }).waitFor();
+    if ((await controllerBuild(page1)) !== a.id || (await pageBuild(page1)) !== a.id) throw new Error("the page updated after an unconfirmed save");
+    await page1.evaluate(() => window.__finishSave());
+    return "reload blocked until storage can confirm the write";
+  });
+
+  await step("Reload in tab 1 saves an edit that was not saved yet, switches to build B and reloads once", async () => {
+    await page1.locator(".cf-toast:not(.is-leaving)").getByRole("button", { name: "Retry update" }).waitFor();
+    const loaded = page1.waitForEvent("load", { timeout: 30000 });
+    // Make the edit and request the update in the same browser task, before debounce can commit.
+    const before = await page1.evaluate(() => {
+      window.__editor.getState().actions.setTitle("Update survives");
+      const state = window.__editor.getState().saveState;
+      [...document.querySelectorAll(".cf-toast:not(.is-leaving) .cf-toast__action")].find((button) => button.textContent === "Retry update").click();
       return state;
     });
     if (before !== "unsaved") throw new Error("the edit was already saved (" + before + "): this step proves nothing");
@@ -228,8 +270,9 @@ function serve(initial) {
     await controlled(page1);
     await page1.locator(".cf-workspace").waitFor({ timeout: 20000 });
     if ((await controllerBuild(page1)) !== b.id) throw new Error("the worker is " + (await controllerBuild(page1)));
+    if (!(await cacheNames(page1)).includes("unrelated-app-offline")) throw new Error("the worker deleted another app’s cache");
     if ((await pageBuild(page1)) !== b.id) throw new Error("the page is " + (await pageBuild(page1)));
-    const kept = await page1.evaluate(() => JSON.stringify(window.__editor.getState().design).includes("Update survives"));
+    const kept = await page1.evaluate(() => window.__editor.getState().design?.title === "Update survives");
     if (!kept) throw new Error("the edit was lost");
     return "edit kept, worker and page are build " + b.id;
   });

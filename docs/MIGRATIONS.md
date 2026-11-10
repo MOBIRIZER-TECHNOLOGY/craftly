@@ -4,6 +4,8 @@ Craftly keeps a person's designs in their own browser, so no release may lose or
 
 **Status.** Everything is still at its first version, so no migration step exists yet. The framework, its tests and the frozen documents come before the first change on purpose: a format cannot be changed safely until old data can be tried against the change.
 
+The library summary also tracks a local save revision. It detects stale writes and is separate from the design format version. Portable project and backup readers discard embedded live credentials, including those in legacy files. Backup preserves other document fields for newer formats where it can copy the record.
+
 ## The promise
 
 1. A design saved by any release opens in every later release.
@@ -66,7 +68,7 @@ The browser gives one database to every tab, and a tab that wants a higher versi
 
 First decide which kind of change it is.
 
-**An optional field is added** (the way `animation` was added to elements). Nothing is migrated and the version stays. Add it to the types and to `completeDesign()` (`src/test/schema/complete.ts`); the compiler fails there until you do. The shape test then names the field as new against the frozen design: list it in `ADDED` in `src/core/schema/persistedShapes.test.ts`, which is the decision to take in a review. Every place that reads the field needs a default, because older designs never get it.
+**An optional field is added** (the way `animation` was added to elements, and later `blend`, the blend mode: `BLEND` in `ADDED`). Nothing is migrated and the version stays. Add it to the types and to `completeDesign()` (`src/test/schema/complete.ts`); the compiler fails there until you do. The shape test then names the field as new against the frozen design: list it in `ADDED` in `src/core/schema/persistedShapes.test.ts`, which is the decision to take in a review. Every place that reads the field needs a default, because older designs never get it.
 
 **Anything else** (a field is required, renamed, removed, changes meaning or type) is a new version of the design:
 

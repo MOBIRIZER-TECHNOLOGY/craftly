@@ -16,6 +16,12 @@ const subs = new Set<() => void>();
 let epoch = 0;
 
 export const imagesEpoch = () => epoch;
+
+export function retryAssetImage(id: string): void {
+  if (!failed.delete(`asset:${id}`)) return;
+  epoch++;
+  subs.forEach((cb) => cb());
+}
 export function onImagesChange(cb: () => void): () => void {
   subs.add(cb);
   return () => subs.delete(cb);

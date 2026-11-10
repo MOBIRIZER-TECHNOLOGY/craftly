@@ -11,6 +11,7 @@
  * same operations to everyone else. A batch that is applied twice (a client that sends again after a lost connection) does no
  * harm: the server answers `ack` for a number it has already seen, and nearly every operation is the same when repeated.
  */
+import { isBlendMode } from "@/core/blend";
 import { isPlainColor } from "@/core/color";
 import { svgProblem } from "@/core/svgSafety";
 import type { Design, ElementType } from "@/core/types";
@@ -69,10 +70,12 @@ interface Budget {
   depth: number;
 }
 
-/** What is wrong with a value that came from outside, if anything: the limits above, addresses, markup, colours, names. */
+/** What is wrong with a value that came from outside, if anything: the limits above, addresses, markup, colours, blend modes, names. */
 function checkValue(value: unknown, key: string, depth: number, budget: Budget): string | null {
   if (depth > budget.depth) return "a value nested too deep";
   if (--budget.left < 0) return "more content than one batch may carry";
+  // the name of a mode goes to a canvas and into markup as it is: nothing but a mode may be there (nothing at all is Normal)
+  if (key === "blend" && value !== undefined && value !== null && !isBlendMode(value)) return "a blend mode that does not exist";
   if (value === undefined || value === null || typeof value === "boolean") return null;
   if (typeof value === "number") return Number.isFinite(value) ? null : "a number that is not finite";
   if (typeof value === "string") {

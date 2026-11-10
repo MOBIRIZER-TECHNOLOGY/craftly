@@ -27,8 +27,9 @@ export function installDatabaseNotices(options: { reload?: () => void } = {}): (
       waiting = null;
     },
     async replaced() {
-      await settleSaves(SAVE_BUDGET_MS);
-      toast.info(REPLACED_NOTICE, { actionLabel: "Reload", duration: 0, onAction: reload });
+      const saved = await settleSaves(SAVE_BUDGET_MS);
+      if (saved === "saved") toast.info(REPLACED_NOTICE, { actionLabel: "Reload", duration: 0, onAction: reload });
+      else toast.error("Craftly updated in another tab. Download your unsaved changes as a project file before reloading.", { duration: 0 });
     },
   });
 }

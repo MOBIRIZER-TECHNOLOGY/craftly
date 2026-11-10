@@ -44,7 +44,7 @@ describe("settleSaves", () => {
     expect(useEditor.getState().saveState).toBe("unsaved");
   });
 
-  it("goes ahead when the save machinery cannot be loaded", async () => {
+  it("reports failure when the save machinery cannot be loaded", async () => {
     window.location.hash = "#/design/d_1";
     vi.resetModules();
     vi.doMock("@/core/saveNow", () => {
@@ -52,7 +52,7 @@ describe("settleSaves", () => {
     });
     try {
       const { settleSaves: fresh } = await import("./settleSaves");
-      await expect(fresh(50)).resolves.toBeUndefined();
+      await expect(fresh(50)).resolves.toBe("error");
     } finally {
       vi.doUnmock("@/core/saveNow");
     }

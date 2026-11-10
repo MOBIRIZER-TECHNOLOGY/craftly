@@ -65,7 +65,7 @@ function PaintedThumb({ el }: { el: DesignElement }) {
     const k = Math.min((pw - 2) / iw, (ph - 2) / ih);
     const ox = (pw - iw * k) / 2;
     const oy = (ph - ih * k) / 2;
-    const probe = { ...el, x: 0, y: 0, rotation: 0, opacity: 1, hidden: false, shadow: null, blur: 0 } as DesignElement;
+    const probe = { ...el, x: 0, y: 0, rotation: 0, opacity: 1, hidden: false, shadow: null, blur: 0, blend: undefined } as DesignElement;
     const page: Page = { id: "thumb", background: { type: "solid", color: "#ffffff" }, elements: [probe] };
     return renderPage(ctx, { width: iw, height: ih }, page, { scale: k, clip: { x: -ox / k, y: -oy / k, w: pw / k, h: ph / k }, transparent: true });
   };

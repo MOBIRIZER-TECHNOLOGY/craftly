@@ -3,7 +3,8 @@
  * a key, what a viewer may and may not do, two browsers editing at once through it, a room that survives a restart, and the limits
  * that keep one visitor from using the server up.
  */
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join as join2 } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,7 +15,7 @@ import type { ClientMsg, ServerMsg } from "@/collab/protocol";
 import { createDesign, createPage, createShape, solid } from "@/core/factory";
 import type { Design } from "@/core/types";
 import { createLiveServer, type LiveServer, type LiveServerOptions } from "./live";
-import { FileStorage, MemoryStorage, ROOM_ID } from "./storage";
+import { FileStorage, MemoryStorage, ROOM_ID, type LiveStorage } from "./storage";
 
 const design = (): Design =>
   createDesign({
@@ -38,15 +39,15 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await server.close();
 });
 
-async function boot(options: Partial<LiveServerOptions> = {}, storage = new MemoryStorage()) {
-  const server = createLiveServer({ storage, saveDelayMs: 5, ...options });
+async function boot(options: Partial<LiveServerOptions> = {}, storage: LiveStorage = new MemoryStorage()) {
+  const server = createLiveServer({ storage, ...options });
   servers.push(server);
   const { port } = await server.listen(0);
   return { server, storage, http: `http://127.0.0.1:${port}`, ws: `ws://127.0.0.1:${port}/ws` };
 }
 
 type Booted = Awaited<ReturnType<typeof boot>>;
-type Made = { room: string; editKey: string; viewKey: string };
+type Made = { room: string; editKey: string; viewKey: string; ownerKey: string };
 
 async function makeRoom(b: Booted, d: Design = design()): Promise<Made> {
   const res = await fetch(`${b.http}/api/rooms`, { method: "POST", body: JSON.stringify({ design: d }) });
@@ -435,7 +436,7 @@ describe("stopping to share", () => {
     await until("live", () => ann.status === "live");
     const waiting = raw(b, made.room, made.editKey);
     await waiting.opened;
-    const ok = await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.editKey } });
+    const ok = await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } });
     expect(ok.status).toBe(200);
     await until("the waiting connection to be sent away", () => waiting.closed() === 4004);
     expect(waiting.heard).toEqual([{ t: "denied", reason: "not-found" }]);
@@ -451,7 +452,7 @@ describe("stopping to share", () => {
     expect((await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE" })).status).toBe(403);
     expect((await fetch(`${b.http}/api/rooms/${"B".repeat(22)}`, { method: "DELETE", headers: { "x-craftly-key": "x" } })).status).toBe(404);
     expect(ann.status).toBe("live");
-    const ok = await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.editKey } });
+    const ok = await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } });
     expect(ok.status).toBe(200);
     await until("Ann to be sent away", () => ann.status === "denied");
     expect(await b.storage.load(made.room)).toBeNull();
@@ -470,18 +471,21 @@ describe("a store that cannot be read", () => {
       save: async () => undefined,
       remove: async () => undefined,
       count: async () => 0,
+      checkWritable: async () => {
+        throw new Error("the disk is gone");
+      },
     };
-    const b = await boot({}, failing as never);
+    const b = await boot({}, failing);
     const lives = [join(b, "A".repeat(22), "k".repeat(12)), join(b, "../../etc/passwd", "k".repeat(12))];
     await until("both to be sent away", () => lives.every((l) => l.status === "denied"));
     expect(lives.every((l) => l.denied === "not-found")).toBe(true);
-    expect((await fetch(`${b.http}/api/health`)).status).toBe(200);
+    expect((await fetch(`${b.http}/api/health`)).status).toBe(503);
   });
 
   it("with files on a disk, turns away a room id that would lead out of the folder", async () => {
     const dir = mkdtempSync(join2(tmpdir(), "craftly-live-test-"));
     try {
-      const b = await boot({}, new FileStorage(dir) as never);
+      const b = await boot({}, new FileStorage(dir));
       const made = await makeRoom(b);
       const good = join(b, made.room, made.editKey);
       const bad = join(b, "..%2F..%2Fetc%2Fpasswd", made.editKey);
@@ -544,5 +548,110 @@ describe("what it will not stand for", () => {
     await until("every refusal", () => s.heard.filter((m) => m.t === "rejected").length === markup.length);
     expect(s.heard.some((m) => m.t === "ack")).toBe(false);
     expect(JSON.stringify((await b.storage.load(made.room))!.design)).not.toContain("onload");
+  });
+});
+
+describe("production regressions", () => {
+  it("survives malformed HTTP and upgrade request targets", async () => {
+    const b = await boot();
+    for (const upgrade of [false, true]) {
+      const result = await new Promise<string>((resolve, reject) => {
+        const socket = connect(Number(new URL(b.http).port), "127.0.0.1");
+        let response = "";
+        socket.setTimeout(2000, () => socket.destroy(new Error("request timed out")));
+        socket.on("data", (chunk) => {
+          response += chunk.toString();
+        });
+        socket.on("error", reject);
+        socket.on("close", () => resolve(response));
+        socket.on("connect", () => {
+          const headers = upgrade ? "Connection: Upgrade\r\nUpgrade: websocket" : "Connection: close";
+          socket.write(`GET //% HTTP/1.1\r\nHost: localhost\r\n${headers}\r\n\r\n`);
+        });
+      });
+      if (!upgrade) expect(result).toContain("400 Bad Request");
+      expect((await fetch(`${b.http}/api/health`)).status).toBe(200);
+    }
+  });
+
+  it("preserves the room limit when startup passes unset options", async () => {
+    const storage = new MemoryStorage();
+    storage.count = async () => 1000;
+    const b = await boot({ maxRooms: undefined, maxPeersPerRoom: undefined }, storage);
+    const response = await fetch(`${b.http}/api/rooms`, { method: "POST", body: JSON.stringify({ design: design() }) });
+    expect(response.status).toBe(503);
+  });
+
+  it("preserves the default peer limit when startup supplies undefined", async () => {
+    const b = await boot({ maxPeersPerRoom: undefined });
+    const made = await makeRoom(b);
+    const guests = Array.from({ length: 50 }, (_, i) => join(b, made.room, made.viewKey, `guest-${i}`));
+    await until("the 50 default slots to fill", () => guests.every((guest) => guest.status === "live"));
+    const extra = join(b, made.room, made.viewKey, "extra");
+    await until("the 51st viewer to be refused", () => extra.status === "denied");
+    expect(extra.denied).toBe("server-full");
+  });
+
+  it("returns 503 when FileStorage points to an unwritable location", async () => {
+    const dir = mkdtempSync(join2(tmpdir(), "craftly-health-"));
+    const file = join2(dir, "not-a-directory");
+    try {
+      writeFileSync(file, "");
+      const b = await boot({}, new FileStorage(file));
+      const response = await fetch(`${b.http}/api/health`);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ ok: false });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses deletion with edit and view invites and accepts the owner key", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    const remove = (key: string) => fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": key } });
+    expect((await remove(made.editKey)).status).toBe(403);
+    expect((await remove(made.viewKey)).status).toBe(403);
+    expect((await remove(made.ownerKey)).status).toBe(200);
+  });
+
+  it("acknowledges only after storage succeeds and rejects a failed write without publishing it", async () => {
+    const storage = new MemoryStorage();
+    const persist = storage.save.bind(storage);
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const writing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    storage.save = async (id, record) => {
+      if (record.rev === 1) {
+        entered();
+        await gate;
+      }
+      if (record.rev === 2) throw new Error("disk full");
+      await persist(id, record);
+    };
+    const b = await boot({}, storage);
+    const made = await makeRoom(b);
+    const client = raw(b, made.room, made.editKey);
+    await client.opened;
+    client.join("editor");
+    await until("welcome", () => client.heard.some((msg) => msg.t === "welcome"));
+    client.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "Durable" } }] });
+    await writing;
+    try {
+      expect(client.heard.some((msg) => msg.t === "ack")).toBe(false);
+      expect((await storage.load(made.room))?.rev).toBe(0);
+    } finally {
+      release();
+    }
+    await until("first acknowledgement", () => client.heard.some((msg) => msg.t === "ack" && msg.seq === 1));
+    expect((await storage.load(made.room))?.design.title).toBe("Durable");
+    client.say({ t: "ops", seq: 2, ops: [{ k: "design", set: { title: "Lost" } }] });
+    await until("storage rejection", () => client.heard.some((msg) => msg.t === "rejected" && msg.seq === 2));
+    expect((await storage.load(made.room))?.design.title).toBe("Durable");
   });
 });

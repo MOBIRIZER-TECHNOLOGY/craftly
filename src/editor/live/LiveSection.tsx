@@ -117,7 +117,7 @@ export function LiveSection() {
   }
 
   const here = window.location.href;
-  const owner = link.role === "edit" && !!link.viewKey;
+  const owner = link.role === "edit" && Boolean(link.ownerKey);
   return (
     <section className="cf-live" aria-labelledby="cf-live-title">
       <div className="cf-live__head">

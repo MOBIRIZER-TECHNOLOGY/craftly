@@ -4,6 +4,8 @@
 
 [`ROADMAP.md`](ROADMAP.md) item 6 ("No crash reporting") asked for opt-in error reporting with a clear privacy line, and a way to recover the last autosave after a crash. This is that work.
 
+During normal editing, a rejected save leaves the draft open and offers a project-file recovery action. An app update waits for confirmation before reloading. For the failure-injection evidence, see [production-readiness regressions](VERIFICATION.md#production-readiness-regressions).
+
 ## What was wrong
 
 - **A crash could make a design impossible to open.** An error while drawing the editor shows a calm screen (`ErrorBoundary`). But the editor's cleanup (`persistOnLeave` in `src/editor/Editor.tsx`) then wrote the state that was on the screen over the stored design, and that state can be the very thing that stopped the screen. Reloading opened it and stopped again, and the crash screen had no way to a version from before.

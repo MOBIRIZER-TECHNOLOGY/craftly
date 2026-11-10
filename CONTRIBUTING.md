@@ -60,7 +60,7 @@ Tests sit next to the code: `Foo.test.tsx` for components (jsdom), `foo.dom.test
 - Query like a user (`getByRole("button", { name: "Share" })`); the browser journeys in `e2e/` show the real flows and control names.
 - A bug fix comes with a test that fails without the fix.
 - Never leave the order of typing, animation frames or lazy loading to timing: wait for the state you expect (`waitFor`, `findBy`), or control the clock.
-- Do not lower the coverage thresholds in `vite.config.ts`.
+- Do not lower the coverage thresholds in `vite.config.ts`. Keep targeted test counts and Playwright checks separate from full-suite coverage. For investigation, `npm run coverage -- --coverage.reportOnFailure` can produce a report even when tests fail. Record the failures alongside any measurements.
 
 ## Common changes
 
@@ -71,6 +71,7 @@ Tests sit next to the code: `Foo.test.tsx` for components (jsdom), `foo.dom.test
 | A font | A package from `@fontsource` or `@fontsource-variable` in `package.json`, an entry in `src/render/fonts.ts` (definition and file loaders), and the matching face in `src/export/fontFiles.ts` so SVG and PDF export can embed it. Mind the licence: open fonts only |
 | An Elements, text or context panel | `src/editor/panels` (left rail tabs in `tabs/`, panels for a selection in `context/`); toolbars in `src/editor/toolbar` |
 | An export format | `src/export` (writers) and the Download panel (`DownloadPanel.tsx`) |
+| A blend mode | Its name in `BlendMode` (`src/core/types.ts`) and in `LABELS` of `src/core/blend.ts`, which both a canvas and a style sheet must know; then the lists in the tests and in `e2e/blend.cjs`. [`docs/BLEND-MODES.md`](docs/BLEND-MODES.md), "Adding a mode" |
 | An on-device model | An entry in `MODELS` in `src/ml/registry.ts` (repository, commit, size, SHA-256, licence, credits). Read the licence rules in [`docs/ON-DEVICE-AI.md`](docs/ON-DEVICE-AI.md) first, and try the model on a real GPU with `e2e/ml-probe.cjs` before wiring it in |
 
 ## Making a release

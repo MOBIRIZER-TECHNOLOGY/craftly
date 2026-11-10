@@ -25,6 +25,7 @@ export class Room {
   rev: number;
   /** Called after a batch changed the design: where the host saves it. */
   onChange: ((room: Room) => void) | null = null;
+  commit?: (design: Design, rev: number, seqs: Record<string, number>) => Promise<void>;
   private members = new Map<Peer, Member>();
   private lastSeq = new Map<string, number>();
 
@@ -70,25 +71,30 @@ export class Room {
     return [...this.members.keys()];
   }
 
-  receive(peer: Peer, msg: ClientMsg): void {
+  receive(peer: Peer, msg: ClientMsg): void | Promise<void> {
     const member = this.members.get(peer);
     if (!member) return;
     if (msg.t === "ping") peer.send({ t: "pong" });
-    else if (msg.t === "ops") this.batch(peer, member, msg.seq, msg.ops);
+    else if (msg.t === "ops") return this.batch(peer, member, msg.seq, msg.ops);
     else if (msg.t === "join") this.join(peer, member.client, member.role); // a client that wants the design again
   }
 
-  private batch(peer: Peer, member: Member, seq: number, raw: unknown): void {
+  private batch(peer: Peer, member: Member, seq: number, raw: unknown): void | Promise<void> {
     if (!Number.isInteger(seq) || seq < 1) return void peer.send({ t: "rejected", seq: Number(seq) || 0, reason: "a batch needs a number" });
     if (!canEdit(member.role)) return void peer.send({ t: "rejected", seq, reason: "this link is read-only" });
     if (seq <= (this.lastSeq.get(member.client) ?? 0)) return void peer.send({ t: "ack", seq, rev: this.rev });
     const ops = checkOps(raw);
     if (typeof ops === "string") return void peer.send({ t: "rejected", seq, reason: ops });
-    this.design = applyOps(this.design, ops);
-    this.rev++;
-    this.lastSeq.set(member.client, seq);
-    peer.send({ t: "ack", seq, rev: this.rev });
-    for (const other of this.members.keys()) if (other !== peer) other.send({ t: "ops", rev: this.rev, ops });
-    this.onChange?.(this);
+    const next = applyOps(this.design, ops);
+    const publish = () => {
+      this.design = next;
+      this.rev++;
+      this.lastSeq.set(member.client, seq);
+      peer.send({ t: "ack", seq, rev: this.rev });
+      for (const other of this.members.keys()) if (other !== peer) other.send({ t: "ops", rev: this.rev, ops });
+      this.onChange?.(this);
+    };
+    if (this.commit) return this.commit(next, this.rev + 1, { ...this.seqs(), [member.client]: seq }).then(publish);
+    publish();
   }
 }
