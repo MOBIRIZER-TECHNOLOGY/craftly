@@ -35,6 +35,14 @@ All four global coverage metrics met the minimum. Coverage was measured again on
 
 The largest gaps in collaboration include [room media](../src/editor/live/media.ts) at 13.95% statements and 3.84% branches, [client connection](../src/editor/live/connection.ts) at 70.83% statements and 55.05% branches, and [the live server](../src/server/live.ts) at 82.50% statements and 70.58% branches. The browser checks covered specific shared-image and reconnect paths. See [coverage scope](#what-the-coverage-number-counts) for the source exclusions.
 
+**The first run of GitHub Actions (2026-11-11, Ubuntu, Node 22).** The repository was pushed and the workflow ran for the first time. Both jobs failed, for three reasons that were all in the checks and that Windows had not shown:
+
+- `ml.cjs`, four steps: the runner's Chrome has no WebGPU adapter, the page then switches the photo tools off (as it should), and the journey clicked them all the same. It now checks there that the four tools are off and that the tab says why, and skips the four questions before a download. `NO_GPU=1` tries this on a machine with a graphics card: the new step passes, and with the graphics card the journey passes its 15 checks as before.
+- [PageView.test.tsx](../src/editor/canvas/PageView.test.tsx), one test: it read where the page was painted right after the first paint, which on a slow machine comes before the workspace has taken the scroll to the corner in. It waits for that paint now.
+- [PositionPanel.test.tsx](../src/editor/panels/context/PositionPanel.test.tsx), one test: 205 selections took over the 30 seconds a test gets, on a runner that measures coverage as well. It has two minutes now.
+
+The other 7,697 tests and every other journey passed on the runner.
+
 **Remaining verification.** The full cross-browser matrix, real screen readers, low-end performance and memory, security headers on the intended deployment, and print fidelity remain open. PDF output embeds a raster page image. Verify fine text and print output in the intended workflow.
 
 ## Historical verification
@@ -99,7 +107,7 @@ The totals hide thin spots. Of 359 files, 226 are covered completely on all four
 
 ## Limits of the historical runs
 
-- **GitHub Actions.** The workflow has never run.
+- **GitHub Actions.** The workflow had never run when these checks were made; its first run is described above.
 - **Other browsers and devices.** Firefox, Safari, a real phone or tablet with touch, and a real screen reader (NVDA, VoiceOver) were not used. The journeys run in Chrome.
 - **A real model download** from Hugging Face behind the Content-Security-Policy, and from a sub-folder. The journeys use hand-made models; the hosts in the policy for the real download are not verified.
 - **Performance on weak hardware** beyond the measurements in [`ROADMAP.md`](ROADMAP.md). The dashboard shows a layout shift of 0.06 to 0.10 while its carousels appear.

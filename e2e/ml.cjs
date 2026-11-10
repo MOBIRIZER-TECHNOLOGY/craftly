@@ -65,6 +65,8 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
 (async () => {
   const browser = await launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // NO_GPU=1 takes WebGPU away from the page, to try on a machine with a graphics card what a CI machine without one sees
+  if (process.env.NO_GPU) await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, "gpu", { get: () => undefined, configurable: true }));
   const page = await ctx.newPage();
   const logs = [];
   const hostRequests = [];
@@ -153,7 +155,30 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
     return "all four tools, the strengths and styles, the factors, the sizes and the badges are there";
   });
 
-  await step("clicking Remove background asks first and sends nothing to the model host while the answer is no", async () => {
+  // Without a graphics card that WebGPU can use (most CI machines) the tools cannot start, so the page switches them off and says why:
+  // the questions below need a tool that can be clicked, and are skipped there like the steps that run a model.
+  const gpu = await page.evaluate(async () => {
+    try {
+      return !!(navigator.gpu && (await navigator.gpu.requestAdapter()));
+    } catch {
+      return false;
+    }
+  });
+  /** A step that needs the real GPU: skipped, and said so, where the browser has no WebGPU adapter. */
+  const gpuStep = (name, fn) => (gpu ? step(name, fn) : Promise.resolve(results.push("SKIP " + name + "  (this browser has no WebGPU adapter)")));
+  if (!gpu) {
+    await step("without WebGPU the four tools are switched off, the tab says why, and nothing is sent to the model host", async () => {
+      for (const name of ["Remove background", "Blur background", "Colour pop", "Upscale"]) {
+        if (!(await page.getByRole("button", { name }).isDisabled())) throw new Error(name + " can be clicked in a browser that cannot run it");
+      }
+      const text = await page.locator(".cf-sidepanel").innerText();
+      if (!/WebGPU/.test(text)) throw new Error("the tab does not say that WebGPU is what is missing");
+      if (hostRequests.length) throw new Error("contacted the model host: " + hostRequests[0]);
+      return "all four off, and the reason is on the tab";
+    });
+  }
+
+  await gpuStep("clicking Remove background asks first and sends nothing to the model host while the answer is no", async () => {
     await page.getByRole("button", { name: "Remove background" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.waitFor({ timeout: 8000 });
@@ -178,7 +203,7 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
     return "0 requests to the host";
   });
 
-  await step("clicking Blur background asks first too, about the same model, and sends nothing to the model host while the answer is no", async () => {
+  await gpuStep("clicking Blur background asks first too, about the same model, and sends nothing to the model host while the answer is no", async () => {
     await page.getByRole("button", { name: "Blur background" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.waitFor({ timeout: 8000 });
@@ -203,7 +228,7 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
     return "0 requests to the host";
   });
 
-  await step("clicking Colour pop asks first too, about the same model, and sends nothing to the model host while the answer is no", async () => {
+  await gpuStep("clicking Colour pop asks first too, about the same model, and sends nothing to the model host while the answer is no", async () => {
     await page.getByRole("button", { name: "Colour pop" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.waitFor({ timeout: 8000 });
@@ -228,7 +253,7 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
     return "0 requests to the host";
   });
 
-  await step("clicking Upscale asks first too, and sends nothing to the model host while the answer is no", async () => {
+  await gpuStep("clicking Upscale asks first too, and sends nothing to the model host while the answer is no", async () => {
     await page.getByRole("button", { name: "Upscale", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await dialog.waitFor({ timeout: 8000 });
@@ -290,15 +315,6 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
   });
 
   /* ------------------------------------------------------------------ 2. the worker on its own */
-  const gpu = await page.evaluate(async () => {
-    try {
-      return !!(navigator.gpu && (await navigator.gpu.requestAdapter()));
-    } catch {
-      return false;
-    }
-  });
-  /** A step that needs the real GPU: skipped, and said so, where the browser has no WebGPU adapter. */
-  const gpuStep = (name, fn) => (gpu ? step(name, fn) : Promise.resolve(results.push("SKIP " + name + "  (this browser has no WebGPU adapter)")));
   const model = syntheticModel(64);
   const upscaler = syntheticUpscaler(4);
   let workerUrl = "/src/ml/worker.ts";

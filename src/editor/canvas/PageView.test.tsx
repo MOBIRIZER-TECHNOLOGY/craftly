@@ -55,7 +55,8 @@ describe("painting the page", () => {
     await painted(rig);
     const ctx = ctxOf(rig);
     // zoom 100 %, scrolled to the corner: the page starts 72 px from the left and 48 px from the top
-    expect(ctx.callsTo("setTransform")).toContainEqual([1, 0, 0, 1, 72, 48]);
+    // (the first paint may come before the workspace has taken the scroll to the corner in; the paint for it follows a frame later)
+    await waitFor(() => expect(ctx.callsTo("setTransform")).toContainEqual([1, 0, 0, 1, 72, 48]));
     await repaintAfter(rig, () => getActions().setZoom(2));
     const zoomed = ctxOf(rig);
     const v = useView.getState();

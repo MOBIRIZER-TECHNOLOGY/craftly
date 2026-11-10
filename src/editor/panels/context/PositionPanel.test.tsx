@@ -366,5 +366,6 @@ describe("Position panel: values that arrive late", () => {
     }
     selectElements(shapes[0]);
     expect(button("Lock aspect ratio")).toBeTruthy();
-  });
+    // 205 selections, each drawing the panel again: over the usual 30 s on a CI machine that also measures coverage
+  }, 120_000);
 });
