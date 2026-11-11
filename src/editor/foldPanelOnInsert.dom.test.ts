@@ -71,6 +71,18 @@ describe("the side panel on a phone, when something is added from it", () => {
     expect(s().panelOpen).toBe(true);
   });
 
+  it("adds no error of its own when a damaged design has a page without elements", async () => {
+    const errors: unknown[] = [];
+    const onError = (e: ErrorEvent) => void errors.push(e.error);
+    window.addEventListener("error", onError);
+    const design = s().design!;
+    useEditor.setState({ design: { ...design, pages: design.pages.map((p) => ({ ...p, elements: null as never })) }, selection: ["old"] });
+    await settled();
+    window.removeEventListener("error", onError);
+    expect(errors).toEqual([]);
+    expect(s().panelOpen).toBe(true);
+  });
+
   it("stops when it is told to", async () => {
     stop();
     a().addElement(createText({ text: "New" }));

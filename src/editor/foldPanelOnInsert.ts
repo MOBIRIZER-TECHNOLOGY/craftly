@@ -3,11 +3,13 @@
  * the sheet, where the person cannot see what they just made: the sheet is folded away when that happens.
  */
 import { getActivePage, useEditor, type EditorState } from "@/core/store";
+import type { Page } from "@/core/types";
 
 /** The width below which the side panel is a sheet over the page (the same as in Editor.tsx and the style sheets). */
 export const SHEET_QUERY = "(max-width: 899px)";
 
-const idsOnPage = (s: EditorState): Set<string> => new Set(getActivePage(s)?.elements.map((el) => el.id));
+// (a damaged design may have a page without elements: this looks on while the editor stops for it, and must not add an error of its own)
+const idsOnPage = (s: EditorState): Set<string> => new Set((getActivePage(s)?.elements as Page["elements"] | null | undefined)?.map((el) => el.id));
 
 /**
  * Was something put on the open page by this person between two states? It is new on the same page of the same design, and it is

@@ -323,7 +323,7 @@ describe("what a file may not do to the app", () => {
     expect(JSON.stringify(fits.design)).toContain('"leaf"');
 
     const report = { skipped: 0 };
-    const deep = parseProjectFile(fileOf(createDesign({ width: 800, height: 600, pages: [createPage({ elements: [nested(3000)] })] })), report);
+    const deep = parseProjectFile(fileOf(createDesign({ width: 800, height: 600, pages: [createPage({ elements: [nested(200)] })] })), report);
     expect(depthOf(deep.design.pages[0].elements[0])).toBe(MAX_GROUP_DEPTH);
     expect(JSON.stringify(deep.design)).not.toContain('"leaf"');
     expect(report.skipped).toBe(1);

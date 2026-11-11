@@ -176,7 +176,12 @@ let shotN = 0;
   await step("a damaged state stops the editor: a calm screen that says when the design was saved", async () => {
     await damage();
     await crashScreen().waitFor({ timeout: 10000 });
-    const text = await alertText();
+    // the screen is there at once and reads when the design was saved from the library a moment later: wait for that
+    let text = await alertText();
+    for (let i = 0; i < 50 && !/last saved at /.test(text); i++) {
+      await page.waitForTimeout(100);
+      text = await alertText();
+    }
     if (!/Something went wrong/.test(text)) throw new Error(text);
     if (!/Craftly stopped unexpectedly\. Your design is saved on this device \(last saved at /.test(text)) throw new Error("text: " + text);
     if (await page.getByRole("button", { name: "Reload Craftly" }).evaluate((b) => document.activeElement !== b)) throw new Error("the first button does not have the keyboard");
