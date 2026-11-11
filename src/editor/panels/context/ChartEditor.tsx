@@ -67,6 +67,8 @@ export function ChartEditor({ chart }: { chart: ChartElement }) {
           </div>
         </div>
         {round ? <p className="cf-ctx__hint">Pie and donut charts show the first series. The other series are kept for when you switch back.</p> : null}
+        {/* a slice cannot be less than nothing: say so, where the legend still names the row */}
+        {round && chart.series[0]?.values.some((v) => v < 0) ? <p className="cf-ctx__hint">A pie or donut chart has no slice for a negative number.</p> : null}
         <div className="cf-data__actions">
           <Button block variant="secondary" icon={<IconPlus />} onClick={() => edit((c) => addChartRow(c))}>
             Add row

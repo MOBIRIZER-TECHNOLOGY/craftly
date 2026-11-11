@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createChart, createDesign, createGraphic, createGroup, createImage, createLine, createPage, createShape, createTable, createText, solid } from "@/core/factory";
 import type { Design, ImageElement, ShapeElement } from "@/core/types";
 import {
+  MAX_GROUP_DEPTH,
+  MAX_TITLE_LENGTH,
   NOT_A_PROJECT_MESSAGE,
   NEWER_PROJECT_MESSAGE,
   ProjectFileError,
@@ -295,6 +297,57 @@ describe("animation data in project files", () => {
   it("does not let extra fields of a transition through", () => {
     const [page] = withPages([{ transition: { kind: "zoom", duration: 0.7, direction: "right", evil: "x" } }]);
     expect(page.transition).toEqual({ kind: "zoom", duration: 0.7, direction: "right" });
+  });
+});
+
+describe("what a file may not do to the app", () => {
+  const fileOf = (design: Design) => serializeProjectFile(buildProjectFile(design, {}));
+  /** a shape inside this many groups, one inside the other */
+  const nested = (levels: number) => {
+    let el: ReturnType<typeof createGroup> | ShapeElement = createShape("rect", { id: "leaf" });
+    for (let i = 0; i < levels; i++) el = createGroup([el], { id: `g${i}` });
+    return el;
+  };
+  const depthOf = (el: { type: string; children?: unknown[] }): number =>
+    el.type === "group" ? 1 + (el.children?.length ? depthOf(el.children[0] as { type: string; children?: unknown[] }) : 0) : 0;
+
+  it("cuts a title to the length the title field allows", () => {
+    const design = createDesign({ width: 800, height: 600, title: "T".repeat(20000), pages: [createPage()] });
+    expect(parseProjectFile(fileOf(design)).design.title).toBe("T".repeat(MAX_TITLE_LENGTH));
+    expect(parseProjectFile(fileOf(createDesign({ width: 800, height: 600, title: "Short", pages: [createPage()] }))).design.title).toBe("Short");
+  });
+
+  it("keeps groups inside groups as deep as the limit, and leaves out what is deeper", () => {
+    const fits = parseProjectFile(fileOf(createDesign({ width: 800, height: 600, pages: [createPage({ elements: [nested(MAX_GROUP_DEPTH)] })] })));
+    expect(depthOf(fits.design.pages[0].elements[0])).toBe(MAX_GROUP_DEPTH);
+    expect(JSON.stringify(fits.design)).toContain('"leaf"');
+
+    const report = { skipped: 0 };
+    const deep = parseProjectFile(fileOf(createDesign({ width: 800, height: 600, pages: [createPage({ elements: [nested(3000)] })] })), report);
+    expect(depthOf(deep.design.pages[0].elements[0])).toBe(MAX_GROUP_DEPTH);
+    expect(JSON.stringify(deep.design)).not.toContain('"leaf"');
+    expect(report.skipped).toBe(1);
+  });
+
+  it("says how many elements it left out, on every page and inside groups", () => {
+    const good = createShape("rect");
+    const design = createDesign({
+      width: 800,
+      height: 600,
+      pages: [createPage({ elements: [good, createGroup([createShape("ellipse"), createShape("star")])] }), createPage({ elements: [createText({ text: "kept" })] })],
+    });
+    const raw = JSON.parse(fileOf(design));
+    raw.design.pages[0].elements.push({ id: "bad1", type: "hologram" }, { ...good, id: "bad2", width: "wide" });
+    raw.design.pages[0].elements[1].children.push({ id: "bad3", type: "shape" });
+    raw.design.pages[1].elements.push(null);
+    const report = { skipped: 0 };
+    const parsed = parseProjectFile(JSON.stringify(raw), report);
+    expect(report.skipped).toBe(4);
+    expect(parsed.design.pages.map((p) => p.elements.length)).toEqual([2, 1]);
+
+    const clean = { skipped: 0 };
+    parseProjectFile(fileOf(design), clean);
+    expect(clean.skipped).toBe(0);
   });
 });
 

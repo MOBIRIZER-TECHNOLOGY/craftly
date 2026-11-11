@@ -212,7 +212,14 @@ describe("design types", () => {
     expect(describeSize(1920, 1080, "px")).toBe("1920 × 1080 px");
     expect(describeSize(1919.6, 1080.4, "px")).toBe("1920 × 1080 px");
     expect(describeSize(816, 1056, "in")).toBe("8.5 × 11 in");
-    expect(describeSize(794, 1123, "mm")).toBe("210.08 × 297.13 mm");
+    // A4 and A3 are stored in whole pixels, a fraction of a millimetre off: they are named as the paper is
+    expect(describeSize(794, 1123, "mm")).toBe("210 × 297 mm");
+    expect(describeSize(1123, 1587, "mm")).toBe("297 × 420 mm");
+    expect(describeSize(794, 1123, "cm")).toBe("21 × 29.7 cm");
+    // a size that is not near a round one keeps a tenth of a millimetre, or a hundredth of a centimetre
+    expect(describeSize(1280, 720, "mm")).toBe("338.7 × 190.5 mm");
+    expect(describeSize(1280, 721, "cm")).toBe("33.87 × 19.08 cm");
+    expect(describeSize(816, 1056, "in")).toBe("8.5 × 11 in");
     expect(describeSize(96, 192, "cm")).toBe("2.54 × 5.08 cm");
   });
 

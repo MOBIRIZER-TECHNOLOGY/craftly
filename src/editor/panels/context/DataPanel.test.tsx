@@ -183,6 +183,23 @@ describe("Data panel: chart", () => {
       palette: ["#111111", "#222222", "#333333"],
     });
 
+  it("says that a negative number gets no slice in a pie or donut, and says nothing in the other charts or without one", () => {
+    const note = () => screen.queryByText("A pie or donut chart has no slice for a negative number.");
+    const open = (init: Partial<ChartElement>) => {
+      const c = createChart(init);
+      openElements([c], { selected: [c] });
+      return openData();
+    };
+    const pie = open({ chart: "pie", labels: ["a", "b"], series: [{ name: "S", values: [-5, 10] }] });
+    expect(note()).toBeTruthy();
+    pie.unmount();
+    const fine = open({ chart: "donut", labels: ["a", "b"], series: [{ name: "S", values: [0, 10] }] });
+    expect(note()).toBeNull();
+    fine.unmount();
+    open({ chart: "column", labels: ["a", "b"], series: [{ name: "S", values: [-5, 10] }] });
+    expect(note()).toBeNull();
+  });
+
   it("switches the chart type", async () => {
     const user = userEvent.setup();
     const c = chart();

@@ -67,12 +67,26 @@ export const DESIGN_CATEGORY_LABELS: Record<DesignCategory, string> = {
   branding: "Branding",
 };
 
-/** "1920 × 1080 px", "8.5 × 11 in", "210 × 297 mm" */
+/**
+ * "1920 × 1080 px", "8.5 × 11 in", "210 × 297 mm".
+ *
+ * A page is a whole number of pixels, and a pixel is 0.26 mm: A4 is stored as 794 × 1123 px, which is 210.08 × 297.13 mm. The
+ * figures after the point there say nothing about the paper, so millimetres are given to a tenth (and centimetres to a hundredth),
+ * and a size within a pixel's worth of a round one is given as the round one: "210 × 297 mm".
+ */
 export function describeSize(width: number, height: number, unit: SizeUnit): string {
   const f = (n: number) => String(Math.round(n * 100) / 100);
+  /** to `step`, or to `round` when that is no further away than `near` */
+  const snapped = (n: number, round: number, near: number, step: number) => {
+    const whole = Math.round(n / round) * round;
+    // (toFixed takes away what multiplying by the step leaves behind: 338.70000000000005)
+    return String(Number((Math.abs(n - whole) <= near ? whole : Math.round(n / step) * step).toFixed(3)));
+  };
+  const mm = (px: number) => snapped((px / 96) * 25.4, 1, 0.15, 0.1);
+  const cm = (px: number) => snapped((px / 96) * 2.54, 0.1, 0.015, 0.01);
   if (unit === "in") return `${f(width / 96)} × ${f(height / 96)} in`;
-  if (unit === "mm") return `${f((width / 96) * 25.4)} × ${f((height / 96) * 25.4)} mm`;
-  if (unit === "cm") return `${f((width / 96) * 2.54)} × ${f((height / 96) * 2.54)} cm`;
+  if (unit === "mm") return `${mm(width)} × ${mm(height)} mm`;
+  if (unit === "cm") return `${cm(width)} × ${cm(height)} cm`;
   return `${Math.round(width)} × ${Math.round(height)} px`;
 }
 

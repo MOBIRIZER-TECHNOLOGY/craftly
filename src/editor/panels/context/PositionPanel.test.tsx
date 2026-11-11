@@ -180,8 +180,12 @@ describe("Position panel: Advanced fields", () => {
     expect(live(el).rotation).toBe(45);
     await typeNumber(user, field("Rotation"), "-90");
     expect(live(el).rotation).toBe(270);
-    // 360 is the largest value the field takes and means no rotation
+    // more than a full turn is the turn that is left over: 999 is two turns and 279 degrees, 725 two turns and 5
     await typeNumber(user, field("Rotation"), "999");
+    expect(live(el).rotation).toBe(279);
+    await typeNumber(user, field("Rotation"), "725");
+    expect(live(el).rotation).toBe(5);
+    await typeNumber(user, field("Rotation"), "360");
     expect(live(el).rotation).toBe(0);
   });
 

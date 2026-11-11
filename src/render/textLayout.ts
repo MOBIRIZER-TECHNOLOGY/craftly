@@ -145,9 +145,13 @@ function breakIntoLines(tokens: Token[], avail: number): Token[][] {
     cur = [];
     curW = 0;
   };
-  const queue = [...tokens];
-  while (queue.length) {
-    const t = queue.shift() as Token;
+  // The tokens are read by index, and what is put back (the word that starts the next line, the pieces of a word that was split)
+  // waits on a stack of its own. Taking tokens off the front of one long array, and putting them back there, costs the length of
+  // the array each time: a text of a megabyte then took seconds to lay out, and four times as long for twice the text.
+  let next = 0;
+  const putBack: Token[] = [];
+  while (putBack.length || next < tokens.length) {
+    const t = putBack.length ? (putBack.pop() as Token) : tokens[next++];
     if (t.hardBreak) {
       flush();
       continue;
@@ -163,7 +167,7 @@ function breakIntoLines(tokens: Token[], avail: number): Token[][] {
         if (t.width > avail) {
           const parts = splitLongToken(t, avail);
           if (parts.length > 1) {
-            queue.unshift(...parts);
+            for (let i = parts.length - 1; i >= 0; i--) putBack.push(parts[i]);
             cur = [];
             curW = 0;
             continue;
@@ -173,7 +177,7 @@ function breakIntoLines(tokens: Token[], avail: number): Token[][] {
         // trim trailing spaces then wrap
         while (cur.length && cur[cur.length - 1].space) cur.pop();
         flush();
-        queue.unshift(t);
+        putBack.push(t);
         continue;
       }
     }

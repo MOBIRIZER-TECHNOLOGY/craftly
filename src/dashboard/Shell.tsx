@@ -25,6 +25,7 @@ import {
 } from "@/ui";
 import { designPath, navigate, type Route } from "@/router";
 import { importProjectFile } from "@/export/projectFile";
+import { ProjectFileError, type ImportReport } from "@/export/projectFormat";
 import { AboutDialog } from "./AboutDialog";
 import { openCreateDialog } from "./createDialogState";
 import { pickFiles } from "./files";
@@ -78,11 +79,19 @@ function importProject(): void {
   void pickFiles({ accept: ".craftly,.json,application/json" }).then(async ([file]) => {
     if (!file) return;
     try {
-      const design = await importProjectFile(file);
-      toast.success(`Imported “${design.title}”`);
+      const report: ImportReport = { skipped: 0 };
+      const design = await importProjectFile(file, report);
+      // what could not be read is said, not left out without a word
+      if (report.skipped)
+        toast.info(
+          `Imported “${design.title}”. ${report.skipped === 1 ? "1 item" : `${report.skipped} items`} in the file could not be read and ${report.skipped === 1 ? "was" : "were"} left out.`,
+        );
+      else toast.success(`Imported “${design.title}”`);
       navigate(designPath(design.id));
     } catch (error) {
-      const detail = error instanceof Error && error.message ? error.message : "Check that it is a Craftly project file.";
+      // a project file's own problems come with words for a person; anything else is the browser failing to store the design,
+      // and its own text ("Failed to execute 'put' on 'IDBObjectStore'...") is no use to them
+      const detail = error instanceof ProjectFileError ? error.message : "It could not be saved on this device. Check that your browser has free storage and try again.";
       toast.error(`Couldn't import that file. ${detail}`);
     }
   });

@@ -272,8 +272,9 @@ function AdvancedFields({ ids, els }: { ids: ID[]; els: DesignElement[] }) {
             value={model.single ? Math.round(model.rotation * 100) / 100 : 0}
             onChange={setRotation}
             onCommit={commit}
-            min={-360}
-            max={360}
+            // any number of turns may be typed (725 is 5 degrees); it is brought into 0..360 when it is set
+            min={-36000}
+            max={36000}
             suffix="°"
             aria-label={model.single ? "Rotation" : "Rotate selection by"}
             title={model.single ? undefined : "Turns the whole selection by this many degrees"}

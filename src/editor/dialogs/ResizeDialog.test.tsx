@@ -162,7 +162,7 @@ describe("<ResizeDialog>: the custom size", () => {
 describe("<ResizeDialog>: units", () => {
   it.each([
     ["in", "13.33", "7.50", "13.33 × 7.5 in"],
-    ["mm", "338.7", "190.5", "338.67 × 190.5 mm"],
+    ["mm", "338.7", "190.5", "338.7 × 190.5 mm"],
     ["cm", "33.87", "19.05", "33.87 × 19.05 cm"],
   ])("shows the size in %s", async (unit, width, height, described) => {
     await mount();

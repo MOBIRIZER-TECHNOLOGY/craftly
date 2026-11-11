@@ -20,6 +20,8 @@ import {
   remapAssetSources,
   serializeProjectFile,
   type ProjectAsset,
+  ProjectFileError,
+  type ImportReport,
 } from "./projectFormat";
 
 export { PROJECT_FILE_EXTENSION, projectFileName, ProjectFileError, NOT_A_PROJECT_MESSAGE } from "./projectFormat";
@@ -44,10 +46,11 @@ export async function exportProjectFile(design: Design): Promise<Blob> {
 
 /**
  * Reads a .craftly file, stores its images as new assets, saves the design under a new id and returns it.
- * Throws `ProjectFileError` ("That does not look like a Craftly project file") for anything else.
+ * Throws `ProjectFileError` ("That does not look like a Craftly project file") for anything else, and for images of the file
+ * that cannot be read; any other error is a failure to store the design. `report`, when given, is told what was left out.
  */
-export async function importProjectFile(file: File): Promise<Design> {
-  const project = parseProjectFile(await file.text());
+export async function importProjectFile(file: File, report?: ImportReport): Promise<Design> {
+  const project = parseProjectFile(await file.text(), report);
 
   const idMap: Record<string, string> = Object.create(null);
   const uploads: Asset[] = [];
@@ -74,7 +77,7 @@ export async function importProjectFile(file: File): Promise<Design> {
       .slice(0, 3)
       .map((name) => `“${name}”`)
       .join(", ");
-    throw new Error(`Could not read ${failed.length} embedded image(s): ${examples}. Export a complete project file from the source design and try again.`);
+    throw new ProjectFileError(`Could not read ${failed.length} embedded image(s): ${examples}. Export a complete project file from the source design and try again.`);
   }
 
   const design = prepareImportedDesign(remapAssetSources(project.design, idMap), uid("d"));

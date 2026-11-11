@@ -1,3 +1,4 @@
+import { installFoldPanelOnInsert } from "./foldPanelOnInsert";
 import { useEffect, useState, type ReactNode } from "react";
 import { RecoveryPanel } from "@/components/RecoveryPanel";
 import { getDesignForEditing } from "@/core/library";
@@ -83,6 +84,9 @@ export function Editor({ designId }: { designId: string }) {
     document.addEventListener("keydown", isolate);
     return () => document.removeEventListener("keydown", isolate);
   }, []);
+
+  /* on a phone, what is added from the side panel is not left hidden under it */
+  useEffect(() => installFoldPanelOnInsert(), []);
 
   /* load, open, autosave; flush and close on the way out */
   useEffect(() => {

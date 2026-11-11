@@ -109,7 +109,7 @@ describe("Elements > Charts", () => {
 });
 
 describe("Elements > Tables", () => {
-  const cellAt = (rows: number, cols: number) => screen.getByRole("gridcell", { name: `${rows} rows by ${cols} columns` });
+  const cellAt = (rows: number, cols: number) => screen.getByRole("gridcell", { name: `${rows} ${rows === 1 ? "row" : "rows"} by ${cols} ${cols === 1 ? "column" : "columns"}` });
   const caption = () => document.querySelector(".cf-tablepick__caption") as HTMLElement;
 
   it("offers a 5 x 5 grid of sizes with 3 x 3 ready", async () => {
@@ -175,7 +175,7 @@ describe("Elements > Tables", () => {
     await waitFor(() => expect(document.activeElement).toBe(cellAt(4, 1)));
     await user.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}{ArrowUp}{ArrowUp}");
     await waitFor(() => expect(document.activeElement).toBe(cellAt(1, 1)));
-    expect(caption().textContent).toBe("1 x 11 rows, 1 columns");
+    expect(caption().textContent).toBe("1 x 11 row, 1 column");
     expect(cellAt(1, 1).getAttribute("tabindex")).toBe("0");
     expect(cellAt(3, 3).getAttribute("tabindex")).toBe("-1");
     await user.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}");

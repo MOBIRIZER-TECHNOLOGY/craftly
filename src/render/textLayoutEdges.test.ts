@@ -79,3 +79,26 @@ describe("runs", () => {
     expect(layout.height).toBe(30);
   });
 });
+
+describe("a very long text", () => {
+  /** milliseconds to lay out this many two-word lines (a fresh element each time: a layout is remembered per element) */
+  const lay = (pairs: number) => {
+    const el = createText({ text: "lorem ipsum ".repeat(pairs), fontSize: 20, width: 120, autoWidth: false });
+    const start = performance.now();
+    const layout = layoutText(el);
+    return { ms: performance.now() - start, lines: layout.lines.length };
+  };
+
+  it("is laid out line by line like a short one", () => {
+    // "lorem ipsum" is 110 px wide in a box of 120, so every line holds the two words
+    expect(lay(2000).lines).toBe(2000);
+  });
+
+  it("takes time in proportion to its length, not to the square of it", () => {
+    lay(2000); // warm up
+    const small = Math.max(1, lay(10000).ms);
+    const large = lay(80000).ms;
+    // eight times the text: about eight times the time. Taking every token off the front of one array made it thirty-five times
+    expect(large / small).toBeLessThan(20);
+  });
+});

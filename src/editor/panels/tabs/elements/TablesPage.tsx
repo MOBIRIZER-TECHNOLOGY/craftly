@@ -79,7 +79,7 @@ export function TablesPage() {
                             data-rows={rows}
                             data-cols={cols}
                             tabIndex={rows === focus.rows && cols === focus.cols ? 0 : -1}
-                            aria-label={`${rows} rows by ${cols} columns`}
+                            aria-label={`${rows} ${rows === 1 ? "row" : "rows"} by ${cols} ${cols === 1 ? "column" : "columns"}`}
                             className={cx("cf-tablepick__cell", lit && "is-lit")}
                             onPointerEnter={() => setHover({ rows, cols })}
                             onFocus={() => setFocus({ rows, cols })}
@@ -95,7 +95,7 @@ export function TablesPage() {
                     {shown.rows} x {shown.cols}
                   </strong>
                   <span>
-                    {shown.rows} rows, {shown.cols} columns
+                    {shown.rows} {shown.rows === 1 ? "row" : "rows"}, {shown.cols} {shown.cols === 1 ? "column" : "columns"}
                   </span>
                 </p>
               </div>

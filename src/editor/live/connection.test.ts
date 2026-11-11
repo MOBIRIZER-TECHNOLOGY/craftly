@@ -6,12 +6,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { Live, type SocketLike } from "@/collab/live";
-import { createDesign, createPage, createShape } from "@/core/factory";
+import { createDesign, createPage, createShape, createText } from "@/core/factory";
 import { useEditor } from "@/core/store";
 import type { Design, LiveLink } from "@/core/types";
 import { createLiveServer, type LiveServer } from "@/server/live";
 import { MemoryStorage } from "@/server/storage";
 import { connectLive, joinDesign, shareDesign, stopSharing, useLiveStatus } from "./connection";
+import { toast } from "@/ui";
 import { joinToken, parseJoinToken, websocketUrl } from "./links";
 
 /** every address that a socket was opened with */
@@ -163,6 +164,33 @@ describe("working together", () => {
     expect(el("b").x).toBe(777);
     a().redo();
     await until("the redo to reach them", () => other.design?.pages[0].elements[0].x === 40);
+  });
+
+  it("says so when someone else deletes the text this person is typing in, and not for any other change of theirs", async () => {
+    const info = vi.spyOn(toast, "info");
+    const id = a().addElement(createText({ id: "words", text: "Typing here", fontSize: 30 }));
+    const link = await shareDesign(address, env);
+    stops.push(connectLive(link, env));
+    const editor = person(link);
+    await until("both to be live", () => useLiveStatus.getState().status === "live" && editor.status === "live" && !!editor.design?.pages[0].elements.some((x) => x.id === id));
+    a().startTextEdit(id);
+    expect(s().editingTextId).toBe(id);
+
+    // they move a shape: the text is still being edited and nothing is said
+    const e0 = editor.design!;
+    editor.edit(e0, { ...e0, pages: e0.pages.map((p) => ({ ...p, elements: p.elements.map((x) => (x.id === "b" ? { ...x, x: 555 } : x)) })) });
+    await until("their move to arrive", () => el("b").x === 555);
+    expect(s().editingTextId).toBe(id);
+    expect(info).not.toHaveBeenCalled();
+
+    // they delete the text
+    const e1 = editor.design!;
+    editor.edit(e1, { ...e1, pages: e1.pages.map((p) => ({ ...p, elements: p.elements.filter((x) => x.id !== id) })) });
+    await until("the text to be gone here", () => !s().design!.pages[0].elements.some((x) => x.id === id));
+    expect(s().editingTextId).toBeNull();
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith("Someone else deleted the text you were editing.");
+    info.mockRestore();
   });
 
   it("keeps working on what was changed while the connection was lost, and lets the others have it afterwards", async () => {

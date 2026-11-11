@@ -129,7 +129,11 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     onChange: () => {
       const shared = live.design;
       if (!shared) return;
+      // Someone else may have deleted the text this person is typing in. The editing box then closes, and without a word the next
+      // keys would land on the canvas as shortcuts with nothing to say why.
+      const typingIn = useEditor.getState().editingTextId;
       actions().applyShared(shared);
+      if (typingIn && !useEditor.getState().editingTextId) toast.info("Someone else deleted the text you were editing.");
       if (collectAssetIds(shared).length)
         void media.download(shared).catch((error: unknown) => showMediaError(error instanceof Error ? error.message : "Could not load shared images."));
     },

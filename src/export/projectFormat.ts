@@ -168,11 +168,29 @@ export function isUsableElement(el: unknown): el is DesignElement {
   }
 }
 
-function sanitizeElements(elements: unknown[]): DesignElement[] {
+/** What reading a file left out, for the person to be told: nothing is left out without a word. */
+export interface ImportReport {
+  /** elements that could not be used (damaged, of an unknown kind, or groups nested deeper than `MAX_GROUP_DEPTH`) */
+  skipped: number;
+}
+
+/**
+ * Groups inside groups, this deep and no deeper. The editor makes a few levels at most; a file with thousands (made by hand, or
+ * to make trouble) cannot be stored by the browser, which then refused the whole design with an error of its own.
+ */
+export const MAX_GROUP_DEPTH = 32;
+
+/** As long as the title field of the editor allows (src/editor/topbar/TopBar.tsx). */
+export const MAX_TITLE_LENGTH = 120;
+
+function sanitizeElements(elements: unknown[], report: ImportReport, depth = 0): DesignElement[] {
   const out: DesignElement[] = [];
   for (const el of elements) {
-    if (!isUsableElement(el)) continue;
-    out.push(el.type === "group" ? { ...el, children: sanitizeElements(el.children) } : el);
+    if (!isUsableElement(el) || (el.type === "group" && depth >= MAX_GROUP_DEPTH)) {
+      report.skipped++;
+      continue;
+    }
+    out.push(el.type === "group" ? { ...el, children: sanitizeElements(el.children, report, depth + 1) } : el);
   }
   return out;
 }
@@ -201,7 +219,7 @@ function sanitizePageTiming(p: Record<string, unknown>): Pick<Page, "duration" |
 }
 
 /** `keepLibraryData`: a design read back from the library (a backup) keeps its folder, star and trash state; one from a project file starts fresh. */
-function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false): Design {
+function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false, report: ImportReport = { skipped: 0 }): Design {
   // first the design is brought up to the current version (a `MigrationError` for a newer one), then it is checked
   const raw = migrateDesign(stored).design as unknown as Record<string, unknown>;
   const width = raw.width;
@@ -218,7 +236,7 @@ function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false
       id: typeof p.id === "string" && p.id ? p.id : `p_${Math.random().toString(36).slice(2, 10)}`,
       ...(typeof p.name === "string" ? { name: p.name } : {}),
       background,
-      elements: sanitizeElements(p.elements),
+      elements: sanitizeElements(p.elements, report),
       ...(typeof p.notes === "string" ? { notes: p.notes } : {}),
       ...sanitizePageTiming(p),
     };
@@ -227,7 +245,7 @@ function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false
   return {
     ...portableDesign(raw as unknown as Design),
     id: typeof raw.id === "string" && raw.id ? raw.id : `d_${now.toString(36)}`,
-    title: typeof raw.title === "string" && raw.title.trim() ? raw.title : "Untitled design",
+    title: typeof raw.title === "string" && raw.title.trim() ? raw.title.slice(0, MAX_TITLE_LENGTH) : "Untitled design",
     typeId: typeof raw.typeId === "string" ? raw.typeId : "custom",
     width,
     height,
@@ -258,8 +276,11 @@ export function parseStoredDesign(value: unknown): Design {
   }
 }
 
-/** Parses and validates a project file's text. Throws `ProjectFileError` with a message fit for a toast. */
-export function parseProjectFile(text: string): ProjectFile {
+/**
+ * Parses and validates a project file's text. Throws `ProjectFileError` with a message fit for a toast. `report`, when given,
+ * is told how many elements were left out.
+ */
+export function parseProjectFile(text: string, report?: ImportReport): ProjectFile {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -271,7 +292,7 @@ export function parseProjectFile(text: string): ProjectFile {
   let design: Design;
   try {
     envelope = projectMigrator.migrate(raw).doc;
-    design = sanitizeDesign(envelope.design as Record<string, unknown>);
+    design = sanitizeDesign(envelope.design as Record<string, unknown>, false, report);
   } catch (error) {
     if (!(error instanceof MigrationError)) throw error;
     throw new ProjectFileError(error.code === "newer" ? NEWER_PROJECT_MESSAGE : error.code === "failed" ? UPDATE_PROJECT_MESSAGE : NOT_A_PROJECT_MESSAGE);

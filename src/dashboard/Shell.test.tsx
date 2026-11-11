@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDesign, listDesigns } from "@/core/library";
 import * as projectFile from "@/export/projectFile";
+import { createDesign, createPage, createShape } from "@/core/factory";
 import { exportProjectFile } from "@/export/projectFile";
+import { buildProjectFile, serializeProjectFile } from "@/export/projectFormat";
 import { Hosts, dismissOpenDialogs, emptyLibrary, seedDesign, stubFilePicker } from "@/test/dashuiUtils";
 import { toast } from "@/ui";
 import { closeProblemsDialog, useProblemsDialog } from "@/components/problemsDialogState";
@@ -294,13 +296,35 @@ describe("<Shell>", () => {
         expect(window.location.hash).toBe("");
       });
 
-      it("suggests checking the file when the failure has no message", async () => {
+      it("says what is wrong with the file in the file's own words", async () => {
         const user = userEvent.setup();
-        vi.spyOn(projectFile, "importProjectFile").mockRejectedValueOnce(new Error(""));
+        stubFilePicker([new File(["this is not json"], "notes.craftly", { type: "application/json" })]);
+        mountShell();
+        await chooseImport(user);
+        expect(await screen.findByText("Couldn't import that file. That does not look like a Craftly project file")).toBeTruthy();
+      });
+
+      it("does not show the browser's own words when the design cannot be stored", async () => {
+        const user = userEvent.setup();
+        vi.spyOn(projectFile, "importProjectFile").mockRejectedValueOnce(new Error("Failed to execute 'put' on 'IDBObjectStore': Maximum call stack size exceeded"));
         stubFilePicker([new File(["{}"], "x.craftly")]);
         mountShell();
         await chooseImport(user);
-        expect(await screen.findByText("Couldn't import that file. Check that it is a Craftly project file.")).toBeTruthy();
+        expect(await screen.findByText("Couldn't import that file. It could not be saved on this device. Check that your browser has free storage and try again.")).toBeTruthy();
+        expect(screen.queryByText(/IDBObjectStore/)).toBeNull();
+      });
+
+      it("says how many items of the file were left out", async () => {
+        const user = userEvent.setup();
+        const design = createDesign({ width: 800, height: 600, title: "Patchy", pages: [createPage({ elements: [createShape("rect")] })] });
+        const raw = JSON.parse(serializeProjectFile(buildProjectFile(design, {})));
+        raw.design.pages[0].elements.push({ id: "x1", type: "hologram" }, { id: "x2", type: "hologram" });
+        stubFilePicker([new File([JSON.stringify(raw)], "patchy.craftly", { type: "application/json" })]);
+        mountShell();
+        await chooseImport(user);
+        expect(await screen.findByText("Imported “Patchy”. 2 items in the file could not be read and were left out.")).toBeTruthy();
+        const [imported] = await listDesigns();
+        expect(window.location.hash).toBe(`#/design/${imported.id}`);
       });
     });
   });
