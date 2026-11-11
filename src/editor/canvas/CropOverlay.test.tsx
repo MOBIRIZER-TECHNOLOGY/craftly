@@ -15,7 +15,7 @@ configure({ asyncUtilTimeout: 20_000 });
 
 const state = () => useEditor.getState();
 const photo = (extra: Partial<ImageElement> = {}) =>
-  createImage({ id: "img", src: "https://example.test/p.jpg", x: 500, y: 300, width: 200, height: 100, naturalWidth: 400, naturalHeight: 200, ...extra });
+  createImage({ id: "img", src: "blob:test/p.jpg", x: 500, y: 300, width: 200, height: 100, naturalWidth: 400, naturalHeight: 200, ...extra });
 const img = () => elementOf<ImageElement>("img");
 
 /** Open the picture for cropping, optionally zoomed in so there is something to pan. */
@@ -54,7 +54,7 @@ describe("zooming the picture inside its frame", () => {
   it("starts at scale 1, where the picture just covers the frame", () => {
     open();
     expect(getCropScale(img())).toBe(1);
-    const wide = createImage({ src: "x.jpg", width: 100, height: 100, naturalWidth: 400, naturalHeight: 200, crop: { x: 0, y: 0, w: 2, h: 1 } });
+    const wide = createImage({ src: "blob:test/x.jpg", width: 100, height: 100, naturalWidth: 400, naturalHeight: 200, crop: { x: 0, y: 0, w: 2, h: 1 } });
     expect(getCropScale(wide)).toBe(1);
   });
 
@@ -120,7 +120,7 @@ describe("the crop overlay", () => {
     expect(overlay.style.width).toBe("200px");
     expect(overlay.style.height).toBe("100px");
     expect(rig.container.querySelectorAll(".cf-crop__ghost, .cf-crop__live")).toHaveLength(2);
-    expect(rig.container.querySelector(".cf-crop__live")?.getAttribute("src")).toBe("https://example.test/p.jpg");
+    expect(rig.container.querySelector(".cf-crop__live")?.getAttribute("src")).toBe("blob:test/p.jpg");
     expect(rig.getByRole("button", { name: "Done" })).toBeTruthy();
     expect(rig.container.querySelectorAll("[class*='cf-crop__handle--']")).toHaveLength(8);
     // the selection handles give way to the crop handles

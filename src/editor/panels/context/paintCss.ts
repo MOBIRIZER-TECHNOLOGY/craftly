@@ -16,6 +16,14 @@ export function paintCss(fill: Fill): string {
   }
 }
 
+/**
+ * An address as a CSS `url("...")`. A quote, a backslash or a line break in it is written as an escape, so the address cannot end
+ * its own quotes and add a second picture to the value (`data:x"), url("https://...`).
+ */
+export function cssUrl(address: string): string {
+  return `url("${address.replace(/["\\\n\r\f]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `)}")`;
+}
+
 /** First colour of a fill, for places that can only show one colour. */
 export function firstColor(fill: Fill): string {
   switch (fill.type) {

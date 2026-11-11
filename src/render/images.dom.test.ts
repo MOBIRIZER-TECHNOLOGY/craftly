@@ -39,7 +39,10 @@ describe("loadImage", () => {
     // asking a server of somebody else's choosing for a picture tells them who opened the design (src/core/imageSources.ts)
     const made: string[] = [];
     const setSrc = vi.spyOn(HTMLImageElement.prototype, "src", "set").mockImplementation((value: string) => void made.push(value));
-    for (const src of ["https://example.test/p.png", "http://example.test/p.png", "//example.test/p.png", "  HTTPS://EXAMPLE.TEST/p.png"]) {
+    const web = ["https://example.test/p.png", "http://example.test/p.png", "//example.test/p.png", "  HTTPS://EXAMPLE.TEST/p.png"];
+    // spellings a browser reads as the web too, and an address of this site: only what the editor makes is loaded
+    const others = ["https:\\\\example.test\\p.png", "/\\example.test/p.png", "ht\ttps://example.test/p.png", "https:example.test/p.png", "/icon.png"];
+    for (const src of [...web, ...others]) {
       expect(await loadImage(src)).toBeNull();
       expect(getImage(src)).toBeNull();
     }
@@ -212,9 +215,14 @@ describe("SVG graphics", () => {
 });
 
 describe("imageUrl", () => {
-  it("returns web and data addresses unchanged", async () => {
+  it("returns the address of a picture that is the picture itself unchanged", async () => {
     expect(await imageUrl("blob:test/a.png")).toBe("blob:test/a.png");
     expect(await imageUrl("data:image/png;base64,AAAA")).toBe("data:image/png;base64,AAAA");
+  });
+
+  it("has no address for a picture on the web: an <img> or a CSS background would fetch it", async () => {
+    for (const src of ["https://example.test/p.png", "//example.test/p.png", "https:\\\\example.test\\p.png", "/\\example.test/p.png", "/icon.png"])
+      expect(await imageUrl(src)).toBeNull();
   });
 
   it("turns a built-in photo into an address an <img> can show", async () => {

@@ -11,7 +11,35 @@ describe("which addresses of pictures are somewhere else", () => {
     },
   );
 
-  it.each(["asset:a_1", "builtin:sunset-hills", "data:image/png;base64,AAAA", "blob:http://localhost/1b2c", "/icon.png", "", "https", "ftp://example.test/p.png"])(
+  // a browser reads all of these as an address on the web: a list of the spellings to refuse would always miss one
+  it.each([
+    ["backslashes for slashes", "https:\\\\example.test\\p.png"],
+    ["two backslashes and no scheme", "\\\\example.test/p.png"],
+    ["a slash and a backslash", "/\\example.test/p.png"],
+    ["a tab inside the scheme", "ht\ttps://example.test/p.png"],
+    ["a line break inside the scheme", "htt\nps://example.test/p.png"],
+    ["a scheme with no slashes", "https:example.test/p.png"],
+    ["a control character in front", "\u0001https://example.test/p.png"],
+  ])("so is one written with %s", (_how, src) => {
+    expect(isRemoteImage(src)).toBe(true);
+  });
+
+  // and nothing else that is not one of the four kinds the editor makes is loaded either
+  it.each([
+    "/icon.png",
+    "icon.png",
+    "ftp://example.test/p.png",
+    "file:///c:/p.png",
+    "javascript:alert(1)",
+    "https",
+    " data:image/png;base64,AAAA",
+    "DATA:image/png;base64,AAAA",
+    " ",
+  ])("%s is no address the editor makes, and counts as somewhere else", (src) => {
+    expect(isRemoteImage(src)).toBe(true);
+  });
+
+  it.each(["asset:a_1", "builtin:sunset-hills", "data:image/png;base64,AAAA", "data:image/svg+xml;charset=utf-8,%3Csvg%3E", "blob:http://localhost/1b2c", ""])(
     "%s is not",
     (src) => {
       expect(isRemoteImage(src)).toBe(false);

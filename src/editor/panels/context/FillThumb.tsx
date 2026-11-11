@@ -3,7 +3,7 @@ import type { Fill, Page } from "@/core/types";
 import { getPhotoThumb } from "@/data/photos";
 import { imageUrl } from "@/render/images";
 import { renderPage } from "@/render/renderPage";
-import { paintCss } from "./paintCss";
+import { cssUrl, paintCss } from "./paintCss";
 import { PreviewCanvas } from "./PreviewCanvas";
 
 /** A picture of a background fill: CSS for colours and gradients, the real renderer for patterns, a small preview for photos. */
@@ -61,5 +61,5 @@ function PhotoThumb({ src }: { src: string }) {
       io.disconnect();
     };
   }, [src]);
-  return <span ref={ref} className="cf-fill cf-fill--photo" style={url ? { backgroundImage: `url("${url}")` } : undefined} />;
+  return <span ref={ref} className="cf-fill cf-fill--photo" style={url ? { backgroundImage: cssUrl(url) } : undefined} />;
 }

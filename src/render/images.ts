@@ -109,8 +109,12 @@ export function getSvgImage(svg: string): Drawable | null {
   return null;
 }
 
-/** A URL usable in <img> / CSS for any image source (builtin photos become object URLs). */
+/**
+ * A URL usable in <img> / CSS for any image source (builtin photos become object URLs). There is none for a picture on the web:
+ * the element or the style it goes into would fetch it (src/core/imageSources.ts).
+ */
 export async function imageUrl(src: string): Promise<string | null> {
+  if (isRemoteImage(src)) return null;
   if (src.startsWith("builtin:")) return getPhotoThumb(src.slice(8), 1600);
   if (src.startsWith("asset:")) return getAssetUrl(src.slice(6));
   return src;

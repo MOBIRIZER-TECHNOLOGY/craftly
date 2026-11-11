@@ -7,9 +7,17 @@
  */
 import type { DesignElement, Fill, Page } from "./types";
 
-/** Is this the address of a picture somewhere else: http:, https:, or "//host/..." which means the same? */
+/** The four kinds of address the editor makes, spelled the way it spells them. None of them asks another computer for anything. */
+const OWN = /^(asset:|builtin:|data:|blob:)/;
+
+/**
+ * Is this the address of a picture somewhere else? It is unless it is one of the four kinds above (or no address at all, which is
+ * an empty frame). The question is asked this way round on purpose: a browser reads many spellings as an address on the web
+ * ("https:\\host", "/\host", a tab inside "https", "https:host" on a page that is not https), and a list of the ones to refuse
+ * would always miss one. An address of this site ("/icon.png") counts as somewhere else too: the editor makes none.
+ */
 export function isRemoteImage(src: unknown): boolean {
-  return typeof src === "string" && /^\s*(https?:)?\/\//i.test(src);
+  return typeof src === "string" && src !== "" && !OWN.test(src);
 }
 
 /** What stands in for a fill or a background whose picture was on the web. */
