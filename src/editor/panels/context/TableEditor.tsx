@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { getActions } from "@/core/store";
 import type { TableElement, TextAlign } from "@/core/types";
 import { cx, IconAlignCenter, IconAlignLeft, IconAlignRight, IconButton, IconClose, IconPlus, NumberField, Button, Segmented, Switch } from "@/ui";
@@ -15,9 +15,19 @@ const ALIGN_OPTIONS = [
 
 const DEFAULT_STRIPE = "#f3f0ff";
 
-export function TableEditor({ table }: { table: TableElement }) {
+export function TableEditor({ table, focusCell }: { table: TableElement; focusCell?: { row: number; col: number } }) {
   const batch = useBatch();
   const { rows, cols } = tableSize(table);
+  const grid = useRef<HTMLDivElement>(null);
+
+  // Opened for one cell (a double click on the table): the keyboard goes into its field, so that what is typed next is the cell's
+  // text and not a shortcut of the canvas. Asked again for the same cell, a new object arrives and the effect runs again.
+  useEffect(() => {
+    if (!focusCell) return;
+    const field = grid.current?.querySelector<HTMLInputElement>(`[data-cf-cell="${focusCell.row}:${focusCell.col}"]`);
+    field?.focus();
+    field?.select();
+  }, [focusCell, table.id]);
 
   /** one store write per call; typing in cells merges into one undo step per burst */
   const edit = (fn: (t: TableElement) => void, coalesce?: string) =>
@@ -36,7 +46,7 @@ export function TableEditor({ table }: { table: TableElement }) {
     <div className="cf-data">
       <Section title="Cells">
         <div className="cf-data__scroll">
-          <div className="cf-data__grid" style={gridStyle}>
+          <div className="cf-data__grid" style={gridStyle} ref={grid}>
             {/* column remove buttons */}
             {Array.from({ length: cols }, (_, c) => (
               <span key={`rm${c}`} className="cf-data__colhead">
@@ -138,7 +148,14 @@ function TableRow({
   return (
     <>
       {row.map((cell, c) => (
-        <TextCell key={c} className={header ? "is-header" : undefined} value={cell} label={`Row ${r + 1}, column ${c + 1}`} onText={(value) => onText(c, value)} />
+        <TextCell
+          key={c}
+          className={header ? "is-header" : undefined}
+          value={cell}
+          label={`Row ${r + 1}, column ${c + 1}`}
+          cellKey={`${r}:${c}`}
+          onText={(value) => onText(c, value)}
+        />
       ))}
       <IconButton size="sm" label={`Remove row ${r + 1}`} icon={<IconClose />} disabled={!removable} onClick={onRemove} />
     </>

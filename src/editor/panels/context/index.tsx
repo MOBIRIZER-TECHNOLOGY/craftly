@@ -27,7 +27,7 @@ export function ContextPanel({ state }: { state: ContextPanelState }) {
     case "background":
       return <BackgroundPanel />;
     case "data":
-      return <DataPanel />;
+      return <DataPanel cell={state.cell} />;
     case "animate":
       return <AnimatePanel tab={state.tab} />;
   }

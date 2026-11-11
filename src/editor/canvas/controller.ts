@@ -6,6 +6,7 @@
  * freehand drawing, panning and zooming. Visuals live in the overlay
  * components; this file only reads/writes the stores.
  */
+import { tableCellAt } from "@/core/tableCells";
 import { isAcceptedImage } from "@/core/assets";
 import { createLine, createShape, createText } from "@/core/factory";
 import { boundsOfElements, boxBounds, boxCenter, clamp, DEG, hitTestElement, rectFromPoints, rectsIntersect, rotatePoint, snapAngle, toLocalPoint } from "@/core/geometry";
@@ -816,6 +817,11 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       act().startCrop(hit.id);
     } else if (hit.type === "shape" && elementPath(hit)) {
       startPathEdit(hit.id);
+    } else if (hit.type === "table" || hit.type === "chart") {
+      // their content is edited in the Data panel: open it, for a table on the cell under the pointer
+      const cell = hit.type === "table" ? tableCellAt(hit, pt) : null;
+      act().select([hit.id]);
+      act().openContext(cell ? { kind: "data", cell } : { kind: "data" });
     } else if (hit.type === "group") {
       const inner = pickInside(hit, pt);
       if (inner?.type === "text") {

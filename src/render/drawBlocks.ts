@@ -1,4 +1,6 @@
 /** Table and chart elements. Origin is the element's top-left corner. */
+import { measureWidth } from "@/core/textMetrics";
+import { categoryStep, chartNumber, fitText, LEGEND_LINE, legendLayout, legendTop, plotLeft, valuesFit } from "./chartText";
 import { rgba } from "@/core/color";
 import type { ChartElement, TableElement } from "@/core/types";
 import { cssFontFamily } from "./fonts";
@@ -96,19 +98,20 @@ export function drawChart(ctx: Ctx, el: ChartElement): void {
 
   let top = fs * 0.8;
   if (el.showLegend) {
-    let lx = 0;
     const names = el.chart === "pie" || el.chart === "donut" ? el.labels : el.series.map((s) => s.name);
-    names.forEach((n, i) => {
-      ctx.fillStyle = el.chart === "pie" || el.chart === "donut" ? el.palette[i % el.palette.length] : color(i);
+    // in lines no wider than the chart, names cut to fit (chartText.ts)
+    const legend = legendLayout(names, `500 ${fs}px ${fam}`, fs, el.width);
+    for (const item of legend.items) {
+      const y = fs * 0.9 + item.row * fs * LEGEND_LINE;
+      ctx.fillStyle = el.chart === "pie" || el.chart === "donut" ? el.palette[item.index % el.palette.length] : color(item.index);
       ctx.beginPath();
-      ctx.arc(lx + fs * 0.4, fs * 0.9, fs * 0.4, 0, Math.PI * 2);
+      ctx.arc(item.x + fs * 0.4, y, fs * 0.4, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = el.textColor;
       ctx.textAlign = "left";
-      ctx.fillText(n, lx + fs * 1.1, fs * 0.9);
-      lx += ctx.measureText(n).width + fs * 2.2;
-    });
-    top = fs * 2.4;
+      ctx.fillText(item.text, item.x + fs * 1.1, y);
+    }
+    top = legendTop(fs, legend.rows);
   }
 
   if (el.chart === "pie" || el.chart === "donut") {
@@ -140,7 +143,7 @@ export function drawChart(ctx: Ctx, el: ChartElement): void {
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.font = `700 ${fs}px ${fam}`;
-        ctx.fillText(String(v), cx + Math.cos(mid) * rr, cy + Math.sin(mid) * rr);
+        ctx.fillText(chartNumber(v), cx + Math.cos(mid) * rr, cy + Math.sin(mid) * rr);
       }
       a0 = a1;
     });
@@ -149,22 +152,27 @@ export function drawChart(ctx: Ctx, el: ChartElement): void {
   }
 
   // cartesian charts
-  const left = fs * 3;
+  const allValues = el.series.flatMap((s) => s.values);
+  const max = nice(Math.max(...allValues, 1));
+  const horizontal = el.chart === "bar";
+  const axisFont = `400 ${fs * 0.9}px ${fam}`;
+  const labelFont = `500 ${fs * 0.9}px ${fam}`;
+  const ticks = [0, 1, 2, 3, 4].map((i) => chartNumber(Math.round(max * (i / 4) * 100) / 100));
+  // what stands on the left of the plot (the numbers of the axis, or the names of a bar chart) gets the room it needs, within limits
+  const beside = horizontal ? el.labels.map((l) => measureWidth(labelFont, l)) : ticks.map((t) => measureWidth(axisFont, t));
+  const left = plotLeft(fs, el.width, Math.max(0, ...beside));
+  const besideRoom = left - fs * 0.5;
   const bottom = fs * 2.2;
   const px = left;
   const py = top;
   const pw = el.width - left - fs * 0.5;
   const ph = el.height - top - bottom;
-  const allValues = el.series.flatMap((s) => s.values);
-  const max = nice(Math.max(...allValues, 1));
-  const horizontal = el.chart === "bar";
   ctx.lineWidth = 1;
 
   // grid + axis labels
-  ctx.font = `400 ${fs * 0.9}px ${fam}`;
+  ctx.font = axisFont;
   for (let i = 0; i <= 4; i++) {
     const t = i / 4;
-    const v = Math.round(max * t * 100) / 100;
     if (horizontal) {
       const x = px + pw * t;
       if (el.showGrid) {
@@ -176,7 +184,7 @@ export function drawChart(ctx: Ctx, el: ChartElement): void {
       }
       ctx.fillStyle = rgba(el.textColor, 0.7);
       ctx.textAlign = "center";
-      ctx.fillText(String(v), x, py + ph + fs * 1.1);
+      ctx.fillText(fitText(axisFont, ticks[i], pw / 4), x, py + ph + fs * 1.1);
     } else {
       const y = py + ph - ph * t;
       if (el.showGrid) {
@@ -188,21 +196,30 @@ export function drawChart(ctx: Ctx, el: ChartElement): void {
       }
       ctx.fillStyle = rgba(el.textColor, 0.7);
       ctx.textAlign = "right";
-      ctx.fillText(String(v), px - fs * 0.5, y);
+      ctx.fillText(fitText(axisFont, ticks[i], besideRoom), px - fs * 0.5, y);
     }
   }
 
   const n = el.labels.length || 1;
   const sCount = el.series.length || 1;
-  ctx.font = `500 ${fs * 0.9}px ${fam}`;
+  ctx.font = labelFont;
+  // under the plot a name has the room of its category; when the categories are crowded only every few are named
+  // beside a lying plot the names follow each other downwards, where each takes about a line (half a font size and the air around it)
+  const step = horizontal ? categoryStep(fs, ph / n, fs * 0.5) : categoryStep(fs, pw / n, Math.max(0, ...el.labels.map((l) => measureWidth(labelFont, l))));
+  // the values are written only where they do not run into each other (chartText.ts)
+  const slot = (horizontal ? ph : pw) / n;
+  const marks = el.chart === "line" || el.chart === "area" || sCount === 1 ? slot : (slot * 0.72) / sCount;
+  const valueFont = `600 ${fs * 0.85}px ${fam}`;
+  const showValues = el.showValues && valuesFit(horizontal ? fs * 0.85 : Math.max(0, ...allValues.map((v) => measureWidth(valueFont, chartNumber(v)))), marks);
   el.labels.forEach((label, i) => {
+    if (i % step !== 0) return;
     ctx.fillStyle = rgba(el.textColor, 0.85);
     if (horizontal) {
       ctx.textAlign = "right";
-      ctx.fillText(label, px - fs * 0.5, py + (ph / n) * (i + 0.5));
+      ctx.fillText(fitText(labelFont, label, besideRoom), px - fs * 0.5, py + (ph / n) * (i + 0.5));
     } else {
       ctx.textAlign = "center";
-      ctx.fillText(label, px + (pw / n) * (i + 0.5), py + ph + fs * 1.1);
+      ctx.fillText(fitText(labelFont, label, (pw / n) * step), px + (pw / n) * (i + 0.5), py + ph + fs * 1.1);
     }
   });
 
@@ -232,11 +249,11 @@ export function drawChart(ctx: Ctx, el: ChartElement): void {
         ctx.fill();
         ctx.lineWidth = Math.max(2, fs * 0.16);
         ctx.stroke();
-        if (el.showValues) {
+        if (showValues) {
           ctx.fillStyle = el.textColor;
           ctx.textAlign = "center";
-          ctx.font = `600 ${fs * 0.85}px ${fam}`;
-          ctx.fillText(String(p.v), p.x, p.y - fs * 0.9);
+          ctx.font = valueFont;
+          ctx.fillText(chartNumber(p.v), p.x, p.y - fs * 0.9);
         }
       });
     });
@@ -256,15 +273,15 @@ export function drawChart(ctx: Ctx, el: ChartElement): void {
         } else if (ctx.roundRect) ctx.roundRect(start, py + ph - len, barW, len, [r, r, 0, 0]);
         else ctx.rect(start, py + ph - len, barW, len);
         ctx.fill();
-        if (el.showValues) {
+        if (showValues) {
           ctx.fillStyle = el.textColor;
-          ctx.font = `600 ${fs * 0.85}px ${fam}`;
+          ctx.font = valueFont;
           if (horizontal) {
             ctx.textAlign = "left";
-            ctx.fillText(String(v), px + len + fs * 0.4, start + barW / 2);
+            ctx.fillText(chartNumber(v), px + len + fs * 0.4, start + barW / 2);
           } else {
             ctx.textAlign = "center";
-            ctx.fillText(String(v), start + barW / 2, py + ph - len - fs * 0.7);
+            ctx.fillText(chartNumber(v), start + barW / 2, py + ph - len - fs * 0.7);
           }
         }
       });

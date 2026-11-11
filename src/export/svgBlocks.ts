@@ -4,6 +4,7 @@
  * uses `textBaseline = "middle"`, which `middleShift` converts exactly by asking the browser for the offset.
  */
 import { measureWidth } from "@/core/textMetrics";
+import { categoryStep, chartNumber, fitText, LEGEND_LINE, legendLayout, legendTop, plotLeft, valuesFit } from "@/render/chartText";
 import type { ChartElement, TableElement } from "@/core/types";
 import { cssFontFamily } from "@/render/fonts";
 import { colorAttr, esc, num, roundRectPath, svgFontFamily, type SvgDoc } from "./svgUtil";
@@ -190,16 +191,16 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
 
   let top = fs * 0.8;
   if (el.showLegend) {
-    let lx = 0;
     const circular = el.chart === "pie" || el.chart === "donut";
     const names = circular ? el.labels : el.series.map((s) => s.name);
-    const font = `500 ${fs}px ${fam}`;
-    names.forEach((n, i) => {
-      out += `<circle cx="${num(lx + fs * 0.4)}" cy="${num(fs * 0.9)}" r="${num(fs * 0.4)}"${colorAttr("fill", circular ? el.palette[i % el.palette.length] : color(i), a)}/>`;
-      out += text(n, lx + fs * 1.1, fs * 0.9, "start", fs, 500, el.textColor);
-      lx += measureWidth(font, n) + fs * 2.2;
-    });
-    top = fs * 2.4;
+    // the same lines and the same cut names as the painter draws (src/render/chartText.ts)
+    const legend = legendLayout(names, `500 ${fs}px ${fam}`, fs, el.width);
+    for (const item of legend.items) {
+      const y = fs * 0.9 + item.row * fs * LEGEND_LINE;
+      out += `<circle cx="${num(item.x + fs * 0.4)}" cy="${num(y)}" r="${num(fs * 0.4)}"${colorAttr("fill", circular ? el.palette[item.index % el.palette.length] : color(item.index), a)}/>`;
+      out += text(item.text, item.x + fs * 1.1, y, "start", fs, 500, el.textColor);
+    }
+    top = legendTop(fs, legend.rows);
   }
 
   if (el.chart === "pie" || el.chart === "donut") {
@@ -215,7 +216,7 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
       if (el.showValues && a1 - a0 > 0.25) {
         const mid = (a0 + a1) / 2;
         const rr = el.chart === "donut" ? r * 0.8 : r * 0.64;
-        out += text(String(v), cxm + Math.cos(mid) * rr, cym + Math.sin(mid) * rr, "middle", fs, 700, "#ffffff");
+        out += text(chartNumber(v), cxm + Math.cos(mid) * rr, cym + Math.sin(mid) * rr, "middle", fs, 700, "#ffffff");
       }
       a0 = a1;
     });
@@ -223,39 +224,51 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
   }
 
   // cartesian charts
-  const left = fs * 3;
+  const allValues = el.series.flatMap((s) => s.values);
+  const max = nice(Math.max(...allValues, 1));
+  const horizontal = el.chart === "bar";
+  const axisFont = `400 ${fs * 0.9}px ${fam}`;
+  const labelFont = `500 ${fs * 0.9}px ${fam}`;
+  const ticks = [0, 1, 2, 3, 4].map((i) => chartNumber(Math.round(max * (i / 4) * 100) / 100));
+  const beside = horizontal ? el.labels.map((l) => measureWidth(labelFont, l)) : ticks.map((t) => measureWidth(axisFont, t));
+  const left = plotLeft(fs, el.width, Math.max(0, ...beside));
+  const besideRoom = left - fs * 0.5;
   const bottom = fs * 2.2;
   const px = left;
   const py = top;
   const pw = el.width - left - fs * 0.5;
   const ph = el.height - top - bottom;
-  const allValues = el.series.flatMap((s) => s.values);
-  const max = nice(Math.max(...allValues, 1));
-  const horizontal = el.chart === "bar";
 
   // grid + axis labels
   for (let i = 0; i <= 4; i++) {
     const t = i / 4;
-    const v = Math.round(max * t * 100) / 100;
     const grid = withK(el.textColor, 0.12, a);
     const axis = withK(el.textColor, 0.7, a);
     if (horizontal) {
       const x = px + pw * t;
       if (el.showGrid) out += `<path d="M${num(x)} ${num(py)}L${num(x)} ${num(py + ph)}" fill="none"${colorAttr("stroke", grid.color, grid.alpha)} stroke-width="1"/>`;
-      out += text(String(v), x, py + ph + fs * 1.1, "middle", fs * 0.9, 400, axis.color, axis.alpha);
+      out += text(fitText(axisFont, ticks[i], pw / 4), x, py + ph + fs * 1.1, "middle", fs * 0.9, 400, axis.color, axis.alpha);
     } else {
       const y = py + ph - ph * t;
       if (el.showGrid) out += `<path d="M${num(px)} ${num(y)}L${num(px + pw)} ${num(y)}" fill="none"${colorAttr("stroke", grid.color, grid.alpha)} stroke-width="1"/>`;
-      out += text(String(v), px - fs * 0.5, y, "end", fs * 0.9, 400, axis.color, axis.alpha);
+      out += text(fitText(axisFont, ticks[i], besideRoom), px - fs * 0.5, y, "end", fs * 0.9, 400, axis.color, axis.alpha);
     }
   }
 
   const n = el.labels.length || 1;
   const sCount = el.series.length || 1;
+  // beside a lying plot the names follow each other downwards, where each takes about a line (half a font size and the air around it)
+  const step = horizontal ? categoryStep(fs, ph / n, fs * 0.5) : categoryStep(fs, pw / n, Math.max(0, ...el.labels.map((l) => measureWidth(labelFont, l))));
+  // the values are written only where they do not run into each other (chartText.ts)
+  const slot = (horizontal ? ph : pw) / n;
+  const marks = el.chart === "line" || el.chart === "area" || sCount === 1 ? slot : (slot * 0.72) / sCount;
+  const valueFont = `600 ${fs * 0.85}px ${fam}`;
+  const showValues = el.showValues && valuesFit(horizontal ? fs * 0.85 : Math.max(0, ...allValues.map((v) => measureWidth(valueFont, chartNumber(v)))), marks);
   el.labels.forEach((l, i) => {
+    if (i % step !== 0) return;
     const c = withK(el.textColor, 0.85, a);
-    if (horizontal) out += text(l, px - fs * 0.5, py + (ph / n) * (i + 0.5), "end", fs * 0.9, 500, c.color, c.alpha);
-    else out += text(l, px + (pw / n) * (i + 0.5), py + ph + fs * 1.1, "middle", fs * 0.9, 500, c.color, c.alpha);
+    if (horizontal) out += text(fitText(labelFont, l, besideRoom), px - fs * 0.5, py + (ph / n) * (i + 0.5), "end", fs * 0.9, 500, c.color, c.alpha);
+    else out += text(fitText(labelFont, l, (pw / n) * step), px + (pw / n) * (i + 0.5), py + ph + fs * 1.1, "middle", fs * 0.9, 500, c.color, c.alpha);
   });
 
   if (el.chart === "line" || el.chart === "area") {
@@ -271,7 +284,7 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
       out += `<path d="${line}" fill="none"${colorAttr("stroke", color(si), a)} stroke-width="${num(Math.max(2, fs * 0.22))}" stroke-linejoin="round"/>`;
       pts.forEach((p) => {
         out += `<circle cx="${num(p.x)}" cy="${num(p.y)}" r="${num(fs * 0.34)}"${colorAttr("fill", "#ffffff", a)}${colorAttr("stroke", color(si), a)} stroke-width="${num(Math.max(2, fs * 0.16))}"/>`;
-        if (el.showValues) out += text(String(p.v), p.x, p.y - fs * 0.9, "middle", fs * 0.85, 600, el.textColor);
+        if (showValues) out += text(chartNumber(p.v), p.x, p.y - fs * 0.9, "middle", fs * 0.85, 600, el.textColor);
       });
     });
   } else {
@@ -284,9 +297,9 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
         const r = Math.min(barW / 2, fs * 0.4);
         const d = horizontal ? roundRectPath(px, start, len, barW, [0, r, r, 0]) : roundRectPath(start, py + ph - len, barW, len, [r, r, 0, 0]);
         out += `<path d="${d}"${colorAttr("fill", color(si), a)}/>`;
-        if (el.showValues) {
-          if (horizontal) out += text(String(v), px + len + fs * 0.4, start + barW / 2, "start", fs * 0.85, 600, el.textColor);
-          else out += text(String(v), start + barW / 2, py + ph - len - fs * 0.7, "middle", fs * 0.85, 600, el.textColor);
+        if (showValues) {
+          if (horizontal) out += text(chartNumber(v), px + len + fs * 0.4, start + barW / 2, "start", fs * 0.85, 600, el.textColor);
+          else out += text(chartNumber(v), start + barW / 2, py + ph - len - fs * 0.7, "middle", fs * 0.85, 600, el.textColor);
         }
       });
     });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createChart, createTable } from "@/core/factory";
 import type { ChartElement, TableElement } from "@/core/types";
+import { measureWidth } from "@/core/textMetrics";
 import { spyContext, type PaintCall, type SpyOptions } from "@/test/logicPaint";
 import { drawChart, drawTable } from "./drawBlocks";
 
@@ -475,6 +476,139 @@ describe("charts", () => {
       const spy = chart(base({ series: [], labels: [] }));
       expect(spy.to("roundRect")).toHaveLength(0);
       expect(spy.to("fillText").map((c) => c.args[0])).toEqual(["0", "0.25", "0.5", "0.75", "1"]);
+    });
+  });
+
+  describe("text that would not fit", () => {
+    /** left and right end of a piece of text, from where it was drawn, how it was aligned and how wide its font makes it */
+    const span = (c: PaintCall): [number, number] => {
+      const w = measureWidth(String(c.state.font), String(c.args[0]));
+      const x = c.args[1] as number;
+      return c.state.textAlign === "right" ? [x - w, x] : c.state.textAlign === "center" ? [x - w / 2, x + w / 2] : [x, x + w];
+    };
+    const long = "A category with a name that goes on for much longer than the chart has room for";
+
+    it("takes a second line for a legend that is wider than the chart, and moves the plot down by that line", () => {
+      const series = ["North America", "South America", "Europe and Africa", "Asia and the Pacific", "Everything else"].map((name) => ({ name, values: [1, 2, 3, 4] }));
+      const spy = chart(base({ showLegend: true, series }));
+      const names = spy.to("fillText").slice(0, 5);
+      expect(names.map((c) => c.args[0])).toEqual(series.map((x) => x.name));
+      const lines = [...new Set(names.map((c) => c.args[2] as number))];
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toBeCloseTo(FS * 0.9);
+      expect(lines[1]).toBeCloseTo(FS * 0.9 + FS * 1.5);
+      for (const c of names) expect(span(c)[1]).toBeLessThanOrEqual(640);
+      // the dot of the first name of the second line is back at the left edge
+      const second = names.findIndex((c) => c.args[2] === lines[1]);
+      expect(spy.to("arc")[second].args.slice(0, 2)).toEqual([FS * 0.4, lines[1]]);
+      expect(spy.to("moveTo")[4].args[1]).toBeCloseTo(FS * 2.4 + FS * 1.5);
+    });
+
+    it("cuts a legend name that is wider than the whole chart, and leaves out what does not fit in three lines", () => {
+      const one = chart(base({ showLegend: true, series: [{ name: long + long, values: [1] }] }));
+      const name = one.to("fillText")[0];
+      expect(String(name.args[0]).endsWith("…")).toBe(true);
+      expect(span(name)[1]).toBeLessThanOrEqual(640);
+
+      const many = chart(
+        base({
+          chart: "pie",
+          showLegend: true,
+          showValues: false,
+          labels: Array.from({ length: 60 }, (_, i) => `Category ${i + 1}`),
+          series: [{ name: "S", values: Array(60).fill(1) }],
+        }),
+      );
+      const drawn = many.to("fillText");
+      expect(drawn.length).toBeLessThan(60);
+      expect(new Set(drawn.map((c) => c.args[2])).size).toBe(3);
+      for (const c of drawn) expect(span(c)[1]).toBeLessThanOrEqual(640);
+    });
+
+    it("gives the names of a bar chart more room on the left, and cuts what still does not fit", () => {
+      const spy = chart(base({ chart: "bar", labels: ["Marketing and events", long, "IT", "HR"] }));
+      const names = spy.to("fillText").slice(5, 9);
+      expect(names[0].args[0]).toBe("Marketing and events");
+      expect(String(names[1].args[0]).endsWith("…")).toBe(true);
+      expect(names[2].args[0]).toBe("IT");
+      // the plot starts two fifths into the chart, and no name starts left of the chart
+      const plotX = (spy.to("roundRect")[0].args as number[])[0];
+      expect(plotX).toBeCloseTo(640 * 0.4);
+      for (const c of names) {
+        expect(c.args[1]).toBeCloseTo(plotX - FS * 0.5);
+        expect(span(c)[0]).toBeGreaterThanOrEqual(0);
+      }
+    });
+
+    it("cuts a name under a column to the room of its column", () => {
+      const spy = chart(base({ labels: ["Q1", long, "Q3", "Q4"] }));
+      const names = spy.to("fillText").slice(5, 9);
+      expect(names[0].args[0]).toBe("Q1");
+      expect(String(names[1].args[0]).endsWith("…")).toBe(true);
+      const [from, to] = span(names[1]);
+      expect(to - from).toBeLessThanOrEqual(PW / 4);
+    });
+
+    it("names only every few categories when there are too many to name each", () => {
+      const labels = Array.from({ length: 40 }, (_, i) => `C${i + 1}`);
+      const spy = chart(base({ labels, showValues: false, series: [{ name: "S", values: Array(40).fill(5) }] }));
+      const names = spy
+        .to("fillText")
+        .slice(5)
+        .map((c) => String(c.args[0]));
+      // 584 px for 40 categories is 14.6 px each, and the widest name ("C10", 23.76 px) wants 33.36: every third is named
+      expect(names).toEqual(labels.filter((_, i) => i % 3 === 0));
+      expect(spy.to("roundRect")).toHaveLength(40);
+    });
+
+    it("names only every few rows of a bar chart with too many rows to name each", () => {
+      const labels = Array.from({ length: 40 }, (_, i) => `C${i + 1}`);
+      const spy = chart(base({ chart: "bar", labels, showValues: false, series: [{ name: "S", values: Array(40).fill(5) }] }));
+      const names = spy
+        .to("fillText")
+        .slice(5)
+        .map((c) => String(c.args[0]));
+      // 352 px for 40 rows is 8.8 px each, and a name wants 17.6: every second is named
+      expect(names).toEqual(labels.filter((_, i) => i % 2 === 0));
+      expect(spy.to("roundRect")).toHaveLength(40);
+    });
+
+    it("leaves the values off bars and points that are too close together for them, and keeps them where they have room", () => {
+      const values = Array.from({ length: 40 }, (_, i) => 1001 + i);
+      const labels = values.map((_, i) => `C${i + 1}`);
+      const texts = (init: Partial<ChartElement>) =>
+        chart(base({ labels, series: [{ name: "S", values }], ...init }))
+          .to("fillText")
+          .map((c) => String(c.args[0]));
+      for (const kind of ["column", "line", "area"] as const) expect(texts({ chart: kind })).not.toContain("1001");
+      // forty lying bars of one series are 8.8 px apart, and a value is 13.6 px high
+      expect(texts({ chart: "bar" })).not.toContain("1001");
+      // eight series beside each other: each bar is 13 px wide, a value of two digits 14.96 px, which the quarter of overlap allows
+      const eight = chart(base({ series: Array.from({ length: 8 }, (_, i) => ({ name: `S${i}`, values: [32, 48, 41, 66] })) }));
+      expect(eight.to("fillText").filter((c) => c.args[0] === "32")).toHaveLength(8);
+      // and with values of five digits they are left off
+      const wide = chart(base({ series: Array.from({ length: 8 }, (_, i) => ({ name: `S${i}`, values: [32000, 48000, 41000, 66000] })) }));
+      expect(wide.to("fillText").map((c) => c.args[0])).not.toContain("32000");
+      expect(wide.to("roundRect")).toHaveLength(32);
+    });
+
+    it("writes large numbers short, on the axis and on the bars, and widens the margin for the axis when it has to", () => {
+      const spy = chart(base({ series: [{ name: "S", values: [2500000, 48000000, 1200, 66] }] }));
+      const texts = spy.to("fillText").map((c) => String(c.args[0]));
+      expect(texts.slice(0, 5)).toEqual(["0", "12.5M", "25M", "37.5M", "50M"]);
+      expect(texts.slice(9)).toEqual(["2.5M", "48M", "1200", "66"]);
+      for (const c of spy.to("fillText").slice(0, 5)) expect(span(c)[0]).toBeGreaterThanOrEqual(0);
+
+      const huge = chart(base({ series: [{ name: "S", values: [1.23456789e20, 1, 2, 3] }] }));
+      const axis = huge.to("fillText").slice(0, 5);
+      expect(axis.map((c) => c.args[0])).toEqual(["0", "5e19", "1e20", "1.5e20", "2e20"]);
+      for (const c of axis) expect(span(c)[0]).toBeGreaterThanOrEqual(0);
+    });
+
+    it("leaves a chart whose text fits exactly as it was", () => {
+      const spy = chart(base({ chart: "bar" }));
+      expect((spy.to("roundRect")[0].args as number[])[0]).toBe(PX);
+      expect(spy.to("fillText").map((c) => c.args[0])).toEqual(["0", "25", "50", "75", "100", "Q1", "Q2", "Q3", "Q4", "32", "48", "41", "66"]);
     });
   });
 

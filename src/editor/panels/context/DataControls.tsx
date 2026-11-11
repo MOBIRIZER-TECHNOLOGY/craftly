@@ -59,12 +59,15 @@ export function TextCell({
   label,
   className,
   placeholder,
+  cellKey,
 }: {
   value: string;
   onText: (value: string) => void;
   label: string;
   className?: string;
   placeholder?: string;
+  /** "row:column" of a table's cell, so that the panel can find the field of one cell */
+  cellKey?: string;
 }) {
   return (
     <input
@@ -72,6 +75,7 @@ export function TextCell({
       autoComplete="off"
       spellCheck={false}
       aria-label={label}
+      data-cf-cell={cellKey}
       placeholder={placeholder}
       value={value}
       onChange={(e) => onText(e.target.value)}

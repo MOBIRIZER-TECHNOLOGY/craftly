@@ -9,6 +9,12 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 - Portable project files and library backups omit live links. Project import stages images before committing the design, and export reports missing images. Service-worker cleanup preserves unrelated same-origin caches.
 - See [verification](docs/VERIFICATION.md#production-readiness-regressions) for the 16 regression cases and remaining release checks.
 
+## Unreleased fixes from testing by hand (2026-11-11)
+
+- **Text wraps at the edge of the page.** A text box that grows as wide as its text used to keep growing past the page: a sentence typed into a new text box ran off the right edge, with the handle to make it narrower out of reach. A box that was inside the page now becomes a wrapping box when its text, or a larger font size, would take it past the left or right edge. It keeps the side its alignment holds (left edge, right edge or middle) and is one step to undo. A box that already reaches past the page, a turned one and one inside a group are left alone, and so is every text of a design that is opened.
+- **The text of a chart stays inside the chart.** A legend that is wider than the chart takes up to three lines (the plot moves down), names that are still too long are cut with an ellipsis, the names beside a bar chart get up to two fifths of the chart, crowded categories are named every few, values that would run into each other are left off, and numbers from a million on are written short (`2.5M`, `1.23B`, `1e20`). The page and the SVG download decide this in one place (`src/render/chartText.ts`), so they draw the same chart. A chart whose text fitted is drawn as before.
+- **A double click on a table or a chart opens its data.** For a table the keyboard goes into the cell that was double-clicked, with its text selected. Before, a double click did nothing and what was typed next ran the one-key shortcuts of the canvas (a circle, a line, a text box).
+
 ## [Unreleased]
 
 ### Added

@@ -64,6 +64,36 @@ describe("Data panel: table", () => {
     expect(document.activeElement).not.toBe(cell("Row 3, column 2"));
   });
 
+  it("puts the keyboard into the cell it was opened for, with its text selected", () => {
+    const t = createTable({
+      cells: [
+        ["A", "B"],
+        ["C", "Dee"],
+      ],
+      colWidths: [100, 100],
+      rowHeights: [40, 40],
+    });
+    openElements([t], { selected: [t] });
+    showPanel({ kind: "data", cell: { row: 1, col: 1 } });
+    const field = cell("Row 2, column 2");
+    expect(document.activeElement).toBe(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, 3]);
+  });
+
+  it("opens without taking the keyboard when no cell was asked for", () => {
+    const t = createTable();
+    openElements([t], { selected: [t] });
+    openData();
+    expect(document.activeElement?.tagName).not.toBe("INPUT");
+  });
+
+  it("opens without taking the keyboard for a cell the table does not have", () => {
+    const t = createTable();
+    openElements([t], { selected: [t] });
+    showPanel({ kind: "data", cell: { row: 9, col: 9 } });
+    expect(document.activeElement?.tagName).not.toBe("INPUT");
+  });
+
   it("adds and removes rows and columns, but never the last one", async () => {
     const user = userEvent.setup();
     const t = table();

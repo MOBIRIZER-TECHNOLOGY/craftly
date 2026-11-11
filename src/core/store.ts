@@ -43,7 +43,7 @@ export type ContextPanelState =
   | { kind: "font" }
   | { kind: "filters"; tab: "filters" | "adjust" | "tools" }
   | { kind: "background" }
-  | { kind: "data" }
+  | { kind: "data"; /** a table's cell to put the keyboard into, as a double click on the table asks for */ cell?: { row: number; col: number } }
   | { kind: "animate"; tab: "element" | "page" };
 
 export type ToolId = "select" | "text" | "shape" | "line" | "draw" | "pen" | "hand";
@@ -288,9 +288,30 @@ function fitZoomFor(design: Design, vw: number, vh: number, mode: "fit" | "fill"
   return Math.min(4, Math.max(0.05, z));
 }
 
+/** A wrapping box narrower than this is no use: a box whose anchor is this close to the edge of the page keeps growing with its text. */
+const MIN_WRAP_WIDTH = 80;
+
+/**
+ * A text box that grows as wide as its text (`autoWidth`) and was inside the page until now would reach past the left or right edge
+ * of the page with its new text or size: the box it becomes instead, which is as wide as the page allows from the side its alignment
+ * holds (left edge, right edge or middle) and wraps its lines. Null when the box may keep growing: it fits, it already reached past
+ * the page (someone put it there), or it is turned, where "the edge of the page" is not one side of the box.
+ */
+function wrapAtPageEdge(el: TextElement, before: DesignElement, measuredWidth: number, pageWidth: number): { x: number; width: number; height: number } | null {
+  if (!el.autoWidth || el.rotation || before.x < -0.5 || before.x + before.width > pageWidth + 0.5) return null;
+  const anchor = alignAnchor(el.align);
+  const held = el.x + anchor * el.width;
+  const left = held - anchor * measuredWidth;
+  if (left >= -0.5 && left + measuredWidth <= pageWidth + 0.5) return null;
+  const width = anchor === 0 ? pageWidth - held : anchor === 1 ? held : 2 * Math.min(held, pageWidth - held);
+  if (width < MIN_WRAP_WIDTH) return null;
+  const x = held - anchor * width;
+  return { x, width, height: measureTextElement({ ...el, autoWidth: false, width }).height };
+}
+
 /** Re-measure text elements whose object changed; returns the same design when nothing needs fixing. */
 function normalizeTexts(next: Design, prev: Design | null, all = false): Design {
-  type Fix = { id: ID; width: number; height: number; x: number; y: number };
+  type Fix = { id: ID; width: number; height: number; x: number; y: number; wraps?: true };
   const fixes: Fix[] = [];
   const prevById = new Map<ID, DesignElement>();
   if (prev && !all)
@@ -299,14 +320,18 @@ function normalizeTexts(next: Design, prev: Design | null, all = false): Design 
       (e) => prevById.set(e.id, e),
     );
   for (const page of next.pages) {
+    const onPage = new Set<DesignElement>(page.elements);
     ops.walk(page.elements, (el) => {
       if (el.type !== "text") return;
-      if (!all) {
-        const before = prevById.get(el.id);
-        if (before === el) return;
-      }
+      const before = prevById.get(el.id);
+      if (!all && before === el) return;
       const m = measureTextElement(el);
       if (Math.abs(m.width - el.width) < 0.5 && Math.abs(m.height - el.height) < 0.5) return;
+      const wrapped = before && onPage.has(el) ? wrapAtPageEdge(el, before, m.width, next.width) : null;
+      if (wrapped) {
+        fixes.push({ id: el.id, ...wrapped, y: el.y, wraps: true });
+        return;
+      }
       let x = el.x;
       let y = el.y;
       if (prevById.has(el.id)) {
@@ -331,6 +356,7 @@ function normalizeTexts(next: Design, prev: Design | null, all = false): Design 
       ops.walk(page.elements, (el) => {
         const fix = byId.get(el.id);
         if (fix && el.type === "text") {
+          if (fix.wraps) el.autoWidth = false;
           el.width = fix.width;
           el.height = fix.height;
           el.x = fix.x;

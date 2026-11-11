@@ -4,7 +4,7 @@
  */
 import { act, configure, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGroup, createImage, createShape, createText } from "@/core/factory";
+import { createChart, createGroup, createImage, createShape, createTable, createText } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
 import { canvasDesign, mountWorkspace, selectIds } from "@/test/canvasUtils";
 import { setContextMenuHandler, takePendingCaret } from "./controller";
@@ -445,6 +445,33 @@ describe("double click", () => {
     const rig = await mountWorkspace(canvasDesign([text()]));
     rig.dblclick(150, 420);
     expect(takePendingCaret()).toBeNull();
+  });
+
+  it("opens the cells of a table, on the cell that was double-clicked", async () => {
+    const rig = await mountWorkspace(canvasDesign([createTable({ id: "tb", x: 100, y: 400, width: 600, height: 240 })]));
+    rig.dblclick(350, 500);
+    expect(sel()).toEqual(["tb"]);
+    expect(useEditor.getState().context).toEqual({ kind: "data", cell: { row: 1, col: 1 } });
+    expect(useEditor.getState().editingTextId).toBeNull();
+  });
+
+  it("opens the numbers of a chart", async () => {
+    const rig = await mountWorkspace(canvasDesign([createChart({ id: "ch", x: 100, y: 400, width: 600, height: 240 })]));
+    rig.dblclick(350, 500);
+    expect(sel()).toEqual(["ch"]);
+    expect(useEditor.getState().context).toEqual({ kind: "data" });
+  });
+
+  it("leaves a locked table and a design that is only looked at alone", async () => {
+    const rig = await mountWorkspace(canvasDesign([createTable({ id: "tb", x: 100, y: 400, width: 600, height: 240, locked: true })]));
+    rig.dblclick(350, 500);
+    expect(useEditor.getState().context).toBeNull();
+    act(() => {
+      getActions().setLocked(["tb"], false);
+      getActions().setMode("view");
+    });
+    rig.dblclick(350, 500);
+    expect(useEditor.getState().context).toBeNull();
   });
 
   it("opens an image for cropping", async () => {

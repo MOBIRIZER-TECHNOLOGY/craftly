@@ -310,6 +310,47 @@ describe("column and bar charts", () => {
   });
 });
 
+describe("chart text that would not fit, written as the painter draws it", () => {
+  const long = "A category with a name that goes on for much longer than the chart has room for";
+  const ys = (svg: string) => [...svg.matchAll(/<text [^>]*\by="([^"]*)"/g)].map((m) => Number(m[1]));
+
+  it("takes a second line for a legend that is wider than the chart", () => {
+    const series = ["North America", "South America", "Europe and Africa", "Asia and the Pacific", "Everything else"].map((name) => ({ name, values: [1, 2, 3, 4] }));
+    const svg = chartOf({ showLegend: true, series });
+    expect(labels(svg).slice(0, 5)).toEqual(series.map((x) => x.name));
+    expect(new Set(ys(svg).slice(0, 5)).size).toBe(2);
+    expect(new Set([...svg.matchAll(/<circle [^>]*cy="([^"]*)"/g)].slice(0, 5).map((m) => m[1])).size).toBe(2);
+  });
+
+  it("cuts long names with an ellipsis: in the legend, beside a bar chart and under a column", () => {
+    expect(labels(chartOf({ showLegend: true, series: [{ name: long + long, values: [1] }] }))[0].endsWith("…")).toBe(true);
+    const bar = labels(chartOf({ chart: "bar", labels: ["Marketing and events", long, "IT", "HR"] })).slice(5, 9);
+    expect(bar[0]).toBe("Marketing and events");
+    expect(bar[1].endsWith("…")).toBe(true);
+    const column = labels(chartOf({ labels: ["Q1", long, "Q3", "Q4"] })).slice(5, 9);
+    expect(column[0]).toBe("Q1");
+    expect(column[1].endsWith("…")).toBe(true);
+  });
+
+  it("names every third of forty categories, and writes large numbers short", () => {
+    const names = Array.from({ length: 40 }, (_, i) => `C${i + 1}`);
+    const many = labels(chartOf({ labels: names, showValues: false, series: [{ name: "S", values: Array(40).fill(5) }] })).slice(5);
+    expect(many).toEqual(names.filter((_, i) => i % 3 === 0));
+    const lying = labels(chartOf({ chart: "bar", labels: names, showValues: false, series: [{ name: "S", values: Array(40).fill(5) }] })).slice(5);
+    expect(lying).toEqual(names.filter((_, i) => i % 2 === 0));
+    const big = labels(chartOf({ series: [{ name: "S", values: [2500000, 48000000, 1200, 66] }] }));
+    expect(big.slice(0, 5)).toEqual(["0", "12.5M", "25M", "37.5M", "50M"]);
+    expect(big.slice(9)).toEqual(["2.5M", "48M", "1200", "66"]);
+  });
+
+  it("leaves the values off bars and points that are too close together for them", () => {
+    const values = Array.from({ length: 40 }, (_, i) => 1001 + i);
+    const names = values.map((_, i) => `C${i + 1}`);
+    for (const kind of ["column", "bar", "line", "area"] as const) expect(labels(chartOf({ chart: kind, labels: names, series: [{ name: "S", values }] }))).not.toContain("1001");
+    expect(labels(chartOf({ chart: "column" }))).toContain("32");
+  });
+});
+
 describe("line and area charts", () => {
   it("draws a line with a ringed dot and a value for each point", () => {
     const svg = chartOf({ chart: "line" });
