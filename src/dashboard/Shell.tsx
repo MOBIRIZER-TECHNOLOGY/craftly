@@ -81,11 +81,13 @@ function importProject(): void {
     try {
       const report: ImportReport = { skipped: 0 };
       const design = await importProjectFile(file, report);
-      // what could not be read is said, not left out without a word
+      // what could not be read, and what was taken out, is said: nothing is left out without a word
+      const notes: string[] = [];
       if (report.skipped)
-        toast.info(
-          `Imported “${design.title}”. ${report.skipped === 1 ? "1 item" : `${report.skipped} items`} in the file could not be read and ${report.skipped === 1 ? "was" : "were"} left out.`,
-        );
+        notes.push(`${report.skipped === 1 ? "1 item" : `${report.skipped} items`} in the file could not be read and ${report.skipped === 1 ? "was" : "were"} left out.`);
+      if (report.remote)
+        notes.push(`${report.remote === 1 ? "1 picture" : `${report.remote} pictures`} that pointed to the web ${report.remote === 1 ? "was" : "were"} taken out.`);
+      if (notes.length) toast.info(`Imported “${design.title}”. ${notes.join(" ")}`);
       else toast.success(`Imported “${design.title}”`);
       navigate(designPath(design.id));
     } catch (error) {

@@ -18,6 +18,7 @@ import {
   projectFileName,
   remapAssetSources,
   serializeProjectFile,
+  usableElements,
   type ProjectAsset,
 } from "./projectFormat";
 
@@ -110,11 +111,16 @@ describe("build -> serialize -> parse", () => {
     const file = buildProjectFile(design, assets, new Date("2026-11-04T10:00:00Z"));
     expect(file.craftly).toBe(1);
     expect(file.exportedAt).toBe("2026-11-04T10:00:00.000Z");
-    const parsed = parseProjectFile(serializeProjectFile(file));
+    const report = { skipped: 0, remote: 0 };
+    const parsed = parseProjectFile(serializeProjectFile(file), report);
+    expect(report).toEqual({ skipped: 0, remote: 1 });
     expect(parsed.assets).toEqual(assets);
     expect(parsed.design.title).toBe("Round trip");
     expect(parsed.design.pages).toHaveLength(2);
-    expect(parsed.design.pages[0].elements).toEqual(design.pages[0].elements);
+    // everything comes back as it was, except the one picture that pointed to the web: that is an empty frame, and counted
+    expect(parsed.design.pages[0].elements).toEqual(
+      design.pages[0].elements.map((el) => (el.type === "image" && el.src === "https://example.com/pic.png" ? { ...el, src: null } : el)),
+    );
     expect(parsed.design.pages[0].background).toEqual(design.pages[0].background);
     expect(parsed.design.width).toBe(1200);
   });
@@ -348,6 +354,55 @@ describe("what a file may not do to the app", () => {
     const clean = { skipped: 0 };
     parseProjectFile(fileOf(design), clean);
     expect(clean.skipped).toBe(0);
+  });
+});
+
+describe("pictures that point to the web", () => {
+  const web = "https://tracker.example/pixel.png";
+  const fileOf = (design: Design) => serializeProjectFile(buildProjectFile(design, {}));
+
+  it("are taken out of a file wherever they hide, and counted: photos, fills, backgrounds, inside groups", () => {
+    const design = createDesign({
+      width: 800,
+      height: 600,
+      pages: [
+        createPage({
+          background: { type: "image", src: web, fit: "cover", dim: 0 },
+          elements: [
+            createImage({ id: "photo", src: web, width: 10, height: 10 }),
+            createImage({ id: "cut", src: "asset:kept", originalSrc: "//tracker.example/original.png", width: 10, height: 10 }),
+            createShape("rect", { id: "filled", fill: { type: "image", src: "HTTP://tracker.example/fill.png", fit: "tile" } }),
+            createGroup([createImage({ id: "inner", src: web, width: 10, height: 10 })], { id: "group" }),
+            createImage({ id: "stock", src: "builtin:sunset-hills", width: 10, height: 10 }),
+            createImage({ id: "own", src: "data:image/png;base64,AAAA", width: 10, height: 10 }),
+          ],
+        }),
+      ],
+    });
+    const report = { skipped: 0, remote: 0 };
+    const parsed = parseProjectFile(fileOf(design), report);
+    const text = JSON.stringify(parsed.design);
+    expect(text).not.toContain("tracker.example");
+    const [page] = parsed.design.pages;
+    expect(page.background).toEqual({ type: "solid", color: "#ffffff" });
+    const byId = (id: string) => page.elements.find((e) => e.id === id) as unknown as { src: string | null; fill: unknown };
+    expect(byId("photo").src).toBeNull();
+    expect(byId("cut").src).toBe("asset:kept");
+    expect("originalSrc" in byId("cut")).toBe(false);
+    expect(byId("filled").fill).toEqual({ type: "solid", color: "#e5e7eb" });
+    expect(text).toContain("builtin:sunset-hills");
+    expect(text).toContain("data:image/png;base64,AAAA");
+    // the photo, the fill, the picture in the group and the background (an original that is dropped is not counted on its own)
+    expect(report).toEqual({ skipped: 0, remote: 4 });
+  });
+
+  it("are taken out of what is pasted, which is checked like the elements of a file", () => {
+    const good = createShape("rect", { id: "ok" });
+    const pasted = usableElements([good, createImage({ id: "photo", src: web, width: 10, height: 10 }), { id: "junk", type: "hologram" }, "not an element"]);
+    expect(pasted.map((e) => e.id)).toEqual(["ok", "photo"]);
+    expect((pasted[1] as ImageElement).src).toBeNull();
+    expect(pasted[0]).toBe(good);
+    for (const nothing of [null, "text", 5, { elements: [] }, undefined]) expect(usableElements(nothing)).toEqual([]);
   });
 });
 

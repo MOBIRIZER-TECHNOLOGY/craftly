@@ -8,7 +8,8 @@
  *    port that comes with the message, so a page can tell whether it already runs it (src/serviceWorker.ts)
  *  - activate: claims the open pages and deletes the caches of older builds, except the build that ran before this one:
  *    a tab that is still open on it may ask for one more of its files
- *  - navigation requests: network first, fall back to the cached app shell
+ *  - navigation requests: network first, fall back to the cached app shell. Only the app's own page, answered as a page and as
+ *    a success, is kept as the shell: an error page of the host, or whatever answers another address (/robots.txt), is not
  *  - same-origin assets: cache first (any build's cache), filled lazily for anything that was not precached
  *  - WebAssembly files (the ONNX runtime of the on-device photo tools) go to a cache of their own: they are fetched on
  *    first use, not on the first visit, and a new build keeps them because their names change only with their content
@@ -25,6 +26,10 @@ const isRuntimeFile = (url) => url.pathname.endsWith(".wasm");
 // AI model files (about 90 MB) are kept by the app itself, in its own database: a copy here would double the storage
 const isModelFile = (url) => url.pathname.endsWith(".onnx");
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./favicon.svg", "./icon-192.png", "./icon-512.png"];
+// the address of the app's page: the folder this worker is served from, with or without index.html
+const HOME = new URL("./", self.location.href).pathname;
+const isHome = (url) => url.pathname === HOME || url.pathname === HOME + "index.html";
+const isPage = (res) => res.ok && (res.headers.get("content-type") || "").toLowerCase().startsWith("text/html");
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -82,10 +87,15 @@ self.addEventListener("fetch", (event) => {
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(VERSION).then((c) => c.put("./index.html", copy));
-          return res;
+        .then(async (res) => {
+          if (!isHome(url)) return res;
+          if (isPage(res)) {
+            const copy = res.clone();
+            caches.open(VERSION).then((c) => c.put("./index.html", copy));
+            return res;
+          }
+          // the host is in trouble (a 5xx page, a gateway's error): the app is all on this device, so open the copy that is here
+          return res.status >= 500 ? (await caches.match("./index.html", { ignoreVary: true })) || res : res;
         })
         .catch(() => caches.match("./index.html", { ignoreVary: true })),
     );

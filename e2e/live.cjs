@@ -14,7 +14,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, joinIfAsked, BASE } = require("./lib.cjs");
 
 const OUT = outDir("live");
 const ROOT = path.resolve(__dirname, "..");
@@ -190,6 +190,13 @@ async function startServer() {
   /* ---------------- a second person joins by the edit link ---------------- */
   await step("the edit link opens the same design for a second person, who is live", async () => {
     await bob.page.goto(editLink, { waitUntil: "load" });
+    // the server is new in this person's browser: the link asks before it connects, names the server, and has connected to nothing yet
+    await bob.page.getByRole("heading", { name: "Join this shared design?" }).waitFor({ timeout: 20000 });
+    const asked = await bob.page.locator(".cf-editor-state").innerText();
+    if (!asked.includes(new URL(server.address).host)) throw new Error("the question does not name the server: " + asked.replace(/\s+/g, " ").slice(0, 200));
+    const early = bob.sockets.filter((s) => s.url.startsWith(server.address.replace(/^http/, "ws")));
+    if (early.length) throw new Error("connected before the person said yes: " + early.length + " socket(s)");
+    await bob.page.getByRole("button", { name: "Join", exact: true }).click();
     await bob.page.waitForURL(/#\/design\//, { timeout: 30000 });
     await bob.page.locator(".cf-workspace").waitFor({ timeout: 20000 });
     await bob.page.waitForFunction(() => document.querySelector(".cf-live-badge")?.textContent === "Live", null, { timeout: 20000 });
@@ -284,6 +291,7 @@ async function startServer() {
   /* ---------------- a third person only looks ---------------- */
   await step("the view link opens the design read-only, and shows what the others do", async () => {
     await cat.page.goto(viewLink, { waitUntil: "load" });
+    if (!(await joinIfAsked(cat.page))) throw new Error("a third person, new to the server, was not asked before joining");
     await cat.page.waitForURL(/#\/design\//, { timeout: 30000 });
     await cat.page.locator(".cf-workspace").waitFor({ timeout: 20000 });
     await cat.page.waitForFunction(() => document.querySelector(".cf-live-badge")?.textContent === "Live, view only", null, { timeout: 20000 });
@@ -314,6 +322,8 @@ async function startServer() {
   await step("opening the edit link again on the same device opens the same design", async () => {
     const before = await bob.page.evaluate(() => window.__editor.getState().design.id);
     await bob.page.goto(editLink, { waitUntil: "load" });
+    // a design that was joined before is opened from the library: nothing is asked
+    if (await joinIfAsked(bob.page, 3000)) throw new Error("asked again about a design that was joined before");
     await bob.page.waitForURL(/#\/design\//, { timeout: 30000 });
     await bob.page.waitForFunction((id) => window.__editor.getState().design?.id === id, before, { timeout: 20000 });
     return "same design";

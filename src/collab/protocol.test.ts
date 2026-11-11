@@ -88,7 +88,6 @@ describe("the content of what arrives", () => {
   it.each([
     ["an image from the editor", set({ src: "asset:a_1234" })],
     ["a stock picture of the editor", set({ src: "builtin:sunset", originalSrc: "asset:a_9" })],
-    ["a picture from the web", set({ src: "https://example.test/p.jpg" })],
     ["a picture in the operation", set({ src: "data:image/png;base64,iVBORw0KGgo=" })],
     ["a drawing in the operation", set({ src: "data:image/svg+xml;utf8,<svg/>" })],
     ["no picture", set({ src: "" })],
@@ -118,6 +117,9 @@ describe("the content of what arrives", () => {
 
   it.each([
     ["a picture that is a script", set({ src: "javascript:alert(1)" })],
+    ["a picture from the web, which would tell its server who opened the design", set({ src: "https://example.test/p.jpg" })],
+    ["a picture from the web without a scheme", set({ src: "//example.test/p.jpg" })],
+    ["an original picture from the web", set({ originalSrc: "http://example.test/p.jpg" })],
     ["an original picture that is a script", set({ originalSrc: "javascript:alert(1)" })],
     ["a picture that is a page", set({ src: "data:text/html,<script>alert(1)</script>" })],
     ["a link that is a script", set({ link: "  JavaScript:alert(1)" })],

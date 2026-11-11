@@ -33,7 +33,7 @@ vi.mock("@/data/photos", async (importOriginal) => {
 
 const SIZE = { width: 200, height: 100 };
 let serial = 0;
-const url = (name = "pic") => `https://example.test/${name}-${++serial}.png`;
+const url = (name = "pic") => `blob:test/${name}-${++serial}.png`;
 const photo = (src: string, init: Partial<ReturnType<typeof createImage>> = {}) => createImage({ src, width: 50, height: 40, naturalWidth: 64, naturalHeight: 48, ...init });
 const pageOf = (elements: DesignElement[], background?: Fill): Page => createPage({ elements, ...(background ? { background } : {}) });
 const toSvg = (page: Page, options: Partial<SvgExportOptions> = {}, size = SIZE) => designPageToSvg(size, page, { embedFonts: false, ...options });
@@ -101,48 +101,22 @@ describe("pictures", () => {
     expect(defsOf(svg)).toContain('xlink:href="data:image/png;base64,AAAA"');
   });
 
-  it("fetches a picture from the web so that the file does not depend on the site", async () => {
-    const fetchMock = vi.fn(async () => reply(new Blob(["WEBDATA"], { type: "image/webp" })));
+  it("never asks the web for a picture: one that points there is left out like one that could not be loaded", async () => {
+    const fetchMock = vi.fn(async () => new Response("x"));
     vi.stubGlobal("fetch", fetchMock);
-    const src = url("web");
-    const { svg } = await toSvg(pageOf([photo(src)]));
-    expect(fetchMock).toHaveBeenCalledWith(src, { mode: "cors" });
-    expect(defsOf(svg)).toContain(dataUrl("image/webp", "WEBDATA"));
+    const { svg } = await toSvg(pageOf([photo("https://example.test/web.png")]));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(svg).not.toContain("example.test");
+    expect(defsOf(svg)).not.toContain("<image");
   });
 
-  it("assumes PNG for a web picture that does not say what it is, and keeps a JPEG a JPEG", async () => {
-    // the type decides how a filtered copy of the same picture is saved
+  it("saves a picture that is its own address as a PNG made from what the canvas shows, and a filtered copy of it too", async () => {
     const filtered = (src: string) => photo(src, { x: 60, filter: { ...photo(src).filter, brightness: 30 } });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => reply(new Blob(["WEBDATA"]))),
-    );
-    const untyped = url("untyped");
-    const png = await toSvg(pageOf([photo(untyped), filtered(untyped)]));
-    expect(png.svg).toContain('<image width="50" height="40" preserveAspectRatio="none" xlink:href="data:image/png;base64,AAAA"');
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => reply(new Blob(["WEBDATA"], { type: "image/jpeg" }))),
-    );
-    const typed = url("typed");
-    const jpeg = await toSvg(pageOf([photo(typed), filtered(typed)]));
-    expect(jpeg.svg).toContain('<image width="50" height="40" preserveAspectRatio="none" xlink:href="data:image/jpeg;base64,AAAA"');
-  });
-
-  it("falls back on what the canvas shows when the site does not answer, or answers with an error", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => refusal()),
-    );
-    const refused = await toSvg(pageOf([photo(url("refused"))]));
-    expect(defsOf(refused.svg)).toContain('xlink:href="data:image/png;base64,AAAA"');
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Promise.reject(new TypeError("network down"))),
-    );
-    const offline = await toSvg(pageOf([photo(url("offline"))]));
-    expect(defsOf(offline.svg)).toContain('xlink:href="data:image/png;base64,AAAA"');
-    expect(refused.warnings).toEqual([]);
+    const own = url("own");
+    const { svg, warnings } = await toSvg(pageOf([photo(own), filtered(own)]));
+    expect(warnings).toEqual([]);
+    expect(defsOf(svg)).toContain('xlink:href="data:image/png;base64,AAAA"');
+    expect(svg).toContain('<image width="50" height="40" preserveAspectRatio="none" xlink:href="data:image/png;base64,AAAA"');
   });
 
   it("saves a built-in photo as a JPEG made from what the canvas shows", async () => {
@@ -155,13 +129,13 @@ describe("pictures", () => {
       throw new DOMException("tainted", "SecurityError");
     });
     const { svg, warnings } = await toSvg(pageOf([photo(url("tainted"))]));
-    expect(warnings).toEqual(["Some images could not be embedded (they come from another website that does not allow it), so they are shown as grey boxes."]);
+    expect(warnings).toEqual(["Some images could not be embedded, so they are shown as grey boxes."]);
     expect(svg).toMatch(/<g clip-path="url\(#cf-cp\d+\)"><rect width="50" height="40" fill="#eceef3"\/><\/g>/);
     expect(defsOf(svg)).not.toContain("<image");
   });
 
   it("draws a grey box where a picture cannot be loaded at all", async () => {
-    const { svg, warnings } = await toSvg(pageOf([photo("https://example.test/broken-svg-export.png")]));
+    const { svg, warnings } = await toSvg(pageOf([photo("blob:test/broken-svg-export.png")]));
     expect(warnings).toEqual([]);
     expect(svg).toContain('<rect width="50" height="40" fill="#eceef3"/>');
     expect(svg).not.toContain("<use");
@@ -301,7 +275,7 @@ describe("backgrounds", () => {
   });
 
   it("leaves a picture that cannot be loaded as the grey base alone", async () => {
-    const { svg } = await toSvg(pageOf([], image("https://example.test/broken-background.png", "cover", 0.5)));
+    const { svg } = await toSvg(pageOf([], image("blob:test/broken-background.png", "cover", 0.5)));
     expect(svg).toContain('<rect width="200" height="100" fill="#e9ebf0"/>');
     expect(svg).not.toContain("<use");
     expect(svg).not.toContain("fill-opacity");

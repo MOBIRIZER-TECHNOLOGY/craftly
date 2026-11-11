@@ -192,6 +192,49 @@ describe("the service worker", () => {
       expect(await text(shell)).toBe("<html>fresh from the server</html>");
     });
 
+    it("does not keep an error page of the host as the shell, and opens the stored shell in its place", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/", () => new Response("<html>502 Bad Gateway</html>", { status: 502, headers: { "content-type": "text/html" } }));
+      expect(await text(await worker.request("/", { mode: "navigate" }))).toBe("<html>shell b1</html>");
+      await tick();
+      expect(await text(await worker.caches.stores.get("craftly-b1")!.match("./index.html"))).toBe("<html>shell b1</html>");
+    });
+
+    it("passes on an answer that says the page is not there, without keeping it", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/", () => new Response("<html>gone</html>", { status: 404, headers: { "content-type": "text/html" } }));
+      const response = await worker.request("/", { mode: "navigate" });
+      expect(response?.status).toBe(404);
+      await tick();
+      expect(await text(await worker.caches.stores.get("craftly-b1")!.match("./index.html"))).toBe("<html>shell b1</html>");
+    });
+
+    it("does not keep what another address answers as the shell: a text file, or a page that is not the app's", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/robots.txt", "User-agent: *", "text/plain");
+      worker.network.serve("/other/page.html", "<html>somebody else's page</html>", "text/html");
+      expect(await text(await worker.request("/robots.txt", { mode: "navigate" }))).toBe("User-agent: *");
+      expect(await text(await worker.request("/other/page.html", { mode: "navigate" }))).toBe("<html>somebody else's page</html>");
+      await tick();
+      expect(await text(await worker.caches.stores.get("craftly-b1")!.match("./index.html"))).toBe("<html>shell b1</html>");
+    });
+
+    it("does not keep an answer for the app's page that is no page", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/", '{"error":"maintenance"}', "application/json");
+      expect(await text(await worker.request("/", { mode: "navigate" }))).toBe('{"error":"maintenance"}');
+      await tick();
+      expect(await text(await worker.caches.stores.get("craftly-b1")!.match("./index.html"))).toBe("<html>shell b1</html>");
+    });
+
+    it("keeps the page as the shell when it is asked for by name", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/index.html", "<html>fresh by name</html>", "text/html; charset=utf-8");
+      expect(await text(await worker.request("/index.html", { mode: "navigate" }))).toBe("<html>fresh by name</html>");
+      await tick();
+      expect(await text(await worker.caches.stores.get("craftly-b1")!.match("./index.html"))).toBe("<html>fresh by name</html>");
+    });
+
     it("opens the stored shell when there is no connection", async () => {
       const worker = await running("b1");
       worker.network.online = false;

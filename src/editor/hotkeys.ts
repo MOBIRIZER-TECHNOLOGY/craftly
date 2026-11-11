@@ -2,6 +2,7 @@
  * Global keyboard shortcuts (Canva compatible) and clipboard events.
  * `installHotkeys()` returns an uninstall function; the Editor calls it once.
  */
+import { usableElements } from "@/export/projectFormat";
 import { createLine, createShape, createText } from "@/core/factory";
 import { findElement } from "@/core/ops";
 import { elementPath } from "@/core/penShape";
@@ -233,7 +234,9 @@ function onPaste(e: ClipboardEvent) {
   if (json) {
     e.preventDefault();
     try {
-      const elements = JSON.parse(json);
+      // the clipboard is filled by other pages and programs too: what it holds is checked like the elements of a file
+      const elements = usableElements(JSON.parse(json));
+      if (!elements.length) return;
       useEditor.setState({ clipboard: { elements, pasted: s.clipboard?.pasted ?? 0 } });
       s.actions.paste();
     } catch {

@@ -9,6 +9,14 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 - Portable project files and library backups omit live links. Project import stages images before committing the design, and export reports missing images. Service-worker cleanup preserves unrelated same-origin caches.
 - See [verification](docs/VERIFICATION.md#production-readiness-regressions) for the 16 regression cases and remaining release checks.
 
+## Unreleased security fixes from a review of the code (2026-11-11)
+
+- **A design never loads a picture from the web.** Nothing in the editor makes a picture that points to the web, but a design from outside could carry one, and opening it would ask a server of somebody's choosing for the picture, which tells them who opened the design, from where and when. Such a picture is now taken out where a design comes in: a project file and a backup (the import says how many), pasted elements, and a shared design (the server and the browser refuse the operation). The loader does not fetch one that got through, and the SVG download no longer fetches pictures either (`src/core/imageSources.ts`).
+- **What is pasted is checked like a file.** Elements on the clipboard come from other pages and programs too. They went into the design as they were; they are now checked like the elements of a project file, and what is no element is left out.
+- **A link to a shared design asks before it connects to a server that is new on this device.** A link names its server, and anybody can make a link. The page says which server it is and what joining means; the servers a person shared on or said yes to, the one the site was built for, and a design that was joined before do not ask (`src/editor/live/knownServers.ts`).
+- **The service worker keeps only the app's own page as the offline shell.** It kept whatever answered a navigation: an error page of the host, or `/robots.txt`, became what the app opened with when offline. It now keeps an answer only for the app's address, when it is a page and a success, and opens the copy it has when the host answers with a server error.
+- **The Content-Security-Policy is switched on** in `public/_headers`, after a model download was tried under it. A site that uses a live server adds that server's addresses to `connect-src`.
+
 ## Unreleased fixes from testing by hand (2026-11-11)
 
 - **Text wraps at the edge of the page.** A text box that grows as wide as its text used to keep growing past the page: a sentence typed into a new text box ran off the right edge, with the handle to make it narrower out of reach. A box that was inside the page now becomes a wrapping box when its text, or a larger font size, would take it past the left or right edge. It keeps the side its alignment holds (left edge, right edge or middle) and is one step to undo. A box that already reaches past the page, a turned one and one inside a group are left alone, and so is every text of a design that is opened.

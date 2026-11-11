@@ -6,7 +6,7 @@ import { isCancelled } from "./errors";
 import { breathe, loadPageResources } from "./resources";
 
 let serial = 0;
-const photo = () => createImage({ src: `https://example.test/resource-${++serial}.png`, width: 50, height: 50, naturalWidth: 64, naturalHeight: 48 });
+const photo = () => createImage({ src: `blob:test/resource-${++serial}.png`, width: 50, height: 50, naturalWidth: 64, naturalHeight: 48 });
 const logo = () => createGraphic({ svg: `<svg viewBox="0 0 10 10" data-n="${++serial}"><circle r="5" fill="#123456"/></svg>` });
 
 describe("breathe", () => {
@@ -52,12 +52,12 @@ describe("loadPageResources", () => {
     const image = photo();
     const graphic = logo();
     const page = createPage({
-      background: { type: "image", src: "https://example.test/background-res.png", fit: "cover" },
+      background: { type: "image", src: "blob:test/background-res.png", fit: "cover" },
       elements: [image, graphic, createText({ text: "words" })],
     });
     await loadPageResources(page);
     expect(getImage(image.src as string)).not.toBeNull();
-    expect(getImage("https://example.test/background-res.png")).not.toBeNull();
+    expect(getImage("blob:test/background-res.png")).not.toBeNull();
     expect(getSvgImage(graphicMarkup(graphic))).not.toBeNull();
   });
 
@@ -66,7 +66,7 @@ describe("loadPageResources", () => {
   });
 
   it("does not stop for a picture that cannot be loaded", async () => {
-    const page = createPage({ elements: [createImage({ src: "https://example.test/broken-res.png", width: 10, height: 10 }), photo()] });
+    const page = createPage({ elements: [createImage({ src: "blob:test/broken-res.png", width: 10, height: 10 }), photo()] });
     await expect(loadPageResources(page)).resolves.toBeUndefined();
   });
 

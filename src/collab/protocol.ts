@@ -11,6 +11,7 @@
  * same operations to everyone else. A batch that is applied twice (a client that sends again after a lost connection) does no
  * harm: the server answers `ack` for a number it has already seen, and nearly every operation is the same when repeated.
  */
+import { isRemoteImage } from "@/core/imageSources";
 import { isBlendMode } from "@/core/blend";
 import { isPlainColor } from "@/core/color";
 import { svgProblem } from "@/core/svgSafety";
@@ -53,6 +54,8 @@ const MAX_CONTENT = 300_000;
 const FORBIDDEN_KEYS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
 /** Properties that hold an address: it may point to a picture of the editor, to the web, to mail or a phone, never to code. */
 const ADDRESS_KEYS: ReadonlySet<string> = new Set(["src", "originalSrc", "link", "href", "url"]);
+/** Of those, the ones that are loaded as a picture when the design is drawn. */
+const PICTURE_KEYS: ReadonlySet<string> = new Set(["src", "originalSrc"]);
 const SAFE_ADDRESS = /^(asset:|builtin:|https?:\/\/|mailto:|tel:|#|\/(?!\/)|blob:|data:image\/(png|jpe?g|gif|webp|avif|svg\+xml)[;,])/i;
 /** The deepest a design may be nested when it arrives whole: its pages, groups of at most MAX_NESTING levels, and what an element holds. */
 const MAX_DESIGN_DEPTH = 96;
@@ -81,6 +84,8 @@ function checkValue(value: unknown, key: string, depth: number, budget: Budget):
   if (typeof value === "string") {
     if (value.length > MAX_STRING) return "a text that is too long";
     if (ADDRESS_KEYS.has(key) && value !== "" && !SAFE_ADDRESS.test(value)) return `${key} is not a safe address`;
+    // a link may lead to the web; a picture may not come from there (src/core/imageSources.ts)
+    if (PICTURE_KEYS.has(key) && isRemoteImage(value)) return `${key} is a picture from the web`;
     if (key === "svg" && value !== "") {
       const problem = svgProblem(value);
       if (problem) return `markup that is not plain drawing (${problem})`;

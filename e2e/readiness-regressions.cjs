@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { readFile } = require("node:fs/promises");
-const { launch, BASE } = require("./lib.cjs");
+const { launch, joinIfAsked, BASE } = require("./lib.cjs");
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const imageFile = { name: "audit.png", mimeType: "image/png", buffer: PNG };
@@ -217,6 +217,7 @@ async function idb(page, operation, id) {
         });
         const b = await peer.newPage();
         await b.goto(join);
+        await joinIfAsked(b);
         await workspace(b);
         await badge(b, "Live");
         const photo = original.pages[0].elements.find((el) => el.type === "image").src.slice(6);

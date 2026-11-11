@@ -31,7 +31,7 @@ async function repaintAfter(rig: CanvasRig, change: () => void) {
 const words = (ctx: ReturnType<typeof ctxOf>) => ctx.callsTo("fillText").map((c) => String(c[0]));
 
 const hello = () => createText({ id: "t", text: "Hello", x: 100, y: 100, width: 300, fontSize: 40 });
-const photo = (src = "https://example.test/ok.jpg") => createImage({ id: "img", src, x: 400, y: 300, width: 200, height: 150, naturalWidth: 400, naturalHeight: 300 });
+const photo = (src = "blob:test/ok.jpg") => createImage({ id: "img", src, x: 400, y: 300, width: 200, height: 150, naturalWidth: 400, naturalHeight: 300 });
 
 afterEach(() => {
   Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true, writable: true });
@@ -188,7 +188,7 @@ describe("pictures that are not ready", () => {
   });
 
   it("keeps trying every quarter second while a picture is missing", async () => {
-    const rig = await mountWorkspace(canvasDesign([photo("https://example.test/broken.jpg")]));
+    const rig = await mountWorkspace(canvasDesign([photo("blob:test/broken.jpg")]));
     await painted(rig);
     const ctx = ctxOf(rig);
     await waitFor(() => expect(ctx.callsTo("fillRect").length).toBeGreaterThan(0));
@@ -199,7 +199,7 @@ describe("pictures that are not ready", () => {
   });
 
   it("cancels the retry when the workspace is closed", async () => {
-    const rig = await mountWorkspace(canvasDesign([photo("https://example.test/broken.jpg")]));
+    const rig = await mountWorkspace(canvasDesign([photo("blob:test/broken.jpg")]));
     await painted(rig);
     const ctx = ctxOf(rig);
     rig.unmount();

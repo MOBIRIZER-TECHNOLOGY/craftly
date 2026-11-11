@@ -337,7 +337,8 @@ export interface ImageElement extends ElementBase {
    * null => empty frame placeholder.
    * "asset:<id>"   uploaded file stored in IndexedDB
    * "builtin:<id>" procedurally generated stock image (src/data/photos.ts)
-   * "data:..." / "http(s):..." literal URL
+   * "data:..." / "blob:..." the picture itself
+   * (never an address on the web: src/core/imageSources.ts says why, and takes such an address out where a design comes in)
    */
   src: string | null;
   /**

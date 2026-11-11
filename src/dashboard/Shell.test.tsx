@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDesign, listDesigns } from "@/core/library";
 import * as projectFile from "@/export/projectFile";
-import { createDesign, createPage, createShape } from "@/core/factory";
+import { createDesign, createImage, createPage, createShape } from "@/core/factory";
 import { exportProjectFile } from "@/export/projectFile";
 import { buildProjectFile, serializeProjectFile } from "@/export/projectFormat";
 import { Hosts, dismissOpenDialogs, emptyLibrary, seedDesign, stubFilePicker } from "@/test/dashuiUtils";
@@ -312,6 +312,22 @@ describe("<Shell>", () => {
         await chooseImport(user);
         expect(await screen.findByText("Couldn't import that file. It could not be saved on this device. Check that your browser has free storage and try again.")).toBeTruthy();
         expect(screen.queryByText(/IDBObjectStore/)).toBeNull();
+      });
+
+      it("says when pictures that pointed to the web were taken out", async () => {
+        const user = userEvent.setup();
+        const design = createDesign({
+          width: 800,
+          height: 600,
+          title: "Tracked",
+          pages: [createPage({ elements: [createImage({ src: "https://tracker.example/pixel.png", width: 10, height: 10 })] })],
+        });
+        stubFilePicker([new File([serializeProjectFile(buildProjectFile(design, {}))], "tracked.craftly", { type: "application/json" })]);
+        mountShell();
+        await chooseImport(user);
+        expect(await screen.findByText("Imported “Tracked”. 1 picture that pointed to the web was taken out.")).toBeTruthy();
+        const [imported] = await listDesigns();
+        expect(JSON.stringify(await getDesign(imported.id))).not.toContain("tracker.example");
       });
 
       it("says how many items of the file were left out", async () => {

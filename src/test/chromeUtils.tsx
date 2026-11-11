@@ -25,7 +25,7 @@ export function chromeDesign(title = "Chrome design"): Design {
     notes: "Welcome everyone",
     elements: [createText({ text: "Hello chrome", fontSize: 72, x: 80, y: 60, width: 600 }), createShape("rect", { x: 100, y: 300, width: 300, height: 200 })],
   });
-  const middle = createPage({ elements: [createImage({ src: "https://example.test/photo.jpg", x: 200, y: 100, width: 320, height: 240, naturalWidth: 640, naturalHeight: 480 })] });
+  const middle = createPage({ elements: [createImage({ src: "blob:test/photo.jpg", x: 200, y: 100, width: 320, height: 240, naturalWidth: 640, naturalHeight: 480 })] });
   const outro = createPage({ name: "Wrap up", notes: "Thank you", elements: [createText({ text: "The end", fontSize: 72, x: 80, y: 80, width: 600 })] });
   return createDesign({ title, width: 1280, height: 720, pages: [intro, middle, outro] });
 }

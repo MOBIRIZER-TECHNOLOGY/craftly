@@ -4,6 +4,7 @@
  * the painter never awaits; `loadImage` is the awaitable twin used by export.
  */
 import { getAssetUrl } from "@/core/assets";
+import { isRemoteImage } from "@/core/imageSources";
 import { svgToDataUrl } from "@/core/svg";
 import { getPhotoImage, getPhotoThumb } from "@/data/photos";
 
@@ -31,14 +32,17 @@ function loadElement(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.decoding = "async";
-    if (/^https?:/i.test(url)) img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Could not load image ${url.slice(0, 60)}`));
     img.src = url;
   });
 }
 
+/**
+ * A picture on the web is not fetched (src/core/imageSources.ts says why): it counts as a picture that could not be loaded.
+ */
 async function resolveSource(src: string): Promise<Drawable | null> {
+  if (isRemoteImage(src)) return null;
   if (src.startsWith("builtin:")) return getPhotoImage(src.slice(8), 1600);
   if (src.startsWith("asset:")) {
     const url = await getAssetUrl(src.slice(6));

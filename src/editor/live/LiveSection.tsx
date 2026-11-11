@@ -3,6 +3,7 @@
  * lets people edit, one that only lets them look), see how the connection is, and stop. It needs a Craftly live server
  * (docs/COLLABORATION.md): the address is asked for once and remembered on this device.
  */
+import { CONFIGURED_SERVER } from "./knownServers";
 import { useState } from "react";
 import { useEditor } from "@/core/store";
 import type { LiveLink } from "@/core/types";
@@ -13,7 +14,7 @@ import { joinUrl } from "./links";
 import "./live.css";
 
 const SERVER_KEY = "craftly.live.server";
-const DEFAULT_SERVER = (import.meta.env.VITE_CRAFTLY_LIVE_URL as string | undefined) ?? "http://localhost:8787";
+const DEFAULT_SERVER = CONFIGURED_SERVER ?? "http://localhost:8787";
 
 const savedServer = (): string => {
   try {

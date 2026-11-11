@@ -3,6 +3,7 @@
  * server while it is open, stopping, and joining a design that somebody else shares. The store (src/core/store.ts) holds the design
  * and the history; this module owns the connection (src/collab/live.ts) and tells the store what arrives.
  */
+import { rememberServer } from "./knownServers";
 import { Live, type LiveStatus, type SocketLike } from "@/collab/live";
 import { checkOps, type DeniedReason, type Role } from "@/collab/protocol";
 import type { Outbox } from "@/collab/session";
@@ -193,6 +194,8 @@ export async function shareDesign(typedServer: string, env: LiveEnv = {}): Promi
   if (!res.ok) throw new Error(await problemWith(res));
   const made = (await res.json()) as { room: string; editKey: string; viewKey: string; ownerKey: string };
   const link: LiveLink = { server, room: made.room, key: made.editKey, viewKey: made.viewKey, ownerKey: made.ownerKey, role: "edit" };
+  // a server this person shares on is one they chose: a link to it does not ask again (knownServers.ts)
+  rememberServer(server);
   try {
     if (collectAssetIds(content).length) await sharedMedia(link, env.fetch).upload(content);
   } catch (error) {

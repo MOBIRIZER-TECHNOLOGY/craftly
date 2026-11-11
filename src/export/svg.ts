@@ -88,24 +88,14 @@ async function sourceHref(src: string, drawable: Drawable, doc: SvgDoc): Promise
       return { href: await blobToDataUrl(asset.blob), mime: asset.mime || asset.blob.type || "image/png", ...size };
     }
   }
-  if (/^https?:/i.test(src)) {
-    try {
-      const response = await fetch(src, { mode: "cors" });
-      if (response.ok) {
-        const blob = await response.blob();
-        return { href: await blobToDataUrl(blob), mime: blob.type || "image/png" };
-      }
-    } catch {
-      /* fall through to re-encoding the decoded picture */
-    }
-  }
-  // builtin photos (generated on a canvas) and anything that could not be fetched: re-encode what was drawn
+  // builtin photos (generated on a canvas) and pictures that are their own data: re-encode what was drawn
+  // (a picture on the web is never loaded, so it does not get here: src/core/imageSources.ts)
   try {
     const canvas = toCanvas(drawable);
     const photo = src.startsWith("builtin:");
     return { href: canvas.toDataURL(photo ? "image/jpeg" : "image/png", 0.92), mime: photo ? "image/jpeg" : "image/png" };
   } catch {
-    doc.warn("Some images could not be embedded (they come from another website that does not allow it), so they are shown as grey boxes.");
+    doc.warn("Some images could not be embedded, so they are shown as grey boxes.");
     return { href: null, mime: "image/png" };
   }
 }

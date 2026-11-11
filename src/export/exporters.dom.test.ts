@@ -177,12 +177,12 @@ describe("exportDesign", () => {
         width: 200,
         height: 100,
         pages: [
-          createPage({ elements: [createImage({ src: "https://example.test/svg-export.png", width: 50, height: 50 })] }),
-          createPage({ elements: [createImage({ src: "https://example.test/svg-export-2.png", width: 50, height: 50 })] }),
+          createPage({ elements: [createImage({ src: "blob:test/svg-export.png", width: 50, height: 50 })] }),
+          createPage({ elements: [createImage({ src: "blob:test/svg-export-2.png", width: 50, height: 50 })] }),
         ],
       });
       const file = await exportDesign(design, options({ format: "svg", pages: [0, 1] }));
-      expect(file.note).toBe("Some images could not be embedded (they come from another website that does not allow it), so they are shown as grey boxes.");
+      expect(file.note).toBe("Some images could not be embedded, so they are shown as grey boxes.");
     });
   });
 

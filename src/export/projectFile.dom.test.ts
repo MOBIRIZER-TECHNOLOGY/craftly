@@ -159,7 +159,8 @@ describe("importing a project file", () => {
     expect((logoAgain as ImageElement).src).toBe(`asset:${byName("Logo").id}`);
     expect(((shape as ShapeElement).fill as ImageFill).src).toBe(`asset:${byName("Photo").id}`);
     expect(((group as GroupElement).children[0] as ImageElement).src).toBe(`asset:${byName("Logo").id}`);
-    expect((remote as ImageElement).src).toBe("https://example.test/remote.png");
+    // a picture that pointed to the web is an empty frame now: opening the design must not ask a server for it
+    expect((remote as ImageElement).src).toBeNull();
   });
 
   it("saves the design in the library under its new id", async () => {

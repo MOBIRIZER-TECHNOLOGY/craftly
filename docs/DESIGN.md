@@ -297,7 +297,7 @@ clipboard, history, view and panels.
 - `src/data/templates/` - `TEMPLATES: Template[]`.
 
 ### 6.5 Image sources (`ImageElement.src`, `ImageFill.src`)
-`asset:<id>` (IndexedDB upload), `builtin:<id>` (procedural photo), `data:` / `http(s):` literal. Resolve through
+`asset:<id>` (IndexedDB upload), `builtin:<id>` (procedural photo), `data:` / `blob:` literal. A picture on the web (`http(s):`) is never loaded and is taken out where a design comes in (`src/core/imageSources.ts`). Resolve through
 `render/images.ts: loadImage(src)`; the renderer never touches IndexedDB directly.
 
 ### 6.6 Reserved procedural photo ids (templates may rely on all of these)

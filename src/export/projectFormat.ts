@@ -5,6 +5,7 @@
  *
  *   { craftly: 1, exportedAt, design, assets: { [assetId]: { name, mime, width, height, dataUrl } } }
  */
+import { backgroundWithoutRemoteImage, withoutRemoteImages } from "@/core/imageSources";
 import { pageDuration } from "@/core/animation";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
 import { createMigrator, MigrationError, type MigrationStep } from "@/core/schema/migrator";
@@ -172,6 +173,8 @@ export function isUsableElement(el: unknown): el is DesignElement {
 export interface ImportReport {
   /** elements that could not be used (damaged, of an unknown kind, or groups nested deeper than `MAX_GROUP_DEPTH`) */
   skipped: number;
+  /** pictures that pointed to the web and were taken out: a photo is an empty frame now, a fill or background plain (src/core/imageSources.ts) */
+  remote?: number;
 }
 
 /**
@@ -185,14 +188,26 @@ export const MAX_TITLE_LENGTH = 120;
 
 function sanitizeElements(elements: unknown[], report: ImportReport, depth = 0): DesignElement[] {
   const out: DesignElement[] = [];
+  const count = { remote: 0 };
   for (const el of elements) {
     if (!isUsableElement(el) || (el.type === "group" && depth >= MAX_GROUP_DEPTH)) {
       report.skipped++;
       continue;
     }
-    out.push(el.type === "group" ? { ...el, children: sanitizeElements(el.children, report, depth + 1) } : el);
+    // (the children of a group are gone through by the call for them, so here only the element itself)
+    const kept = el.type === "group" ? { ...el, children: sanitizeElements(el.children, report, depth + 1) } : el;
+    out.push(kept.type === "group" ? kept : withoutRemoteImages(kept, count));
   }
+  if (count.remote) report.remote = (report.remote ?? 0) + count.remote;
   return out;
+}
+
+/**
+ * Elements that came from outside the app and not from a file (the clipboard): the usable ones, without pictures from the web,
+ * or an empty list for anything that is no list of elements.
+ */
+export function usableElements(value: unknown, report: ImportReport = { skipped: 0 }): DesignElement[] {
+  return Array.isArray(value) ? sanitizeElements(value, report) : [];
 }
 
 const FILL_TYPES = new Set(["solid", "linear", "radial", "pattern", "image"]);
@@ -228,10 +243,14 @@ function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false
   if (!Array.isArray(raw.pages) || raw.pages.length === 0) throw new ProjectFileError();
   const pages: Page[] = raw.pages.map((p: unknown) => {
     if (!isObject(p) || !Array.isArray(p.elements)) throw new ProjectFileError();
-    const background =
+    const remote = { remote: 0 };
+    const background = backgroundWithoutRemoteImage(
       isObject(p.background) && typeof p.background.type === "string" && FILL_TYPES.has(p.background.type)
         ? (p.background as unknown as Fill)
-        : ({ type: "solid", color: "#ffffff" } as Fill);
+        : ({ type: "solid", color: "#ffffff" } as Fill),
+      remote,
+    );
+    if (remote.remote) report.remote = (report.remote ?? 0) + remote.remote;
     return {
       id: typeof p.id === "string" && p.id ? p.id : `p_${Math.random().toString(36).slice(2, 10)}`,
       ...(typeof p.name === "string" ? { name: p.name } : {}),

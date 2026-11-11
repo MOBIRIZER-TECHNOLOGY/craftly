@@ -18,7 +18,7 @@ vi.mock("@/data/photos", () => ({
 }));
 
 let serial = 0;
-const url = (name = "img") => `https://example.test/${name}-${++serial}.png`;
+const url = (name = "img") => `blob:test/${name}-${++serial}.png`;
 const svg = (name = "g") => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" data-id="${name}-${++serial}"><rect width="10" height="10"/></svg>`;
 
 beforeEach(async () => {
@@ -26,7 +26,7 @@ beforeEach(async () => {
 });
 
 describe("loadImage", () => {
-  it("loads a picture from a web address and decodes it", async () => {
+  it("loads a picture that is its own address and decodes it", async () => {
     const src = url();
     const image = (await loadImage(src)) as HTMLImageElement;
     expect(image).toBeInstanceOf(HTMLImageElement);
@@ -35,11 +35,16 @@ describe("loadImage", () => {
     expect(image.decoding).toBe("async");
   });
 
-  it("asks for cross-origin access only for web addresses", async () => {
-    const web = (await loadImage(url())) as HTMLImageElement;
-    expect(web.crossOrigin).toBe("anonymous");
-    const inline = (await loadImage(`data:image/png;base64,AAAA${++serial}`)) as HTMLImageElement;
-    expect(inline.crossOrigin).not.toBe("anonymous");
+  it("does not load a picture from the web: it counts as one that could not be loaded", async () => {
+    // asking a server of somebody else's choosing for a picture tells them who opened the design (src/core/imageSources.ts)
+    const made: string[] = [];
+    const setSrc = vi.spyOn(HTMLImageElement.prototype, "src", "set").mockImplementation((value: string) => void made.push(value));
+    for (const src of ["https://example.test/p.png", "http://example.test/p.png", "//example.test/p.png", "  HTTPS://EXAMPLE.TEST/p.png"]) {
+      expect(await loadImage(src)).toBeNull();
+      expect(getImage(src)).toBeNull();
+    }
+    expect(made).toEqual([]);
+    setSrc.mockRestore();
   });
 
   it("keeps what it loaded: the same picture is not fetched twice", async () => {
@@ -99,7 +104,7 @@ describe("loadImage", () => {
 
   it("keeps at most 500 pictures, dropping the oldest first", async () => {
     const run = ++serial;
-    const sources = Array.from({ length: 503 }, (_, i) => `https://example.test/cache-${run}-${i}.png`);
+    const sources = Array.from({ length: 503 }, (_, i) => `blob:test/cache-${run}-${i}.png`);
     await Promise.all(sources.map((src) => loadImage(src)));
     // (reading is safe: asking for a dropped picture only starts loading it again)
     const kept = sources.filter((src) => getImage(src) !== null);
@@ -208,7 +213,7 @@ describe("SVG graphics", () => {
 
 describe("imageUrl", () => {
   it("returns web and data addresses unchanged", async () => {
-    expect(await imageUrl("https://example.test/a.png")).toBe("https://example.test/a.png");
+    expect(await imageUrl("blob:test/a.png")).toBe("blob:test/a.png");
     expect(await imageUrl("data:image/png;base64,AAAA")).toBe("data:image/png;base64,AAAA");
   });
 

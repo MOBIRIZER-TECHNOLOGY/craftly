@@ -16,7 +16,7 @@ beforeEach(() => {
 afterEach(() => restoreLayout());
 
 const photo = (extra: Partial<ImageElement> = {}) =>
-  createImage({ src: "https://example.test/p.jpg", x: 50, y: 50, width: 300, height: 200, naturalWidth: 300, naturalHeight: 200, ...extra });
+  createImage({ src: "blob:test/p.jpg", x: 50, y: 50, width: 300, height: 200, naturalWidth: 300, naturalHeight: 200, ...extra });
 const openFilters = (tab: "filters" | "adjust" = "filters") => showPanel({ kind: "filters", tab });
 const presets = () => within(screen.getByRole("group", { name: "Filter presets" }));
 const slider = (name: string) => screen.getByRole("slider", { name });
@@ -243,7 +243,7 @@ describe("Filters panel: edge cases", () => {
   });
 
   it("keeps the preview tiles empty while the picture cannot be loaded", async () => {
-    const p = photo({ src: "https://example.test/broken.jpg" });
+    const p = photo({ src: "blob:test/broken.jpg" });
     openElements([p], { selected: [p] });
     const { container } = openFilters();
     await new Promise((r) => setTimeout(r, 60));

@@ -10,8 +10,9 @@ import { getDesign, saveDesign } from "@/core/library";
 import type { Design, LiveLink } from "@/core/types";
 import { clearLibrary } from "@/test/helpers";
 import * as connection from "./connection";
-import { findShared } from "./joined";
+import { findShared, saveJoined } from "./joined";
 import { JoinPage } from "./JoinPage";
+import { isKnownServer, rememberServer } from "./knownServers";
 import { joinToken } from "./links";
 
 vi.mock("./connection", async (original) => ({ ...(await original<typeof import("./connection")>()), joinDesign: vi.fn() }));
@@ -24,6 +25,8 @@ beforeEach(async () => {
   await clearLibrary();
   localStorage.clear();
   join.mockReset();
+  // the server of the link is one this person has dealt with: the question for a new one has tests of its own below
+  rememberServer(link.server);
 });
 
 describe("a link that is not one of ours", () => {
@@ -106,5 +109,57 @@ describe("a link to a design that is not on this device yet", () => {
     arrive({ design: shared(), role: "edit" });
     await new Promise((r) => setTimeout(r, 50));
     expect(onOpen).not.toHaveBeenCalled();
+  });
+});
+
+describe("a link to a server that is new on this device", () => {
+  beforeEach(() => localStorage.clear());
+  const question = () => screen.findByRole("heading", { name: "Join this shared design?" });
+
+  it("asks before it connects, names the server, and starts on the answer that changes nothing", async () => {
+    const onOpen = vi.fn();
+    render(<JoinPage token={joinToken(link)} onOpen={onOpen} />);
+    expect(await question()).toBeTruthy();
+    expect(screen.getByText(/This link connects to live\.example\.test, a server this device has not used before\./)).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Back to home" })));
+    expect(join).not.toHaveBeenCalled();
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(isKnownServer(link.server)).toBe(false);
+  });
+
+  it("joins when the person says so, and does not ask about that server again", async () => {
+    join.mockResolvedValue({ design: shared(), role: "edit" });
+    const onOpen = vi.fn();
+    const first = render(<JoinPage token={joinToken(link)} onOpen={onOpen} />);
+    await question();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Join" }));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
+    expect(join).toHaveBeenCalledWith(link);
+    expect(isKnownServer(link.server)).toBe(true);
+    first.unmount();
+
+    // another room of the same server: no question
+    const other: LiveLink = { ...link, room: "AB-FaxWt8edjpnT-bGQyjB" };
+    render(<JoinPage token={joinToken(other)} onOpen={onOpen} />);
+    await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("heading", { name: "Join this shared design?" })).toBeNull();
+  });
+
+  it("goes home and connects to nothing when the person says no", async () => {
+    window.location.hash = "#/join/x";
+    render(<JoinPage token={joinToken(link)} onOpen={vi.fn()} />);
+    await question();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Back to home" }));
+    expect(window.location.hash).toBe("#/");
+    expect(join).not.toHaveBeenCalled();
+    expect(isKnownServer(link.server)).toBe(false);
+  });
+
+  it("does not ask for a design that was joined before: it is opened from the library", async () => {
+    await saveJoined(shared(), link);
+    const onOpen = vi.fn();
+    render(<JoinPage token={joinToken(link)} onOpen={onOpen} />);
+    await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
+    expect(join).not.toHaveBeenCalled();
   });
 });

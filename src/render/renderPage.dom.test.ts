@@ -24,7 +24,7 @@ import { layoutText } from "./textLayout";
 const DESIGN = { width: 400, height: 300 };
 let counter = 0;
 /** A fresh image address per call: the image cache lives as long as the module does. */
-const url = (name: string) => `https://example.test/${name}-${++counter}.png`;
+const url = (name: string) => `blob:test/${name}-${++counter}.png`;
 
 function paint(elements: DesignElement[], opts: Partial<RenderOptions> = {}, page: Partial<Page> = {}, size = DESIGN) {
   const spy = spyContext({ width: 400, height: 300 });
@@ -810,13 +810,13 @@ describe("resources and preparation", () => {
   it("lists the images, graphics and fonts a page needs, ignoring hidden and empty elements", () => {
     const graphic = createGraphic({ svg: '<svg viewBox="0 0 10 10"><circle r="5" fill="#123456"/></svg>' });
     const page = createPage({
-      background: { type: "image", src: "https://example.test/bg-res.png", fit: "cover" },
+      background: { type: "image", src: "blob:test/bg-res.png", fit: "cover" },
       elements: [
-        photo("https://example.test/a-res.png"),
+        photo("blob:test/a-res.png"),
         photo(null),
-        photo("https://example.test/hidden-res.png", { hidden: true }),
+        photo("blob:test/hidden-res.png", { hidden: true }),
         graphic,
-        createGroup([photo("https://example.test/nested-res.png"), createText({ text: "in group", fontFamily: "Lora" })]),
+        createGroup([photo("blob:test/nested-res.png"), createText({ text: "in group", fontFamily: "Lora" })]),
         createText({ paragraphs: [{ runs: [{ text: "plain" }, { text: "bold", bold: true, font: "Anton" }] }, { runs: [] }], fontFamily: "Inter" }),
         createTable({ fontFamily: "Poppins" }),
         createChart({ fontFamily: "Roboto" }),
@@ -824,7 +824,7 @@ describe("resources and preparation", () => {
       ],
     });
     const resources = collectResources(page);
-    expect([...resources.images].sort()).toEqual(["https://example.test/a-res.png", "https://example.test/bg-res.png", "https://example.test/nested-res.png"]);
+    expect([...resources.images].sort()).toEqual(["blob:test/a-res.png", "blob:test/bg-res.png", "blob:test/nested-res.png"]);
     expect([...resources.svgs]).toEqual([graphicMarkup(graphic)]);
     expect([...resources.fonts.keys()].sort()).toEqual([
       "Anton|700|false",

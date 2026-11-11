@@ -9,7 +9,7 @@
  * LIVE_PORT is the port of the "server" when the page is served under a Content-Security-Policy that names its origin.
  */
 const { WebSocketServer } = require("ws");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, joinIfAsked, BASE } = require("./lib.cjs");
 
 const OUT = outDir("hostile");
 const results = [];
@@ -133,6 +133,8 @@ function startServer(config) {
     "a link to a server that sends a design with code in it is refused in words, and nothing of the design is kept",
     async () => {
       await other.goto(link(ROOMS.code), { waitUntil: "load" });
+      // the link asks first, because its server is new here; the person in this story says yes
+      if (!(await joinIfAsked(other))) throw new Error("the link did not ask before it connected to a server that is new here");
       await other.getByText("This shared design could not be opened").waitFor({ timeout: 20000 });
       const text = await other.locator(".cf-editor-state").innerText();
       if (!/does not accept/i.test(text)) throw new Error("the words: " + text.replace(/\s+/g, " ").slice(0, 200));
@@ -153,6 +155,7 @@ function startServer(config) {
     "a link to a server that is honest opens the design, live",
     async () => {
       await joined.goto(link(ROOMS.turns), { waitUntil: "load" });
+      await joinIfAsked(joined);
       await joined.waitForURL(/#\/design\//, { timeout: 30000 });
       await joined.locator(".cf-workspace").waitFor({ timeout: 20000 });
       await badgeIs(joined, "Live", TURNS_AFTER_MS - 500);

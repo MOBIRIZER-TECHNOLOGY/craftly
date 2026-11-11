@@ -44,4 +44,24 @@ function outDir(name) {
 
 const BASE = (process.env.BASE || "http://127.0.0.1:5173").replace(/\/$/, "");
 
-module.exports = { launch, launchPersistent, outDir, BASE };
+/**
+ * A link to a shared design asks before it connects to a server that is new in this browser ("Join this shared design?"): this
+ * says yes when it asks, and does nothing when the page went on by itself (a server that is known, a design that was joined before).
+ * Returns whether it was asked.
+ */
+async function joinIfAsked(page, ms = 10000) {
+  const join = page.getByRole("button", { name: "Join", exact: true });
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (await join.isVisible().catch(() => false)) {
+      await join.click();
+      return true;
+    }
+    // the editor, or the page that says why the link does not work: nothing was asked
+    if (!page.url().includes("#/join/") || (await page.getByText("This shared design could not be opened").count())) return false;
+    await page.waitForTimeout(100);
+  }
+  return false;
+}
+
+module.exports = { launch, launchPersistent, outDir, joinIfAsked, BASE };

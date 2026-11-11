@@ -816,6 +816,22 @@ describe("clipboard", () => {
     expect(state().selection).toEqual([second.id]);
   });
 
+  it("paste checks what another page or program put on the clipboard like the elements of a file", () => {
+    open();
+    // not a list, a list of things that are no elements, an element of a kind that does not exist: nothing is added
+    for (const junk of ["{}", "5", JSON.stringify(["text", null, 7]), JSON.stringify([{ id: "x", type: "hologram", x: 0, y: 0, width: 1, height: 1, rotation: 0, opacity: 1 }])]) {
+      expect(send("paste", clip({ [MIME]: junk }))).toBe(true);
+      expect(elements()).toHaveLength(6);
+    }
+    // of a mixed list the usable element is kept, and a picture that points to the web comes in as an empty frame
+    const photo = { ...rect(), id: "p", type: "image", src: "https://tracker.example/pixel.png", crop: { x: 0, y: 0, width: 1, height: 1 }, filter: {}, mask: "none" };
+    send("paste", clip({ [MIME]: JSON.stringify([rect(), { id: "bad", type: "shape" }, photo]) }));
+    const added = elements().slice(6);
+    expect(added.map((e) => e.type)).toEqual(["shape", "image"]);
+    expect((added[1] as { src: unknown }).src).toBeNull();
+    expect(JSON.stringify(elements())).not.toContain("tracker.example");
+  });
+
   it("paste ignores clipboard data it cannot read", () => {
     open();
     expect(send("paste", clip({ [MIME]: "{not json" }))).toBe(true);

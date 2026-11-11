@@ -112,7 +112,7 @@ describe("a canvas with a filter property", () => {
   it("filters the picture of an element when the page is painted", async () => {
     const { renderPage } = await import("./renderPage");
     const { loadImage } = await import("./images");
-    const src = "https://example.test/modern-page.png";
+    const src = "blob:test/modern-page.png";
     await loadImage(src);
     const target = spyContext();
     const spies = captureContexts();
