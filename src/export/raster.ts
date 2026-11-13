@@ -19,6 +19,12 @@ export interface RasterRequest {
   transparent?: boolean;
   /** paint this colour behind everything (JPEG and PDF have no alpha channel) */
   flatten?: string;
+  /**
+   * Design pixels painted beyond every edge of the page, for a printer who cuts the sheet down to the page: the
+   * canvas is that much larger on every side, the page background is stretched over it and elements that hang over
+   * the edge of the page show there. Elements keep their place on the page.
+   */
+  bleed?: number;
   signal?: AbortSignal;
 }
 
@@ -38,8 +44,12 @@ const now = () => (typeof performance !== "undefined" ? performance.now() : Date
  * single step holds the main thread for more than a fraction of a second.
  */
 export async function renderExportCanvas(design: Pick<Design, "width" | "height">, page: Page, req: RasterRequest): Promise<HTMLCanvasElement> {
-  const width = Math.max(1, Math.round(design.width * req.scale));
-  const height = Math.max(1, Math.round(design.height * req.scale));
+  const bleed = typeof req.bleed === "number" && req.bleed > 0 ? req.bleed : 0;
+  // what the canvas shows: the page, and the bleed around it
+  const fullWidth = design.width + bleed * 2;
+  const fullHeight = design.height + bleed * 2;
+  const width = Math.max(1, Math.round(fullWidth * req.scale));
+  const height = Math.max(1, Math.round(fullHeight * req.scale));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -47,7 +57,7 @@ export async function renderExportCanvas(design: Pick<Design, "width" | "height"
   if (!ctx || canvas.width !== width || canvas.height !== height) throw new ExportError("too-large", TOO_LARGE);
 
   // same recipe as render/renderPage.renderPageToCanvas: the scale follows the pixel width so thumbnails and exports agree
-  const scale = width / design.width;
+  const scale = width / fullWidth;
   const bands = planBands(width, height);
   let sliceStart = now();
   const breathe = async () => {
@@ -66,7 +76,7 @@ export async function renderExportCanvas(design: Pick<Design, "width" | "height"
       throwIfAborted(req.signal);
       await loadPageResources(page, req.signal);
       const before = settledEpoch();
-      if (renderPage(ctx, design, page, { scale, transparent: req.transparent }) || settledEpoch() === before) break;
+      if (renderPage(ctx, design, page, { scale, transparent: req.transparent, bleed }) || settledEpoch() === before) break;
     }
   } else {
     const band = document.createElement("canvas");
@@ -82,7 +92,7 @@ export async function renderExportCanvas(design: Pick<Design, "width" | "height"
       let complete = true;
       for (const { y, rows } of bands) {
         if (band.height !== rows) band.height = rows; // only the last band can be shorter (this also clears it)
-        const done = renderPage(bandCtx, design, page, { scale, clip: { x: 0, y: y / scale, w: design.width, h: rows / scale }, transparent: req.transparent });
+        const done = renderPage(bandCtx, design, page, { scale, clip: { x: 0, y: y / scale, w: fullWidth, h: rows / scale }, transparent: req.transparent, bleed });
         complete = complete && done;
         bandCtx.getImageData(0, 0, 1, 1); // flush: rasterise this band now instead of all bands at the very end
         ctx.clearRect(0, y, width, rows); // a repeated pass must replace, not blend over, the first one

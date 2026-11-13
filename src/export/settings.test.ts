@@ -44,6 +44,16 @@ describe("readStoredSettings", () => {
     expect(readStoredSettings('{"resolution":null,"gifFps":null}')).toMatchObject({ resolution: 720, gifFps: 15 });
   });
 
+  it("starts without bleed or crop marks, and reads them back within their limits", () => {
+    expect(DEFAULT_DOWNLOAD_SETTINGS).toMatchObject({ bleed: false, bleedMm: 3, cropMarks: false });
+    const s = base({ format: "pdf", pdfMode: "print", bleed: true, bleedMm: 4.5, cropMarks: true });
+    expect(readStoredSettings(serializeSettings(s))).toEqual(s);
+    expect(readStoredSettings('{"bleed":true,"bleedMm":99,"cropMarks":true}')).toMatchObject({ bleed: true, bleedMm: 10, cropMarks: true });
+    expect(readStoredSettings('{"bleed":"yes","bleedMm":-1,"cropMarks":1}')).toMatchObject({ bleed: false, bleedMm: 0, cropMarks: false });
+    expect(readStoredSettings('{"bleedMm":"wide"}').bleedMm).toBe(3);
+    expect(readStoredSettings('{"bleedMm":2.26}').bleedMm).toBe(2.3);
+  });
+
   it("clamps numbers and snaps the size to the slider's quarter steps", () => {
     expect(readStoredSettings('{"scale":99,"quality":7}')).toMatchObject({ scale: SIZE_MAX, quality: 1 });
     expect(readStoredSettings('{"scale":0.01,"quality":-1}')).toMatchObject({ scale: SIZE_MIN, quality: 0.1 });
@@ -78,6 +88,20 @@ describe("toExportOptions", () => {
     expect(toExportOptions(base({ format: "pdf", pdfMode: "print" }), [0])).toMatchObject({ pdfMode: "print", quality: 0.92 });
     // the size slider does not apply to PDFs
     expect(toExportOptions(base({ format: "pdf", scale: 4 }), [0]).scale).toBe(1.5);
+  });
+
+  it("hands the bleed and the crop marks to a print PDF only", () => {
+    const print = base({ format: "pdf", pdfMode: "print" });
+    expect(toExportOptions(print, [0])).toMatchObject({ bleedMm: 0, cropMarks: false });
+    expect(toExportOptions({ ...print, bleed: true }, [0])).toMatchObject({ bleedMm: 3, cropMarks: false });
+    expect(toExportOptions({ ...print, bleed: true, bleedMm: 5, cropMarks: true }, [0])).toMatchObject({ bleedMm: 5, cropMarks: true });
+    // the size is remembered while the switch is off, and not used
+    expect(toExportOptions({ ...print, bleed: false, bleedMm: 5 }, [0]).bleedMm).toBe(0);
+    for (const other of [base({ format: "pdf", bleed: true, cropMarks: true }), base({ format: "png", pdfMode: "print", bleed: true, cropMarks: true })]) {
+      const o = toExportOptions(other, [0]);
+      expect(o).not.toHaveProperty("bleedMm");
+      expect(o).not.toHaveProperty("cropMarks");
+    }
   });
 
   it("gives a GIF its resolution and frame rate", () => {

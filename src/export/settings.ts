@@ -4,7 +4,7 @@
  */
 import { ANIM_RESOLUTIONS, DEFAULT_ANIM_RESOLUTION, DEFAULT_GIF_FPS, GIF_FPS_CHOICES, VIDEO_FPS, isAnimatedFormat, type AnimResolution } from "./animated/frames";
 import type { ExportFormat, ExportOptions } from "./exporters";
-import { COMPRESSED_QUALITY, DEFAULT_QUALITY, clampNumber } from "./options";
+import { COMPRESSED_QUALITY, DEFAULT_BLEED_MM, DEFAULT_QUALITY, MAX_BLEED_MM, clampNumber } from "./options";
 
 export type PagesMode = "all" | "current" | "custom";
 
@@ -18,6 +18,12 @@ export interface DownloadSettings {
   transparent: boolean;
   /** pdf: smaller file, lower image quality */
   compress: boolean;
+  /** print pdf: add a bleed around the page */
+  bleed: boolean;
+  /** print pdf: how wide the bleed is, in millimetres, 0 .. 10 (kept while `bleed` is off) */
+  bleedMm: number;
+  /** print pdf: draw crop marks */
+  cropMarks: boolean;
   embedFonts: boolean;
   pagesMode: PagesMode;
   /** gif / webm: length of the picture's shorter side, 480 | 720 | 1080 */
@@ -33,6 +39,9 @@ export const DEFAULT_DOWNLOAD_SETTINGS: DownloadSettings = {
   quality: DEFAULT_QUALITY,
   transparent: false,
   compress: false,
+  bleed: false,
+  bleedMm: DEFAULT_BLEED_MM,
+  cropMarks: false,
   embedFonts: true,
   pagesMode: "all",
   resolution: DEFAULT_ANIM_RESOLUTION,
@@ -63,6 +72,10 @@ export function readStoredSettings(raw: string | null | undefined): DownloadSett
       quality: clampNumber(Number(v.quality), 0.1, 1, d.quality),
       transparent: v.transparent === true,
       compress: v.compress === true,
+      // settings saved before there was a bleed have none of the three: they get the defaults
+      bleed: v.bleed === true,
+      bleedMm: Math.round(clampNumber(v.bleedMm as number, 0, MAX_BLEED_MM, d.bleedMm) * 10) / 10,
+      cropMarks: v.cropMarks === true,
       embedFonts: v.embedFonts !== false,
       pagesMode: MODES.includes(v.pagesMode as PagesMode) ? (v.pagesMode as PagesMode) : d.pagesMode,
       // settings saved before animated exports existed have neither field: they get the defaults
@@ -88,6 +101,8 @@ export function toExportOptions(s: DownloadSettings, pages: number[]): ExportOpt
     transparent: s.format === "png" && s.transparent,
     pdfMode: s.pdfMode,
     embedFonts: s.embedFonts,
+    // bleed and crop marks are for the printer: only the print PDF is given them
+    ...(pdf && s.pdfMode === "print" ? { bleedMm: s.bleed ? s.bleedMm : 0, cropMarks: s.cropMarks } : {}),
     ...(isAnimatedFormat(s.format) ? { resolution: s.resolution, fps: s.format === "webm" ? VIDEO_FPS : s.gifFps } : {}),
   };
 }

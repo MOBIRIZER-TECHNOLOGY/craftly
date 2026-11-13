@@ -6,6 +6,8 @@ import {
   FORMAT_EXTENSION,
   FORMAT_MIME,
   MAX_EXPORT_SIDE,
+  MM_TO_PT,
+  MM_TO_PX,
   PRINT_SCALE,
   clampNote,
   clampNumber,
@@ -110,6 +112,35 @@ describe("normalizePages / resolveExportOptions", () => {
     expect(resolveExportOptions(d, { ...base, format: "pdf" }).pdfText).toBe(true);
     expect(resolveExportOptions(d, { ...base, format: "pdf", pdfMode: "print", pdfText: true }).pdfText).toBe(true);
     expect(resolveExportOptions(d, { ...base, format: "pdf", pdfText: false }).pdfText).toBe(false);
+  });
+
+  it("takes a bleed and crop marks for a print PDF only, the bleed within 0 to 10 mm", () => {
+    const d = design();
+    const print = { ...base, format: "pdf" as const, pdfMode: "print" as const };
+    expect(resolveExportOptions(d, print)).toMatchObject({ bleedMm: 0, cropMarks: false });
+    expect(resolveExportOptions(d, { ...print, bleedMm: 3, cropMarks: true })).toMatchObject({ bleedMm: 3, cropMarks: true });
+    expect(resolveExportOptions(d, { ...print, bleedMm: 25 }).bleedMm).toBe(10);
+    expect(resolveExportOptions(d, { ...print, bleedMm: -2 }).bleedMm).toBe(0);
+    expect(resolveExportOptions(d, { ...print, bleedMm: Number.NaN }).bleedMm).toBe(0);
+    expect(resolveExportOptions(d, { ...print, cropMarks: "yes" as never }).cropMarks).toBe(false);
+    // a PDF for screens and every other format have neither
+    expect(resolveExportOptions(d, { ...base, format: "pdf", bleedMm: 3, cropMarks: true })).toMatchObject({ bleedMm: 0, cropMarks: false });
+    expect(resolveExportOptions(d, { ...base, format: "png", pdfMode: "print", bleedMm: 3, cropMarks: true })).toMatchObject({ bleedMm: 0, cropMarks: false });
+  });
+
+  it("plans the picture of a page with bleed larger by the bleed on every side, still within the cap", () => {
+    const print = { ...base, format: "pdf" as const, pdfMode: "print" as const };
+    expect(MM_TO_PX).toBeCloseTo(96 / 25.4, 10);
+    expect(MM_TO_PT).toBeCloseTo(72 / 25.4, 10);
+    // 3 mm are 11.34 design pixels: (1920 + 22.68) x (1080 + 22.68) at 3.125
+    expect(resolveExportOptions(design(), { ...print, bleedMm: 3 }).plan).toMatchObject({ scale: 3.125, clamped: false, width: 6071, height: 3446 });
+    expect(resolveExportOptions(design(), print).plan).toMatchObject({ width: 6000, height: 3375 });
+    // 2600 px fit the cap at 300 dpi (8125), but not with 10 mm on both sides
+    expect(resolveExportOptions(design(2600, 1000), print).plan.clamped).toBe(false);
+    const capped = resolveExportOptions(design(2600, 1000), { ...print, bleedMm: 10 }).plan;
+    expect(capped).toMatchObject({ clamped: true, width: MAX_EXPORT_SIDE });
+    // crop marks are drawn by the PDF, not painted: they do not change the picture
+    expect(resolveExportOptions(design(), { ...print, cropMarks: true }).plan).toMatchObject({ width: 6000, height: 3375 });
   });
 
   it("rejects unknown formats", () => {

@@ -17,7 +17,19 @@ import { ExportError, cancelledError, isCancelled, throwIfAborted } from "./erro
 import { nextMacrotask } from "./yield";
 import type { AnimResolution } from "./animated/frames";
 import { collectPageLinks } from "./links";
-import { FORMAT_EXTENSION, FORMAT_MIME, PX_TO_PT, clampNote, exportFileName, pageFileName, planRaster, resolveExportOptions, type ResolvedExport } from "./options";
+import {
+  FORMAT_EXTENSION,
+  FORMAT_MIME,
+  MM_TO_PT,
+  MM_TO_PX,
+  PX_TO_PT,
+  clampNote,
+  exportFileName,
+  pageFileName,
+  planRaster,
+  resolveExportOptions,
+  type ResolvedExport,
+} from "./options";
 import { buildPdfParts, type PdfPageInput } from "./pdf";
 import { collectPageText } from "./pdfText";
 import { canvasToBlob, releaseCanvas, renderExportCanvas, renderPageBlob } from "./raster";
@@ -40,6 +52,10 @@ export interface ExportOptions {
   pdfMode: "standard" | "print";
   /** pdf: lay the page's text invisibly over its image, so it can be selected, searched and copied (default true) */
   pdfText?: boolean;
+  /** print pdf: millimetres of bleed around the design, 0 .. 10 (default 0: none) */
+  bleedMm?: number;
+  /** print pdf: crop marks at the corners of the design (default false) */
+  cropMarks?: boolean;
   /** svg: embed the fonts used */
   embedFonts: boolean;
   /** gif / webm: length of the picture's shorter side in pixels, 480 | 720 | 1080 (default 720) */
@@ -150,7 +166,8 @@ async function exportPdf(design: Design, resolved: ResolvedExport, onProgress: E
   const heightPt = design.height * PX_TO_PT;
   const pages = await forEachPage<PdfPageInput>(resolved, onProgress, signal, async (index) => {
     const page = design.pages[index];
-    const canvas = await renderExportCanvas(design, page, { scale: plan.scale, flatten: "#ffffff", signal });
+    // with a bleed the picture shows that much more on every side; the PDF is told, and puts the design, its links and its text further in
+    const canvas = await renderExportCanvas(design, page, { scale: plan.scale, flatten: "#ffffff", signal, bleed: resolved.bleedMm * MM_TO_PX });
     let jpeg: Uint8Array;
     try {
       jpeg = new Uint8Array(await (await canvasToBlob(canvas, "image/jpeg", resolved.quality)).arrayBuffer());
@@ -158,7 +175,15 @@ async function exportPdf(design: Design, resolved: ResolvedExport, onProgress: E
       releaseCanvas(canvas);
     }
     const links = collectPageLinks(page).map((l) => ({ url: l.url, x: l.x * PX_TO_PT, y: l.y * PX_TO_PT, w: l.w * PX_TO_PT, h: l.h * PX_TO_PT }));
-    return { widthPt, heightPt, jpeg, links, text: resolved.pdfText ? collectPageText(design, page) : undefined };
+    return {
+      widthPt,
+      heightPt,
+      jpeg,
+      links,
+      text: resolved.pdfText ? collectPageText(design, page) : undefined,
+      bleedPt: resolved.bleedMm * MM_TO_PT,
+      cropMarks: resolved.cropMarks,
+    };
   });
   const { parts } = buildPdfParts(pages, { title: design.title });
   return { name: exportFileName(design.title, "pdf"), blob: new Blob(parts as BlobPart[], { type: FORMAT_MIME.pdf }), note: clampNote(plan) };

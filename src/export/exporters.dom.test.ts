@@ -241,6 +241,40 @@ describe("exportDesign", () => {
       expect(sizes).toEqual([[625, 313]]);
     });
 
+    it("gives a print PDF its bleed: a larger picture, a larger page, and the text moved with the design", async () => {
+      const sizes: number[][] = [];
+      vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (this: HTMLCanvasElement, callback, type) {
+        sizes.push([this.width, this.height]);
+        callback(new Blob([fakeJpeg(200, 100) as BlobPart], { type }));
+      });
+      const pdf = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pdfMode: "print", pages: [1], bleedMm: 3 }))).blob);
+      // 3 mm are 11.34 design pixels and 8.504 points: (200 + 22.68) x (100 + 22.68) at 300 dpi
+      expect(sizes).toEqual([[696, 383]]);
+      expect(pdf).toContain("/MediaBox [0 0 167.008 92.008] /BleedBox [0 0 167.008 92.008] /TrimBox [8.504 8.504 158.504 83.504]");
+      expect(pdf).toContain("q 167.008 0 0 92.008 0 0 cm /Im0 Do Q");
+      // the text starts 10 px = 7.5 pt into the design, which now starts 8.504 pt into the page
+      expect(pdf).toMatch(/BT 3 Tr 0\.75 0 0 0\.75 16\.004 /);
+      // the link too: its left edge was at 7.5
+      expect(pdf).toMatch(/\/Rect \[16\.004 /);
+    });
+
+    it("draws crop marks around a print PDF when asked, with or without bleed", async () => {
+      const marked = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pdfMode: "print", cropMarks: true }))).blob);
+      expect(marked).toContain("/MediaBox [0 0 204 129] /BleedBox [27 27 177 102] /TrimBox [27 27 177 102]");
+      expect(marked).toContain("/Separation /All");
+      expect(marked).toMatch(/q 150 0 0 75 27 27 cm \/Im0 Do Q\nq 0\.25 w \/CS0 CS 1 SCN 3 27 m 21 27 l /);
+      const both = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pdfMode: "print", cropMarks: true, bleedMm: 3 }))).blob);
+      expect(both).toContain("/TrimBox [35.504 35.504 185.504 110.504]");
+    });
+
+    it("leaves a PDF for screens without bleed and marks whatever the options say", async () => {
+      const plain = await read((await exportDesign(twoPageDesign(), options({ format: "pdf" }))).blob);
+      const asked = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", bleedMm: 3, cropMarks: true }))).blob);
+      const body = (pdf: string) => pdf.slice(pdf.indexOf("4 0 obj"), pdf.indexOf("xref"));
+      expect(body(asked)).toBe(body(plain));
+      expect(asked).not.toContain("/TrimBox");
+    });
+
     it("lets the canvas go when encoding fails", async () => {
       vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(null));
       await expect(exportDesign(twoPageDesign(), options({ format: "pdf" }))).rejects.toMatchObject({ code: "too-large" });

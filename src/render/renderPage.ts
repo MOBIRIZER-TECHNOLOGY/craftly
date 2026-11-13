@@ -30,6 +30,12 @@ export interface RenderOptions {
   hide?: ReadonlySet<ID>;
   /** paint the page `time` seconds into its animations (entrance, exit, emphasis); without it elements sit at rest */
   animation?: { time: number };
+  /**
+   * Design pixels to paint beyond every edge of the page (a print export with bleed). The canvas then starts `bleed`
+   * above and left of the page, and `clip` is measured from that corner; the background is stretched over the larger
+   * area, and elements that hang over the edge of the page are painted there. Elements keep their place on the page.
+   */
+  bleed?: number;
 }
 
 interface Env {
@@ -545,11 +551,21 @@ export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, p
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.setTransform(scale, 0, 0, scale, -(clip?.x ?? 0) * scale, -(clip?.y ?? 0) * scale);
+  const bleed = opts.bleed && opts.bleed > 0 ? opts.bleed : 0;
+  ctx.setTransform(scale, 0, 0, scale, -((clip?.x ?? 0) - bleed) * scale, -((clip?.y ?? 0) - bleed) * scale);
   ctx.beginPath();
-  ctx.rect(0, 0, design.width, design.height);
+  ctx.rect(0 - bleed, 0 - bleed, design.width + bleed * 2, design.height + bleed * 2);
   ctx.clip();
-  if (!opts.transparent) paintBackground(ctx, page.background, design.width, design.height, env);
+  if (!opts.transparent) {
+    // with a bleed the background is painted as that of a page larger by the bleed on every side, so a colour, a gradient,
+    // a pattern or a picture covers the bleed too (a picture is a little larger for it: by 2 x bleed over the page's size)
+    if (bleed) {
+      ctx.save();
+      ctx.translate(-bleed, -bleed);
+      paintBackground(ctx, page.background, design.width + bleed * 2, design.height + bleed * 2, env);
+      ctx.restore();
+    } else paintBackground(ctx, page.background, design.width, design.height, env);
+  }
   if (opts.animation) {
     const duration = pageDuration(page);
     const unit = Math.min(design.width, design.height);

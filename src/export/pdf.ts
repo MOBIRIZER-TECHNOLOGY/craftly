@@ -55,6 +55,14 @@ export interface PdfPageInput {
   links?: PdfLink[];
   /** the text of the page, in reading order: written invisibly over the image */
   text?: PdfTextLine[];
+  /**
+   * Print: how far the picture reaches beyond the design on every side, in points. The JPEG then shows the design
+   * AND this bleed; `widthPt` / `heightPt` stay the size of the design, which becomes the page's /TrimBox, and the
+   * page (/MediaBox) grows by the bleed on every side.
+   */
+  bleedPt?: number;
+  /** Print: crop marks at the corners of the design. The page grows by CROP_MARK_ROOM_PT more on every side to hold them. */
+  cropMarks?: boolean;
 }
 
 export interface PdfMeta {
@@ -249,7 +257,7 @@ interface TextLayer {
  * other glyph widths cannot drift) and stretched with Tz to the width it has in the picture: a selection then
  * covers the word that is seen, whatever font it was drawn in.
  */
-function textLayer(lines: PdfTextLine[] | undefined, pageHeight: number, encoder: PdfTextEncoder): TextLayer | null {
+function textLayer(lines: PdfTextLine[] | undefined, pageHeight: number, room: number, encoder: PdfTextEncoder): TextLayer | null {
   const fonts = new Set<number>();
   const blocks: string[] = [];
   for (const line of lines ?? []) {
@@ -274,9 +282,55 @@ function textLayer(lines: PdfTextLine[] | undefined, pageHeight: number, encoder
         ops.push(`<${run.hex}> Tj`);
       });
     }
-    if (ops.length) blocks.push(`BT 3 Tr ${[a, -b, -c, d, e, pageHeight - f].map(pdfNumber).join(" ")} Tm ${ops.join(" ")} ET`);
+    // `room` is what the page has grown by on every side (bleed, crop marks): the design, and its text, sit that far in
+    if (ops.length) blocks.push(`BT 3 Tr ${[a, -b, -c, d, e + room, pageHeight - f + room].map(pdfNumber).join(" ")} Tm ${ops.join(" ")} ET`);
   }
   return blocks.length ? { ops: blocks.join("\n"), fonts } : null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Print: bleed and crop marks                                        */
+/* ------------------------------------------------------------------ */
+
+/** From the bleed (or, without one, from the edge of the design) to where a crop mark starts: a mark never touches the bleed. */
+export const CROP_MARK_GAP_PT = 6;
+export const CROP_MARK_LENGTH_PT = 18;
+/** Room the page gets on every side for its crop marks: the gap, the mark, and a little so no mark ends on the edge of the sheet. */
+export const CROP_MARK_ROOM_PT = CROP_MARK_GAP_PT + CROP_MARK_LENGTH_PT + 3;
+const CROP_MARK_WIDTH_PT = 0.25;
+
+/**
+ * Registration colour: the special separation /All, which prints on every plate of the press, so the marks are on
+ * each of them. A screen shows it through the alternate space, as CMYK 1 1 1 1.
+ */
+const REGISTRATION = "/ColorSpace << /CS0 [/Separation /All /DeviceCMYK << /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [1 1 1 1] /N 1 >>] >>";
+
+/** How far the picture reaches beyond the design (the bleed) and how far the design sits from the edge of the page (the bleed and the room for marks). */
+function frameOf(page: PdfPageInput): { bleed: number; room: number } {
+  const bleed = typeof page.bleedPt === "number" && Number.isFinite(page.bleedPt) && page.bleedPt > 0 ? page.bleedPt : 0;
+  return { bleed, room: bleed + (page.cropMarks ? CROP_MARK_ROOM_PT : 0) };
+}
+
+/**
+ * Two marks at every corner of the design, each in line with one of its edges: a printer cuts along the lines they
+ * point at. They start a gap beyond the bleed and so lie outside everything that is printed to be kept.
+ */
+function cropMarkOps(page: PdfPageInput, bleed: number, room: number): string {
+  const [left, bottom, right, top] = [room, room, room + page.widthPt, room + page.heightPt];
+  const near = bleed + CROP_MARK_GAP_PT;
+  const far = near + CROP_MARK_LENGTH_PT;
+  const lines = [
+    [left - far, bottom, left - near, bottom],
+    [right + near, bottom, right + far, bottom],
+    [left - far, top, left - near, top],
+    [right + near, top, right + far, top],
+    [left, bottom - far, left, bottom - near],
+    [left, top + near, left, top + far],
+    [right, bottom - far, right, bottom - near],
+    [right, top + near, right, top + far],
+  ];
+  const path = lines.map(([x1, y1, x2, y2]) => `${pdfNumber(x1)} ${pdfNumber(y1)} m ${pdfNumber(x2)} ${pdfNumber(y2)} l`).join(" ");
+  return `q ${pdfNumber(CROP_MARK_WIDTH_PT)} w /CS0 CS 1 SCN ${path} S Q`;
 }
 
 /** Builds the PDF as a list of byte parts (the JPEGs are not copied). */
@@ -285,7 +339,7 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
 
   // the text of every page is encoded first: only then is it known which fonts the document needs
   const encoder = new PdfTextEncoder();
-  const layers = pages.map((p) => textLayer(p.text, p.heightPt, encoder));
+  const layers = pages.map((p) => textLayer(p.text, p.heightPt, frameOf(p).room, encoder));
   const fonts = encoder.fonts();
 
   // object numbers: 1 catalog, 2 page tree, 3 info, then per page: page, contents, image, annotations...
@@ -318,8 +372,16 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
     const ids = plan[i];
     const jpeg = parseJpegInfo(page.jpeg);
     const { space, procSet } = colorSpaceOf(jpeg.components);
-    const w = pdfNumber(page.widthPt);
-    const h = pdfNumber(page.heightPt);
+    // A page for a printer is larger than the design: the picture reaches `bleed` beyond it, and the design sits `room`
+    // from the edge of the page. Without bleed and marks both are 0 and every number below is what it always was.
+    const { bleed, room } = frameOf(page);
+    const n = pdfNumber;
+    const mediaBox = `[0 0 ${n(page.widthPt + room * 2)} ${n(page.heightPt + room * 2)}]`;
+    const printBoxes = room
+      ? ` /BleedBox [${n(room - bleed)} ${n(room - bleed)} ${n(room + page.widthPt + bleed)} ${n(room + page.heightPt + bleed)}] /TrimBox [${n(room)} ${n(room)} ${n(room + page.widthPt)} ${n(room + page.heightPt)}]`
+      : "";
+    const picture = `q ${n(page.widthPt + bleed * 2)} 0 0 ${n(page.heightPt + bleed * 2)} ${n(room - bleed)} ${n(room - bleed)} cm /Im0 Do Q`;
+    const marks = page.cropMarks ? `\n${cropMarkOps(page, bleed, room)}` : "";
     const annots = ids.annots.length ? ` /Annots [${ids.annots.map((a) => `${a} 0 R`).join(" ")}]` : "";
     const layer = layers[i];
     const fontRefs = layer
@@ -330,21 +392,22 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
       : "";
     out.dict(
       ids.page,
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /XObject << /Im0 ${ids.image} 0 R >>${fontRefs} /ProcSet [/PDF ${layer ? "/Text " : ""}${procSet}] >> /Contents ${ids.contents} 0 R${annots} >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox ${mediaBox}${printBoxes} /Resources << /XObject << /Im0 ${ids.image} 0 R >>${fontRefs}${page.cropMarks ? ` ${REGISTRATION}` : ""} /ProcSet [/PDF ${layer ? "/Text " : ""}${procSet}] >> /Contents ${ids.contents} 0 R${annots} >>`,
     );
-    out.stream(ids.contents, "", latin1(`q ${w} 0 0 ${h} 0 0 cm /Im0 Do Q${layer ? `\n${layer.ops}` : ""}`));
+    out.stream(ids.contents, "", latin1(`${picture}${marks}${layer ? `\n${layer.ops}` : ""}`));
     out.stream(
       ids.image,
       `/Type /XObject /Subtype /Image /Width ${jpeg.width} /Height ${jpeg.height} /ColorSpace ${space} /BitsPerComponent ${jpeg.bits || 8} /Interpolate true /Filter /DCTDecode`,
       page.jpeg,
     );
     (page.links ?? []).forEach((link, k) => {
-      const x2 = link.x + link.w;
-      const y1 = page.heightPt - (link.y + link.h);
-      const y2 = page.heightPt - link.y;
+      const x1 = link.x + room;
+      const x2 = x1 + link.w;
+      const y1 = page.heightPt - (link.y + link.h) + room;
+      const y2 = page.heightPt - link.y + room;
       out.dict(
         ids.annots[k],
-        `<< /Type /Annot /Subtype /Link /Rect [${pdfNumber(link.x)} ${pdfNumber(y1)} ${pdfNumber(x2)} ${pdfNumber(y2)}] /Border [0 0 0] /F 4 /A << /S /URI /URI ${pdfUri(link.url)} >> >>`,
+        `<< /Type /Annot /Subtype /Link /Rect [${pdfNumber(x1)} ${pdfNumber(y1)} ${pdfNumber(x2)} ${pdfNumber(y2)}] /Border [0 0 0] /F 4 /A << /S /URI /URI ${pdfUri(link.url)} >> >>`,
       );
     });
   });

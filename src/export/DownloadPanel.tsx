@@ -15,6 +15,7 @@ import {
   IconImages,
   IconPrint,
   IconVideo,
+  NumberField,
   Segmented,
   Select,
   Slider,
@@ -26,7 +27,7 @@ import { ANIM_RESOLUTIONS, GIF_FPS_CHOICES, VIDEO_FPS, animationProblem, formatD
 import { detectVideoSupport, type VideoSupport } from "./animated/video";
 import { describeExportError, isCancelled } from "./errors";
 import { downloadBlob, exportDesign } from "./exporters";
-import { MAX_EXPORT_SIDE, estimateExportBytes, formatBytes, pagesLabel, planRaster, resolveExportOptions } from "./options";
+import { MAX_BLEED_MM, MAX_EXPORT_SIDE, estimateExportBytes, formatBytes, pagesLabel, planRaster, resolveExportOptions } from "./options";
 import {
   DEFAULT_DOWNLOAD_SETTINGS,
   DOWNLOAD_SETTINGS_KEY,
@@ -354,6 +355,34 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
           <p className="cf-dl__hint">{settings.pdfMode === "print" ? "300 dpi pages, sharp when printed." : "Light pages for screens, email and sharing."}</p>
           <Switch checked={settings.compress} onChange={(compress) => patch({ compress })} label="Compress PDF" disabled={busy} />
           <p className="cf-dl__hint">Makes the file smaller with slightly lower image quality.</p>
+          {/* what only a printer needs: shown for the print preset alone */}
+          {settings.pdfMode === "print" ? (
+            <>
+              <Switch checked={settings.bleed} onChange={(bleed) => patch({ bleed })} label="Bleed" disabled={busy} />
+              {settings.bleed ? (
+                <>
+                  <NumberField
+                    aria-label="Bleed size"
+                    value={settings.bleedMm}
+                    min={0}
+                    max={MAX_BLEED_MM}
+                    step={0.5}
+                    suffix="mm"
+                    stepper
+                    width={140}
+                    size="sm"
+                    onChange={(bleedMm) => patch({ bleedMm })}
+                    disabled={busy}
+                  />
+                  <p className="cf-dl__hint">
+                    The page background is extended {settings.bleedMm} mm beyond every edge, so nothing white shows when the sheet is cut. Keep what matters away from the edges.
+                  </p>
+                </>
+              ) : null}
+              <Switch checked={settings.cropMarks} onChange={(cropMarks) => patch({ cropMarks })} label="Crop marks" disabled={busy} />
+              <p className="cf-dl__hint">Thin lines outside the page that show the printer where to cut. The PDF page becomes larger to hold them.</p>
+            </>
+          ) : null}
         </div>
       )}
 

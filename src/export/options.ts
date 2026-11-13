@@ -19,6 +19,12 @@ export const PRINT_DPI = 300;
 export const PRINT_SCALE = PRINT_DPI / CSS_DPI;
 /** PDF user units (points) per design pixel. */
 export const PX_TO_PT = 72 / CSS_DPI;
+/** Design pixels and PDF points per millimetre (a bleed is given in millimetres). */
+export const MM_TO_PX = CSS_DPI / 25.4;
+export const MM_TO_PT = 72 / 25.4;
+/** The bleed printers usually ask for, and the most the panel offers. */
+export const DEFAULT_BLEED_MM = 3;
+export const MAX_BLEED_MM = 10;
 export const DEFAULT_QUALITY = 0.92;
 export const COMPRESSED_QUALITY = 0.6;
 export const MIN_QUALITY = 0.1;
@@ -122,6 +128,10 @@ export interface ResolvedExport {
   pdfMode: "standard" | "print";
   /** pdf: write the invisible text layer */
   pdfText: boolean;
+  /** print pdf: millimetres the picture reaches beyond the design on every side, 0 .. 10 (0 for everything else) */
+  bleedMm: number;
+  /** print pdf: draw crop marks around the design (false for everything else) */
+  cropMarks: boolean;
   embedFonts: boolean;
   /** gif / webm only: the timeline, frame rate and picture size of the animation; null for every other format */
   animation: AnimationPlan | null;
@@ -134,16 +144,23 @@ export function resolveExportOptions(design: Pick<Design, "width" | "height" | "
   if (!FORMATS.includes(opts.format)) throw new Error(`Unknown export format "${String(opts.format)}".`);
   const pages = normalizePages(opts.pages, design.pages.length);
   const animation = isAnimatedFormat(opts.format) ? planAnimation(design, pages, { format: opts.format, resolution: opts.resolution, fps: opts.fps }) : null;
+  // bleed and crop marks are for the printer: only the print PDF has them
+  const print = opts.format === "pdf" && opts.pdfMode === "print";
+  const bleedMm = print ? clampNumber(opts.bleedMm as number, 0, MAX_BLEED_MM, 0) : 0;
+  // the picture of a page with bleed shows the bleed too, so it is that much larger, and the 8192 px cap applies to all of it
+  const bleedPx = bleedMm * MM_TO_PX * 2;
   return {
     format: opts.format,
     pages,
     plan: animation
       ? { requested: animation.width / design.width, scale: animation.width / design.width, clamped: false, width: animation.width, height: animation.height }
-      : planRaster(design.width, design.height, opts),
+      : planRaster(design.width + bleedPx, design.height + bleedPx, opts),
     quality: clampNumber(opts.quality, MIN_QUALITY, 1, DEFAULT_QUALITY),
     transparent: opts.format === "png" && !!opts.transparent,
     pdfMode: opts.pdfMode === "print" ? "print" : "standard",
     pdfText: opts.pdfText !== false,
+    bleedMm,
+    cropMarks: print && opts.cropMarks === true,
     embedFonts: opts.embedFonts !== false,
     animation,
   };

@@ -48,6 +48,69 @@ describe("renderExportCanvas", () => {
     expect(spies[0].ctx.globalCompositeOperation).toBe("source-over");
   });
 
+  describe("with a bleed", () => {
+    it("makes the canvas larger by the bleed on every side and moves the page in by it", async () => {
+      const spies = captureContexts();
+      const canvas = await renderExportCanvas({ width: 100, height: 50 }, page("#112233"), { scale: 2, bleed: 10 });
+      expect([canvas.width, canvas.height]).toEqual([240, 140]);
+      const ctx = spies[0];
+      expect(ctx.to("setTransform")[1].args).toEqual([2, 0, 0, 2, 20, 20]);
+      // what is painted is cut at the edge of the bleed, not at the edge of the page
+      expect(ctx.to("rect")[0].args).toEqual([-10, -10, 120, 70]);
+      // the background is stretched over the bleed: painted 120 x 70 from the corner of the bleed
+      const background = ctx.to("fillRect")[0];
+      expect(background.args).toEqual([0, 0, 120, 70]);
+      expect(background.state.fillStyle).toBe("#112233");
+      expect(background.state.matrix).toEqual([2, 0, 0, 2, 0, 0]);
+      // the elements keep their place on the page: the shape at (10, 10) is 20 design pixels from the corner of the canvas
+      expect(ctx.to("fill")[0].state.matrix).toEqual([2, 0, 0, 2, 40, 40]);
+    });
+
+    it("flattens the whole canvas, bleed included", async () => {
+      const spies = captureContexts();
+      await renderExportCanvas({ width: 100, height: 50 }, page(), { scale: 1, bleed: 5, flatten: "#ffffff" });
+      expect(spies[0].to("fillRect").at(-1)!.args).toEqual([0, 0, 110, 60]);
+    });
+
+    it("paints nothing behind a transparent page, in the bleed as on the page", async () => {
+      const spies = captureContexts();
+      await renderExportCanvas({ width: 100, height: 50 }, page(), { scale: 1, bleed: 5, transparent: true });
+      expect(spies[0].to("fillRect")).toHaveLength(0);
+    });
+
+    it("paints a large page band by band over the whole height, bleed included", async () => {
+      const spies = captureContexts();
+      const canvas = await renderExportCanvas({ width: 3980, height: 2980 }, page(), { scale: 1, bleed: 10 });
+      expect([canvas.width, canvas.height]).toEqual([4000, 3000]);
+      const [main, band] = spies;
+      expect(main.to("drawImage").map((c) => c.args.slice(1))).toEqual([
+        [0, 0],
+        [0, 1000],
+        [0, 2000],
+      ]);
+      // each band sees the page moved in by the bleed, through a window further down
+      const offsets = band
+        .to("setTransform")
+        .filter((_c, i) => i % 2 === 1)
+        .map((c) => [c.args[4], c.args[5]]);
+      expect(offsets).toEqual([
+        [10, 10],
+        [10, -990],
+        [10, -1990],
+      ]);
+    });
+
+    it("is the picture without bleed when the bleed is 0 or not a size", async () => {
+      for (const bleed of [0, -3, Number.NaN]) {
+        const spies = captureContexts();
+        const canvas = await renderExportCanvas({ width: 100, height: 50 }, page(), { scale: 2, bleed });
+        expect([canvas.width, canvas.height]).toEqual([200, 100]);
+        expect(spies[0].to("rect")[0].args).toEqual([0, 0, 100, 50]);
+        expect(spies[0].to("fillRect")[0].args).toEqual([0, 0, 100, 50]);
+      }
+    });
+  });
+
   it("does not paint a picture that never loads more than once", async () => {
     const broken = createPage({ elements: [createImage({ src: "https://example.test/broken-raster.png", width: 50, height: 50 })] });
     const spies = captureContexts();

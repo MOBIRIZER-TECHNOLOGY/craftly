@@ -171,6 +171,65 @@ describe("<DownloadPanel> choices", () => {
     expect(screen.getByText("Every page in this design")).toBeTruthy();
   });
 
+  it("offers a bleed and crop marks for the print PDF only", async () => {
+    const user = userEvent.setup();
+    mountPanel();
+    await choose(user, /^PDF Standard/);
+    expect(screen.queryByRole("switch", { name: "Bleed" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Crop marks" })).toBeNull();
+    await user.click(radio("PDF preset", "Print"));
+    const bleed = screen.getByRole("switch", { name: "Bleed" }) as HTMLInputElement;
+    const marks = screen.getByRole("switch", { name: "Crop marks" }) as HTMLInputElement;
+    expect([bleed.checked, marks.checked]).toEqual([false, false]);
+    // the size of the bleed is asked for only when there is one
+    expect(screen.queryByRole("spinbutton", { name: "Bleed size" })).toBeNull();
+    // back to the PDF for screens: both are gone again
+    await user.click(radio("PDF preset", "Digital"));
+    expect(screen.queryByRole("switch", { name: "Bleed" })).toBeNull();
+    await choose(user, /^PNG/);
+    expect(screen.queryByRole("switch", { name: "Crop marks" })).toBeNull();
+  });
+
+  it("starts a bleed at 3 mm, lets it be set from 0 to 10 mm, and remembers it with the crop marks", async () => {
+    const user = userEvent.setup();
+    mountPanel();
+    await choose(user, /^PDF Print/);
+    await user.click(screen.getByRole("switch", { name: "Bleed" }));
+    const size = screen.getByRole("spinbutton", { name: "Bleed size" }) as HTMLInputElement;
+    expect(size.value).toBe("3");
+    expect([size.getAttribute("aria-valuemin"), size.getAttribute("aria-valuemax")]).toEqual(["0", "10"]);
+    expect(screen.getByText(/The page background is extended 3 mm beyond every edge/)).toBeTruthy();
+    await user.clear(size);
+    await user.type(size, "5{Enter}");
+    expect(stored()).toMatchObject({ bleed: true, bleedMm: 5, cropMarks: false });
+    // more than the panel offers is brought back to 10
+    await user.clear(size);
+    await user.type(size, "40{Enter}");
+    expect(stored().bleedMm).toBe(10);
+    await user.click(screen.getByRole("switch", { name: "Crop marks" }));
+    expect(stored()).toMatchObject({ bleed: true, bleedMm: 10, cropMarks: true });
+    // switched off, the size is kept for the next time
+    await user.click(screen.getByRole("switch", { name: "Bleed" }));
+    expect(screen.queryByRole("spinbutton", { name: "Bleed size" })).toBeNull();
+    expect(stored()).toMatchObject({ bleed: false, bleedMm: 10 });
+  });
+
+  it("downloads a print PDF with the bleed and the crop marks that were chosen", async () => {
+    const user = userEvent.setup();
+    store({ format: "pdf", pdfMode: "print", bleed: true, bleedMm: 4, cropMarks: true });
+    mountPanel();
+    vi.mocked(exportDesign).mockResolvedValueOnce(file("Menu.pdf"));
+    await user.click(downloadButton());
+    expect(vi.mocked(exportDesign).mock.calls[0][1]).toMatchObject({ format: "pdf", pdfMode: "print", bleedMm: 4, cropMarks: true });
+    // the same choices do not reach a PDF for screens
+    cleanup();
+    store({ format: "pdf", pdfMode: "standard", bleed: true, bleedMm: 4, cropMarks: true });
+    mountPanel();
+    vi.mocked(exportDesign).mockResolvedValueOnce(file("Menu.pdf"));
+    await user.click(downloadButton());
+    expect(vi.mocked(exportDesign).mock.calls[1][1]).not.toHaveProperty("bleedMm");
+  });
+
   it("chooses a print PDF straight from the list", async () => {
     const user = userEvent.setup();
     mountPanel();
