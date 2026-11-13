@@ -21,6 +21,7 @@ import { cancelPen, finishPen, penDrag, penHover, penPress } from "./penTool";
 import { insertImageFiles, insertPayload, readDragPayload, DRAG_MIME } from "../insert";
 import { selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
+import { fingerSpan, pinchZoom, scrollToKeep } from "./pinch";
 import { angleToPointer, HANDLE_VEC, isCorner, resizeBox, scaleOf, type BoxLike, type Handle } from "./resize";
 import { computeTargets, snapEdges, snapMove, type SnapTargets } from "./snapping";
 import { screenToDesign, setZoomAnchor, useView } from "./viewStore";
@@ -127,6 +128,36 @@ interface PenG extends Base {
 }
 type Gesture = PanG | MarqueeG | MoveG | ResizeG | RotateG | LineG | CreateG | PenG;
 
+/** Whether the gesture already shows its work: a drag past its threshold, a marquee that selects, a path that has a point. */
+function underWay(g: Gesture): boolean {
+  switch (g.kind) {
+    case "move":
+    case "marquee":
+    case "create":
+      return g.moved;
+    case "resize":
+    case "rotate":
+    case "line":
+      return g.started;
+    case "pen":
+      return true;
+    case "pan":
+      return false;
+  }
+}
+
+/** Two fingers on the canvas: the design point that was between them when they met, how far apart they were, and the zoom then. */
+interface Pinch {
+  anchor: Point;
+  dist: number;
+  zoom: number;
+}
+
+const ZOOM_MIN = 0.05;
+const ZOOM_MAX = 4;
+/** Overlays that handle the pointer themselves: fingers on them take no part in a pinch. */
+const OWN_POINTER = "[data-cf-text-editor],[data-cf-crop],[data-cf-pathedit]";
+
 /* ------------------------------------------------------------------ */
 
 export interface ControllerApi {
@@ -136,6 +167,12 @@ export interface ControllerApi {
 
 export function attachController(host: HTMLElement, scroller: HTMLElement): ControllerApi {
   let gesture: Gesture | null = null;
+  let pinch: Pinch | null = null;
+  // The fingers that may pinch, by pointer id, at their last client position: the first one that came down, and during a
+  // pinch the second. A finger that is to be ignored until it lifts is simply not in here.
+  const touches = new Map<number, Point>();
+  /** the selection as it was before the first finger pressed, which a pinch puts back */
+  let selectionBeforeTouch: ID[] = [];
   let spaceDown = false;
   let hoverRaf = 0;
   let lastHoverEvent: PointerEvent | null = null;
@@ -218,6 +255,64 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     host.style.cursor = "";
   }
 
+  /* ---------------- two fingers ---------------- */
+
+  /**
+   * A finger came down. Answers true when it began a pinch, and the press is then not looked at any further.
+   * The first finger goes on as a press like any other; it is only remembered here.
+   */
+  function touchDown(e: PointerEvent): boolean {
+    const at = { x: e.clientX, y: e.clientY };
+    if (touches.size === 0 || touches.has(e.pointerId)) {
+      touches.set(e.pointerId, at);
+      selectionBeforeTouch = st().selection;
+      return false;
+    }
+    // What the first finger began and already shows goes on, and this finger is ignored like any second pointer: ending a
+    // drag here would commit half of it, and taking it back would be a surprise of its own.
+    if (gesture && underWay(gesture)) return false;
+    // Otherwise the first finger's press was the beginning of the pinch, not a click: its gesture is dropped (it holds no
+    // undo step yet) and what the press selected or deselected is put back.
+    endGesture();
+    if (st().selection !== selectionBeforeTouch) act().select(selectionBeforeTouch);
+    touches.set(e.pointerId, at);
+    const [a, b] = [...touches.values()];
+    const { mid, dist } = fingerSpan(a, b);
+    pinch = { anchor: toDesign({ clientX: mid.x, clientY: mid.y }), dist, zoom: zoom() };
+    // both fingers report to the workspace from now on, whatever they came down on
+    for (const id of touches.keys()) host.setPointerCapture(id);
+    return true;
+  }
+
+  /** The fingers moved: the zoom follows their distance, and the design point they met on stays between them. */
+  function movePinch(p: Pinch) {
+    const [a, b] = [...touches.values()];
+    const { mid, dist } = fingerSpan(a, b);
+    const z = pinchZoom(p.zoom, p.dist, dist, ZOOM_MIN, ZOOM_MAX);
+    const screen = wsPoint({ clientX: mid.x, clientY: mid.y });
+    const view = useView.getState();
+    if (z !== zoom() || view.zoom !== z) {
+      // the workspace lays itself out for the new zoom and then scrolls the anchor into place, as for the wheel; while a
+      // layout is still to come, the place only has to be brought up to date
+      setZoomAnchor({ sx: screen.x, sy: screen.y, dx: p.anchor.x, dy: p.anchor.y });
+      act().setZoom(z, "custom");
+      return;
+    }
+    const to = scrollToKeep(p.anchor, screen, view, z);
+    scroller.scrollLeft = to.left;
+    scroller.scrollTop = to.top;
+  }
+
+  /**
+   * A pointer lifted, was cancelled or lost its capture. If it was one of two pinching fingers the pinch is over, and
+   * the other finger is forgotten too, so that it does nothing until it has lifted and come down again.
+   */
+  function touchGone(e: PointerEvent) {
+    if (!touches.delete(e.pointerId) || !pinch) return;
+    pinch = null;
+    touches.clear();
+  }
+
   /* ---------------- pointer down ---------------- */
 
   function onPointerDown(e: PointerEvent) {
@@ -225,6 +320,16 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     if (target.closest("[data-cf-ui]")) return;
     const s = st();
     if (!s.design || s.presenting) return;
+    const touch = e.pointerType === "touch";
+    // The first finger of a touch comes down when no other is on the screen: whatever was remembered of earlier fingers
+    // is out of date, should their release never have arrived.
+    if (touch && e.isPrimary) {
+      pinch = null;
+      touches.clear();
+    }
+    // during a pinch a third finger, or the mouse, starts nothing
+    if (pinch) return;
+    if (touch && !target.closest(OWN_POINTER) && touchDown(e)) return;
     if (gesture) {
       // a second finger (or pen) while one is dragging starts nothing: taking over here would leave the first drag's undo step
       // open for good, because its release would no longer be recognised
@@ -394,6 +499,12 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   /* ---------------- pointer move ---------------- */
 
   function onPointerMove(e: PointerEvent) {
+    const finger = touches.has(e.pointerId);
+    if (finger) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch) {
+      if (finger) movePinch(pinch);
+      return;
+    }
     const g = gesture;
     if (!g) {
       if (st().tool === "pen") {
@@ -779,6 +890,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   /* ---------------- pointer up ---------------- */
 
   function onPointerUp(e: PointerEvent) {
+    touchGone(e);
     const g = gesture;
     if (!g || g.pointerId !== e.pointerId) return;
     switch (g.kind) {
@@ -809,12 +921,14 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   }
 
   function onPointerCancel(e: PointerEvent) {
+    touchGone(e);
     abortGesture(e);
   }
 
   // A drag can lose its pointer with neither a release nor a cancel (the browser takes the capture away): it ends like a
   // cancelled one. Releasing the capture at the end of a gesture fires this too, but by then there is no gesture left.
   function onLostPointerCapture(e: PointerEvent) {
+    touchGone(e);
     if (gesture?.pointerId === e.pointerId) abortGesture(e);
   }
 
@@ -864,7 +978,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const s = st();
     const d = s.design;
     if (!d) return;
-    const z = clamp(nextZoom, 0.05, 4);
+    const z = clamp(nextZoom, ZOOM_MIN, ZOOM_MAX);
     const r = host.getBoundingClientRect();
     const sx = client.x - r.left;
     const sy = client.y - r.top;

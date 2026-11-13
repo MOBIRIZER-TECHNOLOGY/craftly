@@ -9,6 +9,9 @@
   outline: none;
   user-select: none;
   -webkit-user-select: none;
+  /* Fingers on the canvas belong to the editor: one selects and drags, two zoom and move the view (controller.ts). Left to
+     itself the browser would zoom the whole page for a pinch as well, and take the pointers away to do it. */
+  touch-action: none;
 }
 /* The canvas is a stop in the tab order: when the keyboard puts focus on it, a frame inside its edge says so (an outline would be
    cut off by overflow: hidden, and the page and its overlays would be drawn over it). */
@@ -35,6 +38,9 @@
   inset: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  /* Said again here because a browser asks only the elements up to the nearest scroller whether a finger may scroll, and
+     this is that scroller: without it one or two fingers on the page would scroll it and cancel the editor's gesture. */
+  touch-action: none;
   scrollbar-width: thin;
   scrollbar-color: rgba(14, 19, 24, 0.28) transparent;
 }
