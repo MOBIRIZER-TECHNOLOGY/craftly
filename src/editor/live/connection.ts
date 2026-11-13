@@ -18,6 +18,7 @@ import { toast } from "@/ui";
 import { create } from "zustand";
 import { apiUrl, normalizeServer, websocketUrl } from "./links";
 import { sharedMedia } from "./media";
+import { clearPresence, heardPresence, startPresence } from "./presence";
 
 export interface LiveEnv {
   createSocket?: (url: string) => SocketLike;
@@ -174,6 +175,15 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     return recoveryId;
   };
   let mediaError = "";
+  // Seeing each other (presence.ts): from the welcome of a server that passes presence on until the connection is lost, this
+  // browser says where its person is, and keeps the list of the others. A connection that comes back starts both anew, under the
+  // number the server gives it then.
+  let stopPresence: (() => void) | null = null;
+  const presenceOff = () => {
+    stopPresence?.();
+    stopPresence = null;
+    clearPresence();
+  };
   const showMediaError = (message: string) => {
     if (closed || mediaError === message) return;
     mediaError = message;
@@ -225,7 +235,11 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
         actions().setMode("view");
       }
       useLiveStatus.setState({ status, reason, role: live.session.role });
+      presenceOff();
+      const me = live.peer;
+      if (me !== null) stopPresence = startPresence((state) => live.present(state), me);
     },
+    onPresence: (heard) => heardPresence(heard),
   });
   useLiveStatus.setState({ status: "connecting", reason: null, role: null });
   actions().startLive({
@@ -238,6 +252,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   live.start();
   return () => {
     closed = true;
+    presenceOff();
     live.stop();
     actions().stopLive();
     if (looking) actions().setMode("edit");

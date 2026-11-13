@@ -98,6 +98,11 @@ export interface LiveServerOptions {
   byteRate?: { burst?: number; perSecond?: number };
   /** How often a connection may join, each of which sends it the whole design: a burst, then so many a second. */
   joinRate?: { burst?: number; perSecond?: number };
+  /**
+   * How often a connection may say where its person is (presence: a pointer, a selection): a burst, then so many a second.
+   * What is more is dropped and the connection stays; see `handle` for how this stands beside `rate`.
+   */
+  presenceRate?: { burst?: number; perSecond?: number };
   /** The most a message may be before the connection has shown its key, in bytes; a join is tiny. A bigger one is not read. */
   maxUnjoinedMessageBytes?: number;
   /** The most that may wait to be sent to one connection, in bytes: one that reads slower than that is dropped. Twice `maxDesignBytes` unless set. */
@@ -130,6 +135,7 @@ const DEFAULTS = {
   rate: { burst: 200, perSecond: 100 },
   byteRate: { burst: 8 * 1024 * 1024, perSecond: 1024 * 1024 },
   joinRate: { burst: 4, perSecond: 0.5 },
+  presenceRate: { burst: 30, perSecond: 15 },
   maxUnjoinedMessageBytes: 8 * 1024,
   maxConnections: 5000,
   maxWaitingPerRoom: 20,
@@ -204,6 +210,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     rate: { ...DEFAULTS.rate, ...options.rate },
     byteRate: bucket(options.byteRate, DEFAULTS.byteRate),
     joinRate: bucket(options.joinRate, DEFAULTS.joinRate),
+    presenceRate: bucket(options.presenceRate, DEFAULTS.presenceRate),
     maxUnjoinedMessageBytes: options.maxUnjoinedMessageBytes ?? DEFAULTS.maxUnjoinedMessageBytes,
     maxBufferedBytes: options.maxBufferedBytes ?? 2 * (options.maxDesignBytes ?? DEFAULTS.maxDesignBytes),
     maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
@@ -919,6 +926,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     let tokens = o.rate.burst;
     let bytes = o.byteRate.burst;
     let joins = o.joinRate.burst;
+    let presences = o.presenceRate.burst;
     let refilled = Date.now();
     ws.on("close", () => {
       clearTimeout(silent);
@@ -935,6 +943,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       tokens = Math.min(o.rate.burst, tokens + seconds * o.rate.perSecond);
       bytes = Math.min(o.byteRate.burst, bytes + seconds * o.byteRate.perSecond) - sizeOf(data);
       joins = Math.min(o.joinRate.burst, joins + seconds * o.joinRate.perSecond);
+      presences = Math.min(o.presenceRate.burst, presences + seconds * o.presenceRate.perSecond);
       refilled = at;
       if (--tokens < 0 || bytes < 0) {
         metrics.countBy("connections_closed_total", "rate");
@@ -978,6 +987,17 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
             peer.send({ t: "rejected", seq: msg.seq, reason: "The server could not save this edit." });
           }
         });
+      } else if (msg.t === "presence" && l.members.has(ws)) {
+        // Where a person is (src/collab/presence.ts) is said many times a second by a pointer that moves, and none of it
+        // matters for long. It has an allowance of its own. Within it a presence message does not count as a message at all
+        // (the count taken above is given back), so that moving the pointer never uses up what a person may send in edits.
+        // Over it the message is dropped without a word, the connection stays, and the message does count: a connection
+        // that floods presence is closed by `rate` like any other that floods. Its bytes always count (`byteRate`); a
+        // presence message is small. Nothing is saved and nothing waits, so this does not go through the room's queue.
+        if (presences < 1) return void metrics.count("presence_dropped_total");
+        presences--;
+        tokens++;
+        void l.room.receive(peer, msg);
       } else if (msg.t === "ping") void l.room.receive(peer, msg);
     };
     for (const data of early.splice(0)) handle(data);

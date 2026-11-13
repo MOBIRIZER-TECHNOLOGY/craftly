@@ -10,6 +10,7 @@
  */
 import type { Design } from "@/core/types";
 import { applyOps, diffDesign, type Op } from "./ops";
+import type { PresenceHeard } from "./presence";
 import { checkSets, parseServerMsg, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "./protocol";
 
 export type SessionStatus = "offline" | "joining" | "live" | "ended";
@@ -33,6 +34,8 @@ export interface Outcome {
   /** The server let this browser in: the design is there. */
   joined?: boolean;
   rejected?: string;
+  /** Where another person is, or that they have gone (presence.ts): read like everything else, and no part of the design. */
+  presence?: PresenceHeard;
 }
 
 const NOTHING: Outcome = { changed: false, ended: null };
@@ -56,6 +59,8 @@ interface Batch {
 export class Session {
   status: SessionStatus = "offline";
   role: Role | null = null;
+  /** The number the server gave this connection, under which the others hear of this person; null without a connection, and with a server that gives none. */
+  peer: number | null = null;
   rev = 0;
   /** The design as the server has it, as far as this browser has heard. */
   server: Design | null = null;
@@ -130,6 +135,7 @@ export class Session {
 
   /** The connection is gone; whatever was not confirmed is kept and sent again when there is another. */
   close(): void {
+    this.peer = null;
     if (this.status !== "ended") this.status = "offline";
   }
 
@@ -161,6 +167,8 @@ export class Session {
         return { changed: false, ended: msg.reason };
       case "pong":
         return NOTHING;
+      case "presence":
+        return { changed: false, ended: null, presence: msg };
     }
     if (this.status !== "live" || !this.server) return NOTHING; // what was said before the design arrived is in the design
     switch (msg.t) {
@@ -185,6 +193,7 @@ export class Session {
 
   private welcome(msg: Extract<ServerMsg, { t: "welcome" }>): Outcome {
     this.role = msg.role;
+    this.peer = msg.peer ?? null;
     this.server = msg.design;
     this.rev = msg.rev;
     this.status = "live";

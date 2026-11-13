@@ -85,3 +85,134 @@
     max-width: 6rem;
   }
 }
+
+/* who is here, in the top bar: initials in each person's colour, and a count */
+
+.cf-live-people {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cf-live-people__one {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: -6px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  cursor: default;
+}
+
+.cf-live-people__one:first-child {
+  margin-left: 0;
+}
+
+.cf-live-people__one--more {
+  background: #3a3f47;
+}
+
+.cf-live-people__count {
+  margin-left: 6px;
+  color: #fff;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+@media (max-width: 899px) {
+  /* a narrow bar keeps this person and the count */
+  .cf-live-people__one:not(:first-child) {
+    display: none;
+  }
+}
+
+/* the others on the page: pointers and outlines, above the page and never in the way of the pointer */
+
+.cf-presence {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.cf-presence__outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
+.cf-presence__pointer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* the pointer of another person glides to where it was last said to be, which is a dozen times a second */
+  transition: transform 90ms linear;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.cf-presence__arrow {
+  display: block;
+  /* the tip of the arrow is the place */
+  margin: -1px 0 0 -1px;
+  filter: drop-shadow(0 1px 1.5px rgba(14, 19, 24, 0.35));
+}
+
+.cf-presence__tag {
+  position: absolute;
+  top: 16px;
+  left: 12px;
+  max-width: 14rem;
+  overflow: hidden;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--cf-presence, #525252);
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cf-presence__tag--outline {
+  top: auto;
+  bottom: 100%;
+  left: -2px;
+  border-radius: 4px 4px 4px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* no gliding: a pointer is where it was last said to be */
+  .cf-presence__pointer {
+    transition: none;
+  }
+}
+
+/* the question of a link: the name the others will see, above the two answers */
+
+.cf-live-join {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  width: min(22rem, 100%);
+  text-align: left;
+}
+
+.cf-live-join .cf-editor-state__actions {
+  justify-content: center;
+}

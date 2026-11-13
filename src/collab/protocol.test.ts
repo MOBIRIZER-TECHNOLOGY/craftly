@@ -267,6 +267,7 @@ describe("parseServerMsg: what a server says, before anything of it is used", ()
   const good = (): unknown[] => [
     { t: "welcome", role: "edit", rev: 3, lastSeq: 2, design: design() },
     { t: "welcome", role: "view", rev: 0, lastSeq: 0, design: design() },
+    { t: "welcome", role: "edit", rev: 3, lastSeq: 2, design: design(), peer: 7 },
     { t: "ack", seq: 4, rev: 9 },
     { t: "rejected", seq: 4, reason: "this link is read-only" },
     { t: "ops", rev: 5, ops: [{ k: "el.del", page: "p", id: "a" }] },
@@ -286,7 +287,7 @@ describe("parseServerMsg: what a server says, before anything of it is used", ()
   });
 
   it("lets a kind of message pass that a newer server may send and this version does not know", () => {
-    expect(parseServerMsg({ t: "presence", who: [] })).toBeNull();
+    expect(parseServerMsg({ t: "reaction", who: [] })).toBeNull();
   });
 
   it.each<[string, () => unknown]>([
@@ -303,6 +304,7 @@ describe("parseServerMsg: what a server says, before anything of it is used", ()
     ["a welcome with a revision that is half", () => ({ t: "welcome", role: "edit", rev: 1.5, lastSeq: 0, design: design() })],
     ["a welcome with no number for the last batch", () => ({ t: "welcome", role: "edit", rev: 1, design: design() })],
     ["a welcome with no design", () => ({ t: "welcome", role: "edit", rev: 1, lastSeq: 0 })],
+    ["a welcome with a number for the connection that is text", () => ({ t: "welcome", role: "edit", rev: 1, lastSeq: 0, design: design(), peer: "1" })],
     ["a welcome with a design that has no pages", () => ({ t: "welcome", role: "edit", rev: 1, lastSeq: 0, design: { ...design(), pages: [] } })],
     [
       "a welcome with a design that carries code",

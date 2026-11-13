@@ -26,6 +26,7 @@
  */
 import type { Design } from "@/core/types";
 import { applyOps } from "./ops";
+import { checkPresence, PRESENCE_STALE_MS, type PresenceState } from "./presence";
 import { canEdit, checkOps, checkSets, type ClientMsg, type Role, type ServerMsg } from "./protocol";
 
 /** How long a client that is not in the room is remembered after it was last seen. */
@@ -56,6 +57,11 @@ export interface Peer {
 interface Member {
   client: string;
   role: Role;
+  /** The number of this connection in the room, under which the others hear where this person is. */
+  peer: number;
+  /** Where this person last said they are, and when; null until they say it. In memory only: it is never saved. */
+  presence: PresenceState | null;
+  heard: number;
 }
 
 export class Room {
@@ -69,6 +75,7 @@ export class Room {
   private lastSeq = new Map<string, number>();
   private seen = new Map<string, number>();
   private floor: number;
+  private numbered = 0;
   private now: () => number;
   private keepMs: number;
   private keepMost: number;
@@ -143,18 +150,66 @@ export class Room {
     const replaced: Peer[] = [];
     for (const [other, member] of this.members) {
       if (member.client === client && other !== peer) {
-        this.members.delete(other);
+        this.drop(other, member);
         replaced.push(other);
       }
     }
-    this.members.set(peer, { client, role });
+    // a connection that asks for the design again keeps its number and what it said about where it is
+    const had = this.members.get(peer);
+    const member: Member = { client, role, peer: had?.peer ?? ++this.numbered, presence: had?.presence ?? null, heard: had?.heard ?? 0 };
+    this.members.set(peer, member);
     if (this.lastSeq.has(client)) this.seen.set(client, this.now());
-    peer.send({ t: "welcome", role, rev: this.rev, lastSeq: this.lastOf(client), design: this.design });
+    peer.send({ t: "welcome", role, rev: this.rev, lastSeq: this.lastOf(client), design: this.design, peer: member.peer });
+    // where the others are, as each last said it: without this a newcomer would see nobody until they move
+    const at = this.now();
+    for (const other of this.members.values()) {
+      if (other === member || !other.presence) continue;
+      // (somebody who fell silent is no longer the one who types in a text box: see `present`)
+      const fresh = at - other.heard <= PRESENCE_STALE_MS;
+      peer.send({ t: "presence", peer: other.peer, ...other.presence, editing: fresh ? other.presence.editing : null });
+    }
     return replaced;
   }
 
   leave(peer: Peer): void {
+    const member = this.members.get(peer);
+    if (member) this.drop(peer, member);
+  }
+
+  /** Takes a connection out of the room, and tells the others that this person has gone if they ever heard of them. */
+  private drop(peer: Peer, member: Member): void {
     this.members.delete(peer);
+    if (member.presence) for (const other of this.members.keys()) other.send({ t: "presence", peer: member.peer, gone: true });
+  }
+
+  /**
+   * What a person says about where they are, passed on to the others under the number of their connection, which a browser
+   * cannot choose: nobody speaks for anybody else. It is kept in memory as the last word of that person (for whoever comes in
+   * later) and nowhere else. It does not touch the design, the revision or the batch numbers, and nothing is answered. What
+   * does not have the form it should is dropped without a word: it is not worth closing a connection over.
+   *
+   * ONE PERSON AT A TIME TYPES IN A TEXT BOX. Text typed into one box by two people at once is one value, of which one side
+   * would be lost (ops.ts: the last writer wins). So whoever says first that they type in a box is the one, for as long as they
+   * keep saying so: anybody who says the same of that box meanwhile is passed on, and remembered, as somebody who types in
+   * nothing. The second browser hears that the first types there, as everybody does, and closes its own box (the editor does
+   * that); the first never hears of the second's attempt. The order in which the server heard the two decides, so it is the same
+   * for everybody. It cannot get stuck: it ends when the first says otherwise, leaves, or has not been heard of for
+   * `PRESENCE_STALE_MS` (a browser that types repeats itself every few seconds). Somebody who only looks types in nothing and
+   * has no selection.
+   */
+  private present(peer: Peer, member: Member, raw: unknown): void {
+    const said = checkPresence(raw);
+    if (typeof said === "string") return;
+    const at = this.now();
+    const state = canEdit(member.role) ? said : { ...said, selection: [], editing: null };
+    if (state.editing !== null) {
+      for (const other of this.members.values()) {
+        if (other !== member && other.presence?.editing === state.editing && at - other.heard <= PRESENCE_STALE_MS) state.editing = null;
+      }
+    }
+    member.presence = state;
+    member.heard = at;
+    for (const other of this.members.keys()) if (other !== peer) other.send({ t: "presence", peer: member.peer, ...state });
   }
 
   /** The peers that have joined, so the host can close the connection of a client that has come back on another. */
@@ -167,6 +222,7 @@ export class Room {
     if (!member) return;
     if (msg.t === "ping") peer.send({ t: "pong" });
     else if (msg.t === "ops") return this.batch(peer, member, msg.seq, msg.ops);
+    else if (msg.t === "presence") this.present(peer, member, msg);
     else if (msg.t === "join") this.join(peer, member.client, member.role); // a client that wants the design again
   }
 

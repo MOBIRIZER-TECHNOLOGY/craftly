@@ -21,6 +21,7 @@ describe("the text a scraper reads", () => {
       "rooms_created_total",
       "rooms_removed_total",
       "rooms_expired_total",
+      "presence_dropped_total",
     ]) {
       expect(parsed.samples.get(`craftly_live_${name}`), name).toBe(0);
       expect(parsed.types.get(`craftly_live_${name}`), name).toBe("counter");

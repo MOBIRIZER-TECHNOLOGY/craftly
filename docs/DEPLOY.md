@@ -108,6 +108,7 @@ All settings are environment variables, read once at the start by `src/server/ma
 | `MAX_UNJOINED_MESSAGE_BYTES` | `8192` | The most a message may be before a connection has shown its key. A bigger one is not read and closes the connection. |
 | `BYTE_BURST`, `BYTES_PER_SECOND` | `8388608`, `1048576` | Bytes one connection may send: a burst (8 MiB), then so many a second (1 MiB). More closes the connection (1008). |
 | `JOIN_BURST`, `JOIN_EVERY_MS` | `4`, `2000` | How often one connection may ask for the whole design: a burst, then once every so many milliseconds. More closes the connection (1008). |
+| `PRESENCE_BURST`, `PRESENCE_PER_SECOND` | `30`, `15` | How often one connection may say where its person is (pointer, selection): a burst, then so many a second. More is dropped without closing the connection, and counted (`craftly_live_presence_dropped_total`). |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | How long the server may take to close when it is told to stop (SIGINT, SIGTERM): it waits for the saves and requests that are at work, then leaves with exit code 1 and a line in the log. 0 to 600000. Nothing acknowledged is lost by not waiting. |
 
 **This table must be kept in step with `src/server/main.ts`**: a variable added there and not here does not exist for an operator. The comment at the top of `main.ts` lists the variables too. The table was read against `main.ts` on 2026-11-14 and holds every variable it reads. A variable is in the table only if `main.ts` read it when this section was last edited.

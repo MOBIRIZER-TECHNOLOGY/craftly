@@ -18,6 +18,7 @@ import { svgProblem } from "@/core/svgSafety";
 import type { Design, DesignElement } from "@/core/types";
 import { elementProblem } from "@/core/usableElement";
 import type { Op } from "./ops";
+import { parsePresence, type PresenceHeard, type PresenceSaid } from "./presence";
 
 export type Role = "edit" | "view";
 export const canEdit = (role: Role): boolean => role === "edit";
@@ -32,16 +33,24 @@ const DENIED_REASONS: ReadonlySet<string> = new Set<DeniedReason>(["no-access", 
 /** The longest key that a browser may show; the server's are 22 characters, and the editor reads links with keys of up to 100. */
 export const MAX_KEY_LENGTH = 200;
 
-/** `join` shows the key, in the first message of every connection and never in an address, which every server and proxy that it passes writes in a log. */
-export type ClientMsg = { t: "join"; client: string; key: string } | { t: "ops"; seq: number; ops: Op[] } | { t: "ping" };
+/**
+ * `join` shows the key, in the first message of every connection and never in an address, which every server and proxy that it passes writes in a log.
+ * `presence` says where this person is (presence.ts); it is passed on to the others and kept nowhere.
+ */
+export type ClientMsg = { t: "join"; client: string; key: string } | { t: "ops"; seq: number; ops: Op[] } | { t: "ping" } | PresenceSaid;
 
+/**
+ * `peer` in a welcome is the number the server gave this connection, under which the others hear of this person. A server from
+ * before there was presence sends none, and a browser then says nothing about where it is, to a server that would not pass it on.
+ */
 export type ServerMsg =
-  | { t: "welcome"; role: Role; rev: number; lastSeq: number; design: Design }
+  | { t: "welcome"; role: Role; rev: number; lastSeq: number; design: Design; peer?: number }
   | { t: "ack"; seq: number; rev: number }
   | { t: "rejected"; seq: number; reason: string }
   | { t: "ops"; rev: number; ops: Op[] }
   | { t: "denied"; reason: DeniedReason }
-  | { t: "pong" };
+  | { t: "pong" }
+  | PresenceHeard;
 
 /** The most operations in one batch; one editor action makes a handful, pasting a page of a template a few hundred. */
 export const MAX_OPS_PER_BATCH = 10_000;
@@ -285,9 +294,15 @@ export function parseServerMsg(value: unknown): ServerMsg | string | null {
     case "welcome": {
       if (value.role !== "edit" && value.role !== "view") return "welcome: the role is edit or view";
       if (!isCount(value.rev) || !isCount(value.lastSeq)) return "welcome: the revision and the last batch are counts";
+      if (value.peer !== undefined && !isCount(value.peer)) return "welcome: the number of a connection is a count";
       const problem = checkDesign(value.design);
       if (problem) return `welcome: ${problem}`;
-      return { t: "welcome", role: value.role, rev: value.rev, lastSeq: value.lastSeq, design: value.design as Design };
+      const welcome: ServerMsg = { t: "welcome", role: value.role, rev: value.rev, lastSeq: value.lastSeq, design: value.design as Design };
+      return value.peer === undefined ? welcome : { ...welcome, peer: value.peer };
+    }
+    case "presence": {
+      const heard = parsePresence(value);
+      return typeof heard === "string" ? `presence: ${heard}` : heard;
     }
     case "ack":
       return isCount(value.seq) && isCount(value.rev) ? { t: "ack", seq: value.seq, rev: value.rev } : "ack: a batch and a revision are counts";

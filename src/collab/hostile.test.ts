@@ -138,7 +138,7 @@ describe("messages of the wrong form", () => {
 
   it("go on at a kind of message that a newer server may send", () => {
     const { session } = joined();
-    expect(session.receive({ t: "presence", who: ["ana"] })).toEqual({ changed: false, ended: null });
+    expect(session.receive({ t: "reaction", who: ["ana"] })).toEqual({ changed: false, ended: null });
     expect(session.status).toBe("live");
   });
 });
@@ -246,7 +246,7 @@ describe("the connection to a server that cannot be trusted", () => {
     live.start();
     sockets[0].open();
     sockets[0].say(welcome());
-    sockets[0].say({ t: "presence", who: [] });
+    sockets[0].say({ t: "reaction", who: [] });
     sockets[0].say({ t: "ops", rev: 1, ops: [{ k: "el.set", page: "p", id: "a", set: { x: 7 } }] });
     expect(live.status).toBe("live");
     expect(x(live.design)).toBe(7);

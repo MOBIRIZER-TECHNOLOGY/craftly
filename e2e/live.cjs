@@ -227,6 +227,44 @@ async function startServer() {
     return `y ${mine.els[0].y} for both`;
   });
 
+  await step("each sees the other: a pointer with a name on the page, an outline around what is selected, and who is here in the top bar", async () => {
+    const frame = await bob.page.locator(".cf-pageframe").boundingBox();
+    const zoom = await bob.page.evaluate(() => window.__editor.getState().zoom);
+    await bob.page.mouse.move(frame.x + 600 * zoom, frame.y + 500 * zoom);
+    await bob.page.mouse.move(frame.x + 640 * zoom, frame.y + 540 * zoom, { steps: 4 });
+    const pointer = ann.page.locator(".cf-presence__pointer").first();
+    await pointer.waitFor({ timeout: 8000 });
+    const name = await pointer.locator(".cf-presence__tag").textContent();
+    if (!/^Guest \d+$/.test(name)) throw new Error("the name on the pointer: " + name);
+    // where Ann sees Bob's pointer is where Bob's pointer is on the page, whatever the two windows show of it
+    const where = await ann.page.waitForFunction(
+      () => {
+        const p = document.querySelector(".cf-presence__pointer");
+        const f = document.querySelector(".cf-pageframe");
+        if (!p || !f) return null;
+        const z = window.__editor.getState().zoom;
+        const [a, b] = [p.getBoundingClientRect(), f.getBoundingClientRect()];
+        const at = { x: Math.round((a.left - b.left) / z), y: Math.round((a.top - b.top) / z) };
+        return Math.abs(at.x - 640) <= 3 && Math.abs(at.y - 540) <= 3 ? at : null;
+      },
+      null,
+      { timeout: 8000 },
+    );
+    await ann.page.getByRole("list", { name: "2 people here" }).waitFor({ timeout: 8000 });
+    await bob.page.getByRole("list", { name: "2 people here" }).waitFor({ timeout: 8000 });
+    await bob.page.evaluate((id) => window.__editor.getState().actions.select([id]), firstId);
+    await ann.page.locator(".cf-presence__outline").first().waitFor({ timeout: 8000 });
+    const layer = await ann.page.evaluate(() => {
+      const el = document.querySelector(".cf-presence");
+      return { events: getComputedStyle(el).pointerEvents, hidden: el.getAttribute("aria-hidden") };
+    });
+    if (layer.events !== "none" || layer.hidden !== "true") throw new Error("the layer of the others can be touched or is read out: " + JSON.stringify(layer));
+    await shot(ann, "sees-bob");
+    await bob.page.evaluate(() => window.__editor.getState().actions.clearSelection());
+    await ann.page.locator(".cf-presence__outline").first().waitFor({ state: "detached", timeout: 8000 });
+    return `Bob is "${name}" at ${JSON.stringify(await where.jsonValue())} for Ann`;
+  });
+
   await step("changes made at the same moment to different things both survive, for both people", async () => {
     await Promise.all([
       ann.page.evaluate((id) => window.__editor.getState().actions.updateElements([id], { x: 120 }), secondId),

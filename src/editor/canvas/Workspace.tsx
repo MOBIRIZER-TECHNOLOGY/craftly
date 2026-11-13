@@ -8,6 +8,7 @@ import { PageView } from "./PageView";
 import { usePreview } from "./preview";
 import { Guides, Rulers } from "./Rulers";
 import { TextEditorOverlay } from "./TextEditorOverlay";
+import { PresenceOverlay } from "../live/PresenceOverlay";
 import { layoutFor, screenToDesign, takeZoomAnchor, useView } from "./viewStore";
 import "./canvas.css";
 
@@ -116,6 +117,7 @@ export function Workspace({ children }: { children?: ReactNode }) {
             <CropOverlay />
             <PathEditOverlay />
             <TextEditorOverlay />
+            <PresenceOverlay />
           </div>
         </div>
       </div>

@@ -22,6 +22,7 @@ const COUNTERS = {
   rooms_created_total: "Rooms made (POST /api/rooms answered 201).",
   rooms_removed_total: "Rooms removed by their owner (stop sharing) or by the operator.",
   rooms_expired_total: "Rooms removed because nobody used them for longer than rooms may live.",
+  presence_dropped_total: "Presence messages (pointers, selections) that were not passed on because a connection sent them faster than it may.",
 } as const;
 
 /** Counters with one label, and every value that label can have. */

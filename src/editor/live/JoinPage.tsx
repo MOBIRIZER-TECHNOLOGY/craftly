@@ -14,6 +14,7 @@ import { joinDesign } from "./connection";
 import { findShared, saveJoined } from "./joined";
 import { isKnownServer, rememberServer, serverName } from "./knownServers";
 import { parseJoinToken } from "./links";
+import { NameField } from "./LivePeople";
 
 /** Opens a design of the library, in place of this page so that Back does not come back to it. */
 const open = (id: string) => window.location.replace(`#${designPath(id)}`);
@@ -87,13 +88,17 @@ export function JoinPage({ token, onOpen = open }: { token: string; onOpen?: (de
           title="Join this shared design?"
           text={`This link connects to ${serverName(asking)}, a server this device has not used before. That server will see your network address, and the design it sends is saved in your library. Join only if you trust whoever gave you the link.`}
           action={
-            <div className="cf-editor-state__actions">
-              <Button ref={yes} variant="secondary" icon={<IconHome aria-hidden="true" />} onClick={home}>
-                Back to home
-              </Button>
-              <Button variant="primary" onClick={join}>
-                Join
-              </Button>
+            // the name the others will see is asked for here, once; it has a default, and can be changed later in the Share panel
+            <div className="cf-live-join">
+              <NameField />
+              <div className="cf-editor-state__actions">
+                <Button ref={yes} variant="secondary" icon={<IconHome aria-hidden="true" />} onClick={home}>
+                  Back to home
+                </Button>
+                <Button variant="primary" onClick={join}>
+                  Join
+                </Button>
+              </div>
             </div>
           }
         />

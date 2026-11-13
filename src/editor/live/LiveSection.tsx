@@ -15,6 +15,7 @@ import { Badge, Button, TextField, toast } from "@/ui";
 import { CreateKeyError, deniedText, shareDesign, stopSharing, useLiveStatus } from "./connection";
 import { rememberShared } from "./joined";
 import { joinUrl } from "./links";
+import { NameField } from "./LivePeople";
 import "./live.css";
 
 const SERVER_KEY = "craftly.live.server";
@@ -147,6 +148,7 @@ export function LiveSection() {
             autoFocus
           />
         ) : null}
+        <NameField />
         <Button variant="primary" onClick={() => void start()} disabled={busy || !server.trim() || (keyAsked && !createKey.trim())} aria-busy={busy || undefined}>
           Start live session
         </Button>
@@ -174,6 +176,7 @@ export function LiveSection() {
           {link.role === "view" ? "You can look at this design, not change it." : "You are editing this design together with the person who shared it."}
         </p>
       )}
+      <NameField />
       {problem ? (
         <p className="cf-live__problem" role="alert">
           {problem}

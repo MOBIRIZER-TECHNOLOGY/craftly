@@ -225,7 +225,7 @@ describe("a refused change", () => {
     const me = new Browser(room, "me", "view");
     me.down = [];
     room.receive(me.peer, { t: "join", client: "me", key: "k" });
-    expect(me.down).toEqual([{ t: "welcome", role: "view", rev: 3, lastSeq: 0, design: room.design }]);
+    expect(me.down).toEqual([{ t: "welcome", role: "view", rev: 3, lastSeq: 0, design: room.design, peer: 1 }]);
   });
 
   it("is what a link that only lets people look gives to every change", () => {

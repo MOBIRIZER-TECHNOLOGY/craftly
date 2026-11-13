@@ -14,6 +14,7 @@ import { findShared, saveJoined } from "./joined";
 import { JoinPage } from "./JoinPage";
 import { isKnownServer, rememberServer } from "./knownServers";
 import { joinToken } from "./links";
+import { usePresence } from "./presence";
 
 vi.mock("./connection", async (original) => ({ ...(await original<typeof import("./connection")>()), joinDesign: vi.fn() }));
 
@@ -194,5 +195,26 @@ describe("a link to a server that is new on this device", () => {
     render(<JoinPage token={joinToken(link)} onOpen={onOpen} />);
     await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
     expect(join).not.toHaveBeenCalled();
+  });
+});
+
+describe("the name the others will see", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    usePresence.setState({ name: "" });
+  });
+
+  it("is asked for with the question, is not needed to join, and is kept on this device", async () => {
+    join.mockResolvedValue({ design: shared(), role: "edit" });
+    const onOpen = vi.fn();
+    render(<JoinPage token={joinToken(link)} onOpen={onOpen} />);
+    await screen.findByRole("heading", { name: "Join this shared design?" });
+    const name = screen.getByRole("textbox", { name: "Your name" }) as HTMLInputElement;
+    expect(name.value).toBe("");
+    const user = userEvent.setup();
+    await user.type(name, "Ana");
+    expect(localStorage.getItem("craftly.live.name")).toBe("Ana");
+    await user.click(screen.getByRole("button", { name: "Join" }));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
   });
 });

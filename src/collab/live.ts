@@ -5,6 +5,7 @@
  * `createSocket` (the browser's WebSocket by default), so tests can make one up.
  */
 import type { Design } from "@/core/types";
+import type { PresenceHeard, PresenceState } from "./presence";
 import type { ClientMsg, DeniedReason } from "./protocol";
 import { Session, type Outbox } from "./session";
 
@@ -37,6 +38,8 @@ export interface LiveOptions {
   /** What to show has changed: read `live.design`. */
   onChange(): void;
   onStatus?(status: LiveStatus, reason: DeniedReason | null): void;
+  /** Where another person in the room is, or that they have gone: what the server passed on, after it has been read. */
+  onPresence?(heard: PresenceHeard): void;
 }
 
 const OPEN = 1;
@@ -137,6 +140,22 @@ export class Live {
     this.session.edit(before, after);
   }
 
+  /** The number under which the others hear of this person: null while not in the room, and with a server that knows no presence. */
+  get peer(): number | null {
+    return this.session.status === "live" ? this.session.peer : null;
+  }
+
+  /**
+   * Says where this person is, at once and not behind the edits that wait for an image: whether it was said. It is said only in
+   * the room, and only to a server that gave this connection a number: one from before there was presence would count the
+   * messages against what this connection may send and pass none of them on. Nothing is kept: what is not said now is not said later.
+   */
+  present(state: PresenceState): boolean {
+    if (this.peer === null || this.socket?.readyState !== OPEN) return false;
+    this.send({ t: "presence", ...state });
+    return true;
+  }
+
   private send(msg: ClientMsg): void {
     const socket = this.socket;
     if (socket?.readyState !== OPEN) return;
@@ -196,6 +215,7 @@ export class Live {
       this.everLive = true;
       this.setStatus("live");
     }
+    if (outcome.presence) this.opts.onPresence?.(outcome.presence);
     if (outcome.rejected !== undefined) this.opts.onRejected?.(outcome.rejected);
     if (outcome.changed) this.opts.onChange();
   }

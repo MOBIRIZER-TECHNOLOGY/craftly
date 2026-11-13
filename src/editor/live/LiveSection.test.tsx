@@ -13,6 +13,7 @@ import { resetEditor } from "@/test/helpers";
 import { useLiveStatus } from "./connection";
 import { LiveBadge, LiveSection, liveStatusText } from "./LiveSection";
 import { parseJoinToken } from "./links";
+import { usePresence } from "./presence";
 
 const made = { ownerKey: "owner-key", room: "TW-FaxWt8edjpnT-bGQyjA", editKey: "WjGO30NJy5udhntaj-8j9w", viewKey: "BXQddjRR35eABAbZ6Hib_Q" };
 const link: LiveLink = { server: "https://live.example.test", room: made.room, key: made.editKey, role: "edit", viewKey: made.viewKey, ownerKey: made.ownerKey };
@@ -333,5 +334,27 @@ describe("the state of the connection in the top bar", () => {
     expect(liveStatusText("reconnecting", "edit")).toBe("Reconnecting...");
     expect(liveStatusText("denied", null)).toBe("Not allowed in");
     expect(liveStatusText("closed", null)).toBe("Not connected");
+  });
+});
+
+describe("the name the others see", () => {
+  beforeEach(() => usePresence.setState({ name: "" }));
+
+  it("is asked for where sharing starts, and is kept on this device as soon as it is typed", async () => {
+    render(<LiveSection />);
+    await userEvent.type(field("Your name"), "Ana");
+    expect(localStorage.getItem("craftly.live.name")).toBe("Ana");
+    expect(screen.getByRole("button", { name: "Start live session" })).toBeTruthy(); // and a name is not needed to start
+  });
+
+  it("can be changed while the design is shared, by the person who shares it and by one who was given a link", async () => {
+    useEditor.getState().actions.setLiveLink(link);
+    const owner = render(<LiveSection />);
+    await userEvent.type(field("Your name"), "Bo");
+    expect(localStorage.getItem("craftly.live.name")).toBe("Bo");
+    owner.unmount();
+    useEditor.getState().actions.setLiveLink({ server: link.server, room: link.room, key: link.key, role: "edit" });
+    render(<LiveSection />);
+    expect(field("Your name").value).toBe("Bo");
   });
 });
