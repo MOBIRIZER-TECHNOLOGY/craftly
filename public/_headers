@@ -24,5 +24,7 @@
 # pictures and fonts of this site only, and connections to this site and to Hugging Face (the on-device models). A live server for
 # working together is somewhere else: add its two addresses to connect-src (https://live.example.org wss://live.example.org), or
 # "Work together" cannot reach it. A model download was tried under this policy on 2026-11-11.
+# The build writes this line into index.html as a meta tag too, for hosts that do not read this file (cspMeta in vite.config.ts):
+# keep the policy on one line, and see "Deploy" in the README for VITE_CRAFTLY_CSP_CONNECT, which adds hosts to both.
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co blob: data:; worker-src 'self'; media-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'

@@ -78,6 +78,9 @@ jobs:
           E2E_OUT: ${{ runner.temp }}/e2e-production
           VITE_EXPOSE_STORE: "1"
           VITE_CRAFTLY_REPORT_URL: "/__report"
+          # a production build carries the Content-Security-Policy in a meta tag, so the live server of live.cjs and the stand-in of hostile.cjs listen on a port that the build names in connect-src
+          LIVE_PORT: "8788"
+          VITE_CRAFTLY_CSP_CONNECT: "http://127.0.0.1:8788 ws://127.0.0.1:8788"
         run: |
           npx vite build --outDir dist-e2e
           npx vite preview --outDir dist-e2e --host 127.0.0.1 --port 4174 > "$RUNNER_TEMP/preview.log" 2>&1 &

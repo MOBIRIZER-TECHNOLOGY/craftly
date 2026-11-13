@@ -13,9 +13,9 @@ What was checked and what was not is said in each section. The short version: th
 
 - **HTTPS.** The service worker (offline use, installing the app) needs it.
 - **No rewrite rules.** Pages are in the URL hash.
-- **Headers.** `public/_headers` is copied into `dist/` and sets the caching rules (`index.html`, `sw.js`, `precache.json` and the manifest with `no-cache`; `assets/` for a year), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and the **Content-Security-Policy**. Netlify and Cloudflare Pages read that file. Every other host ignores it: send the same headers from the host's own configuration (the file is the list to copy from).
+- **Headers.** `public/_headers` is copied into `dist/` and sets the caching rules (`index.html`, `sw.js`, `precache.json` and the manifest with `no-cache`; `assets/` for a year), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and the **Content-Security-Policy**. Netlify and Cloudflare Pages read that file. Every other host ignores it: send the same headers from the host's own configuration (the file is the list to copy from). The Content-Security-Policy alone also travels in the page of a production build, as a meta tag written from the same line, so a host without headers still has a policy; it cannot carry `frame-ancestors`, so keep the header where you can (README, "The policy on a host that sends no headers").
 - **A sub-folder.** `npm run build -- --base=/craftly/`, then publish `dist/` there.
-- **If you run a live server:** add its two addresses to `connect-src` in the policy (section 2.6). Without that, "Work together" cannot reach it and the browser's console names the policy as the reason.
+- **If you run a live server:** add its two addresses to `connect-src` in the policy (section 2.6), in the header and in the meta tag of the build: build with `VITE_CRAFTLY_CSP_CONNECT="https://live.example.org wss://live.example.org"`, which writes both. Without that, "Work together" cannot reach it and the browser's console names the policy as the reason.
 
 ## 2. The live server
 

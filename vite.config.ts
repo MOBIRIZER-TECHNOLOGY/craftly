@@ -94,8 +94,89 @@ export function offlineSupport(): Plugin {
   };
 }
 
+const POLICY_LINE = /^([ \t]*Content-Security-Policy:[ \t]*)(.+)$/m;
+/** What a browser ignores when the policy comes in a meta tag: these three need a real header. */
+const NOT_IN_META = new Set(["frame-ancestors", "report-uri", "sandbox"]);
+/** A scheme, a host (with * for any sub-domain) and a port: nothing that could end the directive or the attribute it is written into. */
+const HOST_SOURCE = /^[A-Za-z0-9*.:/[\]-]+$/;
+
+function policyOf(headers: string): string {
+  const line = POLICY_LINE.exec(headers);
+  if (!line) throw new Error("public/_headers has no Content-Security-Policy line: the build reads the policy of the page from it");
+  return line[2].trim();
+}
+
+/** The Content-Security-Policy of `public/_headers` as a meta tag can carry it: the same text, less the directives a meta tag cannot have. */
+export function metaPolicy(headers: string): string {
+  return policyOf(headers)
+    .split(";")
+    .map((directive) => directive.trim())
+    .filter((directive) => directive && !NOT_IN_META.has(directive.split(/\s+/)[0].toLowerCase()))
+    .join("; ");
+}
+
+/** The hosts named in VITE_CRAFTLY_CSP_CONNECT, with spaces or commas between them. Anything that is not the address of a host stops the build. */
+export function connectHosts(value: string | undefined): string[] {
+  const hosts = (value ?? "").split(/[\s,]+/).filter(Boolean);
+  for (const host of hosts) {
+    if (!HOST_SOURCE.test(host))
+      throw new Error(`VITE_CRAFTLY_CSP_CONNECT: "${host}" is not the address of a host (write, for example, https://live.example.org wss://live.example.org)`);
+  }
+  return hosts;
+}
+
+/** The text of the headers file with the hosts added to `connect-src` of its policy; every other line stays as it is. */
+export function addConnectHosts(headers: string, hosts: string[]): string {
+  if (!hosts.length) return headers;
+  const directives = policyOf(headers).split(";");
+  const at = directives.findIndex((directive) => directive.trim().split(/\s+/)[0].toLowerCase() === "connect-src");
+  if (at < 0) throw new Error("the Content-Security-Policy of public/_headers has no connect-src to add the hosts of VITE_CRAFTLY_CSP_CONNECT to");
+  const named = new Set(directives[at].trim().split(/\s+/));
+  directives[at] = [directives[at].trimEnd(), ...hosts.filter((host) => !named.has(host))].join(" ");
+  return headers.replace(POLICY_LINE, (_line, start: string) => start + directives.join(";"));
+}
+
+/**
+ * The Content-Security-Policy as a meta tag in the page of a production build, for the hosts that do not read `public/_headers`
+ * (only Netlify and Cloudflare Pages do): without it a build on any other host had no policy at all unless its operator wrote one.
+ *
+ * The policy has one source, the line in `public/_headers`. The tag gets that text less the directives a browser ignores in a
+ * meta tag (frame-ancestors, report-uri, sandbox). A site with a live server or a mirror of the models names their addresses in
+ * the build variable VITE_CRAFTLY_CSP_CONNECT; they are added to `connect-src` in the tag and in the `_headers` file of the build,
+ * because a browser that gets a header and a tag enforces both, and a host missing from either is refused.
+ *
+ * Only in a build: the development server puts inline scripts of its own into the page (React refresh), which the policy refuses.
+ */
+export function cspMeta(): Plugin {
+  let builtHeaders = "";
+  let headers = "";
+  let hosts: string[] = [];
+  return {
+    name: "craftly-csp-meta",
+    apply: "build",
+    configResolved(config) {
+      builtHeaders = resolve(config.root, config.build.outDir, "_headers");
+      hosts = connectHosts(config.env.VITE_CRAFTLY_CSP_CONNECT);
+      headers = addConnectHosts(readFileSync(resolve(config.publicDir, "_headers"), "utf8"), hosts);
+    },
+    transformIndexHtml(html) {
+      const tag = `<meta http-equiv="Content-Security-Policy" content="${metaPolicy(headers).replaceAll("&", "&amp;").replaceAll('"', "&quot;")}" />`;
+      // A policy applies to what comes after it, so it goes to the top of the head; only the line that names the encoding stays
+      // before it, because a browser looks for that line in the first 1024 bytes of the page.
+      const charset = /^([ \t]*)<meta\s+charset=[^>]*>/im.exec(html);
+      if (charset) return html.replace(charset[0], () => `${charset[0]}\n${charset[1]}${tag}`);
+      const head = /<head[^>]*>/i.exec(html);
+      if (!head) throw new Error("index.html has no <head> to write the Content-Security-Policy into");
+      return html.replace(head[0], () => head[0] + tag);
+    },
+    closeBundle() {
+      if (hosts.length && existsSync(builtHeaders)) writeFileSync(builtHeaders, headers);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), offlineSupport(), devReportEndpoint()],
+  plugins: [react(), offlineSupport(), cspMeta(), devReportEndpoint()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
