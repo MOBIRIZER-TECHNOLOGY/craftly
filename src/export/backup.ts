@@ -9,7 +9,7 @@
  * Memory stays small whatever the size of the library: designs and pictures are read one at a time, the archive is a
  * Blob of references (see `createZip`), and a backup being restored is read in slices (see `openZip`).
  */
-import { listAssets, restoreAssets } from "@/core/assets";
+import { checkUpload, listAssets, restoreAssets } from "@/core/assets";
 import { uid } from "@/core/ids";
 import { getStoredBrandKit, getStoredDesign, listDesigns, listFolders, restoreRecords, setBrandKit, type VersionRecord } from "@/core/library";
 import { dbGet, dbGetAllKeys, metaGet, metaSet } from "@/core/persistence";
@@ -383,10 +383,28 @@ export async function restoreBackup(file: Blob, options: RestoreOptions = {}): P
         result.uploads.damaged++;
         continue;
       }
+      // A backup can be made by hand, so its pictures are checked like any upload: an SVG that is more than plain drawing comes
+      // back as a picture, and one that cannot be drawn does not come back (checkUpload in src/core/assets.ts).
+      const checked = await checkUpload(blob).catch(() => null);
+      if (!checked) {
+        result.uploads.damaged++;
+        continue;
+      }
       result.uploads.added++;
+      const size = checked.drawn ?? upload;
       await assets.add(
-        { id: upload.id, name: upload.name, kind: upload.kind, mime: upload.mime, size: blob.size, width: upload.width, height: upload.height, createdAt: upload.createdAt, blob },
-        blob.size,
+        {
+          id: upload.id,
+          name: upload.name,
+          kind: checked.kind,
+          mime: checked.mime,
+          size: checked.blob.size,
+          width: size.width,
+          height: size.height,
+          createdAt: upload.createdAt,
+          blob: checked.blob,
+        },
+        checked.blob.size,
       );
     }
     await assets.flush();

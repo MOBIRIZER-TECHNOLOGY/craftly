@@ -7,6 +7,7 @@ import { PermanentSendError } from "@/collab/live";
 import * as assets from "@/core/assets";
 import { createDesign, createImage, createPage } from "@/core/factory";
 import type { Asset, Design, LiveLink } from "@/core/types";
+import { wipeDatabase } from "@/test/logicDb";
 import { sharedMedia } from "./media";
 
 vi.mock("@/core/assets", async (original) => ({ ...(await original<typeof import("@/core/assets")>()), getAsset: vi.fn() }));
@@ -88,5 +89,24 @@ describe("an image that is not on this device", () => {
     const error = await outcome(answering(503));
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toBeInstanceOf(PermanentSendError);
+  });
+});
+
+describe("an image that somebody else added", () => {
+  beforeEach(async () => {
+    getAsset.mockResolvedValue(null);
+    await wipeDatabase();
+  });
+  const serving = (mime: string, content: string) => vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ mime, base64: btoa(content) }) }) as Response);
+
+  it("is kept on this device under its id", async () => {
+    await sharedMedia(link, serving("image/svg+xml", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20"/>`)).download(design());
+    expect(await assets.listAssets()).toMatchObject([{ id: "pic", kind: "svg", mime: "image/svg+xml", width: 30, height: 20 }]);
+  });
+
+  it("is kept as a PNG picture, not as an SVG, when it is an SVG that is more than plain drawing", async () => {
+    const scripted = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20"><script>alert(document.domain)</script></svg>`;
+    await sharedMedia(link, serving("image/svg+xml", scripted)).download(design());
+    expect(await assets.listAssets()).toMatchObject([{ id: "pic", kind: "image", mime: "image/png", width: 1024, height: 683 }]);
   });
 });

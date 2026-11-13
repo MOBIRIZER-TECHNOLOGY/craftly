@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { contextOf } from "@/test/canvasMock";
 import { fakeFile, wipeDatabase } from "@/test/logicDb";
 import {
   ACCEPTED_IMAGE_TYPES,
   addAssetFromBlob,
   addAssetFromFile,
   assetSrc,
+  checkUpload,
   deleteAsset,
   getAsset,
   getAssetUrl,
@@ -12,6 +14,8 @@ import {
   listAssets,
   renameAsset,
   subscribeAssets,
+  subscribeFlattenedSvg,
+  UNDRAWABLE_SVG_MESSAGE,
 } from "./assets";
 
 beforeEach(async () => {
@@ -140,6 +144,115 @@ describe("adding an upload", () => {
     stop();
     await addAssetFromFile(fakeFile("b.png", "image/png"));
     expect(heard).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("an SVG that is more than plain drawing", () => {
+  const STYLED = `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><style>rect{fill:red}</style><rect width="120" height="40"/></svg>`;
+  const SCRIPTED = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><script>alert(document.domain)</script></svg>`;
+  /** The canvas the picture was drawn on: the only one the upload made. */
+  const drawnOn = (make: { mock: { results: Array<{ value: unknown }> } }) =>
+    make.mock.results.map((r) => r.value).find((el): el is HTMLCanvasElement => el instanceof HTMLCanvasElement) as HTMLCanvasElement;
+
+  it("keeps a plain drawing as the SVG it is, under the SVG type and no other", async () => {
+    const file = fakeFile("logo.svg", "image/svg+xml", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><rect width="120" height="40"/></svg>`);
+    const asset = await addAssetFromFile(file);
+    expect(asset.blob).toBe(file);
+    expect((await addAssetFromFile(fakeFile("logo.svg", "", `<svg viewBox="0 0 10 20"/>`))).blob.type).toBe("image/svg+xml");
+    expect((await addAssetFromFile(fakeFile("logo.svg", "image/svg+xml;charset=utf-8", `<svg viewBox="0 0 10 20"/>`))).blob.type).toBe("image/svg+xml");
+  });
+
+  it.each([
+    ["a style sheet and an XML declaration", STYLED],
+    ["a script", SCRIPTED],
+    ["a handler", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" onload="alert(1)"/>`],
+    ["a picture from the web", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><image href="https://example.test/a.png"/></svg>`],
+  ])("stores an SVG with %s as a PNG picture, not as an SVG", async (_what, markup) => {
+    const asset = await addAssetFromFile(fakeFile("badge.svg", "image/svg+xml", markup));
+    expect(asset).toMatchObject({ name: "badge", kind: "image", mime: "image/png", width: 1024, height: 341 });
+    expect(asset.blob.type).toBe("image/png");
+    expect(asset.size).toBe(asset.blob.size);
+    expect(await asset.blob.text()).not.toContain("<svg");
+    expect(await listAssets()).toMatchObject([{ kind: "image", mime: "image/png" }]);
+  });
+
+  it("draws it through an image element onto a canvas of the size it is stored at", async () => {
+    const make = vi.spyOn(document, "createElement");
+    const asset = await addAssetFromFile(fakeFile("badge.svg", "image/svg+xml", STYLED));
+    const canvas = drawnOn(make);
+    expect([canvas.width, canvas.height]).toEqual([asset.width, asset.height]);
+    const [[image, x, y, w, h]] = contextOf(canvas)!.callsTo("drawImage");
+    expect(image).toBeInstanceOf(HTMLImageElement);
+    expect([x, y, w, h]).toEqual([0, 0, 1024, 341]);
+  });
+
+  it("draws a very large one no bigger than 2048 pixels a side, and a small one at 1024", async () => {
+    const big = await addAssetFromFile(fakeFile("big.svg", "image/svg+xml", STYLED.replace("0 0 120 40", "0 0 20000 10000")));
+    expect([big.width, big.height]).toEqual([2048, 1024]);
+    const thin = await addAssetFromFile(fakeFile("thin.svg", "image/svg+xml", STYLED.replace("0 0 120 40", "0 0 30000 1")));
+    expect([thin.width, thin.height]).toEqual([2048, 1]);
+    const medium = await addAssetFromFile(fakeFile("medium.svg", "image/svg+xml", STYLED.replace("0 0 120 40", "0 0 800 600")));
+    expect([medium.width, medium.height]).toEqual([1600, 1200]);
+  });
+
+  it("takes the size the browser found when the markup states none", async () => {
+    const asset = await addAssetFromFile(fakeFile("shapeless.svg", "image/svg+xml", `<svg xmlns="http://www.w3.org/2000/svg"><style/></svg>`));
+    expect([asset.width, asset.height]).toEqual([1024, 768]);
+  });
+
+  it("knows an SVG by its extension or by a type with more words in it, whatever the other says", async () => {
+    expect((await addAssetFromFile(fakeFile("a.svg", "text/html", SCRIPTED))).blob.type).toBe("image/png");
+    expect((await addAssetFromFile(fakeFile("a.png", "image/svg+xml; charset=utf-8", SCRIPTED))).blob.type).toBe("image/png");
+    expect((await addAssetFromBlob(new Blob([SCRIPTED], { type: "image/svg+xml" }))).mime).toBe("image/png");
+  });
+
+  it("stores a picture that came with a type that is no picture type as a PNG, never under that type", async () => {
+    const asset = await addAssetFromFile(fakeFile("page.png", "text/html", "<script>alert(1)</script>"));
+    expect(asset).toMatchObject({ kind: "image", mime: "image/png" });
+    expect(asset.blob.type).toBe("image/png");
+  });
+
+  it("refuses one that cannot be drawn, in plain words, stores nothing and gives its temporary address back", async () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    vi.spyOn(HTMLImageElement.prototype, "decode").mockRejectedValue(new Error("not an image"));
+    await expect(addAssetFromFile(fakeFile("bad.svg", "image/svg+xml", SCRIPTED))).rejects.toThrow(UNDRAWABLE_SVG_MESSAGE);
+    expect(revoke).toHaveBeenCalledTimes(1);
+    expect(await listAssets()).toEqual([]);
+  });
+
+  it("refuses one that has no size at all", async () => {
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(0);
+    await expect(addAssetFromFile(fakeFile("empty.svg", "image/svg+xml", `<svg xmlns="http://www.w3.org/2000/svg"><style/></svg>`))).rejects.toThrow(UNDRAWABLE_SVG_MESSAGE);
+    expect(await listAssets()).toEqual([]);
+  });
+
+  it("refuses one whose drawing the browser will not hand out", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(null));
+    await expect(addAssetFromFile(fakeFile("locked.svg", "image/svg+xml", SCRIPTED))).rejects.toThrow(UNDRAWABLE_SVG_MESSAGE);
+    expect(await listAssets()).toEqual([]);
+  });
+
+  it("tells whoever listens each time an SVG was stored as a picture, and not for a plain one", async () => {
+    const heard = vi.fn();
+    const stop = subscribeFlattenedSvg(heard);
+    await addAssetFromFile(fakeFile("plain.svg", "image/svg+xml", `<svg viewBox="0 0 10 20"/>`));
+    await addAssetFromFile(fakeFile("photo.png", "image/png"));
+    expect(heard).not.toHaveBeenCalled();
+    await addAssetFromFile(fakeFile("styled.svg", "image/svg+xml", STYLED));
+    expect(heard).toHaveBeenCalledTimes(1);
+    stop();
+    await addAssetFromFile(fakeFile("styled.svg", "image/svg+xml", STYLED));
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks a picture without measuring it, for a backup that already knows the size", async () => {
+    const decode = vi.spyOn(HTMLImageElement.prototype, "decode");
+    const png = new Blob(["x"], { type: "image/png" });
+    expect(await checkUpload(png)).toEqual({ blob: png, kind: "image", mime: "image/png" });
+    const plain = await checkUpload(new Blob([`<svg viewBox="0 0 10 20"/>`], { type: "image/svg+xml" }));
+    expect(plain).toMatchObject({ kind: "svg", mime: "image/svg+xml" });
+    expect(decode).not.toHaveBeenCalled();
+    expect(await checkUpload(new Blob([STYLED], { type: "image/svg+xml" }))).toMatchObject({ kind: "image", mime: "image/png", drawn: { width: 1024, height: 341 } });
   });
 });
 

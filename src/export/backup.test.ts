@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as assets from "@/core/assets";
 import { getAsset, listAssets, subscribeAssets } from "@/core/assets";
 import { createDesign, createImage, createPage, createText } from "@/core/factory";
 import {
@@ -589,6 +590,30 @@ describe("restoreBackup", () => {
     expect(result.uploads).toEqual({ added: 1, same: 0, damaged: 0 });
     expect(await getAsset("a_logo")).toBeNull();
     expect((await listAssets()).map((a) => a.id)).toEqual(["a_unused"]);
+  });
+
+  it("does not store an SVG that is more than plain drawing as an SVG: one that cannot be drawn as a picture is left out and counted", async () => {
+    await seed();
+    await putUpload("a_unused", "image/svg+xml", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20"><script>alert(document.domain)</script></svg>`);
+    const { blob } = await createBackup({ now: NOW });
+    await wipeDatabase();
+    // (there is no image element and no canvas in this test, so nothing can be drawn; src/core/assets.dom.test.ts draws one)
+    const result = await restoreBackup(blob);
+    expect(result.uploads).toEqual({ added: 1, same: 0, damaged: 1 });
+    expect((await listAssets()).map((a) => a.id)).toEqual(["a_logo"]);
+  });
+
+  it("stores what an upload turned out to be, not what the backup calls it", async () => {
+    await seed();
+    const { blob } = await createBackup({ now: NOW });
+    await wipeDatabase();
+    const drawn = { blob: new Blob(["PNG"], { type: "image/png" }), kind: "image" as const, mime: "image/png", drawn: { width: 1024, height: 683 } };
+    const check = vi.spyOn(assets, "checkUpload").mockImplementation(async (given) => (given.type === "image/svg+xml" ? drawn : { blob: given, kind: "image", mime: given.type }));
+    const result = await restoreBackup(blob);
+    check.mockRestore();
+    expect(result.uploads).toEqual({ added: 2, same: 0, damaged: 0 });
+    expect(await getAsset("a_unused")).toMatchObject({ name: "Doodle", kind: "image", mime: "image/png", size: 3, width: 1024, height: 683 });
+    expect(await getAsset("a_logo")).toMatchObject({ kind: "image", mime: "image/png", width: 64, height: 32 });
   });
 
   it("does not bring back the history of a design that could not be restored", async () => {

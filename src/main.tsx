@@ -7,6 +7,7 @@ import { App } from "./App";
 import { installDatabaseNotices } from "./databaseNotices";
 import { installProblemCatcher } from "./problemCatcher";
 import { registerServiceWorker } from "./serviceWorker";
+import { installUploadNotices } from "./uploadNotices";
 
 // Another tab upgrading the library, or holding up this tab's own upgrade, is told to the person (src/databaseNotices.ts).
 installDatabaseNotices();
@@ -14,6 +15,9 @@ installDatabaseNotices();
 // What nothing else catches (an error in a handler, a failure that nothing waited for) is written down on this device, where
 // "Report a problem" shows it (src/problemCatcher.ts, docs/CRASH-RECOVERY.md).
 installProblemCatcher();
+
+// An uploaded SVG that was more than plain drawing was stored as a picture: the person is told (src/uploadNotices.ts).
+installUploadNotices();
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>

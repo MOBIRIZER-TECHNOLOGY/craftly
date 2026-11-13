@@ -372,7 +372,9 @@ describe("<ImageCard>", () => {
   });
 
   it("names the kind of file after its type", async () => {
-    await mountImage("vector.svg", "image/svg+xml");
+    // (the file has to be a real drawing: an SVG that is not plain drawing is stored as a PNG picture)
+    const drawing = new File([`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20"/>`], "vector.svg", { type: "image/svg+xml" });
+    render(<ImageCard asset={{ ...(await addAssetFromFile(drawing)), createdAt: NOON }} now={NOON} />);
     expect(card().textContent).toContain("SVG image");
   });
 

@@ -56,7 +56,7 @@ A restore only ever adds. It never overwrites and never deletes.
 | A design that is not here | Added under its own id, with its trash, star, folder and dates as in the backup |
 | A design that is here and has the same last-edited time | Left alone ("already here") |
 | A design that is here but differs (edited since, or the backup is the older state) | The backup's version is added as a second design named "... (restored)", with a new id. The one that is here is not touched, and neither is its history |
-| A folder, an upload | Added when its id is not here; one that is here is left alone. A design whose folder did not come back goes to the top level; a folder whose parent is missing, or that would sit inside itself, goes to the top level |
+| A folder, an upload | Added when its id is not here; one that is here is left alone. A design whose folder did not come back goes to the top level; a folder whose parent is missing, or that would sit inside itself, goes to the top level. An upload is checked like a new upload (`checkUpload` in `src/core/assets.ts`): an SVG that is more than plain drawing comes back as a PNG picture, and one that cannot be drawn is counted with the damaged files |
 | Saved versions | Added for every design that is here under its own id (new or unchanged), when the version is not here yet. Not for the copy of an edited design |
 | The brand kit | Taken as it is when this browser never saved one; otherwise the colours, fonts and logos that are missing are added to the end |
 

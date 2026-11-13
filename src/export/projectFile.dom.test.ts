@@ -212,6 +212,19 @@ describe("importing a project file", () => {
     expect(await listAssets()).toMatchObject([{ name: "Mark", kind: "svg", mime: "image/svg+xml", width: 30, height: 20 }]);
   });
 
+  it("stores an SVG of the file that is more than plain drawing as a PNG picture, and one the file calls a web page too", async () => {
+    const design = createDesign({ title: "T", width: 100, height: 100, pages: [createPage({ elements: [createImage({ src: "asset:mark", width: 10, height: 10 })] })] });
+    const scripted = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20"><script>alert(document.domain)</script></svg>`;
+    await importProjectFile(fileOf(projectText(design, { mark: projectAsset({ name: "Mark", mime: "image/svg+xml", dataUrl: dataUrl("image/svg+xml", scripted) }) })));
+    await importProjectFile(fileOf(projectText(design, { mark: projectAsset({ name: "Page", mime: "image/png", dataUrl: dataUrl("text/html", "<script>alert(1)</script>") }) })));
+    const stored = await Promise.all(vi.mocked(prepareAssetFromFile).mock.results.map((result) => result.value as Promise<Asset>));
+    expect(stored.map((asset) => [asset.name, asset.kind, asset.mime, asset.blob.type])).toEqual([
+      ["Mark", "image", "image/png", "image/png"],
+      ["Page", "image", "image/png", "image/png"],
+    ]);
+    expect(await listAssets()).toMatchObject([{ mime: "image/png" }, { mime: "image/png" }]);
+  });
+
   it("restores the exact bytes of the picture", async () => {
     const design = createDesign({ title: "T", width: 100, height: 100, pages: [createPage({ elements: [createImage({ src: "asset:pic", width: 10, height: 10 })] })] });
     await importProjectFile(fileOf(projectText(design, { pic: projectAsset({ dataUrl: dataUrl("image/png", "\u0000\u0001ABCÿ") }) })));
