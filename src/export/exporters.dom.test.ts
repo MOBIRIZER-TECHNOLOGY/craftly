@@ -212,6 +212,25 @@ describe("exportDesign", () => {
       expect(progress).toHaveBeenLastCalledWith(2, 2);
     });
 
+    it("lays the text of a page invisibly over its image, so it can be selected and searched", async () => {
+      const pdf = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pages: [0, 1] }))).blob);
+      // "Second" and "page" as WinAnsi bytes, in text rendering mode 3, at the place of the text: 10 px = 7.5 pt from the left
+      expect(pdf).toMatch(/BT 3 Tr 0\.75 0 0 0\.75 7\.5 [\d.]+ Tm \/F0 48 Tf [\d.]+ Tz <5365636F6E64> Tj [\d.]+ 0 Td [\d.]+ Tz <20> Tj [\d.]+ 0 Td [\d.]+ Tz <70616765> Tj ET/);
+      expect(pdf).toContain("/BaseFont /Helvetica /Encoding /WinAnsiEncoding");
+      // the first page has a shape and no text: it is the image alone, and only the second page names the font
+      expect(pdf).toContain("<< /Length 29 >>\nstream\nq 150 0 0 75 0 0 cm /Im0 Do Q\nendstream");
+      expect(pdf.match(/\/Font << \/F0 \d+ 0 R >>/g)).toHaveLength(1);
+      for (const pdfMode of ["standard", "print"] as const) {
+        expect(await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pages: [1], pdfMode }))).blob)).toContain("3 Tr");
+      }
+    });
+
+    it("writes the image alone when the text layer is switched off", async () => {
+      const pdf = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pages: [1], pdfText: false }))).blob);
+      expect(pdf).not.toContain("3 Tr");
+      expect(pdf).not.toContain("/Font");
+    });
+
     it("renders print quality PDFs at 300 dpi", async () => {
       const sizes: number[][] = [];
       vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (this: HTMLCanvasElement, callback, type) {

@@ -120,6 +120,8 @@ export interface ResolvedExport {
   quality: number;
   transparent: boolean;
   pdfMode: "standard" | "print";
+  /** pdf: write the invisible text layer */
+  pdfText: boolean;
   embedFonts: boolean;
   /** gif / webm only: the timeline, frame rate and picture size of the animation; null for every other format */
   animation: AnimationPlan | null;
@@ -141,6 +143,7 @@ export function resolveExportOptions(design: Pick<Design, "width" | "height" | "
     quality: clampNumber(opts.quality, MIN_QUALITY, 1, DEFAULT_QUALITY),
     transparent: opts.format === "png" && !!opts.transparent,
     pdfMode: opts.pdfMode === "print" ? "print" : "standard",
+    pdfText: opts.pdfText !== false,
     embedFonts: opts.embedFonts !== false,
     animation,
   };

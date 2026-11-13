@@ -105,6 +105,13 @@ describe("normalizePages / resolveExportOptions", () => {
     expect(resolveExportOptions(d, { ...base, quality: Number.NaN }).quality).toBe(0.92);
   });
 
+  it("gives a PDF its text layer unless it is switched off", () => {
+    const d = design();
+    expect(resolveExportOptions(d, { ...base, format: "pdf" }).pdfText).toBe(true);
+    expect(resolveExportOptions(d, { ...base, format: "pdf", pdfMode: "print", pdfText: true }).pdfText).toBe(true);
+    expect(resolveExportOptions(d, { ...base, format: "pdf", pdfText: false }).pdfText).toBe(false);
+  });
+
   it("rejects unknown formats", () => {
     expect(() => resolveExportOptions(design(), { ...base, format: "bmp" as never })).toThrow(/Unknown export format/);
     expect(() => resolveExportOptions(design(), { ...base, format: "mp4" as never })).toThrow(/Unknown export format/);

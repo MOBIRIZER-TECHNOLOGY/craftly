@@ -4,9 +4,38 @@
  * document /Info dictionary. Objects are numbered sequentially, every /Length is exact, and the
  * cross-reference table holds the real byte offset of each object.
  *
+ * A page can carry its text as well: an invisible layer over the image (text rendering mode 3, the way a
+ * scanned and recognised document is written), so the text of the picture can be selected, searched and
+ * copied. The fonts of that layer are described in pdfFonts.ts; no font is embedded. A page without text is
+ * written exactly as it was before the layer existed.
+ *
  * The writer never builds one giant string: it collects Uint8Array parts (the JPEGs are referenced as they
  * are) and `pdfBlob` hands them straight to the Blob constructor.
  */
+import { HELVETICA_DESCRIPTOR, PdfTextEncoder } from "./pdfFonts";
+
+/** [a, b, c, d, e, f] as in CanvasRenderingContext2D.setTransform: x' = a x + c y + e, y' = b x + d y + f. */
+export type PdfMatrix = readonly [number, number, number, number, number, number];
+
+/** A stretch of a line that is placed and stretched as one: a word, the spaces between two words, a list marker. */
+export interface PdfTextPiece {
+  text: string;
+  /** where it starts along the baseline, in the units of the line's matrix */
+  x: number;
+  /** how wide it is drawn on the page, same units: the piece is stretched (or squeezed) to exactly this */
+  width: number;
+  /** font size, same units */
+  size: number;
+}
+
+export interface PdfTextLine {
+  /**
+   * Maps the line's own space (x along the baseline, y downwards, origin where the baseline starts) to PDF points
+   * measured from the TOP-left of the page, so it holds the place, the turn and the scale of the line.
+   */
+  matrix: PdfMatrix;
+  pieces: PdfTextPiece[];
+}
 
 export interface PdfLink {
   url: string;
@@ -24,6 +53,8 @@ export interface PdfPageInput {
   /** a complete baseline / progressive JPEG file */
   jpeg: Uint8Array;
   links?: PdfLink[];
+  /** the text of the page, in reading order: written invisibly over the image */
+  text?: PdfTextLine[];
 }
 
 export interface PdfMeta {
@@ -202,11 +233,63 @@ class Sink {
   }
 }
 
+interface TextLayer {
+  /** content stream operators, one text object per line */
+  ops: string;
+  /** indices of the fonts the operators name */
+  fonts: Set<number>;
+}
+
+/**
+ * The operators of a page's invisible text, or null when the page has nothing to show.
+ *
+ * A line is one text object. Its matrix is turned from "points from the top-left, y down" into PDF space
+ * (y up, origin bottom-left): [a b c d e f] becomes [a -b -c d e H-f]. Inside it every piece is moved to its own
+ * x with Td (which counts from where the piece before started, not from where its glyphs ended, so a reader with
+ * other glyph widths cannot drift) and stretched with Tz to the width it has in the picture: a selection then
+ * covers the word that is seen, whatever font it was drawn in.
+ */
+function textLayer(lines: PdfTextLine[] | undefined, pageHeight: number, encoder: PdfTextEncoder): TextLayer | null {
+  const fonts = new Set<number>();
+  const blocks: string[] = [];
+  for (const line of lines ?? []) {
+    const [a, b, c, d, e, f] = line.matrix;
+    const ops: string[] = [];
+    let at = 0;
+    let state = "";
+    for (const piece of line.pieces) {
+      const runs = encoder.encode(piece.text);
+      if (!runs.length) continue;
+      if (piece.x !== at) {
+        ops.push(`${pdfNumber(piece.x - at)} 0 Td`);
+        at = piece.x;
+      }
+      const natural = (runs.reduce((n, r) => n + r.width, 0) / 1000) * piece.size;
+      const stretch = piece.width > 0 && natural > 0 ? (piece.width / natural) * 100 : 100;
+      runs.forEach((run, i) => {
+        fonts.add(run.font);
+        const font = `/F${run.font} ${pdfNumber(piece.size)} Tf`;
+        if (font !== state) ops.push((state = font));
+        if (i === 0) ops.push(`${pdfNumber(stretch)} Tz`);
+        ops.push(`<${run.hex}> Tj`);
+      });
+    }
+    if (ops.length) blocks.push(`BT 3 Tr ${[a, -b, -c, d, e, pageHeight - f].map(pdfNumber).join(" ")} Tm ${ops.join(" ")} ET`);
+  }
+  return blocks.length ? { ops: blocks.join("\n"), fonts } : null;
+}
+
 /** Builds the PDF as a list of byte parts (the JPEGs are not copied). */
 export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBuild {
   if (!pages.length) throw new Error("A PDF needs at least one page.");
 
+  // the text of every page is encoded first: only then is it known which fonts the document needs
+  const encoder = new PdfTextEncoder();
+  const layers = pages.map((p) => textLayer(p.text, p.heightPt, encoder));
+  const fonts = encoder.fonts();
+
   // object numbers: 1 catalog, 2 page tree, 3 info, then per page: page, contents, image, annotations...
+  // and after the last page, when there is text: the font descriptor, then a font and its ToUnicode map for each font
   const plan = pages.map(() => ({ page: 0, contents: 0, image: 0, annots: [] as number[] }));
   let next = 4;
   pages.forEach((p, i) => {
@@ -215,6 +298,8 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
     plan[i].image = next++;
     for (let k = 0; k < (p.links?.length ?? 0); k++) plan[i].annots.push(next++);
   });
+  const descriptor = fonts.length ? next++ : 0;
+  const fontPlan = new Map(fonts.map((font) => [font.index, { font: next++, cmap: next++ }]));
   const objectCount = next - 1;
 
   const out = new Sink();
@@ -236,11 +321,18 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
     const w = pdfNumber(page.widthPt);
     const h = pdfNumber(page.heightPt);
     const annots = ids.annots.length ? ` /Annots [${ids.annots.map((a) => `${a} 0 R`).join(" ")}]` : "";
+    const layer = layers[i];
+    const fontRefs = layer
+      ? ` /Font << ${[...layer.fonts]
+          .sort((x, y) => x - y)
+          .map((index) => `/F${index} ${fontPlan.get(index)?.font} 0 R`)
+          .join(" ")} >>`
+      : "";
     out.dict(
       ids.page,
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /XObject << /Im0 ${ids.image} 0 R >> /ProcSet [/PDF ${procSet}] >> /Contents ${ids.contents} 0 R${annots} >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /XObject << /Im0 ${ids.image} 0 R >>${fontRefs} /ProcSet [/PDF ${layer ? "/Text " : ""}${procSet}] >> /Contents ${ids.contents} 0 R${annots} >>`,
     );
-    out.stream(ids.contents, "", latin1(`q ${w} 0 0 ${h} 0 0 cm /Im0 Do Q`));
+    out.stream(ids.contents, "", latin1(`q ${w} 0 0 ${h} 0 0 cm /Im0 Do Q${layer ? `\n${layer.ops}` : ""}`));
     out.stream(
       ids.image,
       `/Type /XObject /Subtype /Image /Width ${jpeg.width} /Height ${jpeg.height} /ColorSpace ${space} /BitsPerComponent ${jpeg.bits || 8} /Interpolate true /Filter /DCTDecode`,
@@ -256,6 +348,13 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
       );
     });
   });
+
+  if (descriptor) out.dict(descriptor, HELVETICA_DESCRIPTOR);
+  for (const font of fonts) {
+    const ids = fontPlan.get(font.index) as { font: number; cmap: number };
+    out.dict(ids.font, font.dict(descriptor, ids.cmap));
+    out.stream(ids.cmap, "", latin1(font.cmap));
+  }
 
   const xrefOffset = out.length;
   let xref = `xref\n0 ${objectCount + 1}\n0000000000 65535 f \n`;

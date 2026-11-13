@@ -3,8 +3,9 @@
  * and WebM video, the browser download helper, printing and "copy page as image".
  *
  * Every raster goes through `render/renderPage.renderPage` - the same painter as the editor canvas - so what
- * you download is what you see. One page produces one file, several pages a `.zip` (PNG, JPG, SVG) or one
- * multi-page PDF. The thread is handed back to the browser after every page so a large export never freezes
+ * you download is what you see. A PDF page is that picture with the page's text laid invisibly over it
+ * (pdfText.ts), so the text can be selected and searched. One page produces one file, several pages a `.zip`
+ * (PNG, JPG, SVG) or one multi-page PDF. The thread is handed back to the browser after every page so a large export never freezes
  * the tab, and progress is reported page by page.
  *
  * An animated GIF or video is always one file: the chosen pages play one after another with their animations
@@ -18,6 +19,7 @@ import type { AnimResolution } from "./animated/frames";
 import { collectPageLinks } from "./links";
 import { FORMAT_EXTENSION, FORMAT_MIME, PX_TO_PT, clampNote, exportFileName, pageFileName, planRaster, resolveExportOptions, type ResolvedExport } from "./options";
 import { buildPdfParts, type PdfPageInput } from "./pdf";
+import { collectPageText } from "./pdfText";
 import { canvasToBlob, releaseCanvas, renderExportCanvas, renderPageBlob } from "./raster";
 import { designPageToSvg } from "./svg";
 import { createZip } from "./zip";
@@ -36,6 +38,8 @@ export interface ExportOptions {
   transparent: boolean;
   /** pdf: "standard" = screen size, "print" = 300 dpi */
   pdfMode: "standard" | "print";
+  /** pdf: lay the page's text invisibly over its image, so it can be selected, searched and copied (default true) */
+  pdfText?: boolean;
   /** svg: embed the fonts used */
   embedFonts: boolean;
   /** gif / webm: length of the picture's shorter side in pixels, 480 | 720 | 1080 (default 720) */
@@ -154,7 +158,7 @@ async function exportPdf(design: Design, resolved: ResolvedExport, onProgress: E
       releaseCanvas(canvas);
     }
     const links = collectPageLinks(page).map((l) => ({ url: l.url, x: l.x * PX_TO_PT, y: l.y * PX_TO_PT, w: l.w * PX_TO_PT, h: l.h * PX_TO_PT }));
-    return { widthPt, heightPt, jpeg, links };
+    return { widthPt, heightPt, jpeg, links, text: resolved.pdfText ? collectPageText(design, page) : undefined };
   });
   const { parts } = buildPdfParts(pages, { title: design.title });
   return { name: exportFileName(design.title, "pdf"), blob: new Blob(parts as BlobPart[], { type: FORMAT_MIME.pdf }), note: clampNote(plan) };
