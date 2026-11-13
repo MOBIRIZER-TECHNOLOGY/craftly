@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createShape } from "@/core/factory";
 import { useEditor } from "@/core/store";
+import { useGesture } from "@/editor/canvas/gestureStore";
+import * as renderPage from "@/render/renderPage";
 import { activeIndex, chromeDesign, clearToasts, fakeDataTransfer, fireDrag, pageIds, pageNames, renderChrome } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor, stubLayout } from "@/test/helpers";
 import { PageStrip, thumbWidth } from "./PageStrip";
@@ -67,6 +69,29 @@ describe("<PageStrip>: showing the pages", () => {
     expect([first.tabIndex, second.tabIndex, third.tabIndex]).toEqual([0, -1, -1]);
     expect(cell(design.pages[0].id).textContent).toContain("Intro");
     expect(cell(design.pages[2].id).textContent).toContain("Wrap up");
+  });
+
+  it("leaves the thumbnail as it is while something is dragged on the canvas, and paints it once the drag is over", async () => {
+    const { design } = await mount();
+    await waitFor(() => expect(document.querySelectorAll(".cf-strip__canvas canvas")).toHaveLength(3));
+    // (a thumbnail follows a change at most every 400 ms: let that time pass, so that only the drag can hold it back)
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    const painted = vi.spyOn(renderPage, "renderPageToCanvas");
+    const pageId = design.pages[0].id;
+    act(() => useGesture.getState().set({ active: true }));
+    let moved = "";
+    act(() => void (moved = actions().addElement(createShape("rect", { x: 10, y: 10, width: 50, height: 50 }), { select: false, center: false })));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    act(() => actions().updateElements([moved], (el) => void (el.x += 40)));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(painted).not.toHaveBeenCalled();
+    act(() => useGesture.getState().set({ active: false }));
+    await waitFor(() => expect(painted).toHaveBeenCalledTimes(1));
+    // with the page as it is now
+    const shown = painted.mock.calls[0][1];
+    expect(shown.id).toBe(pageId);
+    expect(shown.elements.find((el) => el.id === moved)?.x).toBe(50);
+    painted.mockRestore();
   });
 
   it("paints a thumbnail for every page", async () => {

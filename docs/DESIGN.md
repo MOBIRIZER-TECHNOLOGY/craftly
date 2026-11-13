@@ -310,7 +310,9 @@ Space: `nebula starfield moon-horizon galaxy-spiral`
 
 ## 7. Quality bar
 
-- 60 fps interaction with a few hundred elements; the canvas repaints only the visible region of the page.
+- 60 fps interaction with a few hundred elements; the canvas repaints only the visible region of the page, and while something
+  is dragged only the elements that change (the others are painted once and kept: `render/dragLayers.ts`). Measured on heavy
+  pages in [`PERFORMANCE.md`](PERFORMANCE.md); zooming and scrolling still repaint everything.
 - No dead buttons: every control visible in the UI works or is not rendered.
 - Keyboard shortcuts (Canva compatible): Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, Ctrl+C/X/V/D, Ctrl+A, Delete, arrows (+Shift),
   Ctrl+G / Ctrl+Shift+G, Ctrl+] / [, T R C L, Ctrl+= / - / 0, Space-drag pan, Esc. The complete list is the Keyboard shortcuts

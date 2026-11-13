@@ -5,7 +5,7 @@ import { createPage } from "@/core/factory";
 import { useEditor } from "@/core/store";
 import { chromeDesign, clearToasts, fakeDataTransfer, fireDrag, pageIds, pageNames, renderChrome, storeDesign } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor, stubLayout } from "@/test/helpers";
-import { PAGE_MIME, PageCaption, deletePageWithUndo, pageMenuItems, usePageReorder, useThrottled } from "./pageParts";
+import { PAGE_MIME, PageCaption, deletePageWithUndo, pageMenuItems, useHeld, usePageReorder, useThrottled } from "./pageParts";
 
 const actions = () => useEditor.getState().actions;
 
@@ -62,6 +62,32 @@ describe("useThrottled", () => {
     act(() => void vi.advanceTimersByTime(1000));
     rerender({ value: "b" });
     expect(result.current).toBe("b");
+  });
+});
+
+describe("useHeld", () => {
+  it("follows the value while nothing holds it", () => {
+    const { result, rerender } = renderHook(({ value, hold }) => useHeld(value, hold), { initialProps: { value: 1, hold: false } });
+    expect(result.current).toBe(1);
+    rerender({ value: 2, hold: false });
+    expect(result.current).toBe(2);
+  });
+
+  it("stays at the value from before the hold, and follows the latest one when the hold ends", () => {
+    const { result, rerender } = renderHook(({ value, hold }) => useHeld(value, hold), { initialProps: { value: 1, hold: false } });
+    rerender({ value: 2, hold: false });
+    rerender({ value: 2, hold: true });
+    rerender({ value: 3, hold: true });
+    rerender({ value: 4, hold: true });
+    expect(result.current).toBe(2);
+    rerender({ value: 4, hold: false });
+    expect(result.current).toBe(4);
+  });
+
+  it("holds the value it began with when it begins held", () => {
+    const { result, rerender } = renderHook(({ value, hold }) => useHeld(value, hold), { initialProps: { value: "a", hold: true } });
+    rerender({ value: "b", hold: true });
+    expect(result.current).toBe("a");
   });
 });
 

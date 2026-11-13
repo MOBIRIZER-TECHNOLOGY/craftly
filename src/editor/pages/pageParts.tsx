@@ -30,6 +30,18 @@ export function useThrottled<T>(value: T, ms: number): T {
   return shown;
 }
 
+/**
+ * The value as it was before `hold` began, for as long as it lasts; the value itself otherwise. The page strip holds its
+ * thumbnails while something is dragged on the canvas: painting a thumbnail is painting the whole page, and on a page
+ * with much text the drag then had tasks of 50 to 110 ms in it (docs/PERFORMANCE.md).
+ */
+export function useHeld<T>(value: T, hold: boolean): T {
+  const [kept, setKept] = useState(value);
+  // state worked out from the properties while rendering, as React describes it: no frame shows a stale value
+  if (!hold && kept !== value) setKept(value);
+  return hold ? kept : value;
+}
+
 /* ------------------------------------------------------------------ */
 /* drag to reorder                                                    */
 /* ------------------------------------------------------------------ */

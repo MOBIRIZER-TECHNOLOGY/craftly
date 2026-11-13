@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { getActivePage, useEditor } from "@/core/store";
 import { onFontsChange } from "@/render/fonts";
 import { onImagesChange } from "@/render/images";
-import { renderPage } from "@/render/renderPage";
+import { createDragPainter } from "@/render/dragLayers";
+import { useGesture } from "./gestureStore";
 import { previewTime, stopPreview, usePreview } from "./preview";
 import { useView } from "./viewStore";
 
@@ -10,6 +11,10 @@ import { useView } from "./viewStore";
  * Paints the active page onto a viewport-sized canvas that sticks to the top
  * left of the scroller. Only what is visible is rendered, at the exact device
  * resolution, so the page stays crisp at any zoom without huge canvases.
+ *
+ * While a pointer gesture moves, resizes or turns something, the elements that stay as they are are painted once and
+ * kept (render/dragLayers.ts), so that a frame of the drag paints only what changes; when the gesture ends the page is
+ * painted from nothing again.
  */
 export function PageView() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -19,6 +24,7 @@ export function PageView() {
     if (!canvas) return;
     let raf = 0;
     let pendingRetry = 0;
+    const painter = createDragPainter();
 
     const draw = () => {
       raf = 0;
@@ -46,12 +52,18 @@ export function PageView() {
       const time = preview ? previewTime(preview) : null;
       const playing = preview !== null && time !== null && time < preview.until;
       if (preview && !playing) queueMicrotask(stopPreview);
-      const complete = renderPage(ctx, s.design, page, {
-        scale: z * dpr,
-        clip: { x: (v.scrollLeft - v.pageLeft) / z, y: (v.scrollTop - v.pageTop) / z, w: v.width / z, h: v.height / z },
-        hide,
-        animation: playing && time !== null ? { time } : undefined,
-      });
+      const complete = painter.paint(
+        ctx,
+        s.design,
+        page,
+        {
+          scale: z * dpr,
+          clip: { x: (v.scrollLeft - v.pageLeft) / z, y: (v.scrollTop - v.pageTop) / z, w: v.width / z, h: v.height / z },
+          hide,
+          animation: playing && time !== null ? { time } : undefined,
+        },
+        useGesture.getState().active,
+      );
       if (playing) schedule();
       // something (a font, an image) was still loading: its own event repaints, this is the safety net
       if (!complete && !pendingRetry) {
@@ -80,8 +92,17 @@ export function PageView() {
         schedule();
     });
     const unsubView = useView.subscribe(schedule);
-    const unsubFonts = onFontsChange(schedule);
-    const unsubImages = onImagesChange(schedule);
+    // the last frame of a gesture was put together from kept pictures: the page at rest is always painted from nothing
+    const unsubGesture = useGesture.subscribe((g, prev) => {
+      if (prev.active && !g.active && painter.layered) schedule();
+    });
+    // a font or a picture that arrives changes what the kept pictures would show
+    const arrived = () => {
+      painter.invalidate();
+      schedule();
+    };
+    const unsubFonts = onFontsChange(arrived);
+    const unsubImages = onImagesChange(arrived);
     const mq = window.matchMedia?.(`(resolution: ${window.devicePixelRatio}dppx)`);
     mq?.addEventListener?.("change", schedule);
     schedule();
@@ -89,6 +110,8 @@ export function PageView() {
       unsubPreview();
       unsubStore();
       unsubView();
+      unsubGesture();
+      painter.release();
       unsubFonts();
       unsubImages();
       mq?.removeEventListener?.("change", schedule);

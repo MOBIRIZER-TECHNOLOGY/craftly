@@ -3,8 +3,9 @@ import { PageThumb } from "@/components/PageThumb";
 import { pageHasAnimation } from "@/core/animation";
 import { useEditor } from "@/core/store";
 import type { Page } from "@/core/types";
+import { useGesture } from "@/editor/canvas/gestureStore";
 import { Button, IconButton, IconChevronDown, IconDuplicate, IconMore, IconPlus, IconSparkle, MenuPopover, cx, type MenuEntry, type PopoverAnchor } from "@/ui";
-import { PageCaption, deletePageWithUndo, pageMenuItems, usePageReorder, useThrottled, type ReorderItemProps } from "./pageParts";
+import { PageCaption, deletePageWithUndo, pageMenuItems, useHeld, usePageReorder, useThrottled, type ReorderItemProps } from "./pageParts";
 import "./pageStrip.css";
 
 /** Thumbnails are fitted into a 168 x 64 box so landscape, portrait and square designs all fit the strip. */
@@ -53,8 +54,11 @@ const Cell = memo(function Cell({
   onMenu,
   onRenameDone,
 }: CellProps) {
-  // while a gesture is running the page object changes every frame; the thumbnail only needs to follow a few times a second
-  const shown = useThrottled(page, 400);
+  // While a pointer gesture is running on the canvas the page object changes every frame: the thumbnail waits for its end
+  // (a paint of it is a paint of the whole page, which a heavy page shows as a stutter of the drag). Changes that come
+  // quickly without a gesture (typing, a slider) it follows a few times a second.
+  const gesture = useGesture((g) => g.active);
+  const shown = useThrottled(useHeld(page, gesture), 400);
   const moves = pageHasAnimation(page) || !!page.transition;
   const label = `Page ${index + 1} of ${count}${page.name ? `, ${page.name}` : ""}${moves ? ", animated" : ""}`;
   return (

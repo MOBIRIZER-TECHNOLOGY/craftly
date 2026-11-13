@@ -36,6 +36,12 @@ export interface RenderOptions {
    * area, and elements that hang over the edge of the page are painted there. Elements keep their place on the page.
    */
   bleed?: number;
+  /**
+   * Paint only the top-level elements `from` up to (not including) `to`, in the same place and inside the same clip as the
+   * whole page: with `background` false the page background is left out, with `keep` the canvas is not emptied first, so
+   * the part goes over what is there. Used while something is dragged (dragLayers.ts); animations are not looked at.
+   */
+  part?: { from: number; to: number; background: boolean; keep?: boolean };
 }
 
 interface Env {
@@ -550,13 +556,14 @@ export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, p
   const env: Env = { scale, hide: opts.hide, pending: false, depth: 0 };
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const part = opts.part;
+  if (!part?.keep) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   const bleed = opts.bleed && opts.bleed > 0 ? opts.bleed : 0;
   ctx.setTransform(scale, 0, 0, scale, -((clip?.x ?? 0) - bleed) * scale, -((clip?.y ?? 0) - bleed) * scale);
   ctx.beginPath();
   ctx.rect(0 - bleed, 0 - bleed, design.width + bleed * 2, design.height + bleed * 2);
   ctx.clip();
-  if (!opts.transparent) {
+  if (!opts.transparent && part?.background !== false) {
     // with a bleed the background is painted as that of a page larger by the bleed on every side, so a colour, a gradient,
     // a pattern or a picture covers the bleed too (a picture is a little larger for it: by 2 x bleed over the page's size)
     if (bleed) {
@@ -566,7 +573,9 @@ export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, p
       ctx.restore();
     } else paintBackground(ctx, page.background, design.width, design.height, env);
   }
-  if (opts.animation) {
+  if (part) {
+    for (let i = Math.max(0, part.from); i < Math.min(part.to, page.elements.length); i++) drawElement(ctx, page.elements[i], env);
+  } else if (opts.animation) {
     const duration = pageDuration(page);
     const unit = Math.min(design.width, design.height);
     for (const el of page.elements) {

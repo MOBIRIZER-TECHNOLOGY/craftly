@@ -5,7 +5,8 @@
 import { act, configure, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createImage, createPage, createShape, createText } from "@/core/factory";
-import { getActions } from "@/core/store";
+import { getActions, useEditor } from "@/core/store";
+import { loadImage } from "@/render/images";
 import { contextOf } from "@/test/canvasMock";
 import { setMedia } from "@/test/media";
 import { canvasDesign, mountWorkspace, type CanvasRig } from "@/test/canvasUtils";
@@ -28,6 +29,10 @@ async function repaintAfter(rig: CanvasRig, change: () => void) {
   act(change);
   await waitFor(() => expect(ctxOf(rig).calls.length).toBeGreaterThan(0));
 }
+const elementBox = (id: string) => {
+  const el = useEditor.getState().design!.pages[0].elements.find((e) => e.id === id)!;
+  return [el.x, el.y];
+};
 const words = (ctx: ReturnType<typeof ctxOf>) => ctx.callsTo("fillText").map((c) => String(c[0]));
 
 const hello = () => createText({ id: "t", text: "Hello", x: 100, y: 100, width: 300, fontSize: 40 });
@@ -205,6 +210,82 @@ describe("pictures that are not ready", () => {
     rig.unmount();
     ctx.reset();
     await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(ctx.calls).toHaveLength(0);
+  });
+});
+
+describe("while something is dragged", () => {
+  /** thirteen squares that stay where they are, and a box on top of them to drag */
+  const crowded = () => [
+    ...Array.from({ length: 13 }, (_, i) => createShape("rect", { id: `still${i}`, x: 20 + i * 30, y: 40, width: 20, height: 20 })),
+    createShape("rect", { id: "box", x: 500, y: 300, width: 100, height: 100 }),
+  ];
+  /** presses on the box and moves far enough for the drag to begin, and waits for a frame that was put together from a kept picture */
+  async function beginDrag(rig: CanvasRig) {
+    await waitFor(() => expect(ctxOf(rig).callsTo("fill")).toHaveLength(14));
+    act(() => {
+      rig.down(550, 350);
+      rig.move(560, 350);
+    });
+    await waitFor(() => expect(ctxOf(rig).callsTo("drawImage").length).toBeGreaterThan(0));
+  }
+
+  it("paints only what moves over a kept picture of the rest, and the whole page again when the drag ends", async () => {
+    const rig = await mountWorkspace(canvasDesign(crowded()));
+    await beginDrag(rig);
+    const ctx = ctxOf(rig);
+    ctx.reset();
+    act(() => void rig.move(580, 360));
+    await waitFor(() => expect(ctx.callsTo("fill").length).toBeGreaterThan(0));
+    // the thirteen squares come from the picture that was kept: one drawImage, one fill for the box
+    expect(ctx.callsTo("fill")).toHaveLength(1);
+    expect(ctx.callsTo("drawImage")).toHaveLength(1);
+    const kept = ctx.callsTo("drawImage")[0][0] as HTMLCanvasElement;
+    expect([kept.width, kept.height]).toEqual([1000, 700]);
+
+    ctx.reset();
+    act(() => void rig.up(580, 360));
+    await waitFor(() => expect(ctx.callsTo("fill")).toHaveLength(14));
+    expect(ctx.callsTo("drawImage")).toHaveLength(0);
+    // the kept picture is let go, and the drag is one step of the history as before
+    expect(kept.width).toBe(0);
+    expect(useEditor.getState().past).toHaveLength(1);
+    expect(elementBox("box")).toEqual([530, 310]);
+  });
+
+  it("paints the kept picture again when a picture arrives in the middle of the drag", async () => {
+    const rig = await mountWorkspace(canvasDesign(crowded()));
+    await beginDrag(rig);
+    const ctx = ctxOf(rig);
+    const kept = contextOf(ctx.callsTo("drawImage")[0][0] as HTMLCanvasElement)!;
+    kept.reset();
+    act(() => void rig.move(580, 360));
+    await waitFor(() => expect(ctx.callsTo("drawImage").length).toBeGreaterThan(1));
+    expect(kept.calls).toHaveLength(0);
+    void loadImage("blob:test/arrives-during-a-drag.png");
+    await waitFor(() => expect(kept.callsTo("fill")).toHaveLength(13));
+  });
+
+  it("lets the kept picture go when the workspace is closed in the middle of the drag", async () => {
+    const rig = await mountWorkspace(canvasDesign(crowded()));
+    await beginDrag(rig);
+    const ctx = ctxOf(rig);
+    const kept = ctx.callsTo("drawImage")[0][0] as HTMLCanvasElement;
+    rig.unmount();
+    expect(kept.width).toBe(0);
+  });
+
+  it("paints nothing again after a click", async () => {
+    const rig = await mountWorkspace(canvasDesign(crowded()));
+    await waitFor(() => expect(ctxOf(rig).callsTo("fill")).toHaveLength(14));
+    const ctx = ctxOf(rig);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    ctx.reset();
+    act(() => {
+      rig.down(550, 350);
+      rig.up(550, 350);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 60));
     expect(ctx.calls).toHaveLength(0);
   });
 });
