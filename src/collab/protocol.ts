@@ -15,7 +15,8 @@ import { isRemoteImage } from "@/core/imageSources";
 import { isBlendMode } from "@/core/blend";
 import { isPlainColor } from "@/core/color";
 import { svgProblem } from "@/core/svgSafety";
-import type { Design, ElementType } from "@/core/types";
+import type { Design, DesignElement } from "@/core/types";
+import { elementProblem } from "@/core/usableElement";
 import type { Op } from "./ops";
 
 export type Role = "edit" | "view";
@@ -62,8 +63,6 @@ const PICTURE_KEYS: ReadonlySet<string> = new Set(["src", "originalSrc"]);
 const SAFE_ADDRESS = /^(asset:|builtin:|https?:\/\/|mailto:|tel:|#|\/(?!\/)|blob:|data:image\/(png|jpe?g|gif|webp|avif|svg\+xml)[;,])/i;
 /** The deepest a design may be nested when it arrives whole: its pages, groups of at most MAX_NESTING levels, and what an element holds. */
 const MAX_DESIGN_DEPTH = 96;
-
-const ELEMENT_TYPES: ReadonlySet<string> = new Set<ElementType>(["text", "shape", "line", "image", "graphic", "group", "table", "chart"]);
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= MAX_ID_LENGTH;
@@ -129,13 +128,19 @@ function checkProps(op: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * What is wrong with an element that arrives whole (one that is added, alone or with a page, and every element of a design that
+ * is a welcome): it needs an id, and everything that an element of a project file needs, by the same table
+ * (src/core/usableElement.ts): a place and a size that are numbers, and what its kind cannot be drawn without. Without this an
+ * editor could put `x: "a"` or `paragraphs: 5` into the design of everybody in the room, and the renderer would throw for all.
+ */
 function checkElement(el: unknown, depth = 0): string | null {
   if (!isObject(el) || !isId(el.id)) return "an element needs an id";
-  if (typeof el.type !== "string" || !ELEMENT_TYPES.has(el.type)) return "an element needs a kind that exists";
+  const problem = elementProblem(el);
+  if (problem) return problem;
   if (el.type === "group") {
     if (depth >= MAX_NESTING) return "groups nested too deep";
-    if (!Array.isArray(el.children)) return "a group needs its children";
-    for (const child of el.children) {
+    for (const child of el.children as unknown[]) {
       const error = checkElement(child, depth + 1);
       if (error) return error;
     }
@@ -189,6 +194,63 @@ export function checkOps(value: unknown): Op[] | string {
     if (error) return `${op.k}: ${error}`;
   }
   return value as Op[];
+}
+
+/** Every element of a page by its id, at any depth; the first of an id when a design came with two, which is the one an operation finds. */
+function elementsById(design: Design, pageId: string): Map<string, DesignElement> {
+  const found = new Map<string, DesignElement>();
+  const walk = (list: readonly DesignElement[]) => {
+    for (const el of list) {
+      if (!found.has(el.id)) found.set(el.id, el);
+      if (el.type === "group") walk(el.children);
+    }
+  };
+  const page = design.pages.find((p) => p.id === pageId);
+  if (page) walk(page.elements);
+  return found;
+}
+
+/**
+ * What is wrong with what a batch left of the elements whose properties it changed (`el.set`), if anything. `checkOps` cannot
+ * know this: an operation names an element by its id and does not say what kind it is, and whether `stroke: null` is fine (a
+ * shape) or breaks the renderer (a line) depends on the kind. So the batch is applied to a copy first (`applyOps`, which is safe
+ * whatever it is given), and every element it set a property of is then asked the question an element of a project file is asked
+ * (src/core/usableElement.ts): are the properties its kind needs still there, and of the right kind? Properties that the table
+ * does not name pass as before. What counts is the element as the whole batch leaves it, so the answer does not depend on how a
+ * change was cut into operations.
+ *
+ * An element that was not usable before the batch is not held against it: a room from before this check may hold one, and
+ * refusing every later change to it would not mend it. `before` and `after` are the design the batch was applied to and what it
+ * gave. The server refuses a batch that fails (`rejected`), and a browser ends its session with a server that sends one.
+ */
+export function checkSets(before: Design, after: Design, ops: readonly Op[]): string | null {
+  // (an index of a page is built once, when the first change to that page asks for it: most batches change one page)
+  const indexes = new Map<Design, Map<string, Map<string, DesignElement>>>([
+    [before, new Map()],
+    [after, new Map()],
+  ]);
+  const find = (design: Design, pageId: string, id: string): DesignElement | undefined => {
+    const pages = indexes.get(design)!;
+    let index = pages.get(pageId);
+    if (!index) pages.set(pageId, (index = elementsById(design, pageId)));
+    return index.get(id);
+  };
+  const asked = new Map<string, Set<string>>();
+  for (const op of ops) {
+    if (op.k !== "el.set") continue;
+    let onPage = asked.get(op.page);
+    if (!onPage) asked.set(op.page, (onPage = new Set()));
+    if (onPage.has(op.id)) continue;
+    onPage.add(op.id);
+    const el = find(after, op.page, op.id);
+    if (!el) continue; // it is not there (any more): nothing was changed
+    const problem = elementProblem(el);
+    if (!problem) continue;
+    const was = find(before, op.page, op.id);
+    if (was && elementProblem(was) !== null) continue;
+    return `el.set: ${problem}`;
+  }
+  return null;
 }
 
 /**

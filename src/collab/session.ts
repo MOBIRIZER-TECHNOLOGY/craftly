@@ -10,7 +10,7 @@
  */
 import type { Design } from "@/core/types";
 import { applyOps, diffDesign, type Op } from "./ops";
-import { parseServerMsg, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "./protocol";
+import { checkSets, parseServerMsg, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "./protocol";
 
 export type SessionStatus = "offline" | "joining" | "live" | "ended";
 
@@ -41,6 +41,11 @@ export interface Outbox {
   client: string;
   nextSeq: number;
   queue: Batch[];
+  /**
+   * The highest number of a batch that was ever handed to a connection under this name: such a batch may have been applied.
+   * What an older version kept does not say; everything it numbered is then taken as sent.
+   */
+  sent?: number;
 }
 
 interface Batch {
@@ -56,17 +61,24 @@ export class Session {
   server: Design | null = null;
   private queue: Batch[] = [];
   private nextSeq = 1;
+  /**
+   * The highest number of a batch that was handed to a connection under this name. A batch above it has never left this browser,
+   * so the server cannot have applied it, whatever number the server says it counts from (see `welcome`).
+   */
+  private sent = 0;
   private shown: Design | null = null;
 
   constructor(private opts: SessionOptions) {
     if (opts.outbox) {
       this.queue = opts.outbox.queue;
       this.nextSeq = opts.outbox.nextSeq;
+      const sent = opts.outbox.sent;
+      this.sent = typeof sent === "number" && Number.isSafeInteger(sent) && sent >= 0 ? sent : this.nextSeq - 1;
     }
   }
 
   private persist(): void {
-    this.opts.onOutbox?.({ client: this.opts.client, nextSeq: this.nextSeq, queue: this.queue });
+    this.opts.onOutbox?.({ client: this.opts.client, nextSeq: this.nextSeq, queue: this.queue, sent: this.sent });
   }
 
   /** The design to show: the server's, with this browser's unconfirmed changes on top. */
@@ -105,6 +117,7 @@ export class Session {
    */
   rename(client: string): void {
     this.opts = { ...this.opts, client };
+    this.sent = 0;
     this.persist();
   }
 
@@ -127,6 +140,8 @@ export class Session {
     if (!ops.length) return;
     const batch = { seq: this.nextSeq++, ops };
     this.queue.push(batch);
+    // (noted as sent before it is kept for a reload: a batch that is on its way must never be kept as one that never left)
+    if (this.status === "live") this.sent = batch.seq;
     this.persist();
     this.shown = null;
     if (this.status === "live") this.opts.send({ t: "ops", seq: batch.seq, ops });
@@ -156,7 +171,11 @@ export class Session {
       case "ops": {
         if (msg.rev <= this.rev) return NOTHING; // heard already
         if (msg.rev !== this.rev + 1) return this.resync(); // one was missed
-        this.server = applyOps(this.server, msg.ops);
+        const next = applyOps(this.server, msg.ops);
+        // each operation has the form it should (parseServerMsg); what they leave of the elements they changed is asked here,
+        // as the server asks it of a batch: a server that sends `x: "a"` for a shape is not a Craftly server
+        if (checkSets(this.server, next, msg.ops)) return this.refuse();
+        this.server = next;
         this.rev = msg.rev;
         this.shown = null;
         return { changed: true, ended: null };
@@ -169,9 +188,22 @@ export class Session {
     this.server = msg.design;
     this.rev = msg.rev;
     this.status = "live";
-    // what the server has already applied is in the design it sent; the rest goes again, in order
-    this.queue = this.queue.filter((b) => b.seq > msg.lastSeq);
+    // What the server has already applied is in the design it sent; the rest goes again, in order. The server counts this client
+    // from `lastSeq`: a batch at or below it that was sent may have been applied, and is given up. A batch that was never sent
+    // cannot have been applied. Its number can still be at or below `lastSeq`, because a room that no longer remembers every
+    // client counts one it does not know from above all it forgot (room.ts), and this browser may be new to it, or has gone on
+    // under a new name. Such batches get the numbers after `lastSeq`, in their order, and nothing a person made is lost.
+    const sent = this.sent;
+    this.queue = this.queue.filter((b) => b.seq > msg.lastSeq || b.seq > sent);
+    if (this.queue.some((b) => b.seq <= msg.lastSeq)) {
+      // (every batch that is left was never sent: one that was sent and is left is above `lastSeq`, and so is all after it)
+      let seq = msg.lastSeq;
+      this.queue = this.queue.map((b) => ({ seq: ++seq, ops: b.ops }));
+      this.nextSeq = seq + 1;
+    }
     this.nextSeq = Math.max(this.nextSeq, msg.lastSeq + 1);
+    // all of it is sent below, and is kept for a reload as sent before the first of it leaves
+    if (this.queue.length) this.sent = Math.max(this.sent, this.queue[this.queue.length - 1].seq);
     this.persist();
     this.shown = null;
     for (const batch of this.queue) this.opts.send({ t: "ops", seq: batch.seq, ops: batch.ops });

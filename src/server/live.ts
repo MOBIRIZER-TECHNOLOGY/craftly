@@ -244,7 +244,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const open = (id: string, record: RoomRecord): Loaded => {
     const l: Loaded = {
       id,
-      room: new Room(record.design, record.rev, record.seqs),
+      room: new Room(record.design, record.rev, record.seqs, { seen: record.seqSeen, floor: record.seqFloor, now }),
       record,
       sockets: new Set(),
       members: new Set(),
@@ -254,11 +254,12 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       removed: false,
       idleTimer: null,
     };
-    l.room.commit = async (design, rev, seqs) => {
+    l.room.commit = async (design, rev, seqs, memory) => {
       // the design is turned into text once: to be measured here, and the same text is what the storage writes
       const designJson = JSON.stringify(design);
       if (Buffer.byteLength(designJson) > o.maxDesignBytes) throw new Error("This shared design exceeds the room size limit.");
-      const next = { ...l.record, design, rev, seqs, updatedAt: now() };
+      // (with the numbers of the clients goes what lets the room forget those that stayed away: src/collab/room.ts)
+      const next = { ...l.record, design, rev, seqs, seqSeen: memory.seen, seqFloor: memory.floor, updatedAt: now() };
       await persist(l, next, designJson);
       l.usedAt = next.updatedAt;
     };

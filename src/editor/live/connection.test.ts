@@ -11,6 +11,7 @@ import { createDesign, createImage, createPage, createShape, createText } from "
 import { saveDesign } from "@/core/library";
 import { useEditor } from "@/core/store";
 import type { Design, LiveLink } from "@/core/types";
+import { whole } from "@/test/wholeElement";
 import { createLiveServer, type LiveServer } from "@/server/live";
 import { MemoryStorage } from "@/server/storage";
 import { connectLive, CreateKeyError, joinDesign, shareDesign, stopSharing, useLiveStatus } from "./connection";
@@ -640,7 +641,7 @@ describe("a server that cannot be trusted (a link can lead to any server)", () =
   const link = { server: "https://evil.example.test", room: "A".repeat(22), key: "k".repeat(12), role: "edit" as const };
   const open = () => JSON.parse(JSON.stringify(s().design)) as Design;
   const welcome = (design: unknown) => ({ t: "welcome", role: "edit", rev: 0, lastSeq: 0, design });
-  const withGraphic = (svg: string) => ({ ...open(), pages: [{ ...open().pages[0], elements: [{ id: "g", type: "graphic", svg }] }] });
+  const withGraphic = (svg: string) => ({ ...open(), pages: [{ ...open().pages[0], elements: [whole({ id: "g", type: "graphic", svg })] }] });
 
   it("is not joined when the design it sends carries code, and the person is told in words", async () => {
     await expect(joinDesign(link, { createSocket: () => scripted(() => [welcome(withGraphic('<svg/onload="alert(1)"/>'))]) })).rejects.toThrow(/does not accept/i);

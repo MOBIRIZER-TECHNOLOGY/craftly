@@ -1,6 +1,6 @@
 /**
  * Where the server keeps its rooms between runs. A room is one shared design with the revision it is at, the numbers of the last
- * batches it applied from each client, and a hash of each of its two keys (a copy of the files cannot be used to edit or to look).
+ * batches it applied from each client it still remembers, and a hash of each of its two keys (a copy of the files cannot be used to edit or to look).
  * The images that the people of a room uploaded are kept beside its record, one by one, so that saving an edit does not write
  * them again. (They were inside the record once; such a record is still read, see `RoomRecord.assets`.)
  */
@@ -23,6 +23,13 @@ export interface RoomRecord {
   design: Design;
   rev: number;
   seqs: Record<string, number>;
+  /**
+   * When each client of `seqs` was last seen, and the highest last number of any client that was forgotten: what lets a room
+   * forget clients that stayed away without ever applying a batch twice (src/collab/room.ts). A record that an older server
+   * wrote has neither; its clients then count as seen when the room is opened.
+   */
+  seqSeen?: Record<string, number>;
+  seqFloor?: number;
   /** hex SHA-256 of the key that lets a person edit */
   editHash: string;
   /** hex SHA-256 of the key that lets a person look */

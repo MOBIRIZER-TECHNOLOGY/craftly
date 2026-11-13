@@ -9,7 +9,7 @@ import { backgroundWithoutRemoteImage, withoutRemoteImages } from "@/core/imageS
 import { pageDuration } from "@/core/animation";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
 import { createMigrator, MigrationError, type MigrationStep } from "@/core/schema/migrator";
-import { svgProblem } from "@/core/svgSafety";
+import { isUsableElement } from "@/core/usableElement";
 import { MAX_TRANSITION_DURATION } from "@/core/transition";
 import type { AnimDirection, Design, DesignElement, Fill, Page, PageTransition } from "@/core/types";
 
@@ -142,35 +142,9 @@ function structuredCloneJson<T>(value: T): T {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
-const ELEMENT_TYPES = new Set(["text", "shape", "line", "image", "graphic", "group", "table", "chart"]);
-
-/** Cheap structural check so a hand edited / foreign file cannot crash the renderer. */
-export function isUsableElement(el: unknown): el is DesignElement {
-  if (!isObject(el) || typeof el.id !== "string" || typeof el.type !== "string" || !ELEMENT_TYPES.has(el.type)) return false;
-  if (![el.x, el.y, el.width, el.height, el.rotation, el.opacity].every(isNum)) return false;
-  switch (el.type) {
-    case "text":
-      return Array.isArray(el.paragraphs) && typeof el.fontFamily === "string" && isNum(el.fontSize) && isNum(el.fontWeight) && isNum(el.lineHeight) && isObject(el.effect);
-    case "shape":
-      return typeof el.shape === "string";
-    case "line":
-      return isObject(el.stroke) && isNum(el.stroke.width);
-    case "image":
-      return isObject(el.crop) && isObject(el.filter) && (el.src === null || typeof el.src === "string") && typeof el.mask === "string";
-    case "graphic":
-      // the markup is drawn and written into exported files as it is, so only plain drawing comes in (every graphic the app makes
-      // is that); one with no markup at all draws nothing, and live editing lets it through too (src/collab/protocol.ts)
-      return typeof el.svg === "string" && (el.svg === "" || svgProblem(el.svg) === null) && isNum(el.viewW) && isNum(el.viewH) && isObject(el.colors);
-    case "group":
-      return Array.isArray(el.children);
-    case "table":
-      return Array.isArray(el.cells) && Array.isArray(el.colWidths) && Array.isArray(el.rowHeights) && typeof el.fontFamily === "string";
-    case "chart":
-      return Array.isArray(el.labels) && Array.isArray(el.series) && Array.isArray(el.palette) && el.palette.length > 0;
-    default:
-      return false;
-  }
-}
+// The structural check of an element (so that a hand edited or foreign file cannot crash the renderer) is shared with live
+// editing, which asks the same of what arrives over the network: it lives in src/core/usableElement.ts and is handed on from here.
+export { isUsableElement };
 
 /** What reading a file left out, for the person to be told: nothing is left out without a word. */
 export interface ImportReport {

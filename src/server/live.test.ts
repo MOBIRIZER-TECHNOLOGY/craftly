@@ -15,6 +15,7 @@ import { designsEqual } from "@/collab/ops";
 import type { ClientMsg, ServerMsg } from "@/collab/protocol";
 import { createDesign, createPage, createShape, solid } from "@/core/factory";
 import type { Design } from "@/core/types";
+import { whole } from "@/test/wholeElement";
 import { closeWithin, createLiveServer, type LiveServer, type LiveServerOptions } from "./live";
 import { FileStorage, MemoryStorage, ROOM_ID, type LiveStorage, type RoomRecord, type SharedAsset } from "./storage";
 
@@ -134,7 +135,10 @@ describe("making a room", () => {
     [
       "a design with a graphic that carries code after a slash",
       JSON.stringify({
-        design: { ...design(), pages: [{ id: "p", background: { type: "solid", color: "#fff" }, elements: [{ id: "g", type: "graphic", svg: '<svg/onload="alert(1)"/>' }] }] },
+        design: {
+          ...design(),
+          pages: [{ id: "p", background: { type: "solid", color: "#fff" }, elements: [whole({ id: "g", type: "graphic", svg: '<svg/onload="alert(1)"/>' })] }],
+        },
       }),
       400,
     ],
@@ -143,7 +147,9 @@ describe("making a room", () => {
       JSON.stringify({
         design: {
           ...design(),
-          pages: [{ id: "p", background: { type: "solid", color: "#fff" }, elements: [{ id: "g", type: "graphic", svg: '<svg><a href="https://evil.test/"><rect/></a></svg>' }] }],
+          pages: [
+            { id: "p", background: { type: "solid", color: "#fff" }, elements: [whole({ id: "g", type: "graphic", svg: '<svg><a href="https://evil.test/"><rect/></a></svg>' })] },
+          ],
         },
       }),
       400,
@@ -649,7 +655,7 @@ describe("what it will not stand for", () => {
     s.join("odd");
     await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
     const markup = ['<svg/onload="alert(1)"/>', "<svg><g onclick=alert(1)></g></svg>", '<svg><g ONCLICK="x"/></svg>', '<svg><linearGradient href="&#106;avascript:x"/></svg>'];
-    markup.forEach((svg, i) => s.say({ t: "ops", seq: i + 1, ops: [{ k: "el.add", page: "p", parent: null, index: 0, el: { id: `g${i}`, type: "graphic", svg } }] }));
+    markup.forEach((svg, i) => s.say({ t: "ops", seq: i + 1, ops: [{ k: "el.add", page: "p", parent: null, index: 0, el: whole({ id: `g${i}`, type: "graphic", svg }) }] }));
     await until("every refusal", () => s.heard.filter((m) => m.t === "rejected").length === markup.length);
     expect(s.heard.some((m) => m.t === "ack")).toBe(false);
     expect(JSON.stringify((await b.storage.load(made.room))!.design)).not.toContain("onload");
@@ -2153,5 +2159,106 @@ describe("the operator's tools", () => {
     const b = await boot({ adminKey: ADMIN_KEY }, new Faulty());
     expect((await admin(b, "/rooms")).status).toBe(500);
     expect(log).toHaveBeenCalled();
+  });
+});
+
+describe("what may be in a shared design", () => {
+  it("makes no room of a design with an element that lacks what its kind needs", async () => {
+    const b = await boot();
+    for (const el of [whole({ x: "a" }), whole({ type: "text", paragraphs: 5 }), { id: "bare", type: "shape" }, whole({ type: "group", children: [{ width: null }] })]) {
+      const res = await fetch(`${b.http}/api/rooms`, { method: "POST", body: JSON.stringify({ design: { ...design(), pages: [{ ...design().pages[0], elements: [el] }] } }) });
+      expect(res.status).toBe(400);
+    }
+    expect(await b.storage.count()).toBe(0);
+  });
+
+  it("refuses an edit that adds such an element or makes one of an element that is there, and saves and passes on nothing of it", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    const other = join(b, made.room, made.viewKey);
+    await until("the other", () => other.status === "live");
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join("editor");
+    await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
+    const bad: unknown[][] = [
+      [{ k: "el.add", page: "p", parent: null, index: 0, el: whole({ id: "n1", x: "a" }) }],
+      [{ k: "el.add", page: "p", parent: null, index: 0, el: { id: "n2", type: "shape" } }],
+      [{ k: "page.add", index: 1, page: { id: "p2", background: { type: "solid", color: "#ffffff" }, elements: [whole({ id: "n3", type: "text", paragraphs: 5 })] } }],
+      [{ k: "el.set", page: "p", id: "a", set: { x: "a" } }],
+      [{ k: "el.set", page: "p", id: "a", unset: ["height"] }],
+      [
+        { k: "design", set: { title: "Sneaked in" } },
+        { k: "el.set", page: "p", id: "b", set: { opacity: null } },
+      ],
+    ];
+    bad.forEach((ops, i) => s.say({ t: "ops", seq: i + 1, ops }));
+    await until("every refusal", () => s.heard.filter((m) => m.t === "rejected").length === bad.length);
+    expect(s.heard.some((m) => m.t === "ack")).toBe(false);
+    const record = (await b.storage.load(made.room))!;
+    expect(record.rev).toBe(0);
+    expect(record.design.title).toBe("Shared");
+    expect(designsEqual(record.design, design())).toBe(true);
+    // and the room goes on: a change that is fine is applied and reaches the other
+    s.say({ t: "ops", seq: bad.length + 1, ops: [{ k: "el.set", page: "p", id: "a", set: { x: 42, somethingNew: true }, unset: ["fill"] }] });
+    await until("the other to see it", () => other.design?.pages[0].elements[0].x === 42);
+    expect(other.status).toBe("live");
+    expect((await b.storage.load(made.room))!.rev).toBe(1);
+  });
+});
+
+describe("what a room record remembers of the clients that edited", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const editAs = async (b: Booted, made: Made, client: string, title: string) => {
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join(client);
+    await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
+    const welcome = s.heard.find((m) => m.t === "welcome") as Extract<ServerMsg, { t: "welcome" }>;
+    s.say({ t: "ops", seq: welcome.lastSeq + 1, ops: [{ k: "design", set: { title } }] });
+    await until("the answer", () => s.heard.some((m) => m.t === "ack"));
+    s.ws.close();
+    await until("the connection to close", () => s.closed() !== null);
+    return welcome.lastSeq + 1;
+  };
+
+  it("saves when each client was last seen, forgets one that stayed away for a month, and never applies its old batch again, also after a restart", async () => {
+    let at = 1_700_000_000_000;
+    const storage = new MemoryStorage(() => at);
+    const b = await boot({ now: () => at }, storage);
+    const made = await makeRoom(b);
+    expect(await editAs(b, made, "old", "By old")).toBe(1);
+    expect(await storage.load(made.room)).toMatchObject({ seqs: { old: 1 }, seqSeen: { old: at }, seqFloor: 0 });
+    at += 31 * DAY;
+    expect(await editAs(b, made, "steady", "By steady")).toBe(1);
+    expect(await storage.load(made.room)).toMatchObject({ rev: 2, seqs: { steady: 1 }, seqSeen: { steady: at }, seqFloor: 1 });
+    expect(Object.keys((await storage.load(made.room))!.seqs)).toEqual(["steady"]);
+
+    // another server on the same storage knows what the first forgot
+    await servers.splice(0)[0].close();
+    const again = await boot({ now: () => at }, storage);
+    const back = raw(again, made.room, made.editKey);
+    await back.opened;
+    back.join("old");
+    await until("the welcome", () => back.heard.some((m) => m.t === "welcome"));
+    expect(back.heard.find((m) => m.t === "welcome")).toMatchObject({ lastSeq: 1, rev: 2 });
+    back.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "By old, again" } }] }); // the batch it never heard an answer to
+    await until("the answer", () => back.heard.some((m) => m.t === "ack"));
+    expect(back.heard.find((m) => m.t === "ack")).toMatchObject({ seq: 1, rev: 2 });
+    expect((await storage.load(made.room))!.design.title).toBe("By steady");
+    back.say({ t: "ops", seq: 2, ops: [{ k: "design", set: { title: "By old, new" } }] });
+    await until("the new edit", async () => (await storage.load(made.room))?.design.title === "By old, new");
+    expect((await storage.load(made.room))!.seqs).toEqual({ steady: 1, old: 2 });
+  });
+
+  it("opens a record from before it kept any of this, and goes on from it", async () => {
+    const at = 1_700_000_000_000;
+    const storage = new MemoryStorage(() => at);
+    const first = await boot({ now: () => at }, storage);
+    const made = await makeRoom(first);
+    const { seqSeen: _seen, seqFloor: _floor, ...older } = { ...(await storage.load(made.room))!, seqs: { early: 3 }, rev: 3 } as RoomRecord;
+    await storage.save(made.room, older);
+    expect(await editAs(first, made, "early", "Fourth")).toBe(4);
+    expect(await storage.load(made.room)).toMatchObject({ rev: 4, seqs: { early: 4 }, seqSeen: { early: at }, seqFloor: 0 });
   });
 });

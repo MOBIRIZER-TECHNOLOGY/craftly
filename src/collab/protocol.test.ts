@@ -3,10 +3,13 @@
  * (The content of an element is checked by the server on top of this; applying an operation is safe whatever it holds.)
  */
 import { describe, expect, it } from "vitest";
-import { createDesign, createGraphic, createGroup, createPage, createShape } from "@/core/factory";
+import { createChart, createDesign, createGraphic, createGroup, createImage, createLine, createPage, createShape, createText } from "@/core/factory";
 import type { Design, DesignElement } from "@/core/types";
-import { canEdit, checkDesign, checkOps, MAX_OPS_PER_BATCH, parseServerMsg } from "./protocol";
-import type { Op } from "./ops";
+import { TEMPLATES } from "@/data/templates";
+import { completeDesign, minimalDesign } from "@/test/schema/complete";
+import { oneOfEach, whole } from "@/test/wholeElement";
+import { canEdit, checkDesign, checkOps, checkSets, MAX_OPS_PER_BATCH, parseServerMsg } from "./protocol";
+import { applyOps, type Op } from "./ops";
 
 const el = () => createShape("rect", { id: "a" });
 
@@ -50,7 +53,7 @@ describe("checkOps", () => {
     ["a parent that is neither null nor an id", [{ k: "el.add", page: "p", parent: 3, index: 0, el: el() }]],
     ["an element with no kind of its own", [{ k: "el.add", page: "p", parent: null, index: 0, el: { id: "a", x: 0 } }]],
     ["an element of a kind that does not exist", [{ k: "el.add", page: "p", parent: null, index: 0, el: { id: "a", type: "script" } }]],
-    ["an element with no id", [{ k: "el.add", page: "p", parent: null, index: 0, el: { type: "shape" } }]],
+    ["an element with no id", [{ k: "el.add", page: "p", parent: null, index: 0, el: whole({ id: undefined }) }]],
     ["a page with an element that is not an element", [{ k: "page.add", page: { id: "p", elements: [{ id: "a", type: "weird" }] }, index: 0 }]],
     ["a page whose elements are not a list", [{ k: "page.add", page: { id: "p", elements: {} }, index: 0 }]],
     ["properties that are a list", [{ k: "el.set", page: "p", id: "a", set: [1] }]],
@@ -69,15 +72,16 @@ describe("checkOps", () => {
   });
 
   it("refuses elements nested so deep that they can only be an attack", () => {
-    let deep: unknown = { id: "leaf", type: "shape" };
-    for (let i = 0; i < 100; i++) deep = { id: `g${i}`, type: "group", children: [deep] };
+    let deep: unknown = whole({ id: "leaf" });
+    for (let i = 0; i < 100; i++) deep = { ...whole({ id: `g${i}`, type: "group" }), children: [deep] };
     expect(checkOps([{ k: "el.add", page: "p", parent: null, index: 0, el: deep }])).toMatch(/deep/i);
   });
 });
 
 describe("the content of what arrives", () => {
   const set = (props: Record<string, unknown>): unknown[] => [{ k: "el.set", page: "p", id: "a", set: props }];
-  const add = (el: Record<string, unknown>): unknown[] => [{ k: "el.add", page: "p", parent: null, index: 0, el: { id: "n", type: "shape", ...el } }];
+  // (an element as the editor makes it, with what is given laid over it: so that what is refused is refused for what the test names)
+  const add = (el: Record<string, unknown>): unknown[] => [{ k: "el.add", page: "p", parent: null, index: 0, el: whole({ id: "n", ...el }) }];
   const parsed = (json: string) => JSON.parse(json) as Record<string, unknown>;
   const nested = (levels: number) => {
     let v: unknown = 1;
@@ -142,7 +146,10 @@ describe("the content of what arrives", () => {
     ["a graphic that is added with a recolouring that is code", add({ type: "graphic", svg: "<svg/>", colors: { "#000000": 'a" onclick="x' } })],
     ["markup with a script in a graphic that is added", add({ type: "graphic", svg: "<svg><script>1</script></svg>" })],
     ["markup with a script in a graphic inside a group", add({ type: "group", children: [{ id: "c", type: "graphic", svg: '<svg onload="1"/>' }] })],
-    ["markup with a script in a graphic of a page", [{ k: "page.add", page: { id: "p2", elements: [{ id: "g", type: "graphic", svg: "<svg><script/></svg>" }] }, index: 0 }]],
+    [
+      "markup with a script in a graphic of a page",
+      [{ k: "page.add", page: { id: "p2", elements: [whole({ id: "g", type: "graphic", svg: "<svg><script/></svg>" })] }, index: 0 }],
+    ],
     ["a blend mode that does not exist", set({ blend: "sparkle" })],
     ["a blend mode that is written as the absence of one", set({ blend: "normal" })],
     ["a blend mode with a style after it", set({ blend: "multiply;background:url(https://evil.test/x)" })],
@@ -207,10 +214,7 @@ describe("checkDesign: a design that arrives whole, as the welcome of a server",
   it("accepts a design whose elements have blend modes, in a group too", () => {
     expect(
       checkDesign(
-        withElements([
-          { id: "a", type: "shape", blend: "multiply" },
-          { id: "g", type: "group", children: [{ id: "b", type: "shape", blend: "luminosity" }] },
-        ]),
+        withElements([whole({ id: "a", type: "shape", blend: "multiply" }), whole({ id: "g", type: "group", children: [{ id: "b", type: "shape", blend: "luminosity" }] })]),
       ),
     ).toBeNull();
   });
@@ -221,7 +225,7 @@ describe("checkDesign: a design that arrives whole, as the welcome of a server",
   });
 
   it("accepts a design with more in it than one batch may carry, which many batches have built up", () => {
-    const elements = Array.from({ length: 16_000 }, (_, i) => ({ id: `r${i}`, type: "shape", ...Object.fromEntries(Array.from({ length: 20 }, (_, k) => [`p${k}`, k])) }));
+    const elements = Array.from({ length: 16_000 }, (_, i) => whole({ id: `r${i}`, type: "shape", ...Object.fromEntries(Array.from({ length: 20 }, (_, k) => [`p${k}`, k])) }));
     const page = { id: "p", elements };
     expect(checkOps([{ k: "page.add", page, index: 0 }])).toMatch(/more content/);
     expect(checkDesign(withElements(elements))).toBeNull();
@@ -242,16 +246,16 @@ describe("checkDesign: a design that arrives whole, as the welcome of a server",
     ["a height of nothing", () => ({ ...shared(), height: 0 })],
     ["a width that is not finite", () => ({ ...shared(), width: Infinity })],
     ["a unit that is not text", () => ({ ...shared(), unit: 5 })],
-    ["a picture that is a script", () => withElements([{ id: "a", type: "image", src: "javascript:alert(1)" }])],
+    ["a picture that is a script", () => withElements([whole({ id: "a", type: "image", src: "javascript:alert(1)" })])],
     ["a page whose background is a script", () => ({ ...shared(), pages: [{ id: "p", elements: [], background: { type: "image", src: "javascript:1" } }] })],
-    ["markup that runs", () => withElements([{ id: "a", type: "graphic", svg: '<svg/onload="1"/>' }])],
-    ["markup inside a group", () => withElements([{ id: "g", type: "group", children: [{ id: "a", type: "graphic", svg: "<svg><script/></svg>" }] }])],
-    ["a link that is a script", () => withElements([{ id: "a", type: "shape", link: "javascript:alert(1)" }])],
-    ["a blend mode that does not exist", () => withElements([{ id: "a", type: "shape", blend: "sparkle" }])],
-    ["a blend mode that does not exist inside a group", () => withElements([{ id: "g", type: "group", children: [{ id: "a", type: "shape", blend: "<b>" }] }])],
+    ["markup that runs", () => withElements([whole({ id: "a", type: "graphic", svg: '<svg/onload="1"/>' })])],
+    ["markup inside a group", () => withElements([whole({ id: "g", type: "group", children: [{ id: "a", type: "graphic", svg: "<svg><script/></svg>" }] })])],
+    ["a link that is a script", () => withElements([whole({ id: "a", type: "shape", link: "javascript:alert(1)" })])],
+    ["a blend mode that does not exist", () => withElements([whole({ id: "a", type: "shape", blend: "sparkle" })])],
+    ["a blend mode that does not exist inside a group", () => withElements([whole({ id: "g", type: "group", children: [{ id: "a", type: "shape", blend: "<b>" }] })])],
     ["a property called __proto__ at the top", () => JSON.parse('{"__proto__":{"x":1},"title":"t","width":1,"height":1,"pages":[{"id":"p","elements":[]}]}')],
-    ["a property called constructor deep inside", () => withElements([{ id: "a", type: "shape", fill: JSON.parse('{"stops":[{"constructor":1}]}') }])],
-    ["a value nested far too deep", () => withElements([{ id: "a", type: "shape", fill: Array.from({ length: 200 }).reduce<unknown>((v) => ({ v }), 1) }])],
+    ["a property called constructor deep inside", () => withElements([whole({ id: "a", type: "shape", fill: JSON.parse('{"stops":[{"constructor":1}]}') })])],
+    ["a value nested far too deep", () => withElements([whole({ id: "a", type: "shape", fill: Array.from({ length: 200 }).reduce<unknown>((v) => ({ v }), 1) })])],
     ["a text that is longer than any text can be", () => ({ ...shared(), title: "x".repeat(1_000_001) })],
   ])("refuses %s", (_what, make) => {
     expect(typeof checkDesign(make())).toBe("string");
@@ -302,7 +306,7 @@ describe("parseServerMsg: what a server says, before anything of it is used", ()
     ["a welcome with a design that has no pages", () => ({ t: "welcome", role: "edit", rev: 1, lastSeq: 0, design: { ...design(), pages: [] } })],
     [
       "a welcome with a design that carries code",
-      () => ({ t: "welcome", role: "edit", rev: 1, lastSeq: 0, design: withElements([{ id: "a", type: "graphic", svg: '<svg/onload="1"/>' }]) }),
+      () => ({ t: "welcome", role: "edit", rev: 1, lastSeq: 0, design: withElements([whole({ id: "a", type: "graphic", svg: '<svg/onload="1"/>' })]) }),
     ],
     ["an acknowledgement with a number that is text", () => ({ t: "ack", seq: "1", rev: 2 })],
     ["an acknowledgement with no revision", () => ({ t: "ack", seq: 1 })],
@@ -320,5 +324,175 @@ describe("parseServerMsg: what a server says, before anything of it is used", ()
 
   it("says what is wrong in the operations, so that a person who reads the log can tell", () => {
     expect(parseServerMsg({ t: "ops", rev: 5, ops: [{ k: "el.set", page: "p", id: "a", set: { src: "javascript:alert(1)" } }] })).toMatch(/src is not a safe address/);
+  });
+});
+
+describe("an element that arrives whole is checked as strictly as one in a file", () => {
+  const added = (el: unknown): unknown[] => [{ k: "el.add", page: "p", parent: null, index: 0, el }];
+  const inGroup = (el: unknown) => ({ ...whole({ type: "group" }), children: [el] });
+
+  it.each<[string, Record<string, unknown>]>([
+    ["a place that is text", whole({ x: "a" })],
+    ["a size that is missing", whole({ width: undefined })],
+    ["an opacity that is nothing", whole({ opacity: null })],
+    ["paragraphs that are a number", whole({ type: "text", paragraphs: 5 })],
+    ["a text with no font", whole({ type: "text", fontFamily: undefined })],
+    ["a text whose effect is text", whole({ type: "text", effect: "glow" })],
+    ["a shape of no shape", whole({ shape: undefined })],
+    ["a line with no stroke", whole({ type: "line", stroke: null })],
+    ["a line whose stroke has no width", whole({ type: "line", stroke: { color: "#000000" } })],
+    ["a picture with no crop", whole({ type: "image", crop: undefined })],
+    ["a picture whose source is a number", whole({ type: "image", src: 5 })],
+    ["a graphic that does not say how big its drawing is", whole({ type: "graphic", viewW: undefined })],
+    ["a graphic with no markup at all", whole({ type: "graphic", svg: undefined })],
+    ["a table whose cells are text", whole({ type: "table", cells: "a" })],
+    ["a chart with no colours", whole({ type: "chart", palette: [] })],
+  ])("refuses %s: added to a page, inside a group, on a new page, and in a design that arrives whole", (_what, el) => {
+    expect(checkOps(added(el))).toMatch(/^el\.add: /);
+    expect(checkOps(added(inGroup(el)))).toMatch(/^el\.add: /);
+    expect(checkOps([{ k: "page.add", page: { id: "p2", background: { type: "solid", color: "#ffffff" }, elements: [el] }, index: 0 }])).toMatch(/^page\.add: /);
+    expect(checkOps([{ k: "page.add", page: { id: "p2", background: { type: "solid", color: "#ffffff" }, elements: [inGroup(el)] }, index: 0 }])).toMatch(/^page\.add: /);
+    expect(typeof checkDesign(withElements([whole(), el]))).toBe("string");
+    expect(typeof checkDesign(withElements([inGroup(el)]))).toBe("string");
+    expect(parseServerMsg({ t: "welcome", role: "edit", rev: 1, lastSeq: 0, design: withElements([el]) })).toMatch(/^welcome: /);
+    expect(parseServerMsg({ t: "ops", rev: 2, ops: added(el) })).toMatch(/^ops: el\.add: /);
+  });
+
+  it("says which property it is, so that a person who reads the log can tell", () => {
+    expect(checkOps(added(whole({ x: "a" })))).toBe("el.add: x of a shape must be a number");
+    expect(checkOps(added(whole({ type: "text", paragraphs: 5 })))).toBe("el.add: paragraphs of a text must be a list");
+    expect(checkDesign(withElements([inGroup(whole({ type: "chart", palette: [] }))]))).toBe("palette of a chart must be a list that is not empty");
+  });
+
+  it("still wants an id that is one, which a file does not ask for", () => {
+    expect(typeof checkOps(added(whole({ id: "" })))).toBe("string");
+    expect(typeof checkOps(added(whole({ id: "x".repeat(500) })))).toBe("string");
+  });
+
+  it("accepts one element of each kind as the editor makes it, added one by one and all on one new page", () => {
+    const elements = overTheWire(oneOfEach());
+    for (const el of elements) expect(checkOps(added(el)), el.type).toEqual(added(el));
+    expect(typeof checkOps([{ k: "page.add", page: { id: "p2", background: { type: "solid", color: "#ffffff" }, elements }, index: 0 }])).not.toBe("string");
+    expect(checkDesign(withElements(elements))).toBeNull();
+  });
+
+  it("accepts the design that has every field there is, and the smallest one", () => {
+    expect(checkDesign(overTheWire(completeDesign()))).toBeNull();
+    expect(checkDesign(overTheWire(minimalDesign()))).toBeNull();
+  });
+
+  it("accepts every template of the catalogue as a design, and each of its pages as a page that is added", () => {
+    expect(TEMPLATES.length).toBeGreaterThan(50);
+    for (const template of TEMPLATES) {
+      const design = overTheWire({ ...shared(), title: template.name, width: template.width, height: template.height, pages: template.pages });
+      const problem = checkDesign(design);
+      if (problem) throw new Error(`${template.id}: ${problem}`);
+      for (const page of design.pages) {
+        // (a page of a template may hold more than one batch carries: only what is wrong with an element matters here)
+        const checked = checkOps([{ k: "page.add", page, index: 0 }]);
+        if (typeof checked === "string" && !/more content/.test(checked)) throw new Error(`${template.id}, page ${page.id}: ${checked}`);
+      }
+    }
+  });
+});
+
+describe("checkSets: what a batch left of the elements whose properties it changed", () => {
+  const before = (): Design =>
+    createDesign({
+      title: "Shared",
+      width: 1000,
+      height: 600,
+      pages: [
+        createPage({
+          id: "p",
+          elements: [
+            createShape("rect", { id: "a" }),
+            createText({ id: "t", text: "Hello" }),
+            createLine({ id: "l" }),
+            createImage({ id: "i", src: null }),
+            createChart({ id: "c" }),
+            createGroup([createShape("rect", { id: "inner" })], { id: "g" }),
+          ],
+        }),
+        createPage({ id: "q", elements: [] }),
+      ],
+    });
+  const set = (id: string, props: Record<string, unknown>, unset?: string[]): Op => ({ k: "el.set", page: "p", id, set: props, ...(unset ? { unset } : {}) });
+  const after = (ops: Op[], from = before()) => checkSets(from, applyOps(from, ops), ops);
+
+  it.each<[string, Op[]]>([
+    ["a place", [set("a", { x: 12, y: -3.5 })]],
+    ["a fill, an outline and a name", [set("a", { fill: { type: "solid", color: "#ff0000" }, stroke: null, name: "Box" })]],
+    ["what is not needed, taken away", [set("a", {}, ["fill", "radius", "name"])]],
+    ["a property nobody knows", [set("a", { somethingNew: { a: [1, 2] } })]],
+    ["the paragraphs and the font of a text", [set("t", { paragraphs: [{ runs: [{ text: "Hi" }] }], fontFamily: "Inter", fontSize: 20 })]],
+    ["the stroke of a line", [set("l", { stroke: { color: "#000000", width: 2, style: "dashed" } })]],
+    ["a picture taken out of its frame", [set("i", { src: null })]],
+    ["a picture put into its frame", [set("i", { src: "asset:a_1" })]],
+    ["an element inside a group", [set("inner", { x: 5 })]],
+    ["the group itself", [set("g", { rotation: 45 })]],
+    ["an element that is not there, which changes nothing", [set("gone", { x: "a" })]],
+    ["an element on a page that is not there", [{ k: "el.set", page: "nowhere", id: "a", set: { x: "a" } }]],
+    ["an element that the same batch then deletes", [set("a", { x: "a" }), { k: "el.del", page: "p", id: "a" }]],
+    ["a batch that sets nothing", [{ k: "el.move", page: "p", id: "a", parent: null, index: 3 }]],
+  ])("finds nothing wrong with %s", (_what, ops) => {
+    expect(after(ops)).toBeNull();
+  });
+
+  it.each<[string, Op[], RegExp]>([
+    ["a place that is text", [set("a", { x: "a" })], /x of a shape must be a number/],
+    ["a place that is nothing", [set("a", { y: null })], /y of a shape/],
+    ["a size that is taken away", [set("a", {}, ["width"])], /width of a shape/],
+    ["an opacity that is a list", [set("a", { opacity: [1] })], /opacity/],
+    ["paragraphs that are a number", [set("t", { paragraphs: 5 })], /paragraphs of a text must be a list/],
+    ["a font that is a number", [set("t", { fontFamily: 5 })], /fontFamily/],
+    ["a font size that is text", [set("t", { fontSize: "big" })], /fontSize/],
+    ["an effect that is taken away", [set("t", {}, ["effect"])], /effect/],
+    ["a shape of no shape", [set("a", { shape: 5 })], /shape of a shape/],
+    ["a stroke that is taken from a line", [set("l", { stroke: null })], /stroke of a line/],
+    ["a stroke of a line with no width", [set("l", { stroke: { color: "#000000" } })], /width of the stroke/],
+    ["a picture whose source is a number", [set("i", { src: 5 })], /src of a image/],
+    ["a picture whose source is taken away", [set("i", {}, ["src"])], /src/],
+    ["a crop that is text", [set("i", { crop: "all" })], /crop/],
+    ["a chart with no colours", [set("c", { palette: [] })], /palette/],
+    ["a chart whose series are text", [set("c", { series: "many" })], /series/],
+    ["an element inside a group", [set("inner", { height: "tall" })], /height/],
+    ["the group itself", [set("g", { rotation: "a bit" })], /rotation of a group/],
+    ["one bad change among good ones", [set("a", { x: 1 }), set("t", { fontSize: 12 }), set("l", { stroke: 5 }), set("c", { title: "T" })], /stroke of a line/],
+    ["a change that a later one of the same batch does not mend", [set("a", { x: "a" }), set("a", { y: 4 })], /x of a shape/],
+    [
+      "an element that the same batch added, and then spoils",
+      [{ k: "el.add", page: "p", parent: null, index: 0, el: createShape("rect", { id: "new" }) }, set("new", { width: "wide" })],
+      /width of a shape/,
+    ],
+  ])("says what is wrong with %s", (_what, ops, words) => {
+    const problem = after(ops);
+    expect(problem).toMatch(/^el\.set: /);
+    expect(problem).toMatch(words);
+  });
+
+  it("lets a batch mend its own mistake: what counts is the element as the batch leaves it", () => {
+    expect(after([set("a", { x: "a" }), set("a", { x: 7 })])).toBeNull();
+  });
+
+  it("looks only at the elements whose properties the batch changed, and at each once", () => {
+    const from = before();
+    const damaged = { ...from, pages: [{ ...from.pages[0], elements: [...from.pages[0].elements, { id: "old", type: "shape" } as unknown as DesignElement] }, from.pages[1]] };
+    // an element that was not usable before this change (a room from before the check) is nobody's new mistake
+    expect(after([set("a", { x: 3 })], damaged)).toBeNull();
+    expect(after([set("old", { name: "still broken" })], damaged)).toBeNull();
+    // and one that the batch makes whole is whole
+    expect(after([set("old", { ...createShape("rect", { id: "old" }), id: undefined, type: undefined })], damaged)).toBeNull();
+    expect(after([set("old", { name: "x" }), set("a", { x: "a" })], damaged)).toMatch(/x of a shape/);
+  });
+
+  it("is quick for a batch that changes ten thousand elements of a big page", () => {
+    const elements = Array.from({ length: 10_000 }, (_, i) => createShape("rect", { id: `s${i}` }));
+    const big = { ...before(), pages: [createPage({ id: "p", elements })] };
+    const ops = elements.map((el, i): Op => ({ k: "el.set", page: "p", id: el.id, set: { x: i } }));
+    const moved = { ...big, pages: [{ ...big.pages[0], elements: elements.map((el, i) => ({ ...el, x: i })) }] };
+    const started = performance.now();
+    expect(checkSets(big, moved, ops)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });

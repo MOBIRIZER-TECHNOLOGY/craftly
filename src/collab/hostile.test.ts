@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape } from "@/core/factory";
 import type { Design } from "@/core/types";
+import { whole } from "@/test/wholeElement";
 import { Live, type LiveStatus, type SocketLike } from "./live";
 import type { ClientMsg } from "./protocol";
 import { Session } from "./session";
@@ -16,7 +17,7 @@ const overTheWire = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const welcome = (design: unknown = overTheWire(base()), rev = 0) => ({ t: "welcome", role: "edit", rev, lastSeq: 0, design });
 const withGraphic = (svg: string) => ({
   ...overTheWire(base()),
-  pages: [{ id: "p", background: { type: "solid", color: "#ffffff" }, elements: [{ id: "g", type: "graphic", svg }] }],
+  pages: [{ id: "p", background: { type: "solid", color: "#ffffff" }, elements: [whole({ id: "g", type: "graphic", svg })] }],
 });
 const code = [{ k: "el.set", page: "p", id: "a", set: { src: "javascript:alert(1)" } }];
 
@@ -37,7 +38,7 @@ describe("a welcome that cannot be trusted", () => {
   it.each<[string, () => unknown]>([
     ["markup that runs code after a slash", () => withGraphic('<svg/onload="alert(1)"/>')],
     ["markup with a script", () => withGraphic("<svg><script>alert(1)</script></svg>")],
-    ["a picture that is code", () => ({ ...overTheWire(base()), pages: [{ id: "p", elements: [{ id: "a", type: "image", src: "javascript:alert(1)" }] }] })],
+    ["a picture that is code", () => ({ ...overTheWire(base()), pages: [{ id: "p", elements: [whole({ id: "a", type: "image", src: "javascript:alert(1)" })] }] })],
     ["a property called __proto__", () => JSON.parse('{"__proto__":{"x":1},"title":"t","width":1,"height":1,"pages":[{"id":"p","elements":[]}]}')],
     ["something that is not a design", () => 5],
     ["a design with a title that is not text", () => ({ ...overTheWire(base()), title: { a: 1 } })],
@@ -250,5 +251,29 @@ describe("the connection to a server that cannot be trusted", () => {
     expect(live.status).toBe("live");
     expect(x(live.design)).toBe(7);
     expect(changes).toBe(2);
+  });
+});
+
+describe("operations that would leave an element that cannot be drawn", () => {
+  it.each<[string, Record<string, unknown>]>([
+    ["a place that is text", { set: { x: "a" } }],
+    ["a size that is taken away", { unset: ["width"] }],
+    ["a shape of no shape", { set: { shape: 5 } }],
+  ])("end the session at %s, and the design stays as it was", (_what, change) => {
+    const { session } = joined();
+    const before = session.design;
+    expect(session.receive({ t: "ops", rev: 1, ops: [{ k: "el.set", page: "p", id: "a", ...change }] })).toEqual({ changed: false, ended: "invalid" });
+    expect(session.status).toBe("ended");
+    expect(session.design).toBe(before);
+    expect(session.rev).toBe(0);
+  });
+
+  it("are not mistaken for a change that is fine", () => {
+    const { session } = joined();
+    expect(session.receive({ t: "ops", rev: 1, ops: [{ k: "el.set", page: "p", id: "a", set: { x: 5, somethingNew: [1] }, unset: ["fill"] }] })).toEqual({
+      changed: true,
+      ended: null,
+    });
+    expect(x(session.design)).toBe(5);
   });
 });
