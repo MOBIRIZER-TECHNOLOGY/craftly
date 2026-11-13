@@ -2,7 +2,8 @@
  * The server for shared designs (optional: the editor works without it). It holds one `Room` per shared design, lets people in
  * with a key (one key lets them edit, another only look), keeps what the rooms say to each connection ordered, saves a room
  * before acknowledging a change, and refuses what it cannot afford: a message or a body that is too big, a connection that sends too
- * many messages, too many people in a room, too many rooms.
+ * many messages or too many bytes, or asks for the design too often, or does not read what it is sent; too many people in a room or
+ * waiting at its door, too many connections, too many rooms.
  *
  * HTTP:  POST /api/rooms {design}        makes a room from a design: { room, editKey, viewKey, ownerKey } (the keys are shown once)
  *        DELETE /api/rooms/:id           with the owner key in `x-craftly-key`: stops sharing and sends everyone away
@@ -40,6 +41,18 @@ export interface LiveServerOptions {
   heartbeatMs?: number;
   /** Messages a connection may send: a burst, then so many a second. */
   rate?: { burst: number; perSecond: number };
+  /** Bytes a connection may send, beside the count of its messages: a burst, then so many a second. */
+  byteRate?: { burst?: number; perSecond?: number };
+  /** How often a connection may join, each of which sends it the whole design: a burst, then so many a second. */
+  joinRate?: { burst?: number; perSecond?: number };
+  /** The most a message may be before the connection has shown its key, in bytes; a join is tiny. A bigger one is not read. */
+  maxUnjoinedMessageBytes?: number;
+  /** The most that may wait to be sent to one connection, in bytes: one that reads slower than that is dropped. Twice `maxDesignBytes` unless set. */
+  maxBufferedBytes?: number;
+  /** The most connections at one time, to all rooms together. */
+  maxConnections?: number;
+  /** The most connections to one room that have not shown their key yet. */
+  maxWaitingPerRoom?: number;
 }
 
 export interface LiveServer {
@@ -60,7 +73,18 @@ const DEFAULTS = {
   joinWaitMs: 10_000,
   heartbeatMs: 30_000,
   rate: { burst: 200, perSecond: 100 },
+  byteRate: { burst: 8 * 1024 * 1024, perSecond: 1024 * 1024 },
+  joinRate: { burst: 4, perSecond: 0.5 },
+  maxUnjoinedMessageBytes: 8 * 1024,
+  maxConnections: 5000,
+  maxWaitingPerRoom: 20,
 };
+
+/** A burst and a rate, with what was not given (or given as undefined, as a setting that is not set is) taken from the default. */
+const bucket = (given: { burst?: number; perSecond?: number } | undefined, standard: { burst: number; perSecond: number }) => ({
+  burst: given?.burst ?? standard.burst,
+  perSecond: given?.perSecond ?? standard.perSecond,
+});
 
 const ASSET_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const IMAGE_TYPE = /^image\/(?:png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
@@ -70,6 +94,8 @@ const ROOM_ASSET_LIMIT = 48 * 1024 * 1024;
 const CLIENT_NAME = /^[A-Za-z0-9._-]{1,64}$/;
 const sha256 = (text: string) => createHash("sha256").update(text).digest();
 const token = () => randomBytes(16).toString("base64url");
+/** The size of a message in bytes: `ws` hands every message over as one Buffer (its `binaryType` is left as it comes, "nodebuffer"). */
+const sizeOf = (data: RawData) => (data as Buffer).length;
 const sameHash = (hex: string, key: string) => {
   const a = Buffer.from(hex, "hex");
   const b = sha256(key);
@@ -100,6 +126,12 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     joinWaitMs: options.joinWaitMs ?? DEFAULTS.joinWaitMs,
     heartbeatMs: options.heartbeatMs ?? DEFAULTS.heartbeatMs,
     rate: { ...DEFAULTS.rate, ...options.rate },
+    byteRate: bucket(options.byteRate, DEFAULTS.byteRate),
+    joinRate: bucket(options.joinRate, DEFAULTS.joinRate),
+    maxUnjoinedMessageBytes: options.maxUnjoinedMessageBytes ?? DEFAULTS.maxUnjoinedMessageBytes,
+    maxBufferedBytes: options.maxBufferedBytes ?? 2 * (options.maxDesignBytes ?? DEFAULTS.maxDesignBytes),
+    maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
+    maxWaitingPerRoom: options.maxWaitingPerRoom ?? DEFAULTS.maxWaitingPerRoom,
   };
   const loaded = new Map<string, Loaded>();
   const loading = new Map<string, Promise<Loaded | null>>();
@@ -373,7 +405,12 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const answered = new WeakMap<WebSocket, boolean>();
 
   const send = (ws: WebSocket, msg: ServerMsg) => {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+    if (ws.readyState !== ws.OPEN) return;
+    ws.send(JSON.stringify(msg));
+    // What a connection does not read waits here, in memory, and a connection that reads nothing would have it grow for as long as
+    // the room has something to say. Past the limit it is dropped at once (a polite close would wait behind everything else that
+    // waits); a browser that was only slow comes back by itself and is sent the design as it is then.
+    if (ws.bufferedAmount > o.maxBufferedBytes) ws.terminate();
   };
   const deny = (ws: WebSocket, reason: DeniedReason) => {
     send(ws, { t: "denied", reason });
@@ -384,6 +421,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     const url = target(req);
     if (!url || url.pathname !== "/ws" || closing) {
       socket.destroy();
+      return;
+    }
+    if (sockets.size >= o.maxConnections) {
+      // refused before it is a connection; a browser sees a connection that failed and tries again later
+      socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => void connection(ws, url.searchParams.get("room") ?? ""));
@@ -404,7 +446,14 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     // what arrives while the room is being loaded waits here
     const early: RawData[] = [];
     let handle: ((data: RawData) => void) | null = null;
-    ws.on("message", (data) => (handle ? handle(data) : early.push(data)));
+    let shownKey = false;
+    ws.on("message", (data) => {
+      // Until the key has been shown the only message with a use is a join, which is tiny. Anything bigger is not read: parsing
+      // megabytes for whoever asks is work that a stranger could have the server do.
+      if (!shownKey && sizeOf(data) > o.maxUnjoinedMessageBytes) return void ws.close(1009, "too big before the key");
+      if (handle) handle(data);
+      else early.push(data);
+    });
 
     let l: Loaded | null;
     try {
@@ -420,10 +469,15 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     if (!l || l.removed) return deny(ws, "not-found");
     // Nothing in the address lets anybody in: the key comes in the first message, a join, soon after the connection is made. Until it has, the
     // connection belongs to the room (which stays in memory for it, and sends it away with everybody else) but is not one of the people in it.
+    // Only so many may stand at the door of one room. This one is not turned away for good (a browser takes `denied` as final): it is
+    // asked to come back, and it does by itself, with waits that grow.
+    if (l.sockets.size - l.members.size >= o.maxWaitingPerRoom) return void ws.close(1013, "try again later");
     l.sockets.add(ws);
     const peer: Peer = { send: (msg) => send(ws, msg) };
     const silent = setTimeout(() => deny(ws, "bad-request"), o.joinWaitMs);
     let tokens = o.rate.burst;
+    let bytes = o.byteRate.burst;
+    let joins = o.joinRate.burst;
     let refilled = Date.now();
     ws.on("close", () => {
       clearTimeout(silent);
@@ -436,9 +490,12 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     handle = (data) => {
       if (l.removed || closing || ws.readyState !== ws.OPEN) return;
       const now = Date.now();
-      tokens = Math.min(o.rate.burst, tokens + ((now - refilled) / 1000) * o.rate.perSecond);
+      const seconds = (now - refilled) / 1000;
+      tokens = Math.min(o.rate.burst, tokens + seconds * o.rate.perSecond);
+      bytes = Math.min(o.byteRate.burst, bytes + seconds * o.byteRate.perSecond) - sizeOf(data);
+      joins = Math.min(o.joinRate.burst, joins + seconds * o.joinRate.perSecond);
       refilled = now;
-      if (--tokens < 0) return void ws.close(1008, "slow down");
+      if (--tokens < 0 || bytes < 0) return void ws.close(1008, "slow down");
       let msg: ClientMsg;
       try {
         msg = JSON.parse(data.toString()) as ClientMsg;
@@ -447,12 +504,15 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       }
       if (!msg || typeof msg !== "object") return;
       if (msg.t === "join") {
+        // every join is answered with the whole design, megabytes of it for a few bytes, so it has a small allowance of its own
+        if (--joins < 0) return void ws.close(1008, "slow down");
         const role = roleOf(l, msg.key);
         if (!role) return void deny(ws, "no-access");
         if (typeof msg.client !== "string" || !CLIENT_NAME.test(msg.client)) return void deny(ws, "bad-request");
         if (!l.members.has(ws)) {
           if (l.members.size >= o.maxPeersPerRoom) return void deny(ws, "server-full");
           l.members.add(ws);
+          shownKey = true;
           clearTimeout(silent);
         }
         for (const old of l.room.join(peer, msg.client, role)) {

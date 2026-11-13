@@ -358,3 +358,139 @@ describe("designsEqual and syncedView", () => {
     ).toBe(true);
   });
 });
+
+describe("applyOps over a batch", () => {
+  const add = (id: string, el: DesignElement = rect(id), parent: string | null = null, pageId = "p"): Op => ({ k: "el.add", page: pageId, parent, index: 0, el });
+  const group = (id: string, ...children: string[]) =>
+    createGroup(
+      children.map((c) => rect(c)),
+      { id, x: 0, y: 0, width: 100, height: 50 },
+    ) as GroupElement;
+  const oneByOne = (d: Design, ops: Op[]) => ops.reduce(applyOp, d);
+
+  it("does not walk the whole design again for each element that a batch adds", () => {
+    // an element that says how often its id was asked for: the ids of a design are looked up once for a batch, however many it adds
+    let asked = 0;
+    const watched = {
+      ...rect("x"),
+      get id() {
+        asked++;
+        return "watched";
+      },
+    } as DesignElement;
+    const d = designOf(page("p", [watched]));
+    const ops = Array.from({ length: 50 }, (_, i) => add(`n${i}`));
+    asked = 0;
+    const out = applyOps(d, ops);
+    expect(first(out)).toHaveLength(51);
+    expect(asked).toBeLessThan(5);
+  });
+
+  it("looks nothing up for a batch that adds nothing", () => {
+    let asked = 0;
+    const watched = {
+      ...rect("x"),
+      get id() {
+        asked++;
+        return "watched";
+      },
+    } as DesignElement;
+    const d = designOf(page("p", [watched]), page("q", [rect("b")]));
+    asked = 0;
+    applyOps(d, [
+      { k: "design", set: { title: "New" } },
+      { k: "page.set", id: "q", set: { name: "Second" } },
+    ]);
+    expect(asked).toBe(0);
+  });
+
+  it("knows what the batch itself added: the same id is not added twice, on any page or inside a page that is added", () => {
+    const d = designOf(page("p", [rect("a")]), page("q"));
+    const ops: Op[] = [add("n"), add("n", rect("n", 9), null, "q"), { k: "page.add", page: page("r", [rect("n")]), index: 5 }, add("r"), add("m", group("m", "n"))];
+    const out = applyOps(d, ops);
+    // (the page r was not added, for it brought an n, so an element may be called r)
+    expect(ids(first(out))).toEqual(["r", "n", "a"]);
+    expect(out.pages.map((p) => p.id)).toEqual(["p", "q"]);
+    expect(out.pages[1].elements).toEqual([]);
+    expect(out).toEqual(oneByOne(d, ops));
+  });
+
+  it("lets an id be used again once the batch has deleted what had it: an element, what a group held, a page and what was on it", () => {
+    const d = designOf(page("p", [rect("a"), group("g", "c1", "c2")]), page("q", [rect("b")]));
+    const ops: Op[] = [
+      add("first"), // the ids are known from here on, so what follows has to keep them right
+      { k: "el.del", page: "p", id: "a" },
+      add("a", rect("a", 7)),
+      { k: "el.del", page: "p", id: "g" },
+      add("c2"),
+      add("g"),
+      { k: "page.del", id: "q" },
+      add("b"),
+      { k: "page.add", page: page("q", [rect("c1")]), index: 9 },
+    ];
+    const out = applyOps(d, ops);
+    expect(ids(first(out))).toEqual(["b", "g", "c2", "a", "first"]);
+    expect(first(out)[3].x).toBe(7);
+    expect(out.pages.map((p) => p.id)).toEqual(["p", "q"]);
+    expect(ids(out.pages[1].elements)).toEqual(["c1"]);
+    expect(out).toEqual(oneByOne(d, ops));
+  });
+
+  it("does not take an id for used when the element that brought it could not be placed", () => {
+    const d = designOf(page("p", [rect("a")]));
+    const ops: Op[] = [add("n", rect("n"), "no-such-group"), add("m", rect("m"), null, "no-such-page"), add("n"), add("m")];
+    const out = applyOps(d, ops);
+    expect(ids(first(out))).toEqual(["m", "n", "a"]);
+    expect(out).toEqual(oneByOne(d, ops));
+  });
+
+  it("does not free an id that is still in use: deleting what cannot be deleted, or one of two that share an id in a design that came that way", () => {
+    const twice = designOf(page("p", [rect("a"), rect("dup")]), page("q", [rect("dup")]));
+    const ops: Op[] = [
+      add("first"),
+      { k: "el.del", page: "q", id: "dup" },
+      add("dup"), // still on page p
+      { k: "el.del", page: "p", id: "missing" },
+      { k: "el.del", page: "no-such-page", id: "a" },
+      add("a"),
+      { k: "page.del", id: "no-such-page" },
+    ];
+    const out = applyOps(twice, ops);
+    expect(ids(first(out))).toEqual(["first", "a", "dup"]);
+    expect(out).toEqual(oneByOne(twice, ops));
+    // the last page stays, and so do its ids
+    const one = designOf(page("p", [rect("a")]));
+    const kept: Op[] = [add("first"), { k: "page.del", id: "p" }, add("a"), add("p")];
+    expect(ids(first(applyOps(one, kept)))).toEqual(["first", "a"]);
+  });
+
+  it("gives what applying the operations one by one gives, for batches made at random", () => {
+    const names = ["a", "b", "c", "d", "e", "g", "h", "p", "q", "r"];
+    let seed = 12345;
+    const random = (n: number) => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed % n;
+    };
+    const pick = () => names[random(names.length)];
+    const element = (): DesignElement => (random(3) ? rect(pick()) : group(pick(), pick(), pick()));
+    for (let run = 0; run < 300; run++) {
+      const d = designOf(page("p", [rect("a"), group("g", "c", "d")]), page("q", [rect("b")]));
+      const ops: Op[] = Array.from({ length: 12 }, (): Op => {
+        const pageId = ["p", "q", "r"][random(3)];
+        switch (random(5)) {
+          case 0:
+            return { k: "el.del", page: pageId, id: pick() };
+          case 1:
+            return { k: "page.del", id: pageId };
+          case 2:
+            return { k: "page.add", page: page(pageId, [element()]), index: random(3) };
+          case 3:
+            return { k: "el.move", page: pageId, id: pick(), parent: random(2) ? "g" : null, index: random(3) };
+          default:
+            return { k: "el.add", page: pageId, parent: random(4) ? null : "g", index: random(3), el: element() };
+        }
+      });
+      expect(applyOps(d, ops)).toEqual(oneByOne(d, ops));
+    }
+  });
+});

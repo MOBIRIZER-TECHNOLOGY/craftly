@@ -747,3 +747,137 @@ describe("connections over time", () => {
     await until("the room to leave memory again", () => b.server.rooms() === 0, 1500);
   });
 });
+
+describe("admission: what one visitor may cost the server", () => {
+  const welcomes = (heard: ServerMsg[]) => heard.filter((m) => m.t === "welcome").length;
+
+  it("drops a connection that does not read what it is sent, before what waits for it fills the memory", async () => {
+    // a design of 300 kB, asked for again and again by a connection that reads nothing: what the server holds for it may not grow past the limit
+    const b = await boot({ maxBufferedBytes: 1024 * 1024, joinRate: { burst: 1000 }, rate: { burst: 1000, perSecond: 100 }, idleCloseMs: 20 });
+    const made = await makeRoom(b, { ...design(), title: "x".repeat(300_000) });
+    const s = raw(b, made.room, made.viewKey);
+    await s.opened;
+    s.join("deaf");
+    await until("the welcome", () => welcomes(s.heard) === 1);
+    expect(b.server.rooms()).toBe(1);
+    s.ws.pause();
+    for (let i = 0; i < 300; i++) s.join("deaf");
+    // the room has nobody else in it, so it leaves memory when the server has dropped the connection
+    await until("the server to drop the connection", () => b.server.rooms() === 0, 8000);
+    s.ws.resume();
+    await until("the browser to notice", () => s.closed() !== null);
+    expect(welcomes(s.heard)).toBeLessThan(300);
+  });
+
+  it("lets a connection ask for the design again a few times, and drops one that keeps asking", async () => {
+    const b = await boot({ joinRate: { burst: 3, perSecond: 0.001 } });
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.viewKey);
+    await s.opened;
+    for (let i = 0; i < 3; i++) s.join("again");
+    await until("three welcomes", () => welcomes(s.heard) === 3);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.closed()).toBeNull();
+    s.join("again");
+    await until("the connection to be closed", () => s.closed() === 1008);
+    expect(welcomes(s.heard)).toBe(3);
+  });
+
+  it("allows a join every two seconds after a burst of four, unless it is told otherwise", async () => {
+    // (as the start-up passes them when the environment sets none: a setting that is undefined is not a limit of nothing)
+    const b = await boot({ joinRate: { burst: undefined, perSecond: undefined }, byteRate: { burst: undefined, perSecond: undefined } });
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.viewKey);
+    await s.opened;
+    for (let i = 0; i < 5; i++) s.join("again");
+    await until("the connection to be closed", () => s.closed() === 1008);
+    expect(welcomes(s.heard)).toBe(4);
+  });
+
+  it("counts the bytes a connection sends as well as its messages", async () => {
+    const b = await boot({ byteRate: { burst: 5000, perSecond: 1 } });
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join("heavy");
+    const batch = (seq: number) => ({ t: "ops", seq, ops: [{ k: "design", set: { title: `${seq}`.padEnd(2000, "x") } }] });
+    s.say(batch(1));
+    s.say(batch(2));
+    await until("two batches to be taken", () => s.heard.filter((m) => m.t === "ack").length === 2);
+    expect(s.closed()).toBeNull();
+    s.say(batch(3)); // 6 kB in all, of 5 kB allowed
+    await until("the connection to be closed", () => s.closed() === 1008);
+    expect((await b.storage.load(made.room))?.rev).toBe(2);
+  });
+
+  it("does not read a big message from a connection that has not shown its key, and reads one from a connection that has", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    const stranger = raw(b, made.room, made.editKey);
+    await stranger.opened;
+    // a join with the right key, and 20 kB that a join has no use for
+    stranger.say({ t: "join", client: "big", key: made.editKey, padding: "x".repeat(20_000) });
+    await until("the connection to be closed", () => stranger.closed() === 1009);
+    expect(stranger.heard).toEqual([]);
+    const member = raw(b, made.room, made.editKey);
+    await member.opened;
+    member.join("member");
+    member.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "x".repeat(20_000) } }] });
+    await until("the ack", () => member.heard.some((m) => m.t === "ack"));
+  });
+
+  it("takes the limit for a message before the key from its options", async () => {
+    const b = await boot({ maxUnjoinedMessageBytes: 60 });
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join("a-name-that-makes-the-join-longer-than-sixty-bytes");
+    await until("the connection to be closed", () => s.closed() === 1009);
+  });
+
+  /** A connection that may be refused before it is one: what the server answered the request with, or that it opened. */
+  const knock = (b: Booted, room: string) =>
+    new Promise<number | "open">((resolve) => {
+      const ws = new WebSocket(`${b.ws}?room=${room}`);
+      sockets.push(ws);
+      ws.on("open", () => resolve("open"));
+      ws.on("unexpected-response", (_req, res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      ws.on("error", () => undefined);
+    });
+
+  it("holds no more connections than it may, whatever room they are for, and takes the next when one has gone", async () => {
+    const b = await boot({ maxConnections: 2 });
+    const [one, two] = [await makeRoom(b), await makeRoom(b)];
+    const first = raw(b, one.room, one.editKey);
+    const second = raw(b, two.room, two.editKey);
+    await Promise.all([first.opened, second.opened]);
+    expect(await knock(b, one.room)).toBe(503);
+    expect(first.closed()).toBeNull();
+    first.ws.close();
+    await until("a place to come free", async () => (await knock(b, one.room)) === "open");
+  });
+
+  it("lets only so many wait at the door of one room without a key, and asks the next to come back later", async () => {
+    const b = await boot({ maxWaitingPerRoom: 2 });
+    const [made, other] = [await makeRoom(b), await makeRoom(b)];
+    const [one, two] = [raw(b, made.room, made.editKey), raw(b, made.room, made.editKey)];
+    await Promise.all([one.opened, two.opened]);
+    const third = raw(b, made.room, made.editKey);
+    await until("the third to be asked to come back", () => third.closed() === 1013);
+    expect(third.heard).toEqual([]); // not turned away for good: a browser tries again by itself
+    // another room has a door of its own, and who has shown a key no longer waits
+    const elsewhere = raw(b, other.room, other.editKey);
+    await elsewhere.opened;
+    one.join("one");
+    await until("the welcome", () => welcomes(one.heard) === 1);
+    const fourth = raw(b, made.room, made.editKey);
+    await fourth.opened;
+    fourth.join("fourth");
+    await until("the welcome of the fourth", () => welcomes(fourth.heard) === 1);
+    expect(elsewhere.closed()).toBeNull();
+    expect(two.closed()).toBeNull();
+  });
+});

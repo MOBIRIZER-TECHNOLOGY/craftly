@@ -257,16 +257,36 @@ const idList = (list: readonly DesignElement[], into: ID[] = []): ID[] => {
   return into;
 };
 
-/** Whether all of these ids are new to the design: different from each other and from every page and element in it. */
-function allNew(d: Design, ids: readonly ID[]): boolean {
-  const used = new Set<ID>();
-  for (const p of d.pages) {
-    used.add(p.id);
-    for (const id of idList(p.elements)) used.add(id);
+/**
+ * How often each id is in a design, as the id of a page or of an element. Once, in a design that this code made; counted all the
+ * same, so that taking one of two away does not make the id look free.
+ */
+type IdCounts = Map<ID, number>;
+
+function countIds(d: Design): IdCounts {
+  const used: IdCounts = new Map();
+  for (const p of d.pages) taken(used, [p.id, ...idList(p.elements)]);
+  return used;
+}
+
+const taken = (used: IdCounts, ids: readonly ID[]): void => {
+  for (const id of ids) used.set(id, (used.get(id) ?? 0) + 1);
+};
+
+const freed = (used: IdCounts, ids: readonly ID[]): void => {
+  for (const id of ids) {
+    const left = (used.get(id) ?? 0) - 1;
+    if (left > 0) used.set(id, left);
+    else used.delete(id);
   }
+};
+
+/** Whether all of these ids are new to the design: different from each other and from every page and element in it. */
+function allNew(used: IdCounts, ids: readonly ID[]): boolean {
+  const seen = new Set<ID>();
   return ids.every((id) => {
-    if (used.has(id)) return false;
-    used.add(id);
+    if (used.has(id) || seen.has(id)) return false;
+    seen.add(id);
     return true;
   });
 }
@@ -289,6 +309,15 @@ const inElements = (d: Design, pageId: ID, fn: (list: readonly DesignElement[]) 
 
 /** One operation applied to a design: the new design, or the very same one when the operation changes nothing or cannot be placed. */
 export function applyOp(d: Design, op: Op): Design {
+  return step(d, op);
+}
+
+/**
+ * The same, for one operation of a batch. `used` is the ids of `d`, counted once for the whole batch by `applyOps` and kept right
+ * here by every operation that adds or takes away: counting them again for each addition is a walk of the whole design, and a batch
+ * may add ten thousand elements to a big one. Without it (one operation on its own) they are counted when an addition needs them.
+ */
+function step(d: Design, op: Op, used?: IdCounts): Design {
   switch (op.k) {
     case "design": {
       let out = d;
@@ -302,11 +331,15 @@ export function applyOp(d: Design, op: Op): Design {
       return out;
     }
     case "page.add": {
-      if (!allNew(d, [op.page.id, ...idList(op.page.elements)])) return d;
+      const ids = [op.page.id, ...idList(op.page.elements)];
+      if (!allNew(used ?? countIds(d), ids)) return d;
+      if (used) taken(used, ids);
       return { ...d, pages: insertAt(d.pages, op.index, op.page) };
     }
     case "page.del": {
       if (d.pages.length < 2 || !d.pages.some((p) => p.id === op.id)) return d;
+      // (every page of that id goes, should a design have come with two)
+      if (used) for (const p of d.pages) if (p.id === op.id) freed(used, [p.id, ...idList(p.elements)]);
       return { ...d, pages: d.pages.filter((p) => p.id !== op.id) };
     }
     case "page.move": {
@@ -318,11 +351,20 @@ export function applyOp(d: Design, op: Op): Design {
     case "page.set":
       return inPage(d, op.id, (p) => withProps(p, op.set, op.unset, PAGE_FIXED));
     case "el.add": {
-      if (!allNew(d, idList([op.el]))) return d;
-      return inElements(d, op.page, (list) => insertElement(list, op.parent, op.index, op.el));
+      const ids = idList([op.el]);
+      if (!allNew(used ?? countIds(d), ids)) return d;
+      const out = inElements(d, op.page, (list) => insertElement(list, op.parent, op.index, op.el));
+      // (the same design: there was no such page or group to put it in, and its ids are as free as they were)
+      if (used && out !== d) taken(used, ids);
+      return out;
     }
     case "el.del":
-      return inElements(d, op.page, (list) => edit(list, op.id, () => null));
+      return inElements(d, op.page, (list) =>
+        edit(list, op.id, (el) => {
+          if (used) freed(used, idList([el]));
+          return null;
+        }),
+      );
     case "el.move":
       return inElements(d, op.page, (list) => {
         const el = findElement(list, op.id);
@@ -346,6 +388,11 @@ export function applyOp(d: Design, op: Op): Design {
 /** Operations applied one after the other; the same design when none of them changes anything. */
 export function applyOps(design: Design, ops: readonly Op[]): Design {
   let out = design;
-  for (const op of ops) out = applyOp(out, op);
+  // the ids of the design, counted when the first addition asks for them (most batches add nothing) and kept right from then on
+  let used: IdCounts | undefined;
+  for (const op of ops) {
+    if (!used && (op.k === "el.add" || op.k === "page.add")) used = countIds(out);
+    out = step(out, op, used);
+  }
   return out;
 }
