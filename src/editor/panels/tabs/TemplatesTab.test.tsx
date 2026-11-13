@@ -74,7 +74,18 @@ describe("browsing templates", () => {
   it("switches category with a chip", async () => {
     const user = await openTemplates(certificates());
     await user.click(screen.getByRole("button", { name: "Logos" }));
-    await waitFor(() => expect(cardNames().sort()).toEqual(["Atelier Marlowe Monogram", "Harbor and Pine Badge", "Hearth and Honey Wordmark", "Quadra Abstract Mark"]));
+    await waitFor(() =>
+      expect(cardNames().sort()).toEqual([
+        "Atelier Marlowe Monogram",
+        "Harbor and Pine Badge",
+        "Hearth and Honey Wordmark",
+        "Kiln Works Boxed Wordmark",
+        "Quadra Abstract Mark",
+        "Summit Scoop Sticker Logo",
+        "Tallybird App Tile Logo",
+        "Wild Thyme Script Signature",
+      ]),
+    );
     expect(screen.getByRole("button", { name: "Logos" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Certificates" }).getAttribute("aria-pressed")).toBe("false");
   });
@@ -110,7 +121,7 @@ describe("browsing templates", () => {
     it("is off until chosen, and keeps only templates with the design's proportions", async () => {
       const user = await openTemplates(certificates());
       await user.click(screen.getByRole("button", { name: "Logos" }));
-      await waitFor(() => expect(cardNames()).toHaveLength(4));
+      await waitFor(() => expect(cardNames()).toHaveLength(8));
 
       await user.click(screen.getByRole("button", { name: "Filter templates" }));
       const menu = screen.getByRole("menu", { name: "Template filters" });
@@ -126,7 +137,7 @@ describe("browsing templates", () => {
 
       await user.click(screen.getByRole("button", { name: "Filter templates" }));
       await user.click(screen.getByRole("menuitemcheckbox", { name: "All templates" }));
-      await waitFor(() => expect(cardNames()).toHaveLength(4));
+      await waitFor(() => expect(cardNames()).toHaveLength(8));
       expect(screen.getByRole("button", { name: "Filter templates" }).getAttribute("aria-pressed")).toBe("false");
     });
 

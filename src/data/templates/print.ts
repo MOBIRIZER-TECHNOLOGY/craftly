@@ -1,5 +1,6 @@
 import type { Template } from "@/core/types";
 import { CARD_TEMPLATES } from "./print-cards";
+import { CARD_TEMPLATES_2 } from "./print-cards-2";
 import { CERTIFICATE_TEMPLATES } from "./print-certificates";
 import { CERTIFICATE_TEMPLATES_2 } from "./print-certificates-2";
 import { DOCUMENT_TEMPLATES } from "./print-documents";
@@ -7,6 +8,7 @@ import { DOCUMENT_TEMPLATES_2 } from "./print-documents-2";
 import { FLYER_TEMPLATES } from "./print-flyers";
 import { FLYER_TEMPLATES_2 } from "./print-flyers-2";
 import { INVITATION_TEMPLATES } from "./print-invitations";
+import { INVITATION_TEMPLATES_2 } from "./print-invitations-2";
 import { MENU_TEMPLATES } from "./print-menus";
 import { MENU_TEMPLATES_2 } from "./print-menus-2";
 import { POSTER_TEMPLATES } from "./print-posters";
@@ -25,7 +27,9 @@ export const PRINT_TEMPLATES: Template[] = [
   ...RESUME_TEMPLATES,
   ...RESUME_TEMPLATES_2,
   ...INVITATION_TEMPLATES,
+  ...INVITATION_TEMPLATES_2,
   ...CARD_TEMPLATES,
+  ...CARD_TEMPLATES_2,
   ...CERTIFICATE_TEMPLATES,
   ...CERTIFICATE_TEMPLATES_2,
   ...MENU_TEMPLATES,

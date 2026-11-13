@@ -31,6 +31,66 @@ describe("template catalogue", () => {
     }
   });
 
+  it("counts what the README says it has: 102 templates in 175 pages", () => {
+    const counts: Record<string, [templates: number, pages: number]> = {};
+    for (const t of TEMPLATES) {
+      const c = (counts[t.category] ??= [0, 0]);
+      c[0] += 1;
+      c[1] += t.pages.length;
+    }
+    expect(counts).toEqual({
+      presentation: [10, 70],
+      social: [24, 27],
+      poster: [9, 9],
+      flyer: [8, 8],
+      document: [6, 9],
+      resume: [7, 7],
+      logo: [8, 8],
+      invitation: [7, 7],
+      card: [7, 14],
+      banner: [6, 6],
+      certificate: [5, 5],
+      menu: [5, 5],
+    });
+    expect(TEMPLATES).toHaveLength(102);
+    expect(TEMPLATES.reduce((n, t) => n + t.pages.length, 0)).toBe(175);
+  });
+
+  it("keeps the shapes of a group inside its box, and gives every table a cell for every row and column", () => {
+    const problems: string[] = [];
+    let groups = 0;
+    let tables = 0;
+    let charts = 0;
+    for (const t of TEMPLATES) {
+      t.pages.forEach((page, pi) => {
+        for (const el of elementsOf(page.elements)) {
+          const where = `${t.id} p${pi + 1} ${el.type}:${el.name ?? el.id}`;
+          if (el.type === "group") {
+            groups++;
+            if (el.children.length < 2) problems.push(`${where}: a group of ${el.children.length}`);
+            for (const child of el.children) {
+              // a text box gets its height when the design opens, and the group's box would not follow
+              if (child.type === "text") problems.push(`${where}: holds a text box`);
+              if (child.x < -0.5 || child.y < -0.5 || child.x + child.width > el.width + 0.5 || child.y + child.height > el.height + 0.5) problems.push(`${where}: child ${child.id} outside the box`);
+            }
+          }
+          if (el.type === "table") {
+            tables++;
+            if (el.cells.length !== el.rowHeights.length || el.cells.some((row) => row.length !== el.colWidths.length)) problems.push(`${where}: cells do not match rows and columns`);
+            if (!getFontDef(el.fontFamily)) problems.push(`${where}: font ${el.fontFamily}`);
+          }
+          if (el.type === "chart") {
+            charts++;
+            if (el.series.some((s) => s.values.length !== el.labels.length)) problems.push(`${where}: a series does not match the labels`);
+            if (!getFontDef(el.fontFamily)) problems.push(`${where}: font ${el.fontFamily}`);
+          }
+        }
+      });
+    }
+    expect(problems).toEqual([]);
+    expect({ groups, tables, charts }).toEqual({ groups: 11, tables: 2, charts: 1 });
+  });
+
   it("has unique ids and names", () => {
     const ids = TEMPLATES.map((t) => t.id);
     expect(new Set(ids).size, "duplicate ids: " + ids.filter((id, i) => ids.indexOf(id) !== i).join(", ")).toBe(ids.length);

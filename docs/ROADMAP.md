@@ -95,7 +95,7 @@ Sections 3 and 4 are that list, in priority order.
 
 | # | Gap | Notes |
 | --- | --- | --- |
-| 18 | Real content | Photos are procedural (44), templates are 72, fonts 44. Users compare with libraries of thousands. Integrate licensed stock (Unsplash, Pexels and similar, with attribution), Google Fonts on demand (OFL), and a steady template pipeline |
+| 18 | Real content | Photos are procedural (44), templates are 102, fonts 44. Users compare with libraries of thousands. Integrate licensed stock (Unsplash, Pexels and similar, with attribution), Google Fonts on demand (OFL), and a steady template pipeline |
 | 19 | Collaboration and accounts | Self-hosted live editing, view and edit links, and room uploads are implemented. Presence, comments, commenter permissions, same-object conflict handling and revision-specific approval are proposed. Hosted accounts and cross-device cloud sync remain separate work. |
 | 20 | Brand controls for teams | Locked elements, brand templates, approvals, shared kits |
 | 21 | Video and audio | A timeline, clips and sound are outside the current animation model |
@@ -126,7 +126,7 @@ The owner asked to fold the Driftboard project (a whiteboard with live collabora
 - The document is **plain JSON with a typed schema** (`src/core/types.ts`): text, shape, line, image, graphic, group, table and chart elements, pages, animations, a brand kit.
 - The store exposes **79 actions** (`EditorActions`, the two transaction calls among them) and **transactions** (`beginTransaction` / `endTransaction`), which is exactly the surface an AI tool layer wraps.
 - `measureTextElement` lets generated text be **fitted** to its box; `renderPageToCanvas` can produce a **PNG** of the result for a vision check.
-- There is something to **retrieve from**: 72 templates with tags, three graphics catalogues, 2,000+ icons, 44 fonts, palettes, animation presets.
+- There is something to **retrieve from**: 102 templates with tags, three graphics catalogues, 2,000+ icons, 44 fonts, palettes, animation presets.
 - The jsdom test harness can run any UI flow, so an AI flow can be tested **without a network** by swapping in a fake provider.
 
 What is missing: a network layer and settings (provider, consent, key), streaming UI for partial results, a semantic index of the catalogues, and a quality-evaluation set.
