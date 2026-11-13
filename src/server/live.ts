@@ -52,6 +52,8 @@ export interface LiveServerOptions {
   roomTtlMs?: number;
   /** How often the storage is looked through for rooms that have expired (and once when the server starts to listen). */
   sweepEveryMs?: number;
+  /** The most the images of one room may take in the storage, in bytes (they are kept as base64: 48 MiB hold 36 MiB of images). */
+  maxRoomAssetBytes?: number;
   maxRooms?: number;
   maxPeersPerRoom?: number;
   /** The most a message from a browser may be, in bytes. */
@@ -108,6 +110,7 @@ const DEFAULTS = {
   healthCacheMs: 5000,
   roomCreatePerHour: 10,
   sweepEveryMs: 60 * 60 * 1000,
+  maxRoomAssetBytes: 48 * 1024 * 1024,
 };
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -120,7 +123,6 @@ const bucket = (given: { burst?: number; perSecond?: number } | undefined, stand
 const ASSET_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const IMAGE_TYPE = /^image\/(?:png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
 const ASSET_LIMIT = 12 * 1024 * 1024; // base64 for up to 9 MiB
-const ROOM_ASSET_LIMIT = 48 * 1024 * 1024;
 
 const CLIENT_NAME = /^[A-Za-z0-9._-]{1,64}$/;
 const sha256 = (text: string) => createHash("sha256").update(text).digest();
@@ -176,6 +178,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     trustProxy: options.trustProxy ?? false,
     roomTtlMs: options.roomTtlMs ?? 0,
     sweepEveryMs: options.sweepEveryMs ?? DEFAULTS.sweepEveryMs,
+    maxRoomAssetBytes: options.maxRoomAssetBytes ?? DEFAULTS.maxRoomAssetBytes,
   };
   const now = options.now ?? Date.now;
   const roomsMade = hourlyLimit(o.roomCreatePerHour, now);
@@ -197,6 +200,19 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     return next;
   };
 
+  /**
+   * Saves the record of a room. A room that an older server saved has its images inside its record; they are moved out first,
+   * each into a place of its own, and the record is then written without them. Should the server stop between the two, the record
+   * still holds them and the next save moves them again, over the same files: an image is in the record or beside it at every
+   * moment, and when moving fails nothing is saved and the record is as it was.
+   */
+  const persist = async (l: Loaded, next: RoomRecord, designJson?: string) => {
+    const { assets, ...record } = next;
+    if (assets) for (const [assetId, asset] of Object.entries(assets)) await o.storage.saveAsset(l.id, assetId, asset);
+    await o.storage.save(l.id, record, designJson);
+    l.record = record;
+  };
+
   const open = (id: string, record: RoomRecord): Loaded => {
     const l: Loaded = {
       id,
@@ -211,10 +227,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       idleTimer: null,
     };
     l.room.commit = async (design, rev, seqs) => {
-      if (Buffer.byteLength(JSON.stringify(design)) > o.maxDesignBytes) throw new Error("This shared design exceeds the room size limit.");
+      // the design is turned into text once: to be measured here, and the same text is what the storage writes
+      const designJson = JSON.stringify(design);
+      if (Buffer.byteLength(designJson) > o.maxDesignBytes) throw new Error("This shared design exceeds the room size limit.");
       const next = { ...l.record, design, rev, seqs, updatedAt: now() };
-      await o.storage.save(id, next);
-      l.record = next;
+      await persist(l, next, designJson);
       l.usedAt = next.updatedAt;
     };
     loaded.set(id, l);
@@ -468,9 +485,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     const role = roleOf(l, req.headers["x-craftly-key"]);
     if (!role || (req.method === "PUT" && role !== "edit")) return reply(res, 403, { error: "this link cannot access the requested image" });
     if (!ASSET_ID.test(assetId)) return reply(res, 400, { error: "invalid image id" });
-    const existing = () => (l.record.assets && Object.hasOwn(l.record.assets, assetId) ? l.record.assets[assetId] : undefined);
+    // an image is beside the record of its room, or still inside the record of a room that an older server saved
+    const inside = () => (l.record.assets && Object.hasOwn(l.record.assets, assetId) ? l.record.assets[assetId] : undefined);
+    const existing = async () => inside() ?? (await o.storage.loadAsset(id, assetId));
     if (req.method === "GET") {
-      const asset = existing();
+      const asset = await existing();
       return asset ? reply(res, 200, asset) : reply(res, 404, { error: "no such shared image" });
     }
     const body = await readBody(req, ASSET_LIMIT + 100);
@@ -500,15 +519,17 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       // not a copy that memory let go of (which being pinned rules out; it is asked all the same, because saving such a copy would
       // undo every edit since, and bring a deleted room back with its keys).
       if (l.removed || loaded.get(id) !== l) return reply(res, 404, { error: "no such shared design" });
-      const have = existing();
+      const have = await existing();
       if (have) return have.mime === mime && have.base64 === base64 ? reply(res, 200, { ok: true }) : reply(res, 409, { error: "image id already in use" });
-      const size = Object.values(l.record.assets ?? {}).reduce((sum, image) => sum + image.base64.length, base64.length);
-      if (size > ROOM_ASSET_LIMIT) return reply(res, 413, { error: "this room has reached its image storage limit" });
-      const next = { ...l.record, assets: { ...l.record.assets, [assetId]: { mime, base64 } } };
-      await o.storage.save(id, next);
-      l.record = next;
-      l.usedAt = now();
+      // what the room holds already: its files, and what an older server left inside its record
+      const held = Object.values(l.record.assets ?? {}).reduce((sum, image) => sum + image.base64.length, await o.storage.assetBytes(id));
+      if (held + base64.length > o.maxRoomAssetBytes) return reply(res, 413, { error: "this room has reached its image storage limit" });
+      // the record is written only when it still holds images of its own, to move them out; otherwise an upload is one new file
+      if (l.record.assets) await persist(l, l.record);
+      await o.storage.saveAsset(id, assetId, { mime, base64 });
       reply(res, 201, { ok: true });
+      // an image is use of the room, which the time of the room's file says; the image did not write that file
+      noteUse(l);
     });
   };
 

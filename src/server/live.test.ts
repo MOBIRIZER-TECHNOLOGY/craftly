@@ -16,7 +16,7 @@ import type { ClientMsg, ServerMsg } from "@/collab/protocol";
 import { createDesign, createPage, createShape, solid } from "@/core/factory";
 import type { Design } from "@/core/types";
 import { closeWithin, createLiveServer, type LiveServer, type LiveServerOptions } from "./live";
-import { FileStorage, MemoryStorage, ROOM_ID, type LiveStorage } from "./storage";
+import { FileStorage, MemoryStorage, ROOM_ID, type LiveStorage, type RoomRecord, type SharedAsset } from "./storage";
 
 const design = (): Design =>
   createDesign({
@@ -528,6 +528,9 @@ describe("a store that cannot be read", () => {
       },
       list: async () => [],
       touch: async () => undefined,
+      loadAsset: async () => null,
+      saveAsset: async () => undefined,
+      assetBytes: async () => 0,
     };
     const log = logged();
     const b = await boot({}, failing);
@@ -979,7 +982,7 @@ describe("an image that takes its time to arrive", () => {
     const saved = (await b.storage.load(made.room))!;
     expect(saved.design.title).toBe("Changed while the image was on its way");
     expect(saved.rev).toBe(1);
-    expect(Object.keys(saved.assets ?? {})).toEqual(["img-1"]);
+    expect(await b.storage.loadAsset(made.room, "img-1")).not.toBeNull();
     // and a browser that comes now is shown the edit
     const bob = join(b, made.room, made.viewKey);
     await until("live", () => bob.status === "live");
@@ -1015,7 +1018,8 @@ describe("an image that takes its time to arrive", () => {
     await until("the room to be read again", () => b.server.rooms() === 1);
     lost.giveUp();
     await until("the room to leave memory again", () => b.server.rooms() === 0);
-    expect(Object.keys((await b.storage.load(made.room))!.assets ?? {})).toEqual(["img-1"]);
+    expect(await b.storage.loadAsset(made.room, "img-1")).not.toBeNull();
+    expect(await b.storage.loadAsset(made.room, "img-2")).toBeNull();
   });
 
   it("lets a room go after a request for an image that was refused or only read", async () => {
@@ -1143,7 +1147,7 @@ describe("who may ask, and how often an address may make a room", () => {
       expect((await fetch(image, { method: "PUT", headers: { origin, "x-craftly-key": made.editKey }, body: picture })).status).toBe(403);
       expect((await fetch(room, { method: "DELETE", headers: { origin, "x-craftly-key": made.ownerKey } })).status).toBe(403);
     }
-    expect((await b.storage.load(made.room))?.assets).toBeUndefined();
+    expect(await b.storage.loadAsset(made.room, "img-1")).toBeNull();
     // looking is not refused here: a page of another origin cannot read the answer (it is sent no permission), and it has no key
     expect((await fetch(`${b.http}/api/health`, { headers: { origin: "https://evil.example.test" } })).status).toBe(200);
     expect((await fetch(image, { method: "PUT", headers: { origin: "https://other.example.test", "x-craftly-key": made.editKey }, body: picture })).status).toBe(201);
@@ -1337,7 +1341,7 @@ describe("a room that nobody uses any more", () => {
     await someSweeps();
     req.end(image.slice(20));
     expect(await status).toBe(201);
-    expect(Object.keys((await b.storage.load(made.room))?.assets ?? {})).toEqual(["img-1"]);
+    expect(await b.storage.loadAsset(made.room, "img-1")).not.toBeNull();
   });
 
   it("sends away whoever came to a room while it was being removed", async () => {
@@ -1535,5 +1539,311 @@ describe("a room that nobody uses any more", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+  });
+});
+
+describe("the images of a room", () => {
+  const picture = (text: string): SharedAsset => ({ mime: "image/png", base64: Buffer.from(text).toString("base64") });
+  const at = (b: Booted, made: Made, id: string) => `${b.http}/api/rooms/${made.room}/assets/${id}`;
+  const put = (b: Booted, made: Made, id: string, image: SharedAsset) =>
+    fetch(at(b, made, id), { method: "PUT", headers: { "x-craftly-key": made.editKey }, body: JSON.stringify(image) });
+  const get = (b: Booted, made: Made, id: string) => fetch(at(b, made, id), { headers: { "x-craftly-key": made.viewKey } });
+  /** A room as a server before this change kept it: its images inside its record. */
+  const withImagesInside = async (b: Booted, made: Made, images: Record<string, SharedAsset>) => {
+    const record = (await b.storage.load(made.room))!;
+    await b.storage.save(made.room, { ...record, assets: images });
+  };
+  /** A store in memory that remembers what it was asked to write. */
+  class Watched extends MemoryStorage {
+    records: RoomRecord[] = [];
+    images: string[] = [];
+    override async save(id: string, record: RoomRecord, designJson?: string) {
+      this.records.push(record);
+      return super.save(id, record, designJson);
+    }
+    override async saveAsset(id: string, assetId: string, asset: SharedAsset) {
+      this.images.push(assetId);
+      return super.saveAsset(id, assetId, asset);
+    }
+  }
+  const edit = async (b: Booted, made: Made, title: string) => {
+    const ann = join(b, made.room, made.editKey);
+    await until("live", () => ann.status === "live");
+    ann.edit(ann.design!, rename(ann.design!, title));
+    await until("confirmed", () => ann.session.pending === 0);
+    ann.stop();
+  };
+
+  it("are kept one by one beside the record of the room, not in it: an upload does not write the design again, and an edit does not write the images again", async () => {
+    const storage = new Watched();
+    const b = await boot({}, storage);
+    const made = await makeRoom(b);
+    storage.records.length = 0;
+    const image = picture("the first picture");
+    expect((await put(b, made, "img-1", image)).status).toBe(201);
+    expect(storage.records).toHaveLength(0);
+    expect(storage.images).toEqual(["img-1"]);
+    expect(await storage.loadAsset(made.room, "img-1")).toEqual(image);
+    await edit(b, made, "Edited");
+    await edit(b, made, "Edited twice");
+    expect(storage.images).toEqual(["img-1"]);
+    expect(storage.records).toHaveLength(2);
+    for (const record of storage.records) expect(JSON.stringify(record)).not.toContain(image.base64);
+    expect((await storage.load(made.room))?.assets).toBeUndefined();
+    // and the people of the room are given it as before
+    const res = await get(b, made, "img-1");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(image);
+    expect((await get(b, made, "img-2")).status).toBe(404);
+  });
+
+  it("takes the same image a second time without a word, and refuses another image under a name that is taken", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    expect((await put(b, made, "img-1", picture("one"))).status).toBe(201);
+    expect((await put(b, made, "img-1", picture("one"))).status).toBe(200);
+    expect((await put(b, made, "img-1", picture("another"))).status).toBe(409);
+    expect((await put(b, made, "img-1", { ...picture("one"), mime: "image/jpeg" })).status).toBe(409);
+    expect(await b.storage.loadAsset(made.room, "img-1")).toEqual(picture("one"));
+  });
+
+  it("holds no more images for a room than it may, counted over all of its files", async () => {
+    const b = await boot({ maxRoomAssetBytes: 3000 });
+    const made = await makeRoom(b);
+    const big = (letter: string) => picture(letter.repeat(900)); // 1200 characters each
+    expect((await put(b, made, "img-1", big("a"))).status).toBe(201);
+    expect((await put(b, made, "img-2", big("b"))).status).toBe(201);
+    const third = await put(b, made, "img-3", big("c"));
+    expect(third.status).toBe(413);
+    expect(((await third.json()) as { error: string }).error).toMatch(/image storage limit/);
+    expect(await b.storage.loadAsset(made.room, "img-3")).toBeNull();
+    expect((await put(b, made, "img-3", picture("small"))).status).toBe(201);
+    // another room has an allowance of its own
+    const other = await makeRoom(b);
+    expect((await put(b, other, "img-1", big("d"))).status).toBe(201);
+  });
+
+  it("allows a room 48 MiB of images unless it is told otherwise", async () => {
+    class Full extends MemoryStorage {
+      override async assetBytes() {
+        return 48 * 1024 * 1024 - 100;
+      }
+    }
+    const b = await boot({ maxRoomAssetBytes: undefined }, new Full());
+    const made = await makeRoom(b);
+    expect((await put(b, made, "img-1", picture("x".repeat(30)))).status).toBe(201);
+    expect((await put(b, made, "img-2", picture("x".repeat(90)))).status).toBe(413);
+  });
+
+  it("forgets the images with the room", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    expect((await put(b, made, "img-1", picture("one"))).status).toBe(201);
+    expect((await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } })).status).toBe(200);
+    expect(await b.storage.loadAsset(made.room, "img-1")).toBeNull();
+    expect(await b.storage.assetBytes(made.room)).toBe(0);
+  });
+
+  describe("of a room that an older server saved with its images inside its record", () => {
+    const old = { "img-old": picture("kept inside the record"), "img-two": picture("another one inside") };
+
+    it("are given to the people of the room as they are, before anything is saved", async () => {
+      const b = await boot();
+      const made = await makeRoom(b);
+      await withImagesInside(b, made, old);
+      const res = await get(b, made, "img-old");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(old["img-old"]);
+      expect((await get(b, made, "img-none")).status).toBe(404);
+      expect((await b.storage.load(made.room))?.assets).toEqual(old); // looking moves nothing
+    });
+
+    it("are moved out, each into a file of its own, with the first edit that is saved, and are still given after that and after a restart", async () => {
+      const storage = new Watched();
+      const b = await boot({}, storage);
+      const made = await makeRoom(b);
+      await withImagesInside(b, made, old);
+      await edit(b, made, "Edited by a newer server");
+      const record = (await storage.load(made.room))!;
+      expect(record.assets).toBeUndefined();
+      expect(record.design.title).toBe("Edited by a newer server");
+      expect(record.rev).toBe(1);
+      expect(storage.images.sort()).toEqual(["img-old", "img-two"]);
+      expect(await storage.loadAsset(made.room, "img-old")).toEqual(old["img-old"]);
+      expect(await storage.loadAsset(made.room, "img-two")).toEqual(old["img-two"]);
+      await edit(b, made, "Edited again");
+      expect(storage.images).toHaveLength(2); // moved once
+      await b.server.close();
+      servers.length = 0;
+      const again = await boot({}, storage);
+      const res = await get(again, made, "img-two");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(old["img-two"]);
+    });
+
+    it("are moved out with the first upload too, count towards what the room may hold, and keep their names taken", async () => {
+      const b = await boot({ maxRoomAssetBytes: 200 });
+      const made = await makeRoom(b);
+      await withImagesInside(b, made, old); // 32 and 24 characters
+      expect((await put(b, made, "img-old", old["img-old"])).status).toBe(200);
+      expect((await put(b, made, "img-old", picture("something else"))).status).toBe(409);
+      expect((await b.storage.load(made.room))?.assets).toEqual(old); // nothing was saved yet
+      expect((await put(b, made, "img-big", picture("x".repeat(120)))).status).toBe(413); // 160 more would be too much
+      expect((await put(b, made, "img-new", picture("x".repeat(30)))).status).toBe(201);
+      expect((await b.storage.load(made.room))?.assets).toBeUndefined();
+      for (const [id, image] of Object.entries({ ...old, "img-new": picture("x".repeat(30)) })) expect(await b.storage.loadAsset(made.room, id)).toEqual(image);
+      expect((await put(b, made, "img-old", old["img-old"])).status).toBe(200);
+      expect((await put(b, made, "img-big", picture("x".repeat(120)))).status).toBe(413);
+    });
+
+    it("stay inside the record when they could not be moved out, and the edit is refused, so that no image is lost", async () => {
+      class Faulty extends MemoryStorage {
+        override async saveAsset(): Promise<void> {
+          throw new Error("disk full");
+        }
+      }
+      const log = logged();
+      const b = await boot({}, new Faulty());
+      const made = await makeRoom(b);
+      await withImagesInside(b, made, old);
+      const s = raw(b, made.room, made.editKey);
+      await s.opened;
+      s.join("editor");
+      s.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "Lost" } }] });
+      await until("the refusal", () => s.heard.some((m) => m.t === "rejected"));
+      expect(log).toHaveBeenCalled();
+      const record = (await b.storage.load(made.room))!;
+      expect(record.assets).toEqual(old);
+      expect(record.rev).toBe(0);
+      expect((await get(b, made, "img-old")).status).toBe(200);
+    });
+  });
+
+  describe("with files on a disk", () => {
+    const folder = () => mkdtempSync(join2(tmpdir(), "craftly-live-test-"));
+
+    it("are files in a folder of the room, whatever their names are, and go when the room goes", async () => {
+      const dir = folder();
+      try {
+        const storage = new FileStorage(dir);
+        const b = await boot({}, storage);
+        const made = await makeRoom(b);
+        expect(await storage.assetBytes(made.room)).toBe(0);
+        expect(await storage.loadAsset(made.room, "img-1")).toBeNull();
+        // names that differ only in capitals, and names that some systems do not allow for a file
+        const names = ["img-1", "IMG-1", "CON", "nul", "a".repeat(128)];
+        for (const name of names) expect((await put(b, made, name, picture(`the picture called ${name}`))).status).toBe(201);
+        for (const name of names) expect(await (await get(b, made, name)).json()).toEqual(picture(`the picture called ${name}`));
+        const images = join2(dir, `${made.room}.assets`);
+        expect(readdirSync(images)).toHaveLength(names.length);
+        expect(await storage.assetBytes(made.room)).toBeGreaterThan(names.length * 30);
+        // the record of the room holds none of them, and the folder of the images is not taken for a room
+        expect(readFileSync(join2(dir, `${made.room}.json`), "utf8")).not.toContain(picture("the picture called CON").base64);
+        expect(await storage.count()).toBe(1);
+        expect((await storage.list()).map((room) => room.id)).toEqual([made.room]);
+        await edit(b, made, "Edited");
+        expect(readdirSync(images)).toHaveLength(names.length);
+        expect((await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } })).status).toBe(200);
+        expect(existsSync(images)).toBe(false);
+        expect(readdirSync(dir)).toEqual([]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("says that the server has a problem when the file of an image is damaged, and not that the image is gone", async () => {
+      const dir = folder();
+      try {
+        const storage = new FileStorage(dir);
+        const b = await boot({}, storage);
+        const made = await makeRoom(b);
+        expect((await put(b, made, "img-1", picture("one"))).status).toBe(201);
+        expect((await put(b, made, "img-2", picture("two"))).status).toBe(201);
+        const images = join2(dir, `${made.room}.assets`);
+        const [first, second] = readdirSync(images);
+        writeFileSync(join2(images, first), '{"mime": "image/png", "base');
+        writeFileSync(join2(images, second), JSON.stringify({ mime: 5 }));
+        const log = logged();
+        expect((await get(b, made, "img-1")).status).toBe(500);
+        expect((await get(b, made, "img-2")).status).toBe(500);
+        expect(log).toHaveBeenCalledTimes(2);
+        await expect(storage.loadAsset("../outside", "img-1")).rejects.toThrow();
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("moves the images of an older room out of its file with the first edit", async () => {
+      const dir = folder();
+      try {
+        const storage = new FileStorage(dir);
+        const b = await boot({}, storage);
+        const made = await makeRoom(b);
+        const image = picture("kept inside the file of the room");
+        await withImagesInside(b, made, { "img-old": image });
+        expect(readFileSync(join2(dir, `${made.room}.json`), "utf8")).toContain(image.base64);
+        await edit(b, made, "Edited");
+        const text = readFileSync(join2(dir, `${made.room}.json`), "utf8");
+        expect(text).not.toContain(image.base64);
+        expect((JSON.parse(text) as RoomRecord).design.title).toBe("Edited");
+        expect(await storage.loadAsset(made.room, "img-old")).toEqual(image);
+        expect(readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+describe("saving an edit", () => {
+  it.each<[string, () => { storage: LiveStorage; done: () => void }]>([
+    ["in memory", () => ({ storage: new MemoryStorage(), done: () => undefined })],
+    [
+      "on a disk",
+      () => {
+        const dir = mkdtempSync(join2(tmpdir(), "craftly-live-test-"));
+        return { storage: new FileStorage(dir), done: () => rmSync(dir, { recursive: true, force: true }) };
+      },
+    ],
+  ])("turns the design into text once, not once to measure it and once more to write it (%s)", async (_where, make) => {
+    const { storage, done } = make();
+    try {
+      const b = await boot({}, storage);
+      const mark = "a-title-that-is-nowhere-else";
+      const made = await makeRoom(b, { ...design(), title: mark });
+      const s = raw(b, made.room, made.editKey);
+      await s.opened;
+      s.join("editor");
+      await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
+      const stringify = vi.spyOn(JSON, "stringify");
+      const texts = () => stringify.mock.results.filter((result) => typeof result.value === "string" && result.value.includes(mark)).length;
+      s.say({ t: "ops", seq: 1, ops: [{ k: "page.set", id: "p", set: { name: "Renamed" } }] });
+      await until("the ack", () => s.heard.some((m) => m.t === "ack"));
+      expect(texts()).toBe(1);
+      stringify.mockRestore();
+      // and what was written is the room, whole
+      const saved = (await storage.load(made.room))!;
+      expect(saved.rev).toBe(1);
+      expect(saved.design.title).toBe(mark);
+      expect(saved.design.pages[0]).toMatchObject({ name: "Renamed" });
+      expect(saved.seqs).toEqual({ editor: 1 });
+      expect(saved.editHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(saved.createdAt).toBeGreaterThan(0);
+    } finally {
+      done();
+    }
+  });
+
+  it("still refuses an edit that makes the design bigger than a room may be", async () => {
+    const b = await boot({ maxDesignBytes: 3000 });
+    const made = await makeRoom(b);
+    const log = logged();
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join("editor");
+    s.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "x".repeat(4000) } }] });
+    await until("the refusal", () => s.heard.some((m) => m.t === "rejected"));
+    expect(log).toHaveBeenCalled();
+    expect((await b.storage.load(made.room))?.rev).toBe(0);
   });
 });
