@@ -250,6 +250,16 @@ describe("duplicating", () => {
     expect(await listDesigns()).toHaveLength(2);
   });
 
+  it("makes a copy of a shared design that is not shared: it has none of the room's keys", async () => {
+    const live = { server: "https://live.example.test", room: "r_room", key: "edit-key", role: "edit" as const, viewKey: "view-key", ownerKey: "owner-key" };
+    const source = make({ live });
+    await saveDesign(source);
+    const copy = (await duplicateDesign(source.id))!;
+    expect(copy.live).toBeUndefined();
+    expect((await getDesign(copy.id))!.live).toBeUndefined();
+    expect((await getDesign(source.id))!.live).toEqual(live);
+  });
+
   it("answers null for a design that is not there", async () => {
     expect(await duplicateDesign("nope")).toBeNull();
     expect(await listDesigns()).toEqual([]);

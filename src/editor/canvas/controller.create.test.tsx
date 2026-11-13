@@ -483,9 +483,9 @@ describe("dropping things on the canvas", () => {
 
   it("places a dragged panel photo as a new image at the drop point", async () => {
     const rig = await mountWorkspace(canvasDesign());
-    drop(rig, 300, 200, payload({ type: "image", src: "https://example.test/photo.jpg", naturalWidth: 400, naturalHeight: 300 }));
+    drop(rig, 300, 200, payload({ type: "image", src: "builtin:nebula", naturalWidth: 400, naturalHeight: 300 }));
     const [image] = added<ImageElement>("image");
-    expect(image.src).toBe("https://example.test/photo.jpg");
+    expect(image.src).toBe("builtin:nebula");
     expect(image.x + image.width / 2).toBeCloseTo(300);
     expect(image.y + image.height / 2).toBeCloseTo(200);
   });

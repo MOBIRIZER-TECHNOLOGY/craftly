@@ -247,6 +247,20 @@ describe("shapes and lines", () => {
     expect(svg).toContain('fill="none"');
   });
 
+  it("writes only the line ends and corners it knows: text from a file in their place never reaches the markup", async () => {
+    const hostile = '"/><script xmlns="http://www.w3.org/2000/svg">alert(1)</script><g x="';
+    const { svg } = await render([
+      createShape("rect", { x: 0, y: 0, width: 50, height: 50, fill: null, stroke: { color: "#112233", width: 3, style: "solid", cap: hostile as never, join: hostile as never } }),
+      createLine({ x: 0, y: 0, width: 100, stroke: { color: "#112233", width: 5, style: "dotted", cap: hostile as never, join: hostile as never } }),
+    ]);
+    expect(svg).not.toContain("script");
+    expect(svg).not.toContain("alert");
+    checkXml(svg);
+    // the unknown values count as not given, so the usual ones are written
+    expect(svg).toContain('stroke-width="3" stroke-linejoin="round"');
+    expect(svg).toContain('stroke-width="5" stroke-linecap="round" stroke-linejoin="round"');
+  });
+
   it("applies rotation and flips about the element centre, nested for groups", async () => {
     const child = createShape("rect", { x: 10, y: 20, width: 30, height: 40, rotation: 90 });
     const group = createGroup([child], { x: 100, y: 100, width: 200, height: 100, rotation: 30, flipH: true });

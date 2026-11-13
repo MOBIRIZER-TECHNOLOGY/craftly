@@ -37,6 +37,8 @@ export interface LiveServerOptions {
   idleCloseMs?: number;
   /** How long a connection may take to show its key (its first message) before it is sent away. */
   joinWaitMs?: number;
+  /** How often every connection is pinged; one that has not answered by the next round is dropped. */
+  heartbeatMs?: number;
   /** Messages a connection may send: a burst, then so many a second. */
   rate?: { burst: number; perSecond: number };
 }
@@ -57,6 +59,7 @@ const DEFAULTS = {
   maxDesignBytes: 16 * 1024 * 1024,
   idleCloseMs: 60_000,
   joinWaitMs: 10_000,
+  heartbeatMs: 30_000,
   rate: { burst: 200, perSecond: 100 },
 };
 
@@ -96,6 +99,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     maxDesignBytes: options.maxDesignBytes ?? DEFAULTS.maxDesignBytes,
     idleCloseMs: options.idleCloseMs ?? DEFAULTS.idleCloseMs,
     joinWaitMs: options.joinWaitMs ?? DEFAULTS.joinWaitMs,
+    heartbeatMs: options.heartbeatMs ?? DEFAULTS.heartbeatMs,
     rate: { ...DEFAULTS.rate, ...options.rate },
   };
   const loaded = new Map<string, Loaded>();
@@ -368,6 +372,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const wss = new WebSocketServer({ noServer: true, maxPayload: o.maxMessageBytes });
   /** The connection that each joined peer speaks through, to close the old one of a client that has come back. */
   const peerSockets = new WeakMap<Peer, WebSocket>();
+  /** Whether each connection has answered the last ping of the heartbeat (nothing yet: it has not been pinged). */
+  const answered = new WeakMap<WebSocket, boolean>();
 
   const send = (ws: WebSocket, msg: ServerMsg) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -396,6 +402,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     sockets.add(ws);
     ws.on("close", () => sockets.delete(ws));
     ws.on("error", () => undefined);
+    // the answer to a ping of the heartbeat below (asked for here: an upgrade handled by hand never reaches the "connection" event of `wss`)
+    ws.on("pong", () => answered.set(ws, true));
     // what arrives while the room is being loaded waits here
     const early: RawData[] = [];
     let handle: ((data: RawData) => void) | null = null;
@@ -407,7 +415,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     } catch {
       l = null; // a room that cannot be read is a room that is not there; the server goes on
     }
-    if (ws.readyState !== ws.OPEN) return;
+    if (ws.readyState !== ws.OPEN) {
+      // it went away while the room was being read: nobody is left to send the room out of memory on leaving, so that is asked for here
+      if (l) unloadLater(l);
+      return;
+    }
     if (!l || l.removed) return deny(ws, "not-found");
     // Nothing in the address lets anybody in: the key comes in the first message, a join, soon after the connection is made. Until it has, the
     // connection belongs to the room (which stays in memory for it, and sends it away with everybody else) but is not one of the people in it.
@@ -467,7 +479,6 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   };
 
   // a connection that stopped answering is dropped (the browser's own pings keep a live one busy as well)
-  const answered = new WeakMap<WebSocket, boolean>();
   const heartbeat = setInterval(() => {
     for (const ws of sockets) {
       if (answered.get(ws) === false) ws.terminate();
@@ -476,9 +487,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         ws.ping();
       }
     }
-  }, 30_000);
+  }, o.heartbeatMs);
   heartbeat.unref();
-  wss.on("connection", (ws) => ws.on("pong", () => answered.set(ws, true)));
 
   return {
     http,

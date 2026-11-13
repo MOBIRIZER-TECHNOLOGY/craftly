@@ -37,6 +37,15 @@ export interface ResizeOptions {
   widthOnly?: boolean;
 }
 
+/**
+ * By how much a side changed: `to / from`. A side that had no length (a line has no height, and so has a selection of lines side
+ * by side) cannot be scaled, and dividing by it gives no number at all, which would then be written into every element: 1 then.
+ */
+export function scaleOf(to: number, from: number): number {
+  const s = to / from;
+  return from > 0 && Number.isFinite(s) ? s : 1;
+}
+
 export function resizeBox(orig: BoxLike, handle: Handle, pointer: Point, opts: ResizeOptions = {}): BoxLike {
   const [hx, hy] = HANDLE_VEC[handle];
   const min = opts.minSize ?? 4;
@@ -56,14 +65,14 @@ export function resizeBox(orig: BoxLike, handle: Handle, pointer: Point, opts: R
   let aspectAnchorY = ay;
   if (opts.keepAspect && !opts.widthOnly) {
     if (hx !== 0 && hy !== 0) {
-      const s = Math.max(w / orig.width, h / orig.height);
+      const s = Math.max(scaleOf(w, orig.width), scaleOf(h, orig.height));
       w = Math.max(min, orig.width * s);
       h = Math.max(min, orig.height * s);
     } else if (hx !== 0) {
-      h = Math.max(min, orig.height * (w / orig.width));
+      h = Math.max(min, orig.height * scaleOf(w, orig.width));
       aspectAnchorY = 0;
     } else if (hy !== 0) {
-      w = Math.max(min, orig.width * (h / orig.height));
+      w = Math.max(min, orig.width * scaleOf(h, orig.height));
       aspectAnchorX = 0;
     }
   }

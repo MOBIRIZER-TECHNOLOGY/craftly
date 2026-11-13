@@ -5,8 +5,10 @@
  */
 import { addAssetFromFile, assetSrc, isAcceptedImage } from "@/core/assets";
 import { createImage } from "@/core/factory";
+import { isRemoteImage } from "@/core/imageSources";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { Design, DesignElement, Fill, ID, ImageElement, Page, Point } from "@/core/types";
+import { usableElements, usableFill } from "@/export/projectFormat";
 
 export const DRAG_MIME = "application/x-craftly";
 
@@ -23,11 +25,36 @@ export function setDragPayload(e: { dataTransfer: DataTransfer | null }, payload
   if (dragImage) dt.setDragImage(dragImage, dragImage.clientWidth / 2, dragImage.clientHeight / 2);
 }
 
+const isSize = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+
+/**
+ * What a drop may put on the page. The panels of the editor write the payload, but any page can put data of the same type on a
+ * drag, so it is checked like a file or the clipboard: elements that the renderer can draw, without pictures from the web; a
+ * picture that is one of the editor's own, with a size; a background that is a fill. Anything else is no payload.
+ */
+function usablePayload(value: unknown): DragPayload | null {
+  if (typeof value !== "object" || value === null) return null;
+  const p = value as Record<string, unknown>;
+  if (p.type === "elements") {
+    const elements = usableElements(p.elements);
+    return elements.length ? { type: "elements", elements } : null;
+  }
+  if (p.type === "image") {
+    if (typeof p.src !== "string" || !p.src || isRemoteImage(p.src) || !isSize(p.naturalWidth) || !isSize(p.naturalHeight)) return null;
+    return { type: "image", src: p.src, naturalWidth: p.naturalWidth, naturalHeight: p.naturalHeight, ...(typeof p.name === "string" ? { name: p.name } : {}) };
+  }
+  if (p.type === "background") {
+    const fill = usableFill(p.fill);
+    return fill ? { type: "background", fill } : null;
+  }
+  return null;
+}
+
 export function readDragPayload(e: DragEvent): DragPayload | null {
   const raw = e.dataTransfer?.getData(DRAG_MIME);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as DragPayload;
+    return usablePayload(JSON.parse(raw));
   } catch {
     return null;
   }

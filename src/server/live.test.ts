@@ -655,3 +655,48 @@ describe("production regressions", () => {
     expect((await storage.load(made.room))?.design.title).toBe("Durable");
   });
 });
+
+describe("connections over time", () => {
+  it("keeps a connection that answers the server's pings", async () => {
+    const b = await boot({ heartbeatMs: 40 });
+    const made = await makeRoom(b);
+    const client = raw(b, made.room, made.editKey);
+    await client.opened;
+    client.join("tab-1");
+    await until("welcome", () => client.heard.some((msg) => msg.t === "welcome"));
+    // several rounds of the heartbeat: a connection that answers each ping is still there after them
+    await new Promise((r) => setTimeout(r, 300));
+    expect(client.closed()).toBeNull();
+    expect(client.ws.readyState).toBe(client.ws.OPEN);
+  });
+
+  it("lets a room leave memory when its only connection went away while the room was being read", async () => {
+    let hold = false;
+    let release = () => undefined as void;
+    let started = () => undefined as void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const reading = new Promise<void>((resolve) => (started = resolve));
+    class SlowStorage extends MemoryStorage {
+      override async load(id: string) {
+        if (hold) {
+          started();
+          await held;
+        }
+        return super.load(id);
+      }
+    }
+    const b = await boot({ idleCloseMs: 20 }, new SlowStorage());
+    const made = await makeRoom(b);
+    await until("the room to leave memory after it was made", () => b.server.rooms() === 0);
+    hold = true;
+    const client = raw(b, made.room, made.editKey);
+    await client.opened;
+    await reading;
+    client.ws.terminate();
+    await until("the connection to be gone", () => client.closed() !== null);
+    await new Promise((r) => setTimeout(r, 30));
+    release();
+    await until("the room to be in memory", () => b.server.rooms() === 1);
+    await until("the room to leave memory again", () => b.server.rooms() === 0, 1500);
+  });
+});

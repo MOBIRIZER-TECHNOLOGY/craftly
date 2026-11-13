@@ -169,6 +169,9 @@ export async function duplicateDesign(id: string): Promise<Design | null> {
   copy.createdAt = copy.updatedAt = Date.now();
   copy.trashedAt = null;
   copy.starred = false;
+  // a copy of a shared design is a design of its own: with the room and its keys it would open as the shared one, and every
+  // change to "the copy" would go to everybody in the room
+  delete copy.live;
   copy.pages = src.pages.map((p) => clonePageWithIds(p));
   const prev = await getSummary(id);
   await dbPutMany([

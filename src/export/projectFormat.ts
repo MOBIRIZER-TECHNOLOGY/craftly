@@ -211,6 +211,17 @@ export function usableElements(value: unknown, report: ImportReport = { skipped:
 }
 
 const FILL_TYPES = new Set(["solid", "linear", "radial", "pattern", "image"]);
+
+/**
+ * A fill that came from outside the app and not from a file (a drop): the fill when it is one of the kinds there are and its
+ * picture, if it has one, is not on the web; null otherwise.
+ */
+export function usableFill(value: unknown): Fill | null {
+  if (!isObject(value) || typeof value.type !== "string" || !FILL_TYPES.has(value.type)) return null;
+  const fill = value as unknown as Fill;
+  return backgroundWithoutRemoteImage(fill) === fill ? fill : null;
+}
+
 const DIRECTIONS = new Set<string>(["left", "right", "up", "down"]);
 
 /**

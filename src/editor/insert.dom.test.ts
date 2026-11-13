@@ -65,9 +65,40 @@ describe("drag payloads", () => {
 
   it("reads back what was written", () => {
     const dt = fakeTransfer();
-    const payload: DragPayload = { type: "image", src: "https://example.test/a.jpg", naturalWidth: 400, naturalHeight: 300, name: "A" };
+    const payload: DragPayload = { type: "image", src: "builtin:nebula", naturalWidth: 400, naturalHeight: 300, name: "A" };
     setDragPayload({ dataTransfer: dt as unknown as DataTransfer }, payload);
     expect(readDragPayload({ dataTransfer: dt } as unknown as DragEvent)).toEqual(payload);
+  });
+
+  // any page can put data of Craftly's type on a drag, so what is dropped is checked like a file or the clipboard
+  const dropped = (payload: unknown) => readDragPayload({ dataTransfer: { getData: () => JSON.stringify(payload) } } as unknown as DragEvent);
+
+  it("reads back elements and a background as they were written", () => {
+    const shape = createShape("rect", { id: "s", x: 0, y: 0, width: 10, height: 10 });
+    expect(dropped({ type: "elements", elements: [shape] })).toEqual({ type: "elements", elements: [shape] });
+    expect(dropped({ type: "background", fill: { type: "solid", color: "#123456" } })).toEqual({ type: "background", fill: { type: "solid", color: "#123456" } });
+    expect(dropped({ type: "background", fill: { type: "image", src: "builtin:nebula", fit: "cover" } })).not.toBeNull();
+  });
+
+  it("keeps only the usable elements of a drop, and takes pictures from the web out of them", () => {
+    const shape = createShape("rect", { id: "s", x: 0, y: 0, width: 10, height: 10 });
+    const read = dropped({ type: "elements", elements: [shape, { id: "t", type: "text" }, "junk", picture()] });
+    expect(read).toMatchObject({ type: "elements", elements: [{ id: "s" }, { id: "pic", src: null }] });
+  });
+
+  it.each([
+    ["no object", 5],
+    ["of a kind it does not know", { type: "mystery" }],
+    ["elements that are no list", { type: "elements", elements: "many" }],
+    ["elements of which none is usable", { type: "elements", elements: [{ id: "t", type: "text" }] }],
+    ["a picture from the web", { type: "image", src: "https://example.test/a.jpg", naturalWidth: 400, naturalHeight: 300 }],
+    ["a picture with no address", { type: "image", src: "", naturalWidth: 400, naturalHeight: 300 }],
+    ["a picture with no size", { type: "image", src: "builtin:nebula", naturalWidth: 0, naturalHeight: 300 }],
+    ["a picture whose size is no number", { type: "image", src: "builtin:nebula", naturalWidth: 400, naturalHeight: "300" }],
+    ["a background that is no fill", { type: "background", fill: { type: "mystery" } }],
+    ["a background with a picture from the web", { type: "background", fill: { type: "image", src: "https://example.test/a.jpg", fit: "cover" } }],
+  ])("reads nothing when the drop is %s", (_name, payload) => {
+    expect(dropped(payload)).toBeNull();
   });
 
   it.each([

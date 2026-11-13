@@ -171,9 +171,14 @@ function transformAttr(el: Pick<DesignElement, "x" | "y" | "width" | "height" | 
   return `${t} translate(${num(-el.width / 2)} ${num(-el.height / 2)})`;
 }
 
+const CAPS: ReadonlySet<unknown> = new Set(["butt", "round", "square"]);
+const JOINS: ReadonlySet<unknown> = new Set(["miter", "round", "bevel"]);
+
 function strokeAttrs(s: Stroke, alpha: number): string {
-  const cap = s.cap ?? (s.style === "dotted" ? "round" : "butt");
-  const join = s.join ?? "round";
+  // The two words go into the markup as they are, and a design from a file is not checked this far down: one that is not among
+  // the words SVG knows counts as not given (text with a quote in it would end the attribute and begin markup of its own).
+  const cap = CAPS.has(s.cap) ? s.cap : s.style === "dotted" ? "round" : "butt";
+  const join = JOINS.has(s.join) ? s.join : "round";
   let out = `${colorAttr("stroke", s.color, alpha)} stroke-width="${num(s.width)}"`;
   if (cap !== "butt") out += ` stroke-linecap="${cap}"`;
   if (join !== "miter") out += ` stroke-linejoin="${join}"`;

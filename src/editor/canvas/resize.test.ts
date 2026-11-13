@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { angleToPointer, handleFraction, HANDLE_VEC, isCorner, resizeBox, type Handle } from "./resize";
+import { angleToPointer, handleFraction, HANDLE_VEC, isCorner, resizeBox, scaleOf, type Handle } from "./resize";
 
 const box = { x: 100, y: 100, width: 200, height: 100, rotation: 0 };
 
@@ -73,6 +73,26 @@ describe("handle helpers", () => {
     expect(handleFraction("e")).toEqual([1, 0.5]);
     expect(handleFraction("se")).toEqual([1, 1]);
     expect(handleFraction("w")).toEqual([0, 0.5]);
+  });
+
+  it("gives real numbers for a box with no height or no width (lines side by side), whatever the handle", () => {
+    const flat = { x: 100, y: 100, width: 200, height: 0, rotation: 0 };
+    const thin = { x: 100, y: 100, width: 0, height: 200, rotation: 0 };
+    for (const b of [flat, thin]) {
+      for (const handle of Object.keys(HANDLE_VEC) as Handle[]) {
+        for (const opts of [{}, { keepAspect: true }, { keepAspect: true, fromCenter: true }]) {
+          const r = resizeBox(b, handle, { x: 340, y: 260 }, opts);
+          expect([r.x, r.y, r.width, r.height].every(Number.isFinite), `${handle} ${JSON.stringify(opts)}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("scales by the change of a side, and not at all where there was no side to begin with", () => {
+    expect(scaleOf(300, 200)).toBe(1.5);
+    expect(scaleOf(6, 0)).toBe(1);
+    expect(scaleOf(0, 0)).toBe(1);
+    expect(scaleOf(Number.NaN, 10)).toBe(1);
   });
 
   it("measures the rotation that points the rotate handle at the pointer", () => {

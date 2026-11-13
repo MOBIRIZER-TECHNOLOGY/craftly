@@ -21,7 +21,7 @@ import { cancelPen, finishPen, penDrag, penHover, penPress } from "./penTool";
 import { insertImageFiles, insertPayload, readDragPayload, DRAG_MIME } from "../insert";
 import { selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
-import { angleToPointer, HANDLE_VEC, isCorner, resizeBox, type BoxLike, type Handle } from "./resize";
+import { angleToPointer, HANDLE_VEC, isCorner, resizeBox, scaleOf, type BoxLike, type Handle } from "./resize";
 import { computeTargets, snapEdges, snapMove, type SnapTargets } from "./snapping";
 import { screenToDesign, setZoomAnchor, useView } from "./viewStore";
 
@@ -530,8 +530,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       act().setGuides(r.guides);
     }
 
-    const sx = box.width / g.frame.width;
-    const sy = box.height / g.frame.height;
+    const sx = scaleOf(box.width, g.frame.width);
+    const sy = scaleOf(box.height, g.frame.height);
 
     if (g.multi) {
       act().updateElements(g.ids, (el) => {
@@ -552,7 +552,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     if (o.type === "text" && el.type === "text") {
       const corner = isCorner(handle);
       if (corner) {
-        const s = box.width / o.width;
+        const s = scaleOf(box.width, o.width);
         el.fontSize = o.fontSize * s;
         el.paragraphs = structuredClone(o.paragraphs);
         for (const p of el.paragraphs) for (const r of p.runs) if (r.size) r.size *= s;
