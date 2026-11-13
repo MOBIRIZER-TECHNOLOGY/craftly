@@ -10,6 +10,8 @@
  *                                        (with `roomCreateKey` set, only for whoever shows that key in `x-craftly-create-key`)
  *        DELETE /api/rooms/:id           with the owner key in `x-craftly-key`: stops sharing and sends everyone away
  *        GET /api/health
+ *        GET /api/admin/rooms            for the operator, and only when the server was given `adminKey` (shown in
+ *        DELETE /api/admin/rooms/:id     `x-craftly-admin-key`): which rooms there are, and removing one. Never for a page.
  *
  * A room lives until its owner stops sharing, or, when the server is told how long rooms may live (`roomTtlMs`), until nobody has
  * used it for that long: a sweep looks through the storage from time to time and removes such rooms the way "stop sharing" does.
@@ -43,6 +45,14 @@ export interface LiveServerOptions {
    * joining a room, editing it and stopping it never ask for it.
    */
   roomCreateKey?: string;
+  /**
+   * The operator's key. Only with it is there anything under `/api/admin/`: a list of the rooms and the removal of one, for a
+   * request that shows the key in the header `x-craftly-admin-key`. Not set (or empty): those addresses answer 404 like any other
+   * that does not exist.
+   */
+  adminKey?: string;
+  /** How many wrong operator keys one address may show in an hour; after that it is not listened to, also not with the right key. 0 for no limit. */
+  wrongKeysPerHour?: number;
   /** How many rooms one address may make in an hour (every attempt counts); 0 for no limit. */
   roomCreatePerHour?: number;
   /**
@@ -116,10 +126,14 @@ const DEFAULTS = {
   maxWaitingPerRoom: 20,
   healthCacheMs: 5000,
   roomCreatePerHour: 10,
+  wrongKeysPerHour: 10,
   sweepEveryMs: 60 * 60 * 1000,
   maxRoomAssetBytes: 48 * 1024 * 1024,
 };
 const DAY = 24 * 60 * 60 * 1000;
+/** The rooms in one answer to the operator: so many unless asked otherwise, and never more than the second. */
+const ADMIN_PAGE = 100;
+const ADMIN_PAGE_MAX = 500;
 
 /** A burst and a rate, with what was not given (or given as undefined, as a setting that is not set is) taken from the default. */
 const bucket = (given: { burst?: number; perSecond?: number } | undefined, standard: { burst: number; perSecond: number }) => ({
@@ -187,6 +201,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     maxWaitingPerRoom: options.maxWaitingPerRoom ?? DEFAULTS.maxWaitingPerRoom,
     healthCacheMs: options.healthCacheMs ?? DEFAULTS.healthCacheMs,
     roomCreatePerHour: options.roomCreatePerHour ?? DEFAULTS.roomCreatePerHour,
+    wrongKeysPerHour: options.wrongKeysPerHour ?? DEFAULTS.wrongKeysPerHour,
     trustProxy: options.trustProxy ?? false,
     roomTtlMs: options.roomTtlMs ?? 0,
     sweepEveryMs: options.sweepEveryMs ?? DEFAULTS.sweepEveryMs,
@@ -194,6 +209,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   };
   const now = options.now ?? Date.now;
   const roomsMade = hourlyLimit(o.roomCreatePerHour, now);
+  const wrongKeys = hourlyLimit(o.wrongKeysPerHour, now);
   // A join is noted in the storage at most this often for a room, so that looking at a design does not write to the disk every
   // time: once a day, and more often when rooms live for less than four days, so that a room in use cannot expire between two notes.
   const noteUseEvery = o.roomTtlMs ? Math.min(DAY, o.roomTtlMs / 4) : DAY;
@@ -554,6 +570,106 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     });
   };
 
+  /* ---------------- the operator ---------------- */
+
+  /**
+   * Whether a request may use something that is the operator's: it shows the secret. Otherwise the request is answered here.
+   * Without a secret on the server there is no such thing (404). A request that names an origin comes from a page, and these
+   * are for a terminal: it is refused whatever the origin, and no CORS header is ever sent, so no page can read an answer either.
+   * An address that showed a wrong secret ten times in an hour is not listened to for the rest of it, not with the right one
+   * either, or guessing would only be slowed down for the guesses that fail. A right secret is not counted.
+   */
+  const operator = (req: IncomingMessage, res: ServerResponse, secret: string | undefined, shown: unknown): boolean => {
+    const refuse = (status: number, error: string) => {
+      reply(res, status, { error });
+      return false;
+    };
+    if (!secret) return refuse(404, "not found");
+    if (req.headers.origin !== undefined) return refuse(403, "this is not for a page: ask from a terminal, without an Origin header");
+    const address = clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], o.trustProxy);
+    const wait = wrongKeys.wait(address);
+    if (wait) {
+      res.setHeader("retry-after", String(wait));
+      return refuse(429, "too many wrong keys from this address; try again later");
+    }
+    if (!sameSecret(secret, shown)) {
+      wrongKeys.take(address);
+      return refuse(401, "this needs the operator's key");
+    }
+    return true;
+  };
+
+  /**
+   * The rooms, in the order of their ids, a page at a time (`limit`, and `after` with the id the page before ended on). For each:
+   * its title, when it was made and last used, how many bytes its design and its images take, and how many people are in it now.
+   * Nothing that lets anybody in is listed: the server has no keys, and their hashes stay where they are. Each room of the page
+   * is read for this (the storage knows ids and times only), so a page is work; a room that cannot be read is listed as such.
+   */
+  const adminList = async (url: URL, res: ServerResponse) => {
+    const asked = url.searchParams.get("limit");
+    const limit = asked === null ? ADMIN_PAGE : Number(asked);
+    const after = url.searchParams.get("after") ?? "";
+    if (!Number.isSafeInteger(limit) || limit < 1) return reply(res, 400, { error: "limit is a whole number, 1 or more" });
+    if (after && !ROOM_ID.test(after)) return reply(res, 400, { error: "after is the id of a room" });
+    const all = (await o.storage.list()).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const rest = all.filter((room) => room.id > after);
+    const page = rest.slice(0, Math.min(limit, ADMIN_PAGE_MAX));
+    const rooms: unknown[] = [];
+    for (const { id, usedAt } of page) {
+      const l = loaded.get(id);
+      const people = l?.members.size ?? 0;
+      try {
+        const record = l ? l.record : await o.storage.load(id);
+        if (!record) continue; // removed since the storage was asked
+        const inside = Object.values(record.assets ?? {}).reduce((sum, image) => sum + image.base64.length, 0);
+        rooms.push({
+          id,
+          title: String(record.design.title),
+          createdAt: record.createdAt,
+          usedAt: Math.max(usedAt, l?.usedAt ?? 0),
+          designBytes: Buffer.byteLength(JSON.stringify(record.design)),
+          imageBytes: inside + (await o.storage.assetBytes(id)),
+          people,
+        });
+      } catch (error) {
+        console.error(`Craftly could not read the shared design ${id} for the list of rooms`, error);
+        rooms.push({ id, usedAt, people, error: "this room cannot be read" });
+      }
+    }
+    reply(res, 200, { rooms, total: all.length, next: rest.length > page.length ? page[page.length - 1].id : null });
+  };
+
+  /**
+   * Removes a room for the operator, the way "stop sharing" does for its owner: through the room's queue, and everybody at it is
+   * sent away. A room that cannot be read cannot be reached that way, and nobody can be in it: its files are removed as they are,
+   * which is the one way to be rid of a damaged room short of going to the disk.
+   */
+  const adminRemove = async (id: string, res: ServerResponse) => {
+    if (!ROOM_ID.test(id)) return reply(res, 404, { error: "no such shared design" });
+    let l: Loaded | null;
+    try {
+      l = await find(id);
+    } catch (error) {
+      console.error(`Craftly removes the shared design ${id}, which cannot be read, for the operator`, error);
+      await o.storage.remove(id);
+      return reply(res, 200, { ok: true });
+    }
+    if (!l) return reply(res, 404, { error: "no such shared design" });
+    await enqueue(l, async () => {
+      if (l.removed) return reply(res, 404, { error: "no such shared design" });
+      await forget(l);
+      reply(res, 200, { ok: true });
+    });
+  };
+
+  const admin = async (req: IncomingMessage, url: URL, res: ServerResponse) => {
+    if (!operator(req, res, o.adminKey, req.headers["x-craftly-admin-key"])) return;
+    if (req.method === "GET" && url.pathname === "/api/admin/rooms") return adminList(url, res);
+    const room = /^\/api\/admin\/rooms\/([^/]+)$/.exec(url.pathname);
+    if (req.method === "DELETE" && room) return adminRemove(room[1], res);
+    reply(res, 404, { error: "not found" });
+  };
+
   /**
    * Whether the storage can be written to, asked at most once in `healthCacheMs`. The check writes a file and waits for the disk,
    * and anybody may ask for `/api/health` as often as they like: the answer of a moment ago is given to all who ask meanwhile.
@@ -584,8 +700,16 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   };
 
   const http = createServer((req, res) => {
-    cors(req, res);
     const url = target(req);
+    // The storage failed, or a room that is there could not be read. It is written down for the operator, and answered as a
+    // problem of the server: a browser asks again later after a 500, where it takes a 404 to mean that the design is gone.
+    const failed = (error: unknown) => {
+      console.error(`Craftly could not answer ${req.method} ${url?.pathname}`, error);
+      if (!res.headersSent) reply(res, 500, { error: "the server has a problem and could not do this; try again later" });
+    };
+    // what is the operator's is no part of what pages may call: it is answered before, and without, the CORS headers
+    if (url?.pathname.startsWith("/api/admin/")) return void admin(req, url, res).catch(failed);
+    cors(req, res);
     if (!url) return reply(res, 400, { error: "invalid request target" });
     void (async () => {
       if (req.method === "OPTIONS") {
@@ -605,12 +729,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       const del = /^\/api\/rooms\/([^/]+)$/.exec(url.pathname);
       if (req.method === "DELETE" && del) return await deleteRoom(del[1], req, res);
       reply(res, 404, { error: "not found" });
-    })().catch((error: unknown) => {
-      // The storage failed, or a room that is there could not be read. It is written down for the operator, and answered as a
-      // problem of the server: a browser asks again later after a 500, where it takes a 404 to mean that the design is gone.
-      console.error(`Craftly could not answer ${req.method} ${url.pathname}`, error);
-      if (!res.headersSent) reply(res, 500, { error: "the server has a problem and could not do this; try again later" });
-    });
+    })().catch(failed);
   });
 
   /* ---------------- WebSocket ---------------- */

@@ -1937,3 +1937,221 @@ describe("a key for making rooms", () => {
     expect((await post(b, { origin: "https://evil.example.test", "x-craftly-create-key": CREATE_KEY })).status).toBe(403);
   });
 });
+
+describe("the operator's tools", () => {
+  const ADMIN_KEY = "the-operators-own-key-0123456789";
+  const admin = (b: Booted, path: string, init: RequestInit = {}, key: string | null = ADMIN_KEY) =>
+    fetch(`${b.http}/api/admin${path}`, { ...init, headers: { ...(key === null ? {} : { "x-craftly-admin-key": key }), ...(init.headers as Record<string, string>) } });
+  type Listed = { id: string; title?: string; createdAt?: number; usedAt: number; designBytes?: number; imageBytes?: number; people: number; error?: string };
+  type Listing = { rooms: Listed[]; total: number; next: string | null };
+  const png = { mime: "image/png", base64: Buffer.from("not really a picture, but long enough to weigh something").toString("base64") };
+
+  it("does not exist unless the server was given a key for it", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    for (const key of [null, "", "anything"]) {
+      expect((await admin(b, "/rooms", {}, key)).status).toBe(404);
+      expect((await admin(b, `/rooms/${made.room}`, { method: "DELETE" }, key)).status).toBe(404);
+    }
+    expect(await b.storage.count()).toBe(1);
+  });
+
+  it("lists the rooms: what each is called, when it was made and last used, how much it holds and who is in it now, and no key of any", async () => {
+    let at = 1_700_000_000_000;
+    const b = await boot({ adminKey: ADMIN_KEY, now: () => at }, new MemoryStorage(() => at));
+    const first = await makeRoom(b, { ...design(), title: "The first" });
+    at += 60_000;
+    const second = await makeRoom(b, { ...design(), title: "The second" });
+    const put = await fetch(`${b.http}/api/rooms/${second.room}/assets/picture-1`, { method: "PUT", headers: { "x-craftly-key": second.editKey }, body: JSON.stringify(png) });
+    expect(put.status).toBe(201);
+    const [editor, viewer] = [join(b, second.room, second.editKey), join(b, second.room, second.viewKey)];
+    const waiting = raw(b, second.room, second.editKey); // at the door, key not shown: not one of the people in the room
+    await waiting.opened;
+    await until("both in", () => editor.status === "live" && viewer.status === "live");
+
+    const res = await admin(b, "/rooms");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const text = await res.text();
+    const listing = JSON.parse(text) as Listing;
+    expect(listing.total).toBe(2);
+    expect(listing.next).toBeNull();
+    const byId = new Map(listing.rooms.map((room) => [room.id, room]));
+    expect([...byId.keys()].sort()).toEqual([first.room, second.room].sort());
+    expect(listing.rooms.map((room) => room.id)).toEqual([...byId.keys()].sort()); // in the order of their ids, which is what pages go by
+    const record = (await b.storage.load(first.room))!;
+    expect(byId.get(first.room)).toEqual({
+      id: first.room,
+      title: "The first",
+      createdAt: 1_700_000_000_000,
+      usedAt: 1_700_000_000_000,
+      designBytes: Buffer.byteLength(JSON.stringify(record.design)),
+      imageBytes: 0,
+      people: 0,
+    });
+    expect(byId.get(second.room)).toMatchObject({ title: "The second", createdAt: 1_700_000_060_000, people: 2 });
+    expect(byId.get(second.room)!.imageBytes).toBe(await b.storage.assetBytes(second.room));
+    expect(byId.get(second.room)!.imageBytes).toBeGreaterThan(png.base64.length);
+    // nothing that lets anybody in: no key (the server has none) and no hash of one
+    for (const secret of [first.editKey, first.viewKey, first.ownerKey, record.editHash, record.viewHash, record.ownerHash!, "Hash", "Key"]) expect(text).not.toContain(secret);
+  });
+
+  it("counts what an older server left inside a record as the images of that room", async () => {
+    const b = await boot({ adminKey: ADMIN_KEY });
+    const made = await makeRoom(b);
+    await b.storage.save(made.room, { ...(await b.storage.load(made.room))!, assets: { old: png } });
+    const listing = (await (await admin(b, "/rooms")).json()) as Listing;
+    expect(listing.rooms[0].imageBytes).toBe(png.base64.length);
+  });
+
+  it("hands the rooms out in pages", async () => {
+    const b = await boot({ adminKey: ADMIN_KEY, roomCreatePerHour: 0 });
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) ids.push((await makeRoom(b)).room);
+    ids.sort();
+    const seen: string[] = [];
+    let after = "";
+    for (let page = 0; page < 3; page++) {
+      const listing = (await (await admin(b, `/rooms?limit=2${after ? `&after=${after}` : ""}`)).json()) as Listing;
+      expect(listing.total).toBe(5);
+      seen.push(...listing.rooms.map((room) => room.id));
+      expect(listing.next).toBe(page < 2 ? seen[seen.length - 1] : null);
+      after = listing.next ?? "";
+    }
+    expect(seen).toEqual(ids);
+    // a page is never more than 500 rooms, and a size that is none is the usual one
+    for (const limit of ["0", "-3", "x", "1.5", "100000"]) {
+      const res = await admin(b, `/rooms?limit=${limit}`);
+      expect(res.status).toBe(limit === "100000" ? 200 : 400);
+    }
+    expect((await admin(b, "/rooms?after=../../etc")).status).toBe(400);
+  });
+
+  it("lists a room that cannot be read as one that cannot be read, and the others with it", async () => {
+    const dir = mkdtempSync(join2(tmpdir(), "craftly-live-test-"));
+    try {
+      const b = await boot({ adminKey: ADMIN_KEY }, new FileStorage(dir));
+      const [good, bad] = [await makeRoom(b), await makeRoom(b)];
+      writeFileSync(join2(dir, `${bad.room}.json`), "{ not a room");
+      const log = logged();
+      const listing = (await (await admin(b, "/rooms")).json()) as Listing;
+      expect(listing.total).toBe(2);
+      const byId = new Map(listing.rooms.map((room) => [room.id, room]));
+      expect(byId.get(good.room)).toMatchObject({ title: "Shared", people: 0 });
+      expect(byId.get(bad.room)).toEqual({ id: bad.room, usedAt: expect.any(Number), people: 0, error: "this room cannot be read" });
+      expect(log).toHaveBeenCalled();
+      // and such a room can be removed, which nothing else can do
+      expect((await admin(b, `/rooms/${bad.room}`, { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join2(dir, `${bad.room}.json`))).toBe(false);
+      expect(((await (await admin(b, "/rooms")).json()) as Listing).total).toBe(1);
+    } finally {
+      for (const server of servers.splice(0)) await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("removes a room the way its owner would: everybody in it is sent away, its images go, and its links are of no use", async () => {
+    const b = await boot({ adminKey: ADMIN_KEY });
+    const made = await makeRoom(b);
+    const other = await makeRoom(b);
+    await fetch(`${b.http}/api/rooms/${made.room}/assets/picture-1`, { method: "PUT", headers: { "x-craftly-key": made.editKey }, body: JSON.stringify(png) });
+    const editor = join(b, made.room, made.editKey);
+    const waiting = raw(b, made.room, made.editKey);
+    await waiting.opened;
+    await until("the editor", () => editor.status === "live");
+    const res = await admin(b, `/rooms/${made.room}`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await until("everybody to be sent away", () => editor.status === "denied" && waiting.closed() === 4004);
+    expect(editor.denied).toBe("not-found");
+    expect(await b.storage.load(made.room)).toBeNull();
+    expect(await b.storage.assetBytes(made.room)).toBe(0);
+    expect(b.server.rooms()).toBe(0);
+    const late = join(b, made.room, made.editKey);
+    await until("the late one", () => late.status === "denied");
+    // the other room is as it was, and a room that is not there is said to be not there
+    expect(await b.storage.load(other.room)).not.toBeNull();
+    expect((await admin(b, `/rooms/${made.room}`, { method: "DELETE" })).status).toBe(404);
+    expect((await admin(b, "/rooms/..%2F..%2Fetc", { method: "DELETE" })).status).toBe(404);
+  });
+
+  it("does nothing without the key or with another one, and takes the key from its header only", async () => {
+    const b = await boot({ adminKey: ADMIN_KEY });
+    const made = await makeRoom(b);
+    for (const key of [null, "", "wrong", ADMIN_KEY + "x", ADMIN_KEY.slice(0, -1), made.ownerKey]) {
+      const list = await admin(b, "/rooms", {}, key);
+      expect(list.status).toBe(401);
+      expect(JSON.stringify(await list.json())).not.toContain(made.room);
+    }
+    expect((await admin(b, `/rooms?key=${ADMIN_KEY}&adminKey=${ADMIN_KEY}`, {}, null)).status).toBe(401);
+    expect((await admin(b, `/rooms/${made.room}`, { method: "DELETE" }, null)).status).toBe(401);
+    expect((await fetch(`${b.http}/api/admin/rooms`, { headers: { "x-craftly-key": ADMIN_KEY, authorization: `Bearer ${ADMIN_KEY}` } })).status).toBe(401);
+    expect(await b.storage.count()).toBe(1);
+    // what is not part of it is not there, also with the key
+    expect((await admin(b, "/nothing")).status).toBe(404);
+    expect((await admin(b, "/rooms", { method: "POST" })).status).toBe(404);
+  });
+
+  it("stops listening to an address that guesses: after ten wrong keys in an hour the right one is refused too", async () => {
+    let at = 1_700_000_000_000;
+    const b = await boot({ adminKey: ADMIN_KEY, now: () => at });
+    for (let i = 0; i < 10; i++) expect((await admin(b, "/rooms", {}, `guess-${i}`)).status).toBe(401);
+    const blocked = await admin(b, "/rooms");
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("retry-after"))).toBe(3600);
+    expect((await admin(b, "/rooms", {}, "one-more")).status).toBe(429);
+    at += 61 * 60 * 1000;
+    expect((await admin(b, "/rooms")).status).toBe(200);
+    // the right key is not counted: an operator may ask as often as they like
+    for (let i = 0; i < 30; i++) expect((await admin(b, "/rooms")).status).toBe(200);
+  });
+
+  it("counts guesses by the address the proxy names when one is trusted", async () => {
+    const b = await boot({ adminKey: ADMIN_KEY, trustProxy: true });
+    for (let i = 0; i < 10; i++) await admin(b, "/rooms", { headers: { "x-forwarded-for": "203.0.113.9" } }, "guess");
+    expect((await admin(b, "/rooms", { headers: { "x-forwarded-for": "203.0.113.9" } })).status).toBe(429);
+    expect((await admin(b, "/rooms", { headers: { "x-forwarded-for": "198.51.100.1" } })).status).toBe(200);
+  });
+
+  it("is not for pages: a request that names an origin is refused, whatever the origin and whatever the server allows, and gets no CORS headers", async () => {
+    for (const allowOrigin of [undefined, "*", ["https://app.example.test"]] as const) {
+      const b = await boot({ adminKey: ADMIN_KEY, allowOrigin: allowOrigin as LiveServerOptions["allowOrigin"] });
+      const made = await makeRoom(b);
+      for (const init of [{}, { method: "DELETE" }, { method: "OPTIONS" }]) {
+        const res = await admin(b, init.method === "DELETE" ? `/rooms/${made.room}` : "/rooms", { ...init, headers: { origin: "https://app.example.test" } });
+        expect(res.status).toBe(403);
+        expect(res.headers.get("access-control-allow-origin")).toBeNull();
+        expect(res.headers.get("access-control-allow-headers")).toBeNull();
+        expect(JSON.stringify(await res.json())).not.toContain(made.room);
+      }
+      expect(await b.storage.count()).toBe(1);
+      // a question beforehand without an origin (no browser sends one) is no part of it either
+      const pre = await admin(b, "/rooms", { method: "OPTIONS" });
+      expect(pre.status).toBe(404);
+      expect(pre.headers.get("access-control-allow-headers")).toBeNull();
+    }
+  });
+
+  it("never writes the key to the log", async () => {
+    const out = [logged(), vi.spyOn(console, "log").mockImplementation(() => undefined), vi.spyOn(console, "warn").mockImplementation(() => undefined)];
+    const b = await boot({ adminKey: ADMIN_KEY });
+    await admin(b, "/rooms");
+    await admin(b, "/rooms", {}, "a-wrong-key-of-somebody");
+    await admin(b, `/rooms/${"A".repeat(22)}`, { method: "DELETE" });
+    const written = JSON.stringify(out.flatMap((spy) => spy.mock.calls));
+    expect(written).not.toContain(ADMIN_KEY);
+    expect(written).not.toContain("a-wrong-key-of-somebody");
+  });
+
+  it("answers 500 and writes it down when the storage cannot say which rooms there are", async () => {
+    class Faulty extends MemoryStorage {
+      async list(): Promise<never> {
+        throw new Error("the disk is gone");
+      }
+    }
+    const log = logged();
+    const b = await boot({ adminKey: ADMIN_KEY }, new Faulty());
+    expect((await admin(b, "/rooms")).status).toBe(500);
+    expect(log).toHaveBeenCalled();
+  });
+});

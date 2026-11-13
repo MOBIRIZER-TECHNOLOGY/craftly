@@ -120,6 +120,23 @@ describe("so many in an hour", () => {
     expect(limit.size()).toBe(1);
   });
 
+  it("says how long a name has to wait without counting anything, so that a refusal can come before the question", () => {
+    const time = clock();
+    const limit = hourlyLimit(2, time.now);
+    expect(limit.wait("a")).toBe(0);
+    expect(limit.size()).toBe(0); // asking is not doing
+    limit.take("a");
+    expect(limit.wait("a")).toBe(0);
+    limit.take("a");
+    expect(limit.wait("a")).toBe(3600);
+    expect(limit.wait("b")).toBe(0);
+    time.pass(20 * MINUTE);
+    expect(limit.wait("a")).toBe(2400);
+    time.pass(41 * MINUTE);
+    expect(limit.wait("a")).toBe(0);
+    expect(hourlyLimit(0, time.now).wait("a")).toBe(0);
+  });
+
   it("limits nothing when the limit is 0", () => {
     const time = clock();
     const limit = hourlyLimit(0, time.now);

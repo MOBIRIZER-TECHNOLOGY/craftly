@@ -98,6 +98,7 @@ All settings are environment variables, read once at the start by `src/server/ma
 | `MAX_PEERS_PER_ROOM` | `50` | How many people can be in one room at once. |
 | `ROOM_CREATE_PER_HOUR` | `10` | How many rooms one address may make in any hour (0 to 100000; `0` for no limit). Every attempt counts. Beyond it the answer is 429 with `Retry-After`. An IPv6 address is counted by its /64. Behind a proxy, set `TRUST_PROXY` too, or all visitors share the proxy's address and this one allowance. |
 | `ROOM_CREATE_KEY` | (none) | A secret that whoever starts to share must give: the editor asks for it ("Key to start sharing") when the server answers that it wants one. Not set: anybody who can reach the server may make rooms. At least 8 characters, no spaces, printable ASCII (the server does not start otherwise); make it long and random, `openssl rand -base64 24` for example. It is one key for everybody you let share, and changing it is the only way to take it back. Every attempt counts towards `ROOM_CREATE_PER_HOUR`, which limits guessing: leave that on. People who are given a link join, edit and look without the key. The editor does not store it; people type it each time they start to share, or let their password manager do it. For a public server set it, unless making rooms is meant to be open to everybody. |
+| `ADMIN_KEY` | (none) | The operator's key, for listing and removing rooms (section 2.7). Not set: the server has no such interface. At least 16 characters, no spaces, printable ASCII (the server does not start otherwise); make it long and random, and different from `ROOM_CREATE_KEY`. Whoever has it can see the titles of all rooms and remove any of them; it does not let anybody into a room. |
 | `TRUST_PROXY` | off | `1` when **exactly one** reverse proxy stands in front of the server and the server cannot be reached around it. The address of a visitor (for `ROOM_CREATE_PER_HOUR`) is then the last entry of `X-Forwarded-For`, the one your proxy wrote. Off (`0` or not set), the header is never read. Do not turn it on for a server that can be reached directly: anybody could then write the header and be counted as whoever they like. A chain of two proxies (a CDN in front of nginx, say) is not supported: the inner one would be counted as the visitor. |
 | `ROOM_TTL_DAYS` | (never) | A room that nobody has used for so many days is removed, with its link: used means edited, an image added, or joined (also only to look). Not set or `0`: rooms are kept until their owner stops sharing, and `MAX_ROOMS` rooms that nobody uses fill the server for good. For a public server set it, to `30` for example. Nobody loses a design by it: every person who opened a shared design has a copy in their own library, and only the link stops working. The server looks once when it starts and then every hour; a room with somebody in it is never removed. |
 | `MAX_CONNECTIONS` | `5000` | The most WebSocket connections at one time, to all rooms together. One more is answered with 503 and tries again by itself. |
@@ -108,7 +109,7 @@ All settings are environment variables, read once at the start by `src/server/ma
 | `JOIN_BURST`, `JOIN_EVERY_MS` | `4`, `2000` | How often one connection may ask for the whole design: a burst, then once every so many milliseconds. More closes the connection (1008). |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | How long the server may take to close when it is told to stop (SIGINT, SIGTERM): it waits for the saves and requests that are at work, then leaves with exit code 1 and a line in the log. 0 to 600000. Nothing acknowledged is lost by not waiting. |
 
-**This table must be kept in step with `src/server/main.ts`**: a variable added there and not here does not exist for an operator. The comment at the top of `main.ts` lists the variables too. The table was read against `main.ts` on 2026-11-14 and holds every variable it reads. Still only planned ([`OVERNIGHT-PLAN.md`](OVERNIGHT-PLAN.md), item A8), and so not in the table: an operator key (`ADMIN_KEY`). A variable is in the table only if `main.ts` read it when this section was last edited.
+**This table must be kept in step with `src/server/main.ts`**: a variable added there and not here does not exist for an operator. The comment at the top of `main.ts` lists the variables too. The table was read against `main.ts` on 2026-11-14 and holds every variable it reads. A variable is in the table only if `main.ts` read it when this section was last edited.
 
 Limits that are not settings (they are options of `createLiveServer` in `src/server/live.ts`, with these defaults): 4 MiB per WebSocket message, 16 MiB for a design, 9 MiB per shared image and 36 MiB of images per room, a burst of 200 messages and then 100 a second per connection, a ping every 30 seconds.
 
@@ -202,13 +203,45 @@ and set `ALLOW_ORIGIN` on the server to the editor's origin (the other direction
 
 The live journeys (`e2e/live.cjs`) pass against a production build under the policy with `http://127.0.0.1:8788 ws://127.0.0.1:8788` added; a public pair of `https://` and `wss://` addresses behind a proxy has not been tried.
 
+### 2.7 Looking at the rooms and removing one
+
+Start the server with `ADMIN_KEY` set (section 2.3). Then, on the machine the server runs on:
+
+```bash
+export ADMIN_KEY=...                         # the key the server was started with
+export CRAFTLY_SERVER=http://127.0.0.1:8787  # where the server listens; this is the default
+npm run server:rooms -- list                 # or: node scripts/rooms.mjs list
+npm run server:rooms -- delete <room id>
+```
+
+`list` prints one line for each room and a sum:
+
+```text
+ROOM                    TITLE     MADE (UTC)        LAST USED (UTC)   DESIGN   IMAGES   PEOPLE
+FUb2-8jUTTPSncQPkDBxMQ  Menu      2026-11-13 19:41  2026-11-14 08:02  1.2 MiB  3.4 MiB  2
+x5VQPmL9gWrqO0S1iCBPyQ  A poster  2026-11-13 19:41  2026-11-13 19:41  301 B    0 B      0
+
+2 rooms on http://127.0.0.1:8787, 4.6 MiB in all, 2 people connected now.
+```
+
+`delete` removes the room the way its owner's "Stop sharing" does: whoever is in it is sent away, its images are removed, its links stop working. Nobody loses a design by it, because every person who opened it has a copy in their own library. It also removes a room whose file is damaged (listed as "this room cannot be read"), which otherwise counts towards `MAX_ROOMS` until somebody deletes the file by hand.
+
+What to know:
+
+- The script reads the key and the address from the environment only, so that the key is not in the shell's history or in the list of processes. It needs Node 22 and nothing else; copy `scripts/rooms.mjs` to the server, or run it from a checkout. Without a checkout the two calls are easy to make by hand: `curl -H "x-craftly-admin-key: $ADMIN_KEY" http://127.0.0.1:8787/api/admin/rooms` and `curl -X DELETE -H "x-craftly-admin-key: $ADMIN_KEY" http://127.0.0.1:8787/api/admin/rooms/<id>` ([`COLLABORATION.md`](COLLABORATION.md) has the details of the answers).
+- Ask the server itself, on its own machine or through an SSH tunnel, not across the internet. If you must go through the proxy, it must speak TLS, and you may want to keep `/api/admin/` away from the public there altogether (`location /api/admin/ { deny all; }` in nginx, `respond /api/admin/* 404` in Caddy) and use the tunnel.
+- It is not for pages: a request with an `Origin` header is refused, and there are no CORS headers on these answers.
+- Ten wrong keys from one address within an hour, and the server answers that address with 429 for the rest of the hour, also for the right key. Behind a proxy without `TRUST_PROXY`, everybody is "one address": somebody guessing through the proxy can lock the interface for an hour for requests through the proxy, not for you on the machine itself, which is one more reason to ask the server directly.
+- No key of a room can be listed or recovered: the server keeps only hashes, and does not hand those out either. A person who lost their link needs a new one from whoever shared the design.
+- Listing reads every room once (to find its title and size). On a server with thousands of big rooms that takes a while and is disk work; it does not block the people who are editing, but do not put it in a loop.
+
 ## 3. What is not there yet
 
 - **A built and tested image.** `Dockerfile.server` has never been through `docker build` (section 2.1). No image is published anywhere, and CI does not build one.
 - **A deployment on a real host.** The proxy configurations, the systemd unit, the backup and the restore are written from reading, not from running them in public.
 - **Metrics.** There is no metrics endpoint. One is planned (connections, rooms in memory, saves, refusals, in a form Prometheus reads). Until then `/api/health` and the start line are all the server says about itself.
 - **Logs.** The server writes a line when it starts. There is no access log; use the proxy's.
-- **Accounts.** There are none. Who may make a room, how long rooms live and what an operator can list or delete depend on the settings in section 2.3: if a setting is not in that table, the server does not have it. Without `ROOM_CREATE_KEY` anybody who can reach `POST /api/rooms` can make rooms up to `MAX_ROOMS`; with it, everybody who has that one key can, and the server does not know one of them from another.
+- **Accounts.** There are none. Who may make a room, how long rooms live and whether an operator can list and delete rooms (section 2.7) depend on the settings in section 2.3: if a setting is not in that table, the server does not have it. Without `ROOM_CREATE_KEY` anybody who can reach `POST /api/rooms` can make rooms up to `MAX_ROOMS`; with it, everybody who has that one key can, and the server does not know one of them from another.
 - **More than one server.** A room lives in the memory of one process and the files of one folder. Two servers behind a load balancer would each have their own rooms; there is no shared storage and no way to spread a room over processes.
 - **A load test.** How many rooms and people one server carries has not been measured.
 - **TLS in the server itself.** It speaks plain HTTP on purpose; use a proxy.

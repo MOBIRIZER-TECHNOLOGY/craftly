@@ -47,6 +47,8 @@ export function clientAddress(remote: string | undefined, forwardedFor: string |
 export interface HourlyLimit {
   /** Counts one more for this name, if it may: 0 when it may, and otherwise the seconds until it may again (nothing is counted then). */
   take(name: string): number;
+  /** The seconds until this name may again, or 0 when it may now. Nothing is counted: it is a question, and `take` is the deed. */
+  wait(name: string): number;
   /** How many names are remembered now. */
   size(): number;
 }
@@ -59,7 +61,13 @@ export function hourlyLimit(perHour: number, now: () => number): HourlyLimit {
   const taken = new Map<string, number[]>();
   let tidied = now();
   const recent = (times: number[], at: number) => times.filter((time) => time > at - HOUR);
+  const waitOf = (times: number[], at: number) => (times.length >= perHour ? Math.max(1, Math.ceil((times[0] + HOUR - at) / 1000)) : 0);
   return {
+    wait(name) {
+      if (perHour <= 0) return 0;
+      const at = now();
+      return waitOf(recent(taken.get(name) ?? [], at), at);
+    },
     take(name) {
       if (perHour <= 0) return 0;
       const at = now();
@@ -74,7 +82,7 @@ export function hourlyLimit(perHour: number, now: () => number): HourlyLimit {
       const times = recent(taken.get(name) ?? [], at);
       if (times.length >= perHour) {
         taken.set(name, times);
-        return Math.max(1, Math.ceil((times[0] + HOUR - at) / 1000));
+        return waitOf(times, at);
       }
       times.push(at);
       taken.set(name, times);

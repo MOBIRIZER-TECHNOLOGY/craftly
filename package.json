@@ -22,6 +22,7 @@
     "notices": "node scripts/third-party-notices.mjs",
     "server:build": "esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist-server/live.mjs",
     "server:smoke": "npm run server:build && node scripts/server-smoke.mjs",
+    "server:rooms": "node scripts/rooms.mjs",
     "server": "npm run server:build && node dist-server/live.mjs"
   },
   "dependencies": {
