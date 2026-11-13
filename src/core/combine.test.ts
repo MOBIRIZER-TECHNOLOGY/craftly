@@ -2,7 +2,7 @@
  * Combining shapes (union, subtract, intersect, exclude) and turning a shape into a path. Results are checked on the page, in
  * the pixels a person sees, whatever the turn and mirror of the shapes that went in.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { combineShapes, combinedShape, makePath, paperScope, shapeAsPath, shapesToCombine, type PathGeometry } from "./combine";
 import { createGroup, createPage, createShape, createText, solid } from "./factory";
 import { nodeKindOf, parsePath } from "./pen";
@@ -22,6 +22,10 @@ const pieces = (d: string) => (d.match(/M/g) ?? []).length;
 /** two squares of 100 that overlap in a square of 50: A is behind B */
 const A = () => rect(0, 0, 100, 100);
 const B = () => rect(50, 50, 100, 100);
+
+// The geometry library loads on first use, and under a coverage run with every worker busy that load alone has taken longer than
+// the time one test may take: the first test of this file then failed for no fault of its own. It is loaded here, with room.
+beforeAll(async () => void (await paperScope()), 180_000);
 
 describe("combineShapes", () => {
   it("unites two shapes into one outline", async () => {

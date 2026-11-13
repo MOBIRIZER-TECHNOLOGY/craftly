@@ -3,7 +3,7 @@
  * have a hole that runs the other way, so it does not show what is needed here: drawn with the non-zero rule, which a stored
  * path uses, the hole of this one would be filled. Combining has to turn the pieces so that the hole stays a hole.
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { combineShapes, paperScope, shapeAsPath } from "./combine";
 import { createShape } from "./factory";
 import type { ShapeKind } from "./types";
@@ -18,6 +18,9 @@ vi.mock("@/render/shapePaths", async (importOriginal) => {
     shapeFillRule: (kind: string) => (kind === "double" ? "evenodd" : kind === "nested" ? "nonzero" : actual.shapeFillRule(kind)),
   };
 });
+
+// the geometry library loads on first use, which under a busy coverage run has taken longer than one test may: loaded here, with room
+beforeAll(async () => void (await paperScope()), 180_000);
 
 const double = () => createShape("double" as ShapeKind, { x: 0, y: 0, width: 100, height: 100 });
 /** the same two squares, but drawn with the non-zero rule, which fills the inner one too */
