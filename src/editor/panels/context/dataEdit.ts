@@ -3,6 +3,7 @@
  * hands them immer drafts, tests hand them clones). A table keeps its width and height: adding or removing rows and
  * columns redistributes the row heights / column widths instead.
  */
+import { TABLE_LIMITS, oneLine, type ChartData, type DataLimits } from "@/core/delimited";
 import type { ChartElement, TableElement } from "@/core/types";
 
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
@@ -59,9 +60,53 @@ export function removeTableColumn(t: TableElement, at: number): void {
   normalizeTable(t);
 }
 
+/**
+ * Rows of data bring more rows than a person adds by hand, and a row lower than its text shows nothing. So after data came
+ * in the table is made as tall as its rows need (one and a half times the font size each), and never lower than it was.
+ */
+function fitTableToRows(t: TableElement): void {
+  t.height = Math.max(t.height, Math.ceil(t.fontSize * 1.5) * t.cells.length);
+  normalizeTable(t);
+}
+
+/**
+ * The cells of the table become `rows` (rectangular, as the parser gives them). The look of the table and its width stay;
+ * columns that are still there keep their share of the width, new ones get the average.
+ */
+export function replaceTableCells(t: TableElement, rows: string[][]): void {
+  if (!rows.length || !rows[0].length) return;
+  t.cells = rows.map((row) => row.map(oneLine));
+  fitTableToRows(t);
+}
+
+/**
+ * Writes `rows` into the table from the cell `at` on, as a spreadsheet does with a paste, adding the rows and columns that
+ * are missing up to `limits`. True when something did not fit.
+ */
+export function spreadTableCells(t: TableElement, at: { row: number; col: number }, rows: string[][], limits: DataLimits = TABLE_LIMITS): boolean {
+  const wanted = { rows: at.row + rows.length, cols: at.col + Math.max(0, ...rows.map((r) => r.length)) };
+  const size = { rows: Math.max(t.cells.length, Math.min(wanted.rows, limits.rows)), cols: Math.max(tableSize(t).cols, Math.min(wanted.cols, limits.cols)) };
+  for (const row of t.cells) while (row.length < size.cols) row.push("");
+  while (t.cells.length < size.rows) t.cells.push(Array.from({ length: size.cols }, () => ""));
+  rows.forEach((row, r) =>
+    row.forEach((cell, c) => {
+      if (at.row + r < size.rows && at.col + c < size.cols) t.cells[at.row + r][at.col + c] = oneLine(cell);
+    }),
+  );
+  fitTableToRows(t);
+  return wanted.rows > size.rows || wanted.cols > size.cols;
+}
+
 /* ------------------------------------------------------------------ */
 /* charts                                                              */
 /* ------------------------------------------------------------------ */
+
+/** Labels and series of the chart become those of the data. Its kind and colours stay, and so does the colour a series had. */
+export function replaceChartData(c: ChartElement, data: ChartData): void {
+  const colors = c.series.map((s) => s.color);
+  c.labels = [...data.labels];
+  c.series = data.series.map((s, i) => (colors[i] ? { name: s.name, values: [...s.values], color: colors[i] } : { name: s.name, values: [...s.values] }));
+}
 
 const average = (values: number[], fallback = 10) => (values.length ? Math.round(sum(values) / values.length) : fallback);
 

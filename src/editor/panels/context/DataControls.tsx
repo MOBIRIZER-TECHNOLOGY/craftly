@@ -60,6 +60,7 @@ export function TextCell({
   className,
   placeholder,
   cellKey,
+  onPasteText,
 }: {
   value: string;
   onText: (value: string) => void;
@@ -68,6 +69,8 @@ export function TextCell({
   placeholder?: string;
   /** "row:column" of a table's cell, so that the panel can find the field of one cell */
   cellKey?: string;
+  /** asked with the text of a paste; true when it was dealt with and must not go into the field as well */
+  onPasteText?: (text: string) => boolean;
 }) {
   return (
     <input
@@ -80,6 +83,9 @@ export function TextCell({
       value={value}
       onChange={(e) => onText(e.target.value)}
       onFocus={(e) => e.currentTarget.select()}
+      onPaste={(e) => {
+        if (onPasteText?.(e.clipboardData.getData("text/plain"))) e.preventDefault();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
         else if (e.key === "Escape") {

@@ -13,6 +13,7 @@ import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore
 import { backspacePen, finishPen, hasPenDraft, penHistory } from "./canvas/penTool";
 import { stopPreview, usePreview } from "./canvas/preview";
 import { insertImageFiles } from "./insert";
+import { pasteDataIntoSelection } from "./panels/context/dataImport";
 import { isInteractiveControl, isTyping, markSelectAllOnEdit } from "./canvas/controller";
 
 const CLIP_MIME = "application/x-craftly-elements";
@@ -251,7 +252,13 @@ function onPaste(e: ClipboardEvent) {
     }
     return;
   }
-  const text = dt.getData("text/plain").trim();
+  const raw = dt.getData("text/plain");
+  // a block of cells copied from a spreadsheet, with one table or chart selected, is its new data and not a text box
+  if (pasteDataIntoSelection(raw)) {
+    e.preventDefault();
+    return;
+  }
+  const text = raw.trim();
   if (s.clipboard && (!text || text === "Craftly design elements")) {
     e.preventDefault();
     s.actions.paste();

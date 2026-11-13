@@ -104,6 +104,43 @@
   margin-top: 12px;
 }
 
+/* ---- import data: the field to paste rows into ---- */
+
+.cf-data__paste {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  max-height: 240px;
+  padding: 8px;
+  border: 1px solid var(--c-field-border);
+  border-radius: 6px;
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  /* rows of a spreadsheet stay rows: no wrapping, and tabs wide enough to see the columns */
+  white-space: pre;
+  tab-size: 12;
+  overflow: auto;
+  outline: none;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-data__paste:hover {
+  border-color: var(--c-ink-4);
+}
+
+.cf-data__paste:focus {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+}
+
+.cf-data__refused {
+  color: var(--c-danger);
+}
+
 .cf-data__after {
   margin-top: 16px;
 }

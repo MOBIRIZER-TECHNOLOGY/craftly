@@ -6,6 +6,8 @@ import { IconChartArea, IconChartDonut } from "./chartIcons";
 import { addChartRow, addChartSeries, chartColor, removeChartRow, removeChartSeries, setChartPaletteColor } from "./dataEdit";
 import { ColorRow, NumberCell, TextCell } from "./DataControls";
 import { ColorField } from "./ColorField";
+import { importChartData } from "./dataImport";
+import { ImportData } from "./ImportData";
 import { Section } from "./PanelShell";
 import { useBatch } from "./useBatch";
 
@@ -78,6 +80,11 @@ export function ChartEditor({ chart }: { chart: ChartElement }) {
           </Button>
         </div>
       </Section>
+
+      <ImportData
+        hint="The first column becomes the labels, the first row the names of the series, the rest the numbers. They replace the data of this chart."
+        onImport={(text) => importChartData(chart.id, text)}
+      />
 
       <Section title={round ? "Slice colors" : "Series colors"}>
         <div className="cf-data__palette">

@@ -4,6 +4,8 @@ import type { TableElement, TextAlign } from "@/core/types";
 import { cx, IconAlignCenter, IconAlignLeft, IconAlignRight, IconButton, IconClose, IconPlus, NumberField, Button, Segmented, Switch } from "@/ui";
 import { addTableColumn, addTableRow, removeTableColumn, removeTableRow, tableSize } from "./dataEdit";
 import { ColorRow, TextCell } from "./DataControls";
+import { importTableData, pasteIntoTableCell, tellImport } from "./dataImport";
+import { ImportData } from "./ImportData";
 import { Section } from "./PanelShell";
 import { useBatch } from "./useBatch";
 
@@ -62,6 +64,12 @@ export function TableEditor({ table, focusCell }: { table: TableElement; focusCe
                 header={table.headerRow && r === 0}
                 removable={rows > 1}
                 onText={(c, value) => edit((t) => void (t.cells[r][c] = value), `cell:${table.id}`)}
+                onPaste={(c, text) => {
+                  // a block of cells from a spreadsheet goes into the cells from this one on; other text is the field's own
+                  const result = pasteIntoTableCell(table.id, { row: r, col: c }, text);
+                  if (result) tellImport(result);
+                  return !!result;
+                }}
                 onRemove={() => edit((t) => removeTableRow(t, r))}
               />
             ))}
@@ -76,6 +84,8 @@ export function TableEditor({ table, focusCell }: { table: TableElement; focusCe
           </Button>
         </div>
       </Section>
+
+      <ImportData hint="The rows you import replace the cells of this table. Its colors and width stay." onImport={(text) => importTableData(table.id, text)} />
 
       <Section title="Layout">
         <div className="cf-ctx__rows">
@@ -136,6 +146,7 @@ function TableRow({
   header,
   removable,
   onText,
+  onPaste,
   onRemove,
 }: {
   row: string[];
@@ -143,6 +154,7 @@ function TableRow({
   header: boolean;
   removable: boolean;
   onText: (c: number, value: string) => void;
+  onPaste: (c: number, text: string) => boolean;
   onRemove: () => void;
 }) {
   return (
@@ -155,6 +167,7 @@ function TableRow({
           label={`Row ${r + 1}, column ${c + 1}`}
           cellKey={`${r}:${c}`}
           onText={(value) => onText(c, value)}
+          onPasteText={(text) => onPaste(c, text)}
         />
       ))}
       <IconButton size="sm" label={`Remove row ${r + 1}`} icon={<IconClose />} disabled={!removable} onClick={onRemove} />

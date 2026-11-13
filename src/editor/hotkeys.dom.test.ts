@@ -5,9 +5,9 @@
  */
 import { configure, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDesign, createGroup, createImage, createPage, createShape, createText } from "@/core/factory";
+import { createChart, createDesign, createGroup, createImage, createPage, createShape, createTable, createText } from "@/core/factory";
 import { getActions, getActivePage, useEditor } from "@/core/store";
-import type { DesignElement } from "@/core/types";
+import type { DesignElement, TableElement } from "@/core/types";
 import { resetEditor } from "@/test/helpers";
 import { elementPath } from "@/core/penShape";
 import type { ShapeElement } from "@/core/types";
@@ -857,6 +857,56 @@ describe("clipboard", () => {
     expect(el.type === "text" && el.fontSize).toBe(24);
     expect(el.width).toBe(428);
     expect(state().selection).toEqual([el.id]);
+  });
+
+  it("paste fills the selected table with a block copied from a spreadsheet, as one undo step", () => {
+    const table = createTable({ id: "tb", cells: [["A", "B"], ["C", "D"]], colWidths: [100, 100], rowHeights: [40, 40], width: 200, height: 80 }); // prettier-ignore
+    open([table, rect()]);
+    actions().select(["tb"]);
+    // the empty corner cell of the block must survive: the text is not trimmed before it is read
+    expect(send("paste", clip({ "text/plain": "\tQ1\tQ2\r\nNorth\t5\t6\r\nSouth\t7\t8\r\n" }))).toBe(true);
+    expect(elements()).toHaveLength(2);
+    expect((byId("tb") as TableElement).cells).toEqual([
+      ["", "Q1", "Q2"],
+      ["North", "5", "6"],
+      ["South", "7", "8"],
+    ]);
+    actions().undo();
+    expect((byId("tb") as TableElement).cells).toEqual([
+      ["A", "B"],
+      ["C", "D"],
+    ]);
+  });
+
+  it("paste fills the selected chart with a block of labels and numbers", () => {
+    open([createChart({ id: "ch", labels: ["a"], series: [{ name: "S", values: [1] }] })]);
+    actions().select(["ch"]);
+    expect(send("paste", clip({ "text/plain": "Month,Sales\nJan,10\nFeb,20" }))).toBe(true);
+    expect(elements()).toHaveLength(1);
+    expect(byId("ch")).toMatchObject({ labels: ["Jan", "Feb"], series: [{ name: "Sales", values: [10, 20] }] });
+  });
+
+  it("paste of ordinary text is a text box as before, with a table selected or a block of cells and no table selected", () => {
+    const table = createTable({ id: "tb", cells: [["A", "B"], ["C", "D"]], colWidths: [100, 100], rowHeights: [40, 40], width: 200, height: 80 }); // prettier-ignore
+    open([table, rect()]);
+    actions().select(["tb"]);
+    send("paste", clip({ "text/plain": "Hello, world\nGoodbye, moon" }));
+    expect(elements().map((e) => e.type)).toEqual(["table", "shape", "text"]);
+    actions().select(["r"]);
+    send("paste", clip({ "text/plain": "a\tb\n1\t2" }));
+    actions().clearSelection();
+    send("paste", clip({ "text/plain": "a\tb\n1\t2" }));
+    expect(elements().map((e) => e.type)).toEqual(["table", "shape", "text", "text", "text"]);
+    expect((byId("tb") as TableElement).cells[0]).toEqual(["A", "B"]);
+  });
+
+  it("paste of elements copied inside Craftly wins over a selected table", () => {
+    const table = createTable({ id: "tb", cells: [["A", "B"], ["C", "D"]], colWidths: [100, 100], rowHeights: [40, 40], width: 200, height: 80 }); // prettier-ignore
+    open([table]);
+    actions().select(["tb"]);
+    send("paste", clip({ [MIME]: JSON.stringify([rect()]), "text/plain": "a\tb\n1\t2" }));
+    expect(elements().map((e) => e.type)).toEqual(["table", "shape"]);
+    expect((byId("tb") as TableElement).cells[0]).toEqual(["A", "B"]);
   });
 
   it("paste prefers new text over an older internal copy", () => {
