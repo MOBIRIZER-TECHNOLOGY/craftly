@@ -2,13 +2,17 @@
  * "Work together", in the Share panel: start editing the open design at the same time as other people, hand out the links (one that
  * lets people edit, one that only lets them look), see how the connection is, and stop. It needs a Craftly live server
  * (docs/COLLABORATION.md): the address is asked for once and remembered on this device.
+ *
+ * A server may let only people with a key start to share. The panel does not know that beforehand: the first attempt goes without
+ * a key, and when the server answers that it wants one, a field for it appears and the person tries again. The key is held while the
+ * panel is open and kept nowhere: it is the operator's secret, and a browser's storage keeps things as plain text.
  */
 import { CONFIGURED_SERVER } from "./knownServers";
 import { useState } from "react";
 import { useEditor } from "@/core/store";
 import type { LiveLink } from "@/core/types";
 import { Badge, Button, TextField, toast } from "@/ui";
-import { deniedText, shareDesign, stopSharing, useLiveStatus } from "./connection";
+import { CreateKeyError, deniedText, shareDesign, stopSharing, useLiveStatus } from "./connection";
 import { rememberShared } from "./joined";
 import { joinUrl } from "./links";
 import "./live.css";
@@ -70,12 +74,25 @@ export function LiveSection() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
+  /** Whether the server at this address said that it wants a key to start sharing, the key as typed, and what is wrong with it. */
+  const [keyAsked, setKeyAsked] = useState(false);
+  const [createKey, setCreateKey] = useState("");
+  const [keyProblem, setKeyProblem] = useState<string | null>(null);
+
+  /** Another address is another server: the question was not its question, and the key is not shown to it. */
+  const changeServer = (address: string) => {
+    setServer(address);
+    setKeyAsked(false);
+    setCreateKey("");
+    setKeyProblem(null);
+  };
 
   const start = async () => {
     setBusy(true);
     setProblem(null);
+    setKeyProblem(null);
     try {
-      const made = await shareDesign(server);
+      const made = await shareDesign(server, {}, keyAsked ? createKey : "");
       rememberShared(made, designId);
       try {
         localStorage.setItem(SERVER_KEY, made.server);
@@ -83,7 +100,11 @@ export function LiveSection() {
         /* it is asked for again */
       }
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : "Sharing could not be started.");
+      if (error instanceof CreateKeyError) {
+        // the first time it is a question, shown as the hint of the field; a key that was sent and refused is a problem
+        setKeyAsked(true);
+        if (error.kind === "wrong") setKeyProblem(error.message);
+      } else setProblem(error instanceof Error ? error.message : "Sharing could not be started.");
     } finally {
       setBusy(false);
     }
@@ -109,8 +130,24 @@ export function LiveSection() {
           Work together
         </h3>
         <p className="cf-live__text">Edit this design at the same time as other people, and see each other's changes as they happen. It needs a Craftly live server.</p>
-        <TextField label="Server address" value={server} onChange={(e) => setServer(e.target.value)} spellCheck={false} autoComplete="off" error={problem ?? undefined} />
-        <Button variant="primary" onClick={() => void start()} disabled={busy || !server.trim()} aria-busy={busy || undefined}>
+        <TextField label="Server address" value={server} onChange={(e) => changeServer(e.target.value)} spellCheck={false} autoComplete="off" error={problem ?? undefined} />
+        {keyAsked ? (
+          <TextField
+            label="Key to start sharing"
+            type="password"
+            value={createKey}
+            onChange={(e) => {
+              setCreateKey(e.target.value);
+              setKeyProblem(null);
+            }}
+            hint="This server asks for a key to start sharing. Whoever runs it can give it to you."
+            error={keyProblem ?? undefined}
+            spellCheck={false}
+            autoComplete="off"
+            autoFocus
+          />
+        ) : null}
+        <Button variant="primary" onClick={() => void start()} disabled={busy || !server.trim() || (keyAsked && !createKey.trim())} aria-busy={busy || undefined}>
           Start live session
         </Button>
       </section>

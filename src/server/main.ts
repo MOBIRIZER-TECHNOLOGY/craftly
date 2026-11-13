@@ -5,7 +5,8 @@
  * and what one visitor may cost: MAX_CONNECTIONS, MAX_WAITING_PER_ROOM, MAX_BUFFERED_BYTES, MAX_UNJOINED_MESSAGE_BYTES, BYTE_BURST,
  * BYTES_PER_SECOND, JOIN_BURST, JOIN_EVERY_MS, ROOM_CREATE_PER_HOUR (rooms one address may make in an hour; 0 for no limit) and
  * TRUST_PROXY (1 when exactly one reverse proxy stands in front: the address of a visitor is then read from X-Forwarded-For), and
- * ROOM_TTL_DAYS (a room that nobody has used for so many days is removed; not set or 0: never). What is not set keeps the default
+ * ROOM_TTL_DAYS (a room that nobody has used for so many days is removed; not set or 0: never), and ROOM_CREATE_KEY (a secret that
+ * whoever starts to share must show; not set: anybody may). What is not set keeps the default
  * of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000) is how long the server may take to close when it
  * is told to stop. See docs/COLLABORATION.md and docs/DEPLOY.md.
  */
@@ -27,6 +28,19 @@ const flag = (name: string) => {
   if (raw === "" || raw === "0" || raw === "false") return false;
   if (raw === "1" || raw === "true") return true;
   throw new Error(`Invalid ${name}: expected 1 or 0.`);
+};
+/**
+ * A secret of the operator's. Not set, or set to nothing, is no secret (the feature it guards is then as the table in
+ * docs/DEPLOY.md says). One that is short, or that a header cannot carry, stops the server: it would be guessed, or never matched.
+ * The message names the variable and never the value.
+ */
+const secret = (name: string, minLength: number) => {
+  const raw = (env[name] ?? "").trim();
+  if (raw === "") return undefined;
+  if (raw.length < minLength || /[^\x21-\x7e]/.test(raw)) {
+    throw new Error(`Invalid ${name}: expected at least ${minLength} characters, letters, digits and signs without spaces.`);
+  }
+  return raw;
 };
 // a variable that is set to nothing is a variable that is not set: it must not become a list that holds no origin and refuses every page
 const named = (env.ALLOW_ORIGIN ?? "")
@@ -54,6 +68,8 @@ const server = createLiveServer({
   trustProxy: flag("TRUST_PROXY"),
   // off unless it is set: rooms are then kept until their owners stop sharing
   roomTtlMs: roomTtlDays === undefined ? undefined : roomTtlDays * 24 * 60 * 60 * 1000,
+  // off unless it is set: anybody who reaches the server may then make rooms
+  roomCreateKey: secret("ROOM_CREATE_KEY", 8),
 });
 
 const host = env.HOST ?? "127.0.0.1";

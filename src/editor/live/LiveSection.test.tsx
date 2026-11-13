@@ -107,6 +107,97 @@ describe("before the design is shared", () => {
   });
 });
 
+describe("on a server that asks for a key to start sharing", () => {
+  const keyField = () => screen.queryByLabelText("Key to start sharing") as HTMLInputElement | null;
+  const sentKey = (call: { init?: RequestInit }) => new Headers(call.init?.headers).get("x-craftly-create-key");
+  /** A server that has the key "right-key": what `createRoom` of src/server/live.ts answers. */
+  const keyed = (_url: string, init?: RequestInit) => {
+    const shown = new Headers(init?.headers).get("x-craftly-create-key");
+    if (!shown) return answer(401, { error: "this server asks for a key to start sharing", code: "create-key-needed" });
+    if (shown !== "right-key") return answer(403, { error: "that key to start sharing is not right", code: "create-key-wrong" });
+    return answer(201, made);
+  };
+
+  it("shows no field for a key until a server asks for one", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<LiveSection />);
+    expect(keyField()).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    await waitFor(() => expect(useEditor.getState().design!.live).toBeTruthy());
+    expect(sentKey(calls[0])).toBeNull();
+  });
+
+  it("asks for the key when the server wants one, in a field that hides what is typed, and shares with it", async () => {
+    respond = keyed;
+    const user = userEvent.setup({ delay: null });
+    render(<LiveSection />);
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    await waitFor(() => expect(keyField()).toBeTruthy());
+    expect(keyField()!.type).toBe("password");
+    expect(screen.getByText("This server asks for a key to start sharing. Whoever runs it can give it to you.")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull(); // nothing went wrong: it is a question
+    expect(document.activeElement).toBe(keyField());
+    // nothing to send yet
+    expect((screen.getByRole("button", { name: "Start live session" }) as HTMLButtonElement).disabled).toBe(true);
+    await user.type(keyField()!, "right-key");
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    await waitFor(() => expect(useEditor.getState().design!.live).toBeTruthy());
+    expect(calls.map(sentKey)).toEqual([null, "right-key"]);
+  });
+
+  it("says so plainly when the key is wrong, and lets the person try another", async () => {
+    respond = keyed;
+    const user = userEvent.setup({ delay: null });
+    render(<LiveSection />);
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    await waitFor(() => expect(keyField()).toBeTruthy());
+    await user.type(keyField()!, "a-guess");
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("That key is not right. Check it with whoever runs the server.");
+    expect(useEditor.getState().design!.live).toBeUndefined();
+    await user.clear(keyField()!);
+    await user.type(keyField()!, "right-key");
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    await waitFor(() => expect(useEditor.getState().design!.live).toBeTruthy());
+  });
+
+  it("does not keep the key on this device, and does not show it to another server", async () => {
+    respond = keyed;
+    const user = userEvent.setup({ delay: null });
+    const { unmount } = render(<LiveSection />);
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    await waitFor(() => expect(keyField()).toBeTruthy());
+    await user.type(keyField()!, "a-guess");
+    // another address: the question was the other server's, and so was the key
+    await user.clear(field("Server address"));
+    await user.type(field("Server address"), "other.example.test");
+    expect(keyField()).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    await waitFor(() => expect(keyField()).toBeTruthy());
+    expect(keyField()!.value).toBe("");
+    expect(sentKey(calls[calls.length - 1])).toBeNull();
+    await user.type(keyField()!, "right-key");
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    await waitFor(() => expect(useEditor.getState().design!.live).toBeTruthy());
+    const kept = JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage), useEditor.getState().design]);
+    expect(kept).not.toContain("right-key");
+    // and the panel does not have it the next time it is opened
+    act(() => useEditor.getState().actions.setLiveLink(null));
+    unmount();
+    render(<LiveSection />);
+    expect(keyField()).toBeNull();
+  });
+
+  it("shows a refusal that is not about the key as before", async () => {
+    respond = () => answer(401, { error: "sign in first" });
+    const user = userEvent.setup({ delay: null });
+    render(<LiveSection />);
+    await user.click(screen.getByRole("button", { name: "Start live session" }));
+    expect(await screen.findByText("sign in first")).toBeTruthy();
+    expect(keyField()).toBeNull();
+  });
+});
+
 describe("once it is shared", () => {
   const shared = () => act(() => useEditor.getState().actions.setLiveLink(link));
 

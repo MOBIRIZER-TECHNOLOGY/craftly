@@ -1847,3 +1847,93 @@ describe("saving an edit", () => {
     expect((await b.storage.load(made.room))?.rev).toBe(0);
   });
 });
+
+describe("a key for making rooms", () => {
+  const CREATE_KEY = "a-key-the-operator-gave-out";
+  const post = (b: Booted, headers: Record<string, string> = {}, path = "/api/rooms") =>
+    fetch(`${b.http}${path}`, { method: "POST", headers, body: JSON.stringify({ design: design() }) });
+
+  it("asks for nothing unless the server was given one", async () => {
+    const b = await boot();
+    expect((await post(b)).status).toBe(201);
+    // and a key that nobody asked for does no harm
+    expect((await post(b, { "x-craftly-create-key": "whatever" })).status).toBe(201);
+  });
+
+  it("makes no room without the key, and says that one is needed", async () => {
+    const b = await boot({ roomCreateKey: CREATE_KEY });
+    const res = await post(b);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: expect.stringMatching(/asks for a key/), code: "create-key-needed" });
+    expect(await b.storage.count()).toBe(0);
+  });
+
+  it("makes no room with a wrong key, and says that it is wrong", async () => {
+    const b = await boot({ roomCreateKey: CREATE_KEY });
+    for (const wrong of ["nope", CREATE_KEY + "x", CREATE_KEY.slice(1), "", "x".repeat(5000)]) {
+      const res = await post(b, { "x-craftly-create-key": wrong });
+      // (a header that is there and empty is a key that was not given)
+      expect(res.status).toBe(wrong ? 403 : 401);
+      expect(((await res.json()) as { code: string }).code).toBe(wrong ? "create-key-wrong" : "create-key-needed");
+    }
+    expect(await b.storage.count()).toBe(0);
+  });
+
+  it("makes a room with the key, which is then of no use to anybody: joining, editing and stopping do not ask for it", async () => {
+    const b = await boot({ roomCreateKey: CREATE_KEY });
+    const res = await post(b, { "x-craftly-create-key": CREATE_KEY });
+    expect(res.status).toBe(201);
+    const made = (await res.json()) as Made;
+    const editor = join(b, made.room, made.editKey);
+    const viewer = join(b, made.room, made.viewKey);
+    await until("both in", () => editor.status === "live" && viewer.status === "live");
+    editor.edit(editor.design!, rename(editor.design!, "Renamed"));
+    await until("the edit to arrive", () => viewer.design?.title === "Renamed");
+    const stop = await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } });
+    expect(stop.status).toBe(200);
+  });
+
+  it("does not take the key from the address", async () => {
+    const b = await boot({ roomCreateKey: CREATE_KEY });
+    for (const name of ["key", "createKey", "x-craftly-create-key"]) {
+      expect((await post(b, {}, `/api/rooms?${name}=${CREATE_KEY}`)).status).toBe(401);
+    }
+  });
+
+  it("is asked before the design is read, and every attempt counts for the address", async () => {
+    const b = await boot({ roomCreateKey: CREATE_KEY, roomCreatePerHour: 3 });
+    // no body worth reading: with the right key this would be 400, without it the body is never looked at
+    const res = await fetch(`${b.http}/api/rooms`, { method: "POST", body: "not json" });
+    expect(res.status).toBe(401);
+    expect((await post(b, { "x-craftly-create-key": "guess-1" })).status).toBe(403);
+    expect((await post(b, { "x-craftly-create-key": "guess-2" })).status).toBe(403);
+    // the allowance of the hour is used up, also for the right key
+    const late = await post(b, { "x-craftly-create-key": CREATE_KEY });
+    expect(late.status).toBe(429);
+  });
+
+  it("never writes the key to the log", async () => {
+    const out = [logged(), vi.spyOn(console, "log").mockImplementation(() => undefined), vi.spyOn(console, "warn").mockImplementation(() => undefined)];
+    const b = await boot({ roomCreateKey: CREATE_KEY });
+    await post(b, { "x-craftly-create-key": "a-wrong-key-of-somebody" });
+    await post(b, { "x-craftly-create-key": CREATE_KEY });
+    const written = JSON.stringify(out.flatMap((spy) => spy.mock.calls));
+    expect(written).not.toContain(CREATE_KEY);
+    expect(written).not.toContain("a-wrong-key-of-somebody");
+  });
+
+  it("lets a page of an allowed origin send the key: the answer to the question beforehand names the header", async () => {
+    const b = await boot({ roomCreateKey: CREATE_KEY, allowOrigin: ["https://app.example.test"] });
+    const pre = await fetch(`${b.http}/api/rooms`, {
+      method: "OPTIONS",
+      headers: { origin: "https://app.example.test", "access-control-request-method": "POST", "access-control-request-headers": "x-craftly-create-key" },
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-origin")).toBe("https://app.example.test");
+    expect(pre.headers.get("access-control-allow-headers")?.toLowerCase().split(/,\s*/)).toContain("x-craftly-create-key");
+    const res = await post(b, { origin: "https://app.example.test", "x-craftly-create-key": CREATE_KEY });
+    expect(res.status).toBe(201);
+    // a page of another origin is turned away before the key is looked at
+    expect((await post(b, { origin: "https://evil.example.test", "x-craftly-create-key": CREATE_KEY })).status).toBe(403);
+  });
+});

@@ -7,6 +7,7 @@
  * list of origins, it also refuses a page of any other origin that wants to connect or to change something.
  *
  * HTTP:  POST /api/rooms {design}        makes a room from a design: { room, editKey, viewKey, ownerKey } (the keys are shown once)
+ *                                        (with `roomCreateKey` set, only for whoever shows that key in `x-craftly-create-key`)
  *        DELETE /api/rooms/:id           with the owner key in `x-craftly-key`: stops sharing and sends everyone away
  *        GET /api/health
  *
@@ -36,6 +37,12 @@ export interface LiveServerOptions {
    * are turned away when they name an origin that is not on it. A request that names no origin is not a page and is not refused.
    */
   allowOrigin?: string | string[];
+  /**
+   * A key that whoever makes a room must show, in the header `x-craftly-create-key` of `POST /api/rooms`. Not set (or empty):
+   * anybody who reaches the server may make rooms. It is one shared secret for everybody the operator lets share, not an account;
+   * joining a room, editing it and stopping it never ask for it.
+   */
+  roomCreateKey?: string;
   /** How many rooms one address may make in an hour (every attempt counts); 0 for no limit. */
   roomCreatePerHour?: number;
   /**
@@ -134,6 +141,11 @@ const sameHash = (hex: string, key: string) => {
   const b = sha256(key);
   return a.length === b.length && timingSafeEqual(a, b);
 };
+/**
+ * Whether what was shown is the secret, in a time that does not depend on how much of it is right. Both are hashed first, so that
+ * they are compared at one length whatever was sent; that the secret has a length is no secret.
+ */
+const sameSecret = (secret: string, shown: unknown): boolean => typeof shown === "string" && timingSafeEqual(sha256(secret), sha256(shown));
 
 interface Loaded {
   id: string;
@@ -359,7 +371,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       res.setHeader("vary", "origin");
     }
     res.setHeader("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.setHeader("access-control-allow-headers", "content-type, x-craftly-key");
+    res.setHeader("access-control-allow-headers", "content-type, x-craftly-key, x-craftly-create-key");
     res.setHeader("access-control-max-age", "600");
   };
 
@@ -406,6 +418,15 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     if (wait) {
       res.setHeader("retry-after", String(wait));
       return reply(res, 429, { error: "too many shared designs were started from this address; try again later" });
+    }
+    // The key for making rooms, when the server has one, is asked for here: after the count above, so that guessing it is limited
+    // to the rooms an address may make in an hour, and before the body, which nobody without the key has the server read. It is
+    // taken from its header only (an address ends up in the logs of every proxy), compared in constant time, and never written
+    // anywhere. The two answers have a `code`, by which the editor knows to ask the person for the key.
+    if (o.roomCreateKey) {
+      const shown = req.headers["x-craftly-create-key"];
+      if (!shown) return reply(res, 401, { error: "this server asks for a key to start sharing", code: "create-key-needed" });
+      if (!sameSecret(o.roomCreateKey, shown)) return reply(res, 403, { error: "that key to start sharing is not right", code: "create-key-wrong" });
     }
     const text = await readBody(req, o.maxDesignBytes);
     if (text === null) {

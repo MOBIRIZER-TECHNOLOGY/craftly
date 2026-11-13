@@ -13,7 +13,7 @@ import { useEditor } from "@/core/store";
 import type { Design, LiveLink } from "@/core/types";
 import { createLiveServer, type LiveServer } from "@/server/live";
 import { MemoryStorage } from "@/server/storage";
-import { connectLive, joinDesign, shareDesign, stopSharing, useLiveStatus } from "./connection";
+import { connectLive, CreateKeyError, joinDesign, shareDesign, stopSharing, useLiveStatus } from "./connection";
 import { toast } from "@/ui";
 import { joinToken, parseJoinToken, websocketUrl } from "./links";
 import { downloadBlob } from "@/export/download";
@@ -121,6 +121,59 @@ describe("starting to share", () => {
     await expect(shareDesign(`http://127.0.0.1:${port}`, env)).rejects.toThrow(/too big/i);
     await small.close();
     await expect(shareDesign(`${address}/nothing-here`, env)).rejects.toThrow();
+  });
+});
+
+describe("starting to share on a server that asks for a key", () => {
+  const CREATE_KEY = "the-operators-key";
+  let keyed: LiveServer;
+  let keyedAddress: string;
+  let keyedStorage: MemoryStorage;
+  beforeEach(async () => {
+    keyedStorage = new MemoryStorage();
+    keyed = createLiveServer({ storage: keyedStorage, roomCreateKey: CREATE_KEY });
+    keyedAddress = `http://127.0.0.1:${(await keyed.listen(0)).port}`;
+  });
+  afterEach(() => keyed.close());
+
+  it("is told that a key is needed, in a way the panel can tell from any other refusal, and nothing is shared", async () => {
+    const refused = await shareDesign(keyedAddress, env).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(CreateKeyError);
+    expect((refused as CreateKeyError).kind).toBe("needed");
+    expect((refused as CreateKeyError).message).toMatch(/asks for a key/);
+    expect(s().design!.live).toBeUndefined();
+    expect(await keyedStorage.count()).toBe(0);
+  });
+
+  it("is told that a key is wrong", async () => {
+    const refused = await shareDesign(keyedAddress, env, "not-the-key").catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(CreateKeyError);
+    expect((refused as CreateKeyError).kind).toBe("wrong");
+    expect((refused as CreateKeyError).message).toMatch(/not right/);
+    expect(await keyedStorage.count()).toBe(0);
+  });
+
+  it("does not send a key that no header can carry: it is wrong without asking the server", async () => {
+    const asked = vi.fn(fetch);
+    const refused = await shareDesign(keyedAddress, { ...env, fetch: asked }, "schlüssel\n").catch((error: unknown) => error);
+    expect((refused as CreateKeyError).kind).toBe("wrong");
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it("shares with the right key (spaces around it do not count), and the key is neither in the link nor in the room", async () => {
+    const link = await shareDesign(keyedAddress, env, `  ${CREATE_KEY} `);
+    expect(s().design!.live).toEqual(link);
+    expect(JSON.stringify(link)).not.toContain(CREATE_KEY);
+    expect(JSON.stringify(await keyedStorage.load(link.room))).not.toContain(CREATE_KEY);
+    // whoever is given the link gets in without it
+    const guest = person({ ...link, key: link.viewKey as string, role: "view" });
+    await until("the guest", () => guest.status === "live");
+  });
+
+  it("sends no such header to a server when no key was given", async () => {
+    const asked = vi.fn(fetch);
+    await shareDesign(address, { ...env, fetch: asked });
+    expect(new Headers(asked.mock.calls[0][1]?.headers).has("x-craftly-create-key")).toBe(false);
   });
 });
 

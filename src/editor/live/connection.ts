@@ -245,34 +245,58 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   };
 }
 
-/** What the server says is wrong, in words; its own message when it sent one. */
-async function problemWith(res: Response): Promise<string> {
+/**
+ * The server lets only people with its key for making rooms start to share (`ROOM_CREATE_KEY`, docs/COLLABORATION.md), and none
+ * was sent ("needed") or the one that was sent is not the one ("wrong"). The Share panel asks the person for the key when it
+ * meets this, where any other refusal is only shown.
+ */
+export class CreateKeyError extends Error {
+  constructor(readonly kind: "needed" | "wrong") {
+    super(kind === "needed" ? "This server asks for a key to start sharing. Whoever runs it can give it to you." : "That key is not right. Check it with whoever runs the server.");
+    this.name = "CreateKeyError";
+  }
+}
+
+const CREATE_KEY_CODES: Record<string, "needed" | "wrong"> = { "create-key-needed": "needed", "create-key-wrong": "wrong" };
+
+/** Why the server did not do what it was asked: as an error with a sentence for the person, its own message when it sent one. */
+async function problemWith(res: Response): Promise<Error> {
   try {
-    const body = (await res.json()) as { error?: unknown };
-    if (typeof body.error === "string") return body.error;
+    const body = (await res.json()) as { error?: unknown; code?: unknown };
+    if (typeof body.code === "string" && Object.hasOwn(CREATE_KEY_CODES, body.code)) return new CreateKeyError(CREATE_KEY_CODES[body.code]);
+    if (typeof body.error === "string") return new Error(body.error);
   } catch {
     /* not JSON */
   }
-  return `The server answered ${res.status}.`;
+  return new Error(`The server answered ${res.status}.`);
 }
 
 /**
  * Makes a room of the design that is open on the server at `typedServer`, and keeps the link (the keys that edit and look) with the
- * design on this device. Rejects with a sentence for the person.
+ * design on this device. Rejects with a sentence for the person, and with a `CreateKeyError` when the server asks for its key for
+ * making rooms: `createKey` is that key, sent in a header and kept nowhere, not in the link either.
  */
-export async function shareDesign(typedServer: string, env: LiveEnv = {}): Promise<LiveLink> {
+export async function shareDesign(typedServer: string, env: LiveEnv = {}, createKey = ""): Promise<LiveLink> {
   const server = normalizeServer(typedServer);
   if (!server) throw new Error("That is not the address of a server. It looks like https://live.example.com or http://localhost:8787.");
   const design = useEditor.getState().design;
   if (!design) throw new Error("There is no design open.");
   const { live: _own, ...content } = design;
+  const key = createKey.trim();
+  // A header carries printable ASCII and nothing else: a browser refuses to send any other, with an error that reads like a
+  // server that cannot be reached. No key a server was given looks like that, so it is the wrong key.
+  if (/[^\x21-\x7e]/.test(key)) throw new CreateKeyError("wrong");
   let res: Response;
   try {
-    res = await (env.fetch ?? fetch)(apiUrl(server, "/api/rooms"), { method: "POST", body: JSON.stringify({ design: content }) });
+    res = await (env.fetch ?? fetch)(apiUrl(server, "/api/rooms"), {
+      method: "POST",
+      body: JSON.stringify({ design: content }),
+      ...(key ? { headers: { "x-craftly-create-key": key } } : {}),
+    });
   } catch {
     throw new Error("Couldn't reach the server. Check the address and that the server is running.");
   }
-  if (!res.ok) throw new Error(await problemWith(res));
+  if (!res.ok) throw await problemWith(res);
   const made = (await res.json()) as { room: string; editKey: string; viewKey: string; ownerKey: string };
   const link: LiveLink = { server, room: made.room, key: made.editKey, viewKey: made.viewKey, ownerKey: made.ownerKey, role: "edit" };
   // a server this person shares on is one they chose: a link to it does not ask again (knownServers.ts)
@@ -307,7 +331,7 @@ export async function stopSharing(env: LiveEnv = {}): Promise<void> {
     } catch {
       throw new Error("Couldn't reach the server, so sharing could not be stopped. The link is still on this design.");
     }
-    if (!res.ok && res.status !== 404) throw new Error(await problemWith(res));
+    if (!res.ok && res.status !== 404) throw await problemWith(res);
   }
   useEditor.getState().actions.setLiveLink(null);
 }
