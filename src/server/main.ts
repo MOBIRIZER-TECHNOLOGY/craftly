@@ -4,8 +4,9 @@
  * (live-data), ALLOW_ORIGIN (the origin of the editor, a comma separated list, or *; none by default), MAX_ROOMS, MAX_PEERS_PER_ROOM,
  * and what one visitor may cost: MAX_CONNECTIONS, MAX_WAITING_PER_ROOM, MAX_BUFFERED_BYTES, MAX_UNJOINED_MESSAGE_BYTES, BYTE_BURST,
  * BYTES_PER_SECOND, JOIN_BURST, JOIN_EVERY_MS, ROOM_CREATE_PER_HOUR (rooms one address may make in an hour; 0 for no limit) and
- * TRUST_PROXY (1 when exactly one reverse proxy stands in front: the address of a visitor is then read from X-Forwarded-For). What
- * is not set keeps the default of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000) is how long the server may take to close when it
+ * TRUST_PROXY (1 when exactly one reverse proxy stands in front: the address of a visitor is then read from X-Forwarded-For), and
+ * ROOM_TTL_DAYS (a room that nobody has used for so many days is removed; not set or 0: never). What is not set keeps the default
+ * of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000) is how long the server may take to close when it
  * is told to stop. See docs/COLLABORATION.md and docs/DEPLOY.md.
  */
 import { closeWithin, createLiveServer } from "./live";
@@ -34,6 +35,7 @@ const named = (env.ALLOW_ORIGIN ?? "")
   .filter(Boolean);
 const origins = named.length ? named : undefined;
 const joinEveryMs = number("JOIN_EVERY_MS", 1, Number.MAX_SAFE_INTEGER);
+const roomTtlDays = number("ROOM_TTL_DAYS", 0, 36_500);
 
 const server = createLiveServer({
   storage: new FileStorage(env.DATA_DIR ?? "live-data"),
@@ -50,6 +52,8 @@ const server = createLiveServer({
   roomCreatePerHour: number("ROOM_CREATE_PER_HOUR", 0, 100_000),
   // Exactly one proxy is trusted (the one that connects to this server), so the setting is on or off and not a number of proxies.
   trustProxy: flag("TRUST_PROXY"),
+  // off unless it is set: rooms are then kept until their owners stop sharing
+  roomTtlMs: roomTtlDays === undefined ? undefined : roomTtlDays * 24 * 60 * 60 * 1000,
 });
 
 const host = env.HOST ?? "127.0.0.1";

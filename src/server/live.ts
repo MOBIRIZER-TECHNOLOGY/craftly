@@ -9,6 +9,9 @@
  * HTTP:  POST /api/rooms {design}        makes a room from a design: { room, editKey, viewKey, ownerKey } (the keys are shown once)
  *        DELETE /api/rooms/:id           with the owner key in `x-craftly-key`: stops sharing and sends everyone away
  *        GET /api/health
+ *
+ * A room lives until its owner stops sharing, or, when the server is told how long rooms may live (`roomTtlMs`), until nobody has
+ * used it for that long: a sweep looks through the storage from time to time and removes such rooms the way "stop sharing" does.
  * WebSocket: /ws?room=<id>               then a join with the key as the first message, then the rest of src/collab/protocol.ts
  *
  * The keys are random and only their hashes are stored. The room's id is random too: a link with an id and a key is all it takes to
@@ -42,6 +45,13 @@ export interface LiveServerOptions {
   trustProxy?: boolean;
   /** The time, in milliseconds; a test gives its own clock. */
   now?: () => number;
+  /**
+   * How long a room may go unused before it is removed, in milliseconds. Not set, or 0: rooms are never removed for their age.
+   * A room is used when it is saved (an edit, an image) and when somebody joins it; a room with somebody at it is never removed.
+   */
+  roomTtlMs?: number;
+  /** How often the storage is looked through for rooms that have expired (and once when the server starts to listen). */
+  sweepEveryMs?: number;
   maxRooms?: number;
   maxPeersPerRoom?: number;
   /** The most a message from a browser may be, in bytes. */
@@ -97,7 +107,9 @@ const DEFAULTS = {
   maxWaitingPerRoom: 20,
   healthCacheMs: 5000,
   roomCreatePerHour: 10,
+  sweepEveryMs: 60 * 60 * 1000,
 };
+const DAY = 24 * 60 * 60 * 1000;
 
 /** A burst and a rate, with what was not given (or given as undefined, as a setting that is not set is) taken from the default. */
 const bucket = (given: { burst?: number; perSecond?: number } | undefined, standard: { burst: number; perSecond: number }) => ({
@@ -135,6 +147,8 @@ interface Loaded {
    * would go on with a copy that is no longer the room, and save it over what happened since.
    */
   pins: number;
+  /** When the storage was last told that the room is in use: by a save, or by a note of a join (which is not written for every join). */
+  usedAt: number;
   work: Promise<void>;
   removed: boolean;
   idleTimer: ReturnType<typeof setTimeout> | null;
@@ -160,9 +174,14 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     healthCacheMs: options.healthCacheMs ?? DEFAULTS.healthCacheMs,
     roomCreatePerHour: options.roomCreatePerHour ?? DEFAULTS.roomCreatePerHour,
     trustProxy: options.trustProxy ?? false,
+    roomTtlMs: options.roomTtlMs ?? 0,
+    sweepEveryMs: options.sweepEveryMs ?? DEFAULTS.sweepEveryMs,
   };
   const now = options.now ?? Date.now;
   const roomsMade = hourlyLimit(o.roomCreatePerHour, now);
+  // A join is noted in the storage at most this often for a room, so that looking at a design does not write to the disk every
+  // time: once a day, and more often when rooms live for less than four days, so that a room in use cannot expire between two notes.
+  const noteUseEvery = o.roomTtlMs ? Math.min(DAY, o.roomTtlMs / 4) : DAY;
   const loaded = new Map<string, Loaded>();
   const loading = new Map<string, Promise<Loaded | null>>();
   const sockets = new Set<WebSocket>();
@@ -186,15 +205,17 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       sockets: new Set(),
       members: new Set(),
       pins: 0,
+      usedAt: Number(record.updatedAt) || 0,
       work: Promise.resolve(),
       removed: false,
       idleTimer: null,
     };
     l.room.commit = async (design, rev, seqs) => {
       if (Buffer.byteLength(JSON.stringify(design)) > o.maxDesignBytes) throw new Error("This shared design exceeds the room size limit.");
-      const next = { ...l.record, design, rev, seqs, updatedAt: Date.now() };
+      const next = { ...l.record, design, rev, seqs, updatedAt: now() };
       await o.storage.save(id, next);
       l.record = next;
+      l.usedAt = next.updatedAt;
     };
     loaded.set(id, l);
     return l;
@@ -228,6 +249,75 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       });
     }, o.idleCloseMs);
   };
+
+  /**
+   * Notes in the storage that the room is in use now, which is what keeps it from expiring. The storage keeps the time with the
+   * room (the time of its file) and does not read or write the room for it. It takes its turn in the room's queue, so that it never
+   * meets a save of the same file, and a failure is written down and is nobody's problem but the operator's.
+   */
+  const noteUse = (l: Loaded) => {
+    l.usedAt = now();
+    enqueue(l, () => (l.removed ? undefined : o.storage.touch(l.id, l.usedAt))).catch((error: unknown) => {
+      console.error(`Craftly could not note that the shared design ${l.id} is in use`, error);
+    });
+  };
+
+  /**
+   * Forgets a room and sends away whoever is at it: what "stop sharing" does, and what happens to a room that has expired. It runs
+   * in the room's queue. When the storage cannot remove the room this throws, and the room is as it was.
+   */
+  const forget = async (l: Loaded) => {
+    await o.storage.remove(l.id);
+    l.removed = true;
+    if (l.idleTimer) clearTimeout(l.idleTimer);
+    loaded.delete(l.id);
+    for (const s of l.sockets) {
+      send(s, { t: "denied", reason: "not-found" });
+      s.close(4004, "gone");
+    }
+  };
+
+  /* ---------------- expiry ---------------- */
+
+  /**
+   * Removes the rooms that nobody has used for longer than rooms may live. The storage says when each was last used without
+   * reading it; only a room that has expired is read, once, because it is removed the way a person would remove it: through
+   * `find` and its queue, so that somebody who arrives at the same moment meets either the room or its absence, and never half
+   * of each. A room with somebody at it (a connection, a request at work) has not expired whatever the storage says: it is noted
+   * as used now. A room that cannot be read or removed is written down and left; the next round tries again.
+   */
+  const sweep = async () => {
+    const before = now() - o.roomTtlMs;
+    for (const { id, usedAt } of await o.storage.list()) {
+      if (closing) return;
+      if (usedAt > before) continue;
+      try {
+        const l = await find(id);
+        if (!l) continue; // removed since the list was made
+        await enqueue(l, async () => {
+          if (l.removed) return;
+          if (l.sockets.size || l.pins) {
+            l.usedAt = now();
+            await o.storage.touch(id, l.usedAt);
+          } else await forget(l);
+        });
+        unloadLater(l);
+      } catch (error) {
+        console.error(`Craftly could not remove the expired shared design ${id}`, error);
+      }
+    }
+  };
+  let sweeping: Promise<void> | null = null;
+  const sweepNow = () => {
+    if (!o.roomTtlMs || sweeping || closing) return;
+    sweeping = sweep()
+      .catch((error: unknown) => console.error("Craftly could not look for shared designs that have expired", error))
+      .finally(() => {
+        sweeping = null;
+      });
+  };
+  const sweeper = setInterval(sweepNow, o.sweepEveryMs);
+  sweeper.unref();
 
   /** Runs what an HTTP request does with a room, which stays in memory for as long as that takes and may leave it afterwards. */
   const pinned = async (l: Loaded, work: () => Promise<void>) => {
@@ -334,8 +424,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       const viewKey = token();
       const ownerKey = token();
       const { live: _live, ...content } = design;
-      const now = Date.now();
-      const shared: Design = { ...content, id, createdAt: now, updatedAt: now, folderId: null, starred: false, trashedAt: null };
+      const at = now();
+      const shared: Design = { ...content, id, createdAt: at, updatedAt: at, folderId: null, starred: false, trashedAt: null };
       await o.storage.save(id, {
         design: shared,
         rev: 0,
@@ -343,8 +433,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         editHash: sha256(editKey).toString("hex"),
         viewHash: sha256(viewKey).toString("hex"),
         ownerHash: sha256(ownerKey).toString("hex"),
-        createdAt: now,
-        updatedAt: now,
+        createdAt: at,
+        updatedAt: at,
       });
       reply(res, 201, { room: id, editKey, viewKey, ownerKey });
     } finally {
@@ -362,14 +452,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     }
     await enqueue(l, async () => {
       if (l.removed) return reply(res, 404, { error: "no such shared design" });
-      await o.storage.remove(id);
-      l.removed = true;
-      if (l.idleTimer) clearTimeout(l.idleTimer);
-      loaded.delete(id);
-      for (const s of l.sockets) {
-        send(s, { t: "denied", reason: "not-found" });
-        s.close(4004, "gone");
-      }
+      await forget(l);
       reply(res, 200, { ok: true });
     });
   };
@@ -424,6 +507,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       const next = { ...l.record, assets: { ...l.record.assets, [assetId]: { mime, base64 } } };
       await o.storage.save(id, next);
       l.record = next;
+      l.usedAt = now();
       reply(res, 201, { ok: true });
     });
   };
@@ -434,10 +518,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
    */
   let health: { at: number; writable: Promise<boolean> } | null = null;
   const storageWritable = (): Promise<boolean> => {
-    const now = Date.now();
-    if (!health || now - health.at >= o.healthCacheMs) {
+    const at = Date.now();
+    if (!health || at - health.at >= o.healthCacheMs) {
       health = {
-        at: now,
+        at,
         writable: o.storage.checkWritable().then(
           () => true,
           () => false,
@@ -588,12 +672,12 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
 
     handle = (data) => {
       if (l.removed || closing || ws.readyState !== ws.OPEN) return;
-      const now = Date.now();
-      const seconds = (now - refilled) / 1000;
+      const at = Date.now();
+      const seconds = (at - refilled) / 1000;
       tokens = Math.min(o.rate.burst, tokens + seconds * o.rate.perSecond);
       bytes = Math.min(o.byteRate.burst, bytes + seconds * o.byteRate.perSecond) - sizeOf(data);
       joins = Math.min(o.joinRate.burst, joins + seconds * o.joinRate.perSecond);
-      refilled = now;
+      refilled = at;
       if (--tokens < 0 || bytes < 0) return void ws.close(1008, "slow down");
       let msg: ClientMsg;
       try {
@@ -613,6 +697,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           l.members.add(ws);
           shownKey = true;
           clearTimeout(silent);
+          if (now() - l.usedAt >= noteUseEvery) noteUse(l);
         }
         for (const old of l.room.join(peer, msg.client, role)) {
           const other = peerSockets.get(old);
@@ -651,11 +736,16 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     listen: (port, host = "127.0.0.1") =>
       new Promise((resolve, reject) => {
         http.once("error", reject);
-        http.listen(port, host, () => resolve(http.address() as AddressInfo));
+        http.listen(port, host, () => {
+          sweepNow();
+          resolve(http.address() as AddressInfo);
+        });
       }),
     async close() {
       closing = true;
       clearInterval(heartbeat);
+      clearInterval(sweeper);
+      await sweeping;
       for (const l of loaded.values()) if (l.idleTimer) clearTimeout(l.idleTimer);
       await Promise.all([roomCreation, ...[...loaded.values()].map((l) => l.work)]);
       for (const ws of sockets) ws.close(1001, "the server is going away");

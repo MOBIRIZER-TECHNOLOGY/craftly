@@ -3,7 +3,7 @@
  * batches it applied from each client, and a hash of each of its two keys (a copy of the files cannot be used to edit or to look).
  */
 import { randomBytes } from "node:crypto";
-import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Design } from "@/core/types";
 
@@ -27,6 +27,12 @@ export interface RoomRecord {
   updatedAt: number;
 }
 
+/** A room that is kept, and when it was last used: saved, or noted as used with `touch`. */
+export interface StoredRoom {
+  id: string;
+  usedAt: number;
+}
+
 export interface LiveStorage {
   /** The room, or null when there is none. A room that is there and cannot be read is an error, not a room that is gone. */
   load(id: string): Promise<RoomRecord | null>;
@@ -34,6 +40,10 @@ export interface LiveStorage {
   remove(id: string): Promise<void>;
   count(): Promise<number>;
   checkWritable(): Promise<void>;
+  /** Every room with the time it was last used, without reading any of them. */
+  list(): Promise<StoredRoom[]>;
+  /** Notes that a room was used at this time, without reading or writing the room. A room that is not there stays not there. */
+  touch(id: string, at: number): Promise<void>;
 }
 
 /** What a room is called: made by the server, long enough not to be guessed, and safe to use as a file name. */
@@ -59,13 +69,22 @@ export class MemoryStorage implements LiveStorage {
   async checkWritable() {
     return Promise.resolve();
   }
-  private rooms = new Map<string, string>();
+  private rooms = new Map<string, { text: string; usedAt: number }>();
+  /** The clock says when a room was saved, as the time of a file would; a test gives its own. */
+  constructor(private now: () => number = Date.now) {}
   async load(id: string) {
-    const text = this.rooms.get(id);
-    return text ? (JSON.parse(text) as RoomRecord) : null;
+    const room = this.rooms.get(id);
+    return room ? (JSON.parse(room.text) as RoomRecord) : null;
   }
   async save(id: string, record: RoomRecord) {
-    this.rooms.set(id, JSON.stringify(record)); // as it would be on disk: nothing shared with the caller
+    this.rooms.set(id, { text: JSON.stringify(record), usedAt: this.now() }); // as it would be on disk: nothing shared with the caller
+  }
+  async list() {
+    return [...this.rooms].map(([id, room]) => ({ id, usedAt: room.usedAt }));
+  }
+  async touch(id: string, at: number) {
+    const room = this.rooms.get(id);
+    if (room) room.usedAt = at;
   }
   async remove(id: string) {
     this.rooms.delete(id);
@@ -140,6 +159,37 @@ export class FileStorage implements LiveStorage {
       await writeFile(probe, "", { flag: "wx", flush: true });
     } finally {
       await rm(probe, { force: true });
+    }
+  }
+
+  /** When a room was last used is the time of its file: a save sets it, and so does `touch`. */
+  async list(): Promise<StoredRoom[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    const rooms: StoredRoom[] = [];
+    for (const name of names) {
+      const id = name.endsWith(".json") ? name.slice(0, -5) : "";
+      if (!ROOM_ID.test(id)) continue;
+      try {
+        rooms.push({ id, usedAt: (await stat(join(this.dir, name))).mtimeMs });
+      } catch (error) {
+        // removed since the folder was read: it is not a room any more
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    return rooms;
+  }
+
+  async touch(id: string, at: number): Promise<void> {
+    try {
+      await utimes(this.path(id), at / 1000, at / 1000);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 

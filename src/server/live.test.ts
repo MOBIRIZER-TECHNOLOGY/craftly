@@ -3,7 +3,7 @@
  * a key, what a viewer may and may not do, two browsers editing at once through it, a room that survives a restart, and the limits
  * that keep one visitor from using the server up.
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -526,6 +526,8 @@ describe("a store that cannot be read", () => {
       checkWritable: async () => {
         throw new Error("the disk is gone");
       },
+      list: async () => [],
+      touch: async () => undefined,
     };
     const log = logged();
     const b = await boot({}, failing);
@@ -1234,5 +1236,304 @@ describe("who may ask, and how often an address may make a room", () => {
     // without a header that can be used it is the proxy's own address that is counted
     expect((await post(b)).status).toBe(201);
     expect((await post(b, { "x-forwarded-for": "nonsense" })).status).toBe(429);
+  });
+});
+
+describe("a room that nobody uses any more", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  /** A clock that a test moves, for the server and for a store in memory alike. */
+  const clock = () => {
+    let at = Date.now();
+    return { now: () => at, pass: (ms: number) => void (at += ms) };
+  };
+  /** Long enough for several rounds of a sweep that runs every 20 ms. */
+  const someSweeps = () => new Promise((r) => setTimeout(r, 150));
+  /** A store in memory that counts what the server asks of it. */
+  class Watched extends MemoryStorage {
+    lists = 0;
+    touches: string[] = [];
+    override async list() {
+      this.lists++;
+      return super.list();
+    }
+    override async touch(id: string, at: number) {
+      this.touches.push(id);
+      return super.touch(id, at);
+    }
+  }
+
+  it("is removed when it was last used longer ago than rooms may live, and one that was joined since is kept", async () => {
+    const time = clock();
+    const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20, idleCloseMs: 20, now: time.now }, new MemoryStorage(time.now));
+    const [old, visited] = [await makeRoom(b), await makeRoom(b)];
+    time.pass(6 * DAY);
+    const viewer = join(b, visited.room, visited.viewKey); // looking is using
+    await until("live", () => viewer.status === "live");
+    viewer.stop();
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+    time.pass(5 * DAY); // eleven days for the one, five for the other
+    await until("the old room to be removed", async () => (await b.storage.load(old.room)) === null);
+    await someSweeps();
+    expect(await b.storage.load(visited.room)).not.toBeNull();
+    expect(await b.storage.count()).toBe(1);
+    const late = join(b, old.room, old.editKey);
+    await until("a late visitor to be refused", () => late.status === "denied");
+    expect(late.denied).toBe("not-found");
+    // and the other goes too when its time has come
+    time.pass(6 * DAY);
+    await until("the second room to be removed", async () => (await b.storage.count()) === 0);
+  });
+
+  it("keeps a room that was edited since: saving is using", async () => {
+    const time = clock();
+    const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20, now: time.now }, new MemoryStorage(time.now));
+    const made = await makeRoom(b);
+    const ann = join(b, made.room, made.editKey);
+    await until("live", () => ann.status === "live");
+    time.pass(9 * DAY);
+    ann.edit(ann.design!, rename(ann.design!, "Still in use"));
+    await until("confirmed", () => ann.session.pending === 0);
+    ann.stop();
+    time.pass(9 * DAY);
+    await someSweeps();
+    expect((await b.storage.load(made.room))?.design.title).toBe("Still in use");
+  });
+
+  it("is never removed while somebody is in it, and has been used when the sweep finds it so", async () => {
+    const time = clock();
+    const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20, now: time.now }, new MemoryStorage(time.now));
+    const made = await makeRoom(b);
+    const ann = join(b, made.room, made.editKey);
+    await until("live", () => ann.status === "live");
+    time.pass(30 * DAY);
+    await someSweeps();
+    expect(ann.status).toBe("live");
+    expect(await b.storage.load(made.room)).not.toBeNull();
+    // she leaves after thirty days: the room was in use until now, and is not removed on the spot
+    ann.stop();
+    time.pass(9 * DAY);
+    await someSweeps();
+    expect(await b.storage.load(made.room)).not.toBeNull();
+    // it is still in memory (nobody has been gone for a minute), and goes from there too when its time has come
+    expect(b.server.rooms()).toBe(1);
+    time.pass(2 * DAY);
+    await until("the room to be removed", async () => (await b.storage.load(made.room)) === null);
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+  });
+
+  it("is not removed while an image for it is on its way", async () => {
+    const time = clock();
+    const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20, now: time.now }, new MemoryStorage(time.now));
+    const made = await makeRoom(b);
+    const image = JSON.stringify({ mime: "image/png", base64: Buffer.from("a picture").toString("base64") });
+    const req = request(`${b.http}/api/rooms/${made.room}/assets/img-1`, {
+      method: "PUT",
+      headers: { "x-craftly-key": made.editKey, "content-length": Buffer.byteLength(image) },
+    });
+    const status = new Promise<number>((resolve) => req.on("response", (res) => resolve(res.resume().statusCode ?? 0)));
+    req.write(image.slice(0, 20));
+    await until("the room to be read", () => b.server.rooms() === 1);
+    time.pass(11 * DAY);
+    await someSweeps();
+    req.end(image.slice(20));
+    expect(await status).toBe(201);
+    expect(Object.keys((await b.storage.load(made.room))?.assets ?? {})).toEqual(["img-1"]);
+  });
+
+  it("sends away whoever came to a room while it was being removed", async () => {
+    const time = clock();
+    let release = () => undefined as void;
+    let started = () => undefined as void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const removing = new Promise<void>((resolve) => (started = resolve));
+    class Slow extends MemoryStorage {
+      override async remove(id: string) {
+        started();
+        await held;
+        return super.remove(id);
+      }
+    }
+    const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20, now: time.now }, new Slow(time.now));
+    const made = await makeRoom(b);
+    time.pass(11 * DAY);
+    await removing;
+    const late = raw(b, made.room, made.editKey);
+    await late.opened;
+    await new Promise((r) => setTimeout(r, 50)); // it has found the room, which is still there
+    release();
+    await until("the late one to be sent away", () => late.closed() === 4004);
+    expect(late.heard).toEqual([{ t: "denied", reason: "not-found" }]);
+    expect(await b.storage.load(made.room)).toBeNull();
+  });
+
+  it("notes that a room was used when somebody joins, but not more often than once a day", async () => {
+    const time = clock();
+    const storage = new Watched(time.now);
+    const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20, now: time.now }, storage);
+    const made = await makeRoom(b);
+    const visit = async () => {
+      const visitor = join(b, made.room, made.viewKey);
+      await until("live", () => visitor.status === "live");
+      visitor.stop();
+    };
+    await visit(); // the room was made a moment ago
+    expect(storage.touches).toEqual([]);
+    time.pass(2 * DAY);
+    await visit();
+    await until("the note", () => storage.touches.length === 1);
+    time.pass(DAY - 1000);
+    await visit();
+    await visit();
+    expect(storage.touches).toHaveLength(1);
+    time.pass(1000);
+    await visit();
+    await until("the second note", () => storage.touches.length === 2);
+    expect(storage.touches).toEqual([made.room, made.room]);
+  });
+
+  it("notes it more often when rooms live for less than four days, so that a room in use does not expire between two notes", async () => {
+    const time = clock();
+    const storage = new Watched(time.now);
+    const b = await boot({ roomTtlMs: DAY, sweepEveryMs: 20, now: time.now }, storage);
+    const made = await makeRoom(b);
+    time.pass(DAY / 4);
+    const visitor = join(b, made.room, made.viewKey);
+    await until("live", () => visitor.status === "live");
+    await until("the note", () => storage.touches.length === 1);
+  });
+
+  it("removes nothing, and does not even look, unless it is told how long rooms may live", async () => {
+    const time = clock();
+    for (const roomTtlMs of [undefined, 0]) {
+      const storage = new Watched(time.now);
+      const b = await boot({ roomTtlMs, sweepEveryMs: 20, now: time.now }, storage);
+      const made = await makeRoom(b);
+      time.pass(3650 * DAY);
+      await someSweeps();
+      expect(await storage.load(made.room)).not.toBeNull();
+      expect(storage.lists).toBe(0);
+    }
+  });
+
+  it("looks once when it starts, and then every hour unless it is told otherwise", async () => {
+    const time = clock();
+    const storage = new Watched(time.now);
+    const before = await boot({ now: time.now }, storage);
+    const made = await makeRoom(before);
+    await before.server.close();
+    servers.length = 0;
+    time.pass(11 * DAY);
+    const b = await boot({ roomTtlMs: 10 * DAY, now: time.now }, storage);
+    await until("the room to be removed", async () => (await b.storage.load(made.room)) === null);
+    await someSweeps();
+    expect(storage.lists).toBe(1);
+  });
+
+  it("writes down a room it could not remove or a list it could not get, and goes on with the others and with the next round", async () => {
+    const time = clock();
+    let broken = true;
+    class Faulty extends MemoryStorage {
+      override async list() {
+        if (broken) throw new Error("the disk is gone");
+        return super.list();
+      }
+      override async remove(id: string) {
+        if (id === stubborn.room) throw new Error("cannot be removed");
+        return super.remove(id);
+      }
+    }
+    const log = logged();
+    const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20, idleCloseMs: 20, now: time.now }, new Faulty(time.now));
+    const stubborn = await makeRoom(b);
+    const other = await makeRoom(b);
+    time.pass(11 * DAY);
+    await until("the failure to be written down", () => log.mock.calls.length > 0);
+    expect(String(log.mock.calls[0][1])).toContain("the disk is gone");
+    expect(await b.storage.count()).toBe(2);
+    broken = false;
+    await until("the other room to be removed", async () => (await b.storage.load(other.room)) === null);
+    expect(await b.storage.load(stubborn.room)).not.toBeNull();
+    expect(log.mock.calls.some((call) => String(call[0]).includes(stubborn.room))).toBe(true);
+    // a room that could not be removed is still a room: its people get in
+    const ann = join(b, stubborn.room, stubborn.editKey);
+    await until("live", () => ann.status === "live");
+  });
+
+  it("does not let a join fail because the note of it could not be written", async () => {
+    const time = clock();
+    class Faulty extends MemoryStorage {
+      override async touch(): Promise<void> {
+        throw new Error("cannot be touched");
+      }
+    }
+    const log = logged();
+    const b = await boot({ now: time.now }, new Faulty(time.now));
+    const made = await makeRoom(b);
+    time.pass(2 * DAY);
+    const ann = join(b, made.room, made.editKey);
+    await until("live", () => ann.status === "live");
+    await until("the failure to be written down", () => log.mock.calls.length === 1);
+    ann.edit(ann.design!, rename(ann.design!, "Works"));
+    await until("confirmed", () => ann.session.pending === 0);
+  });
+
+  describe("with files on a disk", () => {
+    const folder = () => mkdtempSync(join2(tmpdir(), "craftly-live-test-"));
+
+    it("takes the time of a room's file as the time it was last used, and sets it without reading or writing the room", async () => {
+      const dir = folder();
+      try {
+        const storage = new FileStorage(dir);
+        expect(await storage.list()).toEqual([]); // the folder is not even there yet
+        const b = await boot({}, storage);
+        const [one, two] = [await makeRoom(b), await makeRoom(b)];
+        // what is in the folder and is not a room is not listed
+        writeFileSync(join2(dir, "notes.json"), "{}");
+        writeFileSync(join2(dir, `${one.room}.json.abc123.tmp`), "{}");
+        mkdirSync(join2(dir, "a-folder"));
+        const listed = await storage.list();
+        expect(listed.map((room) => room.id).sort()).toEqual([one.room, two.room].sort());
+        for (const room of listed) expect(Math.abs(room.usedAt - Date.now())).toBeLessThan(60_000);
+        const before = readFileSync(join2(dir, `${one.room}.json`), "utf8");
+        const then = Date.now() - 40 * DAY;
+        await storage.touch(one.room, then);
+        const again = await storage.list();
+        expect(Math.abs(again.find((room) => room.id === one.room)!.usedAt - then)).toBeLessThan(2000);
+        expect(Math.abs(again.find((room) => room.id === two.room)!.usedAt - Date.now())).toBeLessThan(60_000);
+        expect(readFileSync(join2(dir, `${one.room}.json`), "utf8")).toBe(before);
+        // a room that is not there is not made by noting that it was used
+        await storage.touch("A".repeat(22), then);
+        expect(await storage.count()).toBe(3); // the two rooms and the notes
+        expect(existsSync(join2(dir, `${"A".repeat(22)}.json`))).toBe(false);
+        await expect(storage.touch("../outside", then)).rejects.toThrow();
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("removes the file of a room that has expired, and leaves a damaged one where it is with a line in the log", async () => {
+      const dir = folder();
+      try {
+        const storage = new FileStorage(dir);
+        const before = await boot({}, storage);
+        const [old, damaged, fresh] = [await makeRoom(before), await makeRoom(before), await makeRoom(before)];
+        await before.server.close();
+        servers.length = 0;
+        writeFileSync(join2(dir, `${damaged.room}.json`), '{"design": {"pages": [');
+        const longAgo = Date.now() - 11 * DAY;
+        await storage.touch(old.room, longAgo);
+        await storage.touch(damaged.room, longAgo);
+        const log = logged();
+        const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20 }, storage);
+        await until("the old room to be removed", () => !existsSync(join2(dir, `${old.room}.json`)));
+        await until("the damaged one to be written down", () => log.mock.calls.some((call) => String(call[0]).includes(damaged.room)));
+        expect(existsSync(join2(dir, `${damaged.room}.json`))).toBe(true);
+        expect(existsSync(join2(dir, `${fresh.room}.json`))).toBe(true);
+        const ann = join(b, fresh.room, fresh.editKey);
+        await until("live", () => ann.status === "live");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 });
