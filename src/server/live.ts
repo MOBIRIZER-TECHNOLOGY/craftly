@@ -110,6 +110,12 @@ interface Loaded {
   sockets: Set<WebSocket>;
   /** The connections that have shown a key: the people in the room. */
   members: Set<WebSocket>;
+  /**
+   * How many HTTP requests are at work on the room now. Such a request keeps this object over a wait (the body of an upload may
+   * take minutes to arrive), so the room stays in memory until it is done: were it to leave and be read again meanwhile, the request
+   * would go on with a copy that is no longer the room, and save it over what happened since.
+   */
+  pins: number;
   work: Promise<void>;
   removed: boolean;
   idleTimer: ReturnType<typeof setTimeout> | null;
@@ -155,6 +161,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       record,
       sockets: new Set(),
       members: new Set(),
+      pins: 0,
       work: Promise.resolve(),
       removed: false,
       idleTimer: null,
@@ -188,14 +195,25 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   };
 
   const unloadLater = (l: Loaded) => {
-    if (closing || l.removed || l.sockets.size || l.idleTimer) return;
+    if (closing || l.removed || l.sockets.size || l.pins || l.idleTimer) return;
     l.idleTimer = setTimeout(() => {
       l.idleTimer = null;
-      if (l.sockets.size) return;
+      if (l.sockets.size || l.pins) return;
       void enqueue(l, () => {
-        if (!l.sockets.size && loaded.get(l.id) === l) loaded.delete(l.id);
+        if (!l.sockets.size && !l.pins && loaded.get(l.id) === l) loaded.delete(l.id);
       });
     }, o.idleCloseMs);
+  };
+
+  /** Runs what an HTTP request does with a room, which stays in memory for as long as that takes and may leave it afterwards. */
+  const pinned = async (l: Loaded, work: () => Promise<void>) => {
+    l.pins++;
+    try {
+      await work();
+    } finally {
+      l.pins--;
+      unloadLater(l);
+    }
   };
 
   /* ---------------- HTTP ---------------- */
@@ -314,7 +332,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const roomAsset = async (id: string, assetId: string, req: IncomingMessage, res: ServerResponse) => {
     const l = await find(id);
     if (!l || l.removed) return reply(res, 404, { error: "no such shared design" });
-    unloadLater(l);
+    await pinned(l, () => roomAssetIn(l, assetId, req, res));
+  };
+
+  const roomAssetIn = async (l: Loaded, assetId: string, req: IncomingMessage, res: ServerResponse) => {
+    const id = l.id;
     const role = roleOf(l, req.headers["x-craftly-key"]);
     if (!role || (req.method === "PUT" && role !== "edit")) return reply(res, 403, { error: "this link cannot access the requested image" });
     if (!ASSET_ID.test(assetId)) return reply(res, 400, { error: "invalid image id" });
@@ -346,7 +368,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       return reply(res, 400, { error: "invalid image data or format" });
     }
     await enqueue(l, async () => {
-      if (l.removed) return reply(res, 404, { error: "no such shared design" });
+      // The body may have taken minutes. Only the room that is in memory now may be saved: not one that was stopped meanwhile, and
+      // not a copy that memory let go of (which being pinned rules out; it is asked all the same, because saving such a copy would
+      // undo every edit since, and bring a deleted room back with its keys).
+      if (l.removed || loaded.get(id) !== l) return reply(res, 404, { error: "no such shared design" });
       const have = existing();
       if (have) return have.mime === mime && have.base64 === base64 ? reply(res, 200, { ok: true }) : reply(res, 409, { error: "image id already in use" });
       const size = Object.values(l.record.assets ?? {}).reduce((sum, image) => sum + image.base64.length, base64.length);

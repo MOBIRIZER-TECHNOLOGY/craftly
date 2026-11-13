@@ -4,6 +4,7 @@
  * that keep one visitor from using the server up.
  */
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { request } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join as join2 } from "node:path";
@@ -879,5 +880,94 @@ describe("admission: what one visitor may cost the server", () => {
     await until("the welcome of the fourth", () => welcomes(fourth.heard) === 1);
     expect(elsewhere.closed()).toBeNull();
     expect(two.closed()).toBeNull();
+  });
+});
+
+describe("an image that takes its time to arrive", () => {
+  const image = JSON.stringify({ mime: "image/png", base64: Buffer.from("a picture, as far as the server can tell").toString("base64") });
+
+  /** An upload whose first half has been sent and whose second half waits for `finish`; `status` is what the server answers in the end. */
+  function slowUpload(b: Booted, made: Made, id: string) {
+    const req = request(`${b.http}/api/rooms/${made.room}/assets/${id}`, {
+      method: "PUT",
+      headers: { "x-craftly-key": made.editKey, "content-length": Buffer.byteLength(image) },
+    });
+    const status = new Promise<number>((resolve, reject) => {
+      req.on("response", (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      req.on("error", reject);
+    });
+    status.catch(() => undefined); // an upload that is given up has no answer, and nobody waits for one
+    req.write(image.slice(0, 20));
+    return { status, finish: () => void req.end(image.slice(20)), giveUp: () => void req.destroy() };
+  }
+  /** Long enough for a room with nobody in it to leave memory, where `idleCloseMs` is 20. */
+  const aWhile = () => new Promise((r) => setTimeout(r, 200));
+
+  it("does not put the room back as it was when the upload began: an edit made meanwhile stays", async () => {
+    const b = await boot({ idleCloseMs: 20 });
+    const made = await makeRoom(b);
+    const upload = slowUpload(b, made, "img-1");
+    await aWhile();
+    const ann = join(b, made.room, made.editKey);
+    await until("live", () => ann.status === "live");
+    ann.edit(ann.design!, rename(ann.design!, "Changed while the image was on its way"));
+    await until("confirmed", () => ann.session.pending === 0);
+    ann.stop();
+    await aWhile();
+    upload.finish();
+    expect(await upload.status).toBe(201);
+    const saved = (await b.storage.load(made.room))!;
+    expect(saved.design.title).toBe("Changed while the image was on its way");
+    expect(saved.rev).toBe(1);
+    expect(Object.keys(saved.assets ?? {})).toEqual(["img-1"]);
+    // and a browser that comes now is shown the edit
+    const bob = join(b, made.room, made.viewKey);
+    await until("live", () => bob.status === "live");
+    expect(bob.design?.title).toBe("Changed while the image was on its way");
+  });
+
+  it("does not bring back a room that its owner stopped sharing while the image was on its way", async () => {
+    const b = await boot({ idleCloseMs: 20 });
+    const made = await makeRoom(b);
+    const upload = slowUpload(b, made, "img-1");
+    await aWhile();
+    const stopped = await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } });
+    expect(stopped.status).toBe(200);
+    upload.finish();
+    expect(await upload.status).toBe(404);
+    expect(await b.storage.load(made.room)).toBeNull();
+    const late = join(b, made.room, made.editKey);
+    await until("a late visitor to be refused", () => late.status === "denied");
+    expect(late.denied).toBe("not-found");
+  });
+
+  it("keeps the room in memory for as long as the image is on its way, and lets it go after: when it has arrived, and when it never does", async () => {
+    const b = await boot({ idleCloseMs: 20 });
+    const made = await makeRoom(b);
+    const upload = slowUpload(b, made, "img-1");
+    await until("the room to be read", () => b.server.rooms() === 1);
+    await aWhile();
+    expect(b.server.rooms()).toBe(1);
+    upload.finish();
+    expect(await upload.status).toBe(201);
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+    const lost = slowUpload(b, made, "img-2");
+    await until("the room to be read again", () => b.server.rooms() === 1);
+    lost.giveUp();
+    await until("the room to leave memory again", () => b.server.rooms() === 0);
+    expect(Object.keys((await b.storage.load(made.room))!.assets ?? {})).toEqual(["img-1"]);
+  });
+
+  it("lets a room go after a request for an image that was refused or only read", async () => {
+    const b = await boot({ idleCloseMs: 20 });
+    const made = await makeRoom(b);
+    const at = `${b.http}/api/rooms/${made.room}/assets/img-1`;
+    expect((await fetch(at, { headers: { "x-craftly-key": "wrong" } })).status).toBe(403);
+    expect((await fetch(at, { headers: { "x-craftly-key": made.viewKey } })).status).toBe(404);
+    expect((await fetch(at, { method: "PUT", headers: { "x-craftly-key": made.editKey }, body: "not json" })).status).toBe(400);
+    await until("the room to leave memory", () => b.server.rooms() === 0);
   });
 });
