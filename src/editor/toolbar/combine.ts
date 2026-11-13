@@ -37,7 +37,7 @@ function stillThere(pageId: ID, shapes: readonly DesignElement[]): boolean {
  * of an element that goes falls to the page. Put it on the canvas, where the keys of the editor work, unless the person has
  * moved it somewhere else in the meantime.
  */
-function keepFocusInEditor(): void {
+export function keepFocusInEditor(): void {
   requestAnimationFrame(() => {
     const active = document.activeElement;
     if (!active || active === document.body) document.querySelector<HTMLElement>("[data-cf-workspace]")?.focus();

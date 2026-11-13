@@ -44,6 +44,7 @@ import { openAltTextDialog } from "./altText";
 import { canConvertToPath, combineMenuItems, convertToPath } from "./combine";
 import { IconAccessibility } from "./icons";
 import { pickImageFor } from "./imageFile";
+import { convertToShapes, offersConvertToShapes } from "./svgShapes";
 
 export interface ContextMenuOptions {
   /** design-space point under the pointer; "Paste" drops the copied elements there when nothing is selected */
@@ -159,6 +160,10 @@ export function buildContextMenuItems(state: EditorState, opts: ContextMenuOptio
   }
   if (els.some((e) => e.type === "shape" && e.shape !== "path")) {
     items.push({ id: "convert-to-path", label: "Convert to path", icon: ic(IconCurve), disabled: !canConvertToPath(page, ids), onSelect: () => void convertToPath(ids) });
+  }
+  if (offersConvertToShapes(single)) {
+    const drawingId = single.id;
+    items.push({ id: "convert-to-shapes", label: "Convert to shapes", icon: ic(IconCurve), disabled: !!single.locked, onSelect: () => void convertToShapes(drawingId) });
   }
 
   items.push(
