@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGroup, createShape, createText } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
 import type { TextElement } from "@/core/types";
+import { customFontCss, setCustomFaces } from "@/render/fonts";
 import { canvasDesign, currentPage, elementOf, mountWorkspace } from "@/test/canvasUtils";
 import { markSelectAllOnEdit } from "./controller";
 import { registerTextEditor, textEditing, useTextSelectionStyle } from "./textEditing";
@@ -387,6 +388,17 @@ describe("turning the typed text back into runs", () => {
     const { editor } = await openEditor();
     browserSets(editor, "<div><span style=\"font-family: 'Papyrus', fantasy\">odd</span></div>");
     expect(paragraphs()[0].runs[0].font).toBe("Papyrus");
+  });
+
+  it("reads an uploaded font back as the family the person knows, not as the name it is registered under", async () => {
+    setCustomFaces([{ id: "f_1", family: "Acme Sans", minWeight: 400, maxWeight: 400, italic: false, format: "ttf", data: new ArrayBuffer(8) }]);
+    try {
+      const { editor } = await openEditor();
+      browserSets(editor, `<div><span style="font-family: '${customFontCss("Acme Sans")}', 'Acme Sans', sans-serif">mine</span></div>`);
+      expect(paragraphs()[0].runs[0].font).toBe("Acme Sans");
+    } finally {
+      setCustomFaces([]);
+    }
   });
 
   it("measures sizes at the current zoom", async () => {

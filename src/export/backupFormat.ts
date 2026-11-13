@@ -9,6 +9,7 @@
  *   designs/<id>.json            one design each, trash included, exactly as stored
  *   previews/<id>.jpg            the dashboard thumbnail of a design, when it has one
  *   uploads/<id>.<ext>           an uploaded picture, byte for byte
+ *   fonts/<id>.<ext>             an uploaded font file, byte for byte (only in a library that has uploaded fonts)
  *   versions/<designId>/<n>.json one saved version of a design (the Version history list)
  *
  * Restoring only ever adds. Nothing that is in the library now is replaced or removed (see `planRestore`).
@@ -121,6 +122,25 @@ export interface ManifestUpload {
   file: string;
 }
 
+/** An uploaded font file (src/core/customFonts.ts): what the library knows about it, and where it is in the archive. */
+export interface ManifestFont {
+  id: string;
+  /** the family the designs name */
+  family: string;
+  weight: number;
+  /** above `weight` for a variable font */
+  maxWeight: number;
+  italic: boolean;
+  format: "ttf" | "otf" | "woff" | "woff2";
+  /** the name the file was uploaded under */
+  fileName: string;
+  size: number;
+  createdAt: number;
+  file: string;
+}
+
+export const fontEntryName = (id: string, format: string) => `fonts/${id}.${format}`;
+
 export interface ManifestVersion {
   id: string;
   designId: string;
@@ -140,6 +160,8 @@ export interface BackupManifest {
   versions: ManifestVersion[];
   /** null when this browser never customised its brand kit */
   brandKit: BrandKit | null;
+  /** the uploaded fonts; left out when there are none, so a backup of a library without them is what it was before fonts could be uploaded */
+  fonts?: ManifestFont[];
 }
 
 export interface BackupCounts {
@@ -149,11 +171,20 @@ export interface BackupCounts {
   folders: number;
   uploads: number;
   versions: number;
+  /** uploaded font files; only there when the backup has any */
+  fonts?: number;
 }
 
 export function countsOf(manifest: BackupManifest): BackupCounts {
   const trashed = manifest.designs.filter((d) => d.trashed).length;
-  return { designs: manifest.designs.length - trashed, trashed, folders: manifest.folders.length, uploads: manifest.uploads.length, versions: manifest.versions.length };
+  return {
+    designs: manifest.designs.length - trashed,
+    trashed,
+    folders: manifest.folders.length,
+    uploads: manifest.uploads.length,
+    versions: manifest.versions.length,
+    ...(manifest.fonts?.length ? { fonts: manifest.fonts.length } : {}),
+  };
 }
 
 export function buildManifest(parts: Omit<BackupManifest, "craftlyBackup" | "app" | "exportedAt">, now: Date = new Date()): BackupManifest {
@@ -194,6 +225,32 @@ function readUpload(item: unknown): ManifestUpload | null {
     size: isNum(item.size) && item.size >= 0 ? item.size : 0,
     width: isNum(item.width) && item.width > 0 ? item.width : 800,
     height: isNum(item.height) && item.height > 0 ? item.height : 600,
+    createdAt: isNum(item.createdAt) ? item.createdAt : 0,
+    file: item.file,
+  };
+}
+
+const FONT_FORMATS = new Set<string>(["ttf", "otf", "woff", "woff2"]);
+
+/**
+ * A font of the manifest. What the entry says is only what the library remembered about the file; whether the file is
+ * a font at all is decided from its bytes when it is restored (`importCustomFont`), as for an upload.
+ */
+function readFont(item: unknown): ManifestFont | null {
+  if (!isObject(item) || !isSafeId(item.id) || typeof item.file !== "string" || !item.file) return null;
+  if (typeof item.family !== "string" || !item.family.trim()) return null;
+  const named = typeof item.format === "string" ? item.format : item.file.slice(item.file.lastIndexOf(".") + 1).toLowerCase();
+  if (!FONT_FORMATS.has(named)) return null;
+  const weight = isNum(item.weight) ? item.weight : 400;
+  return {
+    id: item.id,
+    family: item.family,
+    weight,
+    maxWeight: isNum(item.maxWeight) ? item.maxWeight : weight,
+    italic: item.italic === true,
+    format: named as ManifestFont["format"],
+    fileName: text(item.fileName, item.file.slice(item.file.lastIndexOf("/") + 1)),
+    size: isNum(item.size) && item.size >= 0 ? item.size : 0,
     createdAt: isNum(item.createdAt) ? item.createdAt : 0,
     file: item.file,
   };
@@ -268,6 +325,8 @@ export function parseManifest(source: string): { manifest: BackupManifest; skipp
     versions: list(envelope.versions, readVersion),
     brandKit: readBrandKit(envelope.brandKit),
   };
+  const fonts = list(envelope.fonts, readFont);
+  if (fonts.length) manifest.fonts = fonts;
   return { manifest, skipped };
 }
 
@@ -282,6 +341,8 @@ export interface LocalLibrary {
   folders: ReadonlySet<string>;
   uploads: ReadonlySet<string>;
   versions: ReadonlySet<string>;
+  /** the ids of the uploaded font files; a library without any may leave it out */
+  fonts?: ReadonlySet<string>;
   /** the brand kit this browser stored; undefined when it never customised one */
   brandKit: BrandKit | undefined;
 }
@@ -347,6 +408,8 @@ export interface RestorePlan {
   folders: { add: number; same: number };
   /** versions that will be added: those of designs that come back under their own id */
   versions: { add: number };
+  /** the uploaded font files, by id; only there when the backup has any */
+  fonts?: { add: number; same: number };
   brandKit: BrandKitAction;
   /** everything in the backup is here already */
   nothingNew: boolean;
@@ -365,12 +428,15 @@ export function planRestore(manifest: BackupManifest, local: LocalLibrary): Rest
   const foldersAdd = manifest.folders.filter((f) => !local.folders.has(f.id)).length;
   const versionsAdd = manifest.versions.filter((v) => keepsId.has(v.designId) && !local.versions.has(v.id)).length;
   const brandKit = mergeBrandKit(local.brandKit, manifest.brandKit).action;
+  const fonts = manifest.fonts ?? [];
+  const fontsAdd = fonts.filter((f) => !local.fonts?.has(f.id)).length;
   return {
     designs,
     uploads: { add: uploadsAdd, same: manifest.uploads.length - uploadsAdd },
     folders: { add: foldersAdd, same: manifest.folders.length - foldersAdd },
     versions: { add: versionsAdd },
+    ...(fonts.length ? { fonts: { add: fontsAdd, same: fonts.length - fontsAdd } } : {}),
     brandKit,
-    nothingNew: designs.add + designs.copy + uploadsAdd + foldersAdd + versionsAdd === 0 && brandKit === "none",
+    nothingNew: designs.add + designs.copy + uploadsAdd + foldersAdd + versionsAdd + fontsAdd === 0 && brandKit === "none",
   };
 }

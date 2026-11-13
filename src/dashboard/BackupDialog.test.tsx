@@ -529,6 +529,20 @@ describe("<BackupDialog>", () => {
       expect(text).toContain("3 items could not be read, because the backup file is damaged.");
     });
 
+    it("names the uploaded fonts of a backup: how many it holds, how many will be added and how many came back", async () => {
+      const user = setup();
+      vi.mocked(restoreBackup).mockResolvedValue(restored({ fonts: { added: 2, same: 1, damaged: 1 } }));
+      await pickBackup(user, inspection({ counts: { ...COUNTS, fonts: 3 }, plan: { ...inspection().plan, fonts: { add: 2, same: 1 } } }));
+      expect(dialog().textContent).toContain("3 uploaded fonts");
+      expect(dialog().textContent).toMatch(/Will be added: [^.]*2 uploaded fonts/);
+      expect(dialog().textContent).toContain("Already here and left as they are: 1 uploaded font.");
+      await user.click(button("Restore"));
+      await within(dialog()).findByRole("heading", { name: "Restore finished" });
+      expect(dialog().textContent).toMatch(/Added: [^.]*2 uploaded fonts/);
+      expect(dialog().textContent).toContain("Already here: 1 uploaded font.");
+      expect(dialog().textContent).toContain("1 item could not be read, because the backup file is damaged.");
+    });
+
     it("says what a newer Craftly made and was left out, and how to get it back", async () => {
       const user = setup();
       vi.mocked(restoreBackup).mockResolvedValue(restored({ newer: 2 }));

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { createText, textPresetSizes } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
-import { FONT_CATALOG, cssFontFamily } from "@/render/fonts";
+import { useCustomFamilies } from "@/components/CustomFonts";
+import { FONT_CATALOG, cssFontFamily, customFontDefs, type FontDef } from "@/render/fonts";
 import { TEXT_COMBOS, type TextCombo } from "@/data/textCombos";
 import { TEXT_STYLE_PRESETS, type TextStylePreset } from "@/data/textStyles";
 import { Button, IconBrand, IconSearch, IconText, Skeleton, cx } from "@/ui";
@@ -19,7 +20,8 @@ import "./TextTab.css";
 const GAP = 8;
 
 /** The family names, categories and words people type ("serif", "script", "mono" ...) a font is found by. */
-const FONT_HAYSTACK = FONT_CATALOG.map((f) => ({ def: f, hay: `${f.family} ${f.category} ${f.variable ? "variable" : ""} ${f.italic ? "italic" : ""}`.toLowerCase() }));
+const haystackOf = (f: FontDef) => ({ def: f, hay: `${f.family} ${f.category} ${f.variable ? "variable" : ""} ${f.italic ? "italic" : ""}`.toLowerCase() });
+const FONT_HAYSTACK = FONT_CATALOG.map(haystackOf);
 
 const matchesWords = (hay: string, q: string) =>
   q
@@ -40,7 +42,15 @@ export default function TextTab() {
   const q = debounced.trim().toLowerCase();
   const searching = query.trim().length > 0;
 
-  const fonts = useMemo(() => (q ? FONT_HAYSTACK.filter((f) => matchesWords(f.hay, q)).map((f) => f.def) : []), [q]);
+  // the fonts the person uploaded are found by their names, before the bundled ones
+  const uploaded = useCustomFamilies();
+  const fonts = useMemo(
+    () =>
+      q
+        ? [...(uploaded ? customFontDefs().map((f) => ({ def: f, hay: f.family.toLowerCase() })) : []), ...FONT_HAYSTACK].filter((f) => matchesWords(f.hay, q)).map((f) => f.def)
+        : [],
+    [q, uploaded],
+  );
   const combos = useMemo(() => (q ? TEXT_COMBOS.filter((c) => matchesWords(`${c.name} ${c.fonts.join(" ")}`.toLowerCase(), q)) : TEXT_COMBOS), [q]);
 
   if (!design) return null;

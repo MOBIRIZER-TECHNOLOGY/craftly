@@ -5,8 +5,10 @@
  * private - the FontFace API cannot hand a source URL back either - so this file lists the very same imports.
  * Vite resolves each `?url` import to the same hashed asset, so no file is bundled twice. A unit test checks
  * that this table covers every family, weight range and style of FONT_CATALOG.
+ *
+ * A font the person uploaded has no file here: its bytes are in the library, and `fontFile` hands them out as they are.
  */
-import { getFontDef, snapWeight } from "@/render/fonts";
+import { customFaceFor, getFontDef, snapWeight } from "@/render/fonts";
 
 interface FaceFile {
   /** weight range the file covers (equal for static files) */
@@ -134,6 +136,9 @@ export interface FontFileInfo {
   minWeight: number;
   maxWeight: number;
   italic: boolean;
+  /** an uploaded font: the file itself (`url` is empty then) and what kind of font file it is */
+  data?: ArrayBuffer;
+  format?: "ttf" | "otf" | "woff" | "woff2";
 }
 
 /** The face file `render/fonts.ts` would load for this request (same rule as its `pickFace`). */
@@ -150,13 +155,24 @@ function pickFace(family: string, weight: number, italic: boolean): { def: NonNu
 /** Stable identity of the face a request resolves to (to de-duplicate before fetching). Null for unknown families. */
 export function fontFaceKey(family: string, weight = 400, italic = false): string | null {
   const hit = pickFace(family, weight, italic);
-  return hit ? `${family}|${hit.face.min}-${hit.face.max}|${hit.face.italic}` : null;
+  if (hit) return `${family}|${hit.face.min}-${hit.face.max}|${hit.face.italic}`;
+  const uploaded = customFaceFor(family, weight, italic);
+  return uploaded ? `uploaded|${uploaded.id}` : null;
 }
 
-/** URL plus @font-face descriptors of the woff2 file for this family, weight and style; null for unknown families. */
+/** The file of the uploaded font this request is drawn with, or null when the family is not an uploaded one. */
+function uploadedFile(family: string, weight: number, italic: boolean): FontFileInfo | null {
+  const face = customFaceFor(family, weight, italic);
+  return face ? { family, css: face.css, url: "", minWeight: face.minWeight, maxWeight: face.maxWeight, italic: face.italic, format: face.format, data: face.data } : null;
+}
+
+/**
+ * URL plus @font-face descriptors of the woff2 file for this family, weight and style, or the bytes of the uploaded font
+ * with the same descriptors; null for unknown families.
+ */
 export async function fontFile(family: string, weight = 400, italic = false): Promise<FontFileInfo | null> {
   const hit = pickFace(family, weight, italic);
-  if (!hit) return null;
+  if (!hit) return uploadedFile(family, weight, italic);
   try {
     const { default: url } = await hit.face.load();
     return { family, css: hit.def.css, url, minWeight: hit.face.min, maxWeight: hit.face.max, italic: hit.face.italic };

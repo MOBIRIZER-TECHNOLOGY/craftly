@@ -11,6 +11,13 @@
  *
  * Nothing here touches the DOM at import time, and without a `document` (unit
  * tests, workers) every font counts as ready, so layout code never waits on it.
+ *
+ * Fonts a person uploaded (src/core/customFonts.ts keeps the files) join the same
+ * catalogue through `setCustomFaces`, so everything that asks for a font here - the
+ * canvas, thumbnails, Present, the exports - finds them the same way. A bundled
+ * family always wins over an uploaded one of the same name, and an uploaded family
+ * is registered under a name this file makes up from safe characters, never under
+ * the text a person typed.
  */
 
 export type FontCategory = "sans" | "serif" | "display" | "script" | "handwriting" | "mono";
@@ -35,13 +42,30 @@ export interface FontDef {
 /** A woff2 file imported on demand; Vite resolves the `?url` import to a hashed asset URL. */
 type FontFile = () => Promise<{ default: string }>;
 
-/** One woff2 file together with the CSS descriptors it is registered with. */
+/** One uploaded font file, as much of it as drawing needs (the stored record is `CustomFontFile` in src/core/customFonts.ts). */
+export interface CustomFace {
+  id: string;
+  /** the name the person knows the family by; it is what documents store */
+  family: string;
+  /** lightest and heaviest weight the file covers; equal unless it is a variable font */
+  minWeight: number;
+  maxWeight: number;
+  italic: boolean;
+  format: "ttf" | "otf" | "woff" | "woff2";
+  /** the file itself, checked when it was uploaded */
+  data: ArrayBuffer;
+}
+
+/** One font file together with the CSS descriptors it is registered with. */
 interface FaceSource {
   /** Lightest and heaviest weight the file covers; equal for static files. */
   minWeight: number;
   maxWeight: number;
   italic: boolean;
-  load: FontFile;
+  /** the woff2 file of a bundled face */
+  load?: FontFile;
+  /** the uploaded file of a custom face */
+  custom?: CustomFace;
 }
 
 interface FontEntry {
@@ -254,9 +278,15 @@ export const FONT_CATALOG: FontDef[] = ENTRIES.map((entry) => entry.def);
 
 const ENTRY_BY_FAMILY = new Map(ENTRIES.map((entry) => [entry.def.family, entry]));
 
-/** Exact, case-sensitive lookup by display name. */
+/** The uploaded families, by the name the person gave them (see `setCustomFaces`). */
+const CUSTOM_BY_FAMILY = new Map<string, FontEntry>();
+
+/** A bundled family first: an uploaded one can never take its place. */
+const entryOf = (family: string): FontEntry | undefined => ENTRY_BY_FAMILY.get(family) ?? CUSTOM_BY_FAMILY.get(family);
+
+/** Exact, case-sensitive lookup by display name, among the bundled families and the uploaded ones. */
 export function getFontDef(family: string): FontDef | undefined {
-  return ENTRY_BY_FAMILY.get(family)?.def;
+  return entryOf(family)?.def;
 }
 
 const GENERIC_FALLBACK: Record<FontCategory, string> = {
@@ -268,7 +298,13 @@ const GENERIC_FALLBACK: Record<FontCategory, string> = {
   mono: "monospace",
 };
 
-const quote = (name: string) => `"${name.replace(/["\\]/g, "\\$&")}"`;
+/**
+ * A family name as a quoted CSS string. A name is text from a document or from a person, so nothing in it may end the
+ * string: quotes and backslashes are escaped, and a line break or other control character (which would end a CSS string
+ * and with it the whole `font` value) becomes a space.
+ */
+// eslint-disable-next-line no-control-regex -- control characters are exactly what is replaced
+const quote = (name: string) => `"${name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/["\\]/g, "\\$&")}"`;
 
 /**
  * Canvas / CSS font-family value with fallbacks, e.g.
@@ -323,13 +359,26 @@ function notify(): void {
   }
 }
 
-/** Fetches one woff2 file and registers it; resolves to false (after logging) when that fails. */
+/** The FontFace of every uploaded face that is in the document, so that it can be taken out when its file is deleted. */
+const registered = new Map<FaceSource, FontFace>();
+
+/**
+ * Fetches one woff2 file, or takes the bytes of an uploaded one, and registers it; resolves to false (after logging) when
+ * that fails. An uploaded file goes to the FontFace constructor as bytes, which parses it and runs nothing; it is never
+ * written into a style sheet.
+ */
 async function registerFace(def: FontDef, face: FaceSource): Promise<boolean> {
   try {
-    const { default: url } = await face.load();
+    const source = face.custom ? face.custom.data : `url("${(await (face.load as FontFile)()).default}")`;
     const weight = face.minWeight === face.maxWeight ? String(face.minWeight) : `${face.minWeight} ${face.maxWeight}`;
-    const font = new FontFace(def.css, `url("${url}")`, { weight, style: face.italic ? "italic" : "normal" });
-    document.fonts.add(await font.load());
+    const font = new FontFace(def.css, source, { weight, style: face.italic ? "italic" : "normal" });
+    const loaded = await font.load();
+    if (face.custom) {
+      // the file was deleted while it loaded: its face must not stay behind
+      if (!loads.has(face)) return false;
+      registered.set(face, loaded);
+    }
+    document.fonts.add(loaded);
     return true;
   } catch (error) {
     console.warn(`Could not load the ${def.family} font; text falls back to a default font.`, error);
@@ -355,11 +404,19 @@ function loadFace(def: FontDef, face: FaceSource): Promise<void> {
 /**
  * Loads (once) the face needed for this family, weight and style, and resolves when
  * it is usable. Never rejects: a failed load is logged and the fallback font is used.
- * Unknown families, and environments without a DOM, resolve immediately.
+ * Unknown families, and environments without a DOM, resolve immediately; while the
+ * uploaded fonts are still being read from storage an unknown family waits for that
+ * read first, so an export that starts right after the page opened draws the right font.
  */
 export function ensureFont(family: string, weight = 400, italic = false): Promise<void> {
-  const entry = canLoadFonts() ? ENTRY_BY_FAMILY.get(family) : undefined;
-  return entry ? loadFace(entry.def, pickFace(entry, weight, italic)) : Promise.resolve();
+  if (!canLoadFonts()) return Promise.resolve();
+  const entry = entryOf(family);
+  if (entry) return loadFace(entry.def, pickFace(entry, weight, italic));
+  if (!customPending) return Promise.resolve();
+  return customPending.then(() => {
+    const late = CUSTOM_BY_FAMILY.get(family);
+    return late ? loadFace(late.def, pickFace(late, weight, italic)) : undefined;
+  });
 }
 
 /**
@@ -368,18 +425,143 @@ export function ensureFont(family: string, weight = 400, italic = false): Promis
  * Callers can therefore repaint on `onFontsChange` without ever looping on a broken font.
  */
 export function isFontReady(family: string, weight = 400, italic = false): boolean {
-  const entry = canLoadFonts() ? ENTRY_BY_FAMILY.get(family) : undefined;
-  return !entry || settled.has(pickFace(entry, weight, italic));
+  if (!canLoadFonts()) return true;
+  const entry = entryOf(family);
+  // an unknown family may still turn out to be an uploaded one
+  if (!entry) return customPending === null;
+  return settled.has(pickFace(entry, weight, italic));
 }
 
 /** Starts loading every face (all weights, upright and italic) of the given families, for the font picker. */
 export async function preloadFonts(families: string[]): Promise<void> {
   if (!canLoadFonts()) return;
   const jobs = families.flatMap((family) => {
-    const entry = ENTRY_BY_FAMILY.get(family);
+    const entry = entryOf(family);
     return entry ? entry.faces.map((face) => loadFace(entry.def, face)) : [];
   });
   await Promise.all(jobs);
+}
+
+/* ------------------------------------------------------------------ */
+/* Uploaded fonts                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Every name a bundled family is known or registered by, in lower case. */
+const BUNDLED_NAMES = new Set(ENTRIES.flatMap((entry) => [entry.def.family.toLowerCase(), entry.def.css.toLowerCase()]));
+
+/** True for the name of a bundled family or the name one is registered under, whatever its case. An uploaded family cannot be called that. */
+export function isBundledFamily(family: string): boolean {
+  return BUNDLED_NAMES.has(family.trim().toLowerCase());
+}
+
+/** True for a family that was uploaded and is on this device. */
+export function isCustomFamily(family: string): boolean {
+  return !ENTRY_BY_FAMILY.has(family) && CUSTOM_BY_FAMILY.has(family);
+}
+
+function fnv1a(text: string, seed: number): string {
+  let hash = seed;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * The name an uploaded family is registered under with FontFace: "Craftly Upload" and a number worked out from the
+ * family name. It holds none of the text a person typed, so it can go into a canvas `font` string, a style attribute or
+ * an exported SVG as it is; it is the same on every device, so an exported file and the app agree; and it is not the
+ * name of any bundled family, which are registered under their own names.
+ */
+export function customFontCss(family: string): string {
+  return `Craftly Upload ${fnv1a(family, 0x811c9dc5)}${fnv1a(family, 0x9747b28c)}`;
+}
+
+/** A file keeps its id for as long as it is stored and its bytes never change, so the bytes are not compared. */
+const sameFace = (a: CustomFace, b: CustomFace) => a.id === b.id && a.family === b.family && a.minWeight === b.minWeight && a.maxWeight === b.maxWeight && a.italic === b.italic;
+
+/**
+ * Replaces the set of uploaded fonts. Families are found by the name on their files; a file whose family has the name of
+ * a bundled one, or no name, is left out, and so is a second file for a weight and style that the family already has.
+ * A file that was there before keeps its loaded face; the face of one that is gone is taken out of the document. Every
+ * screen that draws text is told, since a name that drew in the fallback font may now have a font, or the other way round.
+ */
+export function setCustomFaces(faces: readonly CustomFace[]): void {
+  const before = new Map<string, FaceSource>();
+  for (const entry of CUSTOM_BY_FAMILY.values()) for (const face of entry.faces) before.set((face.custom as CustomFace).id, face);
+
+  const grouped = new Map<string, FaceSource[]>();
+  for (const custom of faces) {
+    if (!custom.family.trim() || isBundledFamily(custom.family)) continue;
+    const list = grouped.get(custom.family) ?? [];
+    if (list.some((have) => have.italic === custom.italic && have.minWeight === custom.minWeight && have.maxWeight === custom.maxWeight)) continue;
+    const old = before.get(custom.id);
+    list.push(old && sameFace(old.custom as CustomFace, custom) ? old : { minWeight: custom.minWeight, maxWeight: custom.maxWeight, italic: custom.italic, custom });
+    grouped.set(custom.family, list);
+  }
+
+  CUSTOM_BY_FAMILY.clear();
+  const kept = new Set<FaceSource>();
+  for (const [family, list] of [...grouped].sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: "base" }))) {
+    // upright faces first, lighter before heavier: `pickFace` falls back on the first one
+    list.sort((a, b) => Number(a.italic) - Number(b.italic) || a.minWeight - b.minWeight);
+    // the weights the family offers are those of its upright files (of all of them when it has italics only)
+    const shown = list.some((face) => !face.italic) ? list.filter((face) => !face.italic) : list;
+    const variable = shown.every((face) => face.maxWeight > face.minWeight);
+    const weights = [...new Set(shown.flatMap((face) => (variable ? weightSteps(face.minWeight, face.maxWeight) : [face.minWeight])))].sort((a, b) => a - b);
+    CUSTOM_BY_FAMILY.set(family, {
+      def: { family, css: customFontCss(family), category: "sans", weights, variable, italic: list.some((face) => face.italic) },
+      faces: list,
+    });
+    for (const face of list) kept.add(face);
+  }
+
+  for (const face of before.values()) {
+    if (kept.has(face)) continue;
+    const loaded = registered.get(face);
+    // (a face is only ever remembered where there is a document to put it in)
+    if (loaded) document.fonts.delete(loaded);
+    registered.delete(face);
+    loads.delete(face);
+    settled.delete(face);
+  }
+  epoch += 1;
+  notify();
+}
+
+/** The uploaded families that are on this device, by name. */
+export function customFontDefs(): FontDef[] {
+  return [...CUSTOM_BY_FAMILY.values()].map((entry) => entry.def);
+}
+
+/**
+ * The uploaded file a request for this family, weight and style is drawn with, and the name it is registered under
+ * (the same choice as `ensureFont` makes); null for a bundled or unknown family. The exports that embed fonts use it.
+ */
+export function customFaceFor(family: string, weight: number, italic: boolean): (CustomFace & { css: string }) | null {
+  if (!isCustomFamily(family)) return null;
+  const entry = CUSTOM_BY_FAMILY.get(family) as FontEntry;
+  return { ...(pickFace(entry, weight, italic).custom as CustomFace), css: entry.def.css };
+}
+
+/** The read of the uploaded fonts that is under way, if one is. */
+let customPending: Promise<void> | null = null;
+
+/**
+ * Says that the uploaded fonts are being read from storage and `task` settles when they are in (`setCustomFaces` was
+ * called) or the read failed. Until then a family this file does not know is not "ready": it may be one of them.
+ */
+export function trackCustomFonts(task: Promise<unknown>): void {
+  const pending: Promise<void> = task
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .then(() => {
+      if (customPending === pending) customPending = null;
+    });
+  customPending = pending;
 }
 
 /** Increments whenever a face finishes loading, so layout caches can tell their measurements are stale. */

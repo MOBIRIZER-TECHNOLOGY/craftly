@@ -72,7 +72,7 @@ describe("Brand tab", () => {
   it("shows the logos, colours and fonts of the kit", async () => {
     await openBrand();
     expect(screen.getByText("Logos, colours and fonts you use again and again")).toBeTruthy();
-    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Logos", "Brand colours (5)", "Brand fonts (2)"]);
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Logos", "Brand colours (5)", "Brand fonts (2)", "Your fonts"]);
   });
 
   it("holds placeholders while the kit is read", async () => {

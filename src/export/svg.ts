@@ -119,7 +119,20 @@ function fetchFontBase64(url: string): Promise<string | null> {
   return task;
 }
 
-/** The <style> with @font-face rules for every face the page uses (empty string when none could be embedded). */
+/** How a font file of each kind is named inside an @font-face rule: its type, and the format the rule states. */
+const FONT_KINDS = {
+  ttf: { mime: "font/ttf", format: "truetype" },
+  otf: { mime: "font/otf", format: "opentype" },
+  woff: { mime: "font/woff", format: "woff" },
+  woff2: { mime: "font/woff2", format: "woff2" },
+} as const;
+
+/**
+ * The <style> with @font-face rules for every face the page uses (empty string when none could be embedded). A bundled
+ * face is fetched; an uploaded one is in the library and is written out as it was uploaded. The family name of a rule is
+ * the name the app registered the face under: for an uploaded font that is a name made of letters and digits, never the
+ * text a person typed, so nothing a person typed is written into the style sheet.
+ */
 async function fontStyle(page: Page, doc: SvgDoc): Promise<string> {
   const used = new Map<string, { family: string; weight: number; italic: boolean }>();
   for (const f of collectResources(page).fonts.values()) {
@@ -130,13 +143,14 @@ async function fontStyle(page: Page, doc: SvgDoc): Promise<string> {
   let css = "";
   let failed = false;
   for (const f of files) {
-    const data = await fetchFontBase64(f.url);
+    const data = f.data ? bytesToBase64(new Uint8Array(f.data)) : await fetchFontBase64(f.url);
     if (!data) {
       failed = true;
       continue;
     }
     const weight = f.minWeight === f.maxWeight ? `${f.minWeight}` : `${f.minWeight} ${f.maxWeight}`;
-    css += `@font-face{font-family:"${f.css}";font-style:${f.italic ? "italic" : "normal"};font-weight:${weight};src:url(data:font/woff2;base64,${data}) format("woff2");}`;
+    const kind = FONT_KINDS[f.format ?? "woff2"];
+    css += `@font-face{font-family:"${f.css}";font-style:${f.italic ? "italic" : "normal"};font-weight:${weight};src:url(data:${kind.mime};base64,${data}) format("${kind.format}");}`;
   }
   if (failed) doc.warn("Some fonts could not be embedded; other programs may substitute them.");
   return css ? `<style>${css}</style>` : "";

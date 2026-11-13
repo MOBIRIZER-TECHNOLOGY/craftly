@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import { cssFontFamily, ensureFont, getFontDef, type FontDef } from "@/render/fonts";
+import { cssFontFamily, ensureFont, getFontDef, isCustomFamily, type FontDef } from "@/render/fonts";
 import { cx } from "@/ui";
 import { useVisible } from "../../shared/hooks";
 import "./FontRow.css";
@@ -14,6 +14,7 @@ const CATEGORY_LABELS: Record<FontDef["category"], string> = {
 };
 
 export const fontCategoryLabel = (family: string): string => {
+  if (isCustomFamily(family)) return "Uploaded font";
   const def = getFontDef(family);
   return def ? CATEGORY_LABELS[def.category] : "Custom font";
 };

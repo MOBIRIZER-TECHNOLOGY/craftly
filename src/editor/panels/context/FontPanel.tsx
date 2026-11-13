@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { getActions, getSelectedElements, useEditor, useSelectedElements } from "@/core/store";
 import { textEditing, useTextSelectionStyle } from "@/editor/canvas/textEditing";
-import { cssFontFamily, ensureFont, FONT_CATALOG, type FontCategory } from "@/render/fonts";
-import { Button, cx, IconBrand, IconCheck, IconFile, IconPlus, IconText, SearchField } from "@/ui";
+import { useCustomFamilies } from "@/components/CustomFonts";
+import { cssFontFamily, customFontDefs, ensureFont, FONT_CATALOG, getFontDef, type FontCategory } from "@/render/fonts";
+import { Button, cx, IconBrand, IconCheck, IconFile, IconPlus, IconText, IconUpload, SearchField } from "@/ui";
 import { collectDocumentFonts, filterFonts } from "./docFonts";
 import { PanelEmpty, PanelShell, Section } from "./PanelShell";
 import { collectTexts } from "./selectionKinds";
@@ -34,6 +35,12 @@ export function FontPanel() {
   const [filter, setFilter] = useState<Filter>("all");
   const listRef = useRef<HTMLDivElement>(null);
   const docFonts = useMemo(() => (design ? collectDocumentFonts(design) : []), [design]);
+  // the uploaded families; reading them here is also what draws this panel again when one is added, renamed or deleted
+  const uploaded = useCustomFamilies();
+  const ownFonts = useMemo(() => (uploaded ? filterFonts(customFontDefs(), query) : []), [uploaded, query]);
+  // A family the design names that is neither bundled nor uploaded here draws in a substitute font. It is listed under its
+  // own name and marked; the design is not changed. Nothing is marked before the uploaded fonts were read.
+  const missing = (family: string) => uploaded !== null && getFontDef(family) === undefined;
 
   // the category chips are written in their own typefaces
   useEffect(() => {
@@ -104,11 +111,21 @@ export function FontPanel() {
           ))}
         </div>
 
+        {filter === "all" && ownFonts.length ? (
+          <Section title="Your fonts" icon={<IconUpload />}>
+            <div className="cf-font__list">
+              {ownFonts.map((f) => (
+                <FontRow key={f.family} family={f.family} current={f.family === current} onPick={pick} />
+              ))}
+            </div>
+          </Section>
+        ) : null}
+
         {showShortcuts && docFonts.length ? (
           <Section title="Document fonts" icon={<IconFile />}>
             <div className="cf-font__list">
               {docFonts.map((f) => (
-                <FontRow key={f} family={f} current={f === current} onPick={pick} />
+                <FontRow key={f} family={f} current={f === current} onPick={pick} missing={missing(f)} />
               ))}
             </div>
           </Section>
@@ -148,14 +165,16 @@ export function FontPanel() {
           </Section>
         ))}
 
-        {groups.length === 0 ? <p className="cf-ctx__hint">No fonts match “{query.trim()}”. Try a family name like “Lora” or a style like “script”.</p> : null}
+        {groups.length === 0 && ownFonts.length === 0 ? (
+          <p className="cf-ctx__hint">No fonts match “{query.trim()}”. Try a family name like “Lora” or a style like “script”.</p>
+        ) : null}
       </div>
     </PanelShell>
   );
 }
 
 /** One font, written in itself; its file is fetched only when the row scrolls into view. */
-function FontRow({ family, current, onPick }: { family: string; current: boolean; onPick: (family: string) => void }) {
+function FontRow({ family, current, onPick, missing = false }: { family: string; current: boolean; onPick: (family: string) => void; missing?: boolean }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -183,12 +202,13 @@ function FontRow({ family, current, onPick }: { family: string; current: boolean
       type="button"
       className={cx("cf-font__row", current && "is-current")}
       aria-current={current ? "true" : undefined}
-      aria-label={family}
+      aria-label={missing ? `${family}, not on this device` : family}
       onClick={() => onPick(family)}
     >
       <span className="cf-font__name" style={{ fontFamily: cssFontFamily(family) }}>
         {family}
       </span>
+      {missing ? <span className="cf-font__missing">Not on this device</span> : null}
       {current ? <IconCheck className="cf-font__check" aria-hidden="true" /> : null}
     </button>
   );

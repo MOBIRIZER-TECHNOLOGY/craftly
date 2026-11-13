@@ -57,6 +57,7 @@ function describeCounts(counts: BackupCounts): string {
     counts.trashed && `${counts.trashed} in the trash`,
     counts.folders && plural(counts.folders, "folder"),
     counts.uploads && plural(counts.uploads, "upload"),
+    counts.fonts && plural(counts.fonts, "uploaded font"),
     counts.versions && plural(counts.versions, "saved version"),
   ]
     .filter(Boolean)
@@ -65,11 +66,12 @@ function describeCounts(counts: BackupCounts): string {
 
 const brandKitWords = (action: BrandKitAction) => (action === "restore" ? "your brand kit" : action === "merge" ? "your brand kit, merged with the one here" : "");
 
-function listOf(n: { designs: number; folders: number; uploads: number; versions: number; brandKit: BrandKitAction }): string {
+function listOf(n: { designs: number; folders: number; uploads: number; fonts?: number; versions: number; brandKit: BrandKitAction }): string {
   return [
     n.designs && plural(n.designs, "design"),
     n.folders && plural(n.folders, "folder"),
     n.uploads && plural(n.uploads, "upload"),
+    n.fonts && plural(n.fonts, "uploaded font"),
     n.versions && plural(n.versions, "saved version"),
     brandKitWords(n.brandKit),
   ]
@@ -77,18 +79,27 @@ function listOf(n: { designs: number; folders: number; uploads: number; versions
     .join(", ");
 }
 
-/** What is already in the library: designs, folders and uploads that need nothing. */
-const alreadyHere = (n: { designs: number; folders: number; uploads: number }) =>
-  [n.designs && plural(n.designs, "design"), n.folders && plural(n.folders, "folder"), n.uploads && plural(n.uploads, "upload")].filter(Boolean).join(", ");
+/** What is already in the library: designs, folders, uploads and uploaded fonts that need nothing. */
+const alreadyHere = (n: { designs: number; folders: number; uploads: number; fonts?: number }) =>
+  [n.designs && plural(n.designs, "design"), n.folders && plural(n.folders, "folder"), n.uploads && plural(n.uploads, "upload"), n.fonts && plural(n.fonts, "uploaded font")]
+    .filter(Boolean)
+    .join(", ");
 
 function reviewFacts(plan: RestorePlan, skipped: number): string[] {
   const facts: string[] = [];
-  const added = listOf({ designs: plan.designs.add, folders: plan.folders.add, uploads: plan.uploads.add, versions: plan.versions.add, brandKit: plan.brandKit });
+  const added = listOf({
+    designs: plan.designs.add,
+    folders: plan.folders.add,
+    uploads: plan.uploads.add,
+    fonts: plan.fonts?.add,
+    versions: plan.versions.add,
+    brandKit: plan.brandKit,
+  });
   if (added) facts.push(`Will be added: ${added}.`);
   const copies = plan.designs.copy;
   if (copies === 1) facts.push("1 design has been edited since this backup. It comes back as a copy named “… (restored)”, so your edit stays.");
   else if (copies > 1) facts.push(`${copies} designs have been edited since this backup. They come back as copies named “… (restored)”, so your edits stay.`);
-  const here = alreadyHere({ designs: plan.designs.same, folders: plan.folders.same, uploads: plan.uploads.same });
+  const here = alreadyHere({ designs: plan.designs.same, folders: plan.folders.same, uploads: plan.uploads.same, fonts: plan.fonts?.same });
   if (here) facts.push(`Already here and left as they are: ${here}.`);
   if (skipped) facts.push(`${plural(skipped, "item")} in the backup could not be used.`);
   return facts;
@@ -96,14 +107,22 @@ function reviewFacts(plan: RestorePlan, skipped: number): string[] {
 
 function resultFacts(result: RestoreResult): string[] {
   const facts: string[] = [];
-  const added = listOf({ designs: result.designs.added, folders: result.folders.added, uploads: result.uploads.added, versions: result.versions.added, brandKit: result.brandKit });
+  const added = listOf({
+    designs: result.designs.added,
+    folders: result.folders.added,
+    uploads: result.uploads.added,
+    fonts: result.fonts?.added,
+    versions: result.versions.added,
+    brandKit: result.brandKit,
+  });
   if (added) facts.push(`Added: ${added}.`);
   const copies = result.designs.copied;
   if (copies === 1) facts.push("1 design came back as a copy named “… (restored)”, because it was edited after the backup.");
   else if (copies > 1) facts.push(`${copies} designs came back as copies named “… (restored)”, because they were edited after the backup.`);
-  const here = alreadyHere({ designs: result.designs.same, folders: 0, uploads: result.uploads.same });
+  const here = alreadyHere({ designs: result.designs.same, folders: 0, uploads: result.uploads.same, fonts: result.fonts?.same });
   if (here) facts.push(`Already here: ${here}.`);
-  const unreadable = result.designs.damaged + result.uploads.damaged + result.versions.damaged + result.skipped;
+  // (a font that turned out to be no font, or has the name of a bundled one, is counted here too)
+  const unreadable = result.designs.damaged + result.uploads.damaged + result.versions.damaged + (result.fonts?.damaged ?? 0) + result.skipped;
   if (unreadable) facts.push(`${plural(unreadable, "item")} could not be read, because the backup file is damaged.`);
   if (result.newer) {
     const be = result.newer === 1 ? "was" : "were";

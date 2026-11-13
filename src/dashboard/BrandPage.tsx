@@ -20,10 +20,11 @@ import {
   cx,
   toast,
 } from "@/ui";
+import { CustomFonts, useCustomFamilies } from "@/components/CustomFonts";
 import { getAssetUrl } from "@/core/assets";
 import { fadedInk, readableOn } from "@/core/color";
 import type { Asset, BrandKit } from "@/core/types";
-import { FONT_CATALOG, cssFontFamily, ensureFont, getFontDef, preloadFonts, type FontCategory, type FontDef } from "@/render/fonts";
+import { FONT_CATALOG, cssFontFamily, customFontDefs, ensureFont, getFontDef, isCustomFamily, preloadFonts, type FontCategory, type FontDef } from "@/render/fonts";
 import { IMAGE_ACCEPT, uploadImageFiles } from "./actions";
 import { updateBrandKit, useAssets, useBrand } from "./data";
 import { pickFiles } from "./files";
@@ -40,6 +41,9 @@ const CATEGORY_LABEL: Record<FontCategory, string> = {
   handwriting: "Handwriting",
   mono: "Monospace",
 };
+
+/** What kind of font a known family is: a font the person uploaded says so, a bundled one names its category. */
+const kindOf = (def: FontDef): string => (isCustomFamily(def.family) ? "Uploaded font" : CATEGORY_LABEL[def.category]);
 
 /** Brand kit editor: logos, colours, fonts and a live preview card. */
 export function BrandPage() {
@@ -73,6 +77,9 @@ export function BrandPage() {
             <LogosCard kit={kit} logos={logos} />
             <ColorsCard colors={kit.colors} />
             <FontsCard fonts={kit.fonts} />
+            <Card title="Your fonts" hint="Fonts you uploaded. Use them in every design, like the ones Craftly comes with.">
+              <CustomFonts />
+            </Card>
           </div>
           <aside className="cf-brand__aside" aria-label="Brand kit preview">
             <BrandPreview kit={kit} logo={logos[0]} />
@@ -348,6 +355,8 @@ function AddColorBody({ onClose, existing }: { onClose: () => void; existing: st
 
 function FontsCard({ fonts }: { fonts: string[] }) {
   const [picker, setPicker] = useState<HTMLElement | null>(null);
+  // an upload, a rename or a deletion changes what a name in this list is: read here so that the list is drawn again
+  useCustomFamilies();
 
   return (
     <Card
@@ -382,7 +391,7 @@ function FontsCard({ fonts }: { fonts: string[] }) {
                     {family}
                   </span>
                   <span className="cf-brand__font-meta">
-                    {def ? CATEGORY_LABEL[def.category] : "Custom font"}
+                    {def ? kindOf(def) : "Custom font"}
                     {role ? ` · ${role}` : ""}
                   </span>
                 </span>
@@ -414,7 +423,9 @@ function FontsCard({ fonts }: { fonts: string[] }) {
 function FontPicker({ chosen }: { chosen: string[] }) {
   const [query, setQuery] = useState("");
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const list = FONT_CATALOG.filter((def) => words.every((word) => `${def.family} ${CATEGORY_LABEL[def.category]}`.toLowerCase().includes(word)));
+  // the uploaded families first, then the bundled ones
+  const uploaded = useCustomFamilies();
+  const list = [...(uploaded ? customFontDefs() : []), ...FONT_CATALOG].filter((def) => words.every((word) => `${def.family} ${kindOf(def)}`.toLowerCase().includes(word)));
   return (
     <div className="cf-brand__fontpicker">
       <SearchField value={query} onChange={setQuery} placeholder="Search fonts" aria-label="Search fonts" autoFocus />
@@ -476,7 +487,7 @@ function FontOption({ def, added }: { def: FontDef; added: boolean }) {
       <span className="cf-brand__fontoption-name" style={{ fontFamily: cssFontFamily(def.family) }}>
         {def.family}
       </span>
-      <span className="cf-brand__fontoption-meta">{CATEGORY_LABEL[def.category]}</span>
+      <span className="cf-brand__fontoption-meta">{kindOf(def)}</span>
       {added ? <IconCheck className="cf-brand__fontoption-check" aria-hidden="true" /> : null}
     </div>
   );

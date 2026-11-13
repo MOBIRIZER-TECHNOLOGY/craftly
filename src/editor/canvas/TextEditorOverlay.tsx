@@ -3,7 +3,7 @@ import { normalizeHex } from "@/core/color";
 import { normalizeParagraphs } from "@/core/ops";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { TextElement, TextParagraph, TextRun } from "@/core/types";
-import { cssFontFamily, FONT_CATALOG } from "@/render/fonts";
+import { cssFontFamily, customFontDefs, FONT_CATALOG } from "@/render/fonts";
 import { findElement } from "@/core/ops";
 import { takePendingCaret, takeSelectAllOnEdit } from "./controller";
 import { worldBox } from "./frame";
@@ -62,7 +62,8 @@ function familyFromCss(value: string): string {
     .split(",")[0]
     .trim()
     .replace(/^["']|["']$/g, "");
-  const def = FONT_CATALOG.find((f) => f.css === first || f.family === first);
+  // an uploaded family is registered under a name the app made up: the document stores the name the person knows it by
+  const def = [...FONT_CATALOG, ...customFontDefs()].find((f) => f.css === first || f.family === first);
   return def ? def.family : first;
 }
 

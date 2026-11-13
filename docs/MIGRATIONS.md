@@ -20,11 +20,14 @@ The library summary also tracks a local save revision. It detects stale writes a
 | The dashboard record of a design | `summaries` | `schema`: the `version` of the design it was made from (none means 1) | read as it is | read as it is. Its `schema` is how a save finds out, without reading the design, that the stored one is newer |
 | A saved version of a design | `versions` | the `version` of the design inside it | the design is brought up to date when the version is opened (preview, restore) | not offered: the preview stays empty |
 | Folders, uploads, brand kit, small settings | `folders`, `assets`, `meta` | none: every reader gives a missing field a default | missing fields take their defaults | unknown fields stay where they are |
+| Uploaded fonts | `meta`, one record per file under the key `customFont:<id>`, bytes included (`src/core/customFonts.ts`) | none: the reader skips a record that has not the shape of one | a release from before uploaded fonts never asks for these keys; text that names such a family draws in a substitute font | unknown fields stay where they are |
 | A project file | `.craftly` | `craftly`, `PROJECT_FORMAT_VERSION`: the layout of the file; the design in it has its own `version` | each is brought up to date on import | "This project was saved by a newer version of Craftly" |
 | A backup | ZIP, `craftly-backup.json` | `craftlyBackup`, `BACKUP_FORMAT_VERSION`: the manifest and the layout; every design in it has its own `version` | each design is brought up to date as it is restored | a newer backup is refused as a whole; a newer design inside an older backup is left out, counted, and the result says to reload and restore again |
 | The database | IndexedDB `craftly` | the number of steps in `DB_STEPS` (`src/core/persistence.ts`) | upgraded by the steps it has not had, all in one transaction, when it is opened | the browser refuses to open it. The dashboard says "This tab is older than your designs", the editor "Update Craftly to open this design"; nothing is written |
 | The model cache | IndexedDB `craftly-models` | 1 | is a cache: the models are downloaded again | same |
 | Preferences (view, rail, recent emoji, download settings) | `localStorage` | none | every reader checks what it reads; a bad value is the default | same |
+
+Uploaded fonts needed no new version of anything: the files are records of the existing `meta` store (no step in `DB_STEPS`), and a project file and a backup list them in an optional `fonts` field that is left out when there are none, so a file without uploaded fonts is byte for byte what it was, and an older release that reads a file with the field ignores it.
 
 The service worker's caches are not user data: a new build replaces them (`docs/UPDATES.md`).
 

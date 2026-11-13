@@ -1,6 +1,6 @@
 /**
- * Back up and restore the whole library: every design (the trash too), uploaded picture, folder, saved version and the
- * brand kit, in one ZIP file. The file layout, its validation and what a restore would do are in `backupFormat.ts`
+ * Back up and restore the whole library: every design (the trash too), uploaded picture, uploaded font, folder, saved
+ * version and the brand kit, in one ZIP file. The file layout, its validation and what a restore would do are in `backupFormat.ts`
  * (pure, unit tested); this file adds IndexedDB around it.
  *
  * Restoring only ever adds. A design that is already here and unchanged is left alone; one that was edited since the
@@ -10,6 +10,7 @@
  * Blob of references (see `createZip`), and a backup being restored is read in slices (see `openZip`).
  */
 import { checkUpload, listAssets, restoreAssets } from "@/core/assets";
+import { customFontIds, importCustomFont, listCustomFonts } from "@/core/customFonts";
 import { uid } from "@/core/ids";
 import { getStoredBrandKit, getStoredDesign, listDesigns, listFolders, restoreRecords, setBrandKit, type VersionRecord } from "@/core/library";
 import { dbGet, dbGetAllKeys, metaGet, metaSet } from "@/core/persistence";
@@ -23,6 +24,7 @@ import {
   designAction,
   designEntryName,
   foldersToRestore,
+  fontEntryName,
   mergeBrandKit,
   mimeForExtension,
   parseManifest,
@@ -36,6 +38,7 @@ import {
   type BrandKitAction,
   type LocalLibrary,
   type ManifestDesign,
+  type ManifestFont,
   type ManifestUpload,
   type ManifestVersion,
   type RestorePlan,
@@ -142,6 +145,7 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<C
 
   const summaries = await listDesigns();
   const uploads = (await listAssets()).filter((asset) => asset.blob instanceof Blob);
+  const fonts = await listCustomFonts();
   const known = new Set(summaries.map((s) => s.id));
 
   // saved versions are named `<designId>:<time>`; each design's come newest first, like the Version history list
@@ -155,7 +159,7 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<C
   const timeOf = (key: string) => Number(key.slice(key.lastIndexOf(":") + 1));
   for (const keys of versionKeys.values()) keys.sort((a, b) => timeOf(b) - timeOf(a));
 
-  const total = summaries.length + uploads.length + [...versionKeys.values()].reduce((sum, keys) => sum + keys.length, 0);
+  const total = summaries.length + uploads.length + fonts.length + [...versionKeys.values()].reduce((sum, keys) => sum + keys.length, 0);
   let done = 0;
   const step = () => onProgress?.({ phase: "collecting", done: ++done, total });
   const json = (value: unknown) => new Blob([JSON.stringify(value)], { type: "application/json" });
@@ -164,6 +168,7 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<C
   const manifestDesigns: ManifestDesign[] = [];
   const manifestUploads: ManifestUpload[] = [];
   const manifestVersions: ManifestVersion[] = [];
+  const manifestFonts: ManifestFont[] = [];
 
   for (const summary of summaries) {
     check();
@@ -209,6 +214,26 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<C
     });
   }
 
+  // the uploaded fonts, every one: a design names a font family, and a backup that left the files out would bring the designs back in a substitute font
+  for (const font of fonts) {
+    check();
+    step();
+    const file = fontEntryName(font.id, font.format);
+    files.push({ name: file, data: new Uint8Array(font.data), modified: now });
+    manifestFonts.push({
+      id: font.id,
+      family: font.family,
+      weight: font.weight,
+      maxWeight: font.maxWeight,
+      italic: font.italic,
+      format: font.format,
+      fileName: font.fileName,
+      size: font.size,
+      createdAt: font.createdAt,
+      file,
+    });
+  }
+
   for (const [designId, keys] of versionKeys) {
     for (const [index, key] of keys.entries()) {
       check();
@@ -222,7 +247,14 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<C
   }
 
   const manifest: BackupManifest = buildManifest(
-    { designs: manifestDesigns, uploads: manifestUploads, folders: await listFolders(), versions: manifestVersions, brandKit: (await getStoredBrandKit()) ?? null },
+    {
+      designs: manifestDesigns,
+      uploads: manifestUploads,
+      folders: await listFolders(),
+      versions: manifestVersions,
+      brandKit: (await getStoredBrandKit()) ?? null,
+      ...(manifestFonts.length ? { fonts: manifestFonts } : {}),
+    },
     now,
   );
   files.unshift({ name: BACKUP_MANIFEST_NAME, data: json(manifest), modified: now });
@@ -265,13 +297,21 @@ async function openBackup(file: Blob, signal?: AbortSignal): Promise<OpenedBacku
 }
 
 async function readLocal(): Promise<LocalLibrary> {
-  const [designs, folders, uploads, versions, brandKit] = await Promise.all([listDesigns(), listFolders(), dbGetAllKeys("assets"), dbGetAllKeys("versions"), getStoredBrandKit()]);
+  const [designs, folders, uploads, versions, brandKit, fonts] = await Promise.all([
+    listDesigns(),
+    listFolders(),
+    dbGetAllKeys("assets"),
+    dbGetAllKeys("versions"),
+    getStoredBrandKit(),
+    customFontIds(),
+  ]);
   return {
     designs: new Map(designs.map((d) => [d.id, d.updatedAt])),
     folders: new Set(folders.map((f) => f.id)),
     uploads: new Set(uploads),
     versions: new Set(versions),
     brandKit,
+    fonts: new Set(fonts),
   };
 }
 
@@ -306,6 +346,8 @@ export interface RestoreResult {
   uploads: { added: number; same: number; damaged: number };
   folders: { added: number };
   versions: { added: number; damaged: number };
+  /** uploaded fonts, only for a backup that has any. `damaged`: the file is missing, is no font, or has the name of a bundled family */
+  fonts?: { added: number; same: number; damaged: number };
   brandKit: BrandKitAction;
   /** items the backup listed that could not be used at all (an id that is not safe, no file name, an upload that is no picture) */
   skipped: number;
@@ -333,7 +375,11 @@ export async function restoreBackup(file: Blob, options: RestoreOptions = {}): P
     newer: 0,
   };
 
-  const total = plan.uploads.add + plan.designs.add + plan.designs.copy + plan.versions.add;
+  const fonts = manifest.fonts ?? [];
+  const fontResult = { added: 0, same: plan.fonts?.same ?? 0, damaged: 0 };
+  if (fonts.length) result.fonts = fontResult;
+
+  const total = plan.uploads.add + (plan.fonts?.add ?? 0) + plan.designs.add + plan.designs.copy + plan.versions.add;
   let done = 0;
   const tick = () => onProgress?.({ done: ++done, total });
 
@@ -408,6 +454,37 @@ export async function restoreBackup(file: Blob, options: RestoreOptions = {}): P
       );
     }
     await assets.flush();
+
+    /* ---- uploaded fonts ---- */
+    // A backup can be made by hand, so a font of it is checked like an uploaded one: by its first bytes and by loading it, and it
+    // is never taken under the name of a bundled family (importCustomFont in src/core/customFonts.ts). They come before the
+    // designs, so that a design that is opened the moment it is back finds its fonts.
+    for (const font of fonts) {
+      if (local.fonts?.has(font.id)) continue;
+      stopIfCancelled();
+      const blob = await load(font.file, (entry) => archive.read(entry, { signal }));
+      tick();
+      if (!blob) {
+        fontResult.damaged++;
+        continue;
+      }
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const outcome = await guardStorage(() =>
+        importCustomFont({
+          bytes,
+          fileName: font.fileName,
+          family: font.family,
+          weight: font.weight,
+          maxWeight: font.maxWeight,
+          italic: font.italic,
+          id: font.id,
+          createdAt: font.createdAt,
+        }),
+      );
+      if (outcome === "added") fontResult.added++;
+      else if (outcome === "here") fontResult.same++;
+      else fontResult.damaged++;
+    }
 
     /* ---- folders ---- */
     const folders = foldersToRestore(manifest.folders, local.folders);

@@ -1,4 +1,5 @@
 import { installFoldPanelOnInsert } from "./foldPanelOnInsert";
+import { installMissingFontNotice } from "./missingFontNotice";
 import { useEffect, useState, type ReactNode } from "react";
 import { RecoveryPanel } from "@/components/RecoveryPanel";
 import { getDesignForEditing } from "@/core/library";
@@ -87,6 +88,9 @@ export function Editor({ designId }: { designId: string }) {
 
   /* on a phone, what is added from the side panel is not left hidden under it */
   useEffect(() => installFoldPanelOnInsert(), []);
+
+  /* a font the design names that is not on this device (uploaded elsewhere, deleted, used by somebody else in a shared design) is named */
+  useEffect(() => installMissingFontNotice(), []);
 
   /* load, open, autosave; flush and close on the way out */
   useEffect(() => {

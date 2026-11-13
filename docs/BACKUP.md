@@ -12,7 +12,7 @@ Everything Craftly stores lives in the browser (IndexedDB). Clearing the site's 
 
 ## What is in a backup
 
-In: every design, the trash included, with its pages, folder, star and dates, as stored; the dashboard preview of each design; every uploaded picture, byte for byte, also those that no design uses; folders; the brand kit (only when this browser saved one of its own); and the saved versions of each design (the Version history list, up to 25 per design; the versions that crash recovery makes, "Before the problem" and "Before going back", are in it like any other, see [`CRASH-RECOVERY.md`](CRASH-RECOVERY.md)).
+In: every design, the trash included, with its pages, folder, star and dates, as stored; the dashboard preview of each design; every uploaded picture, byte for byte, also those that no design uses; every uploaded font file (Brand kit > Your fonts), also those that no design uses; folders; the brand kit (only when this browser saved one of its own); and the saved versions of each design (the Version history list, up to 25 per design; the versions that crash recovery makes, "Before the problem" and "Before going back", are in it like any other, see [`CRASH-RECOVERY.md`](CRASH-RECOVERY.md)).
 
 Not in: the list of problems that Craftly wrote down on this device (`localStorage`, key `craftly.problems.v1`), the crash counts of a tab (`sessionStorage`, key `craftly.crashes.v1`), favourite templates, recent colours, the backup reminder's interval and snooze and the file chosen to be kept up to date (`meta` keys `backupReminder` and `backupFile`: both mean something only to this browser), the editor's own preferences (such as whether the left bar is open), the on-device AI models (88.1 MB and 4.9 MB: **File > On-device models** downloads them again) and the app itself.
 
@@ -25,6 +25,7 @@ craftly-backup.json            the manifest (always the first file): what is in 
 designs/<id>.json              one design each, with live credentials omitted (pictures are stored separately)
 previews/<id>.jpg              the dashboard thumbnail of a design
 uploads/<id>.<ext>             an uploaded picture, as it was uploaded
+fonts/<id>.<ext>               an uploaded font file, as it was uploaded (only in a library that has any; the manifest then lists them under "fonts")
 versions/<designId>/<n>.json   one saved version of a design, newest first (n = 0, 1, 2 ...)
 ```
 
@@ -61,6 +62,7 @@ A restore only ever adds. It never overwrites and never deletes.
 | A folder, an upload | Added when its id is not here; one that is here is left alone. A design whose folder did not come back goes to the top level; a folder whose parent is missing, or that would sit inside itself, goes to the top level. An upload is checked like a new upload (`checkUpload` in `src/core/assets.ts`): an SVG that is more than plain drawing comes back as a PNG picture, and one that cannot be drawn is counted with the damaged files |
 | Saved versions | Added for every design that is here under its own id (new or unchanged), when the version is not here yet. Not for the copy of an edited design |
 | The brand kit | Taken as it is when this browser never saved one; otherwise the colours, fonts and logos that are missing are added to the end |
+| An uploaded font | Added under the id, family name and date it had, when this library has neither that file nor another one for the same family, weight and style. It is checked like an upload first (its first bytes, then loaded with the browser's FontFace) and is never taken under the name of a bundled family; one that is refused is counted with what could not be read |
 
 Things that can be wrong, and what the person is told:
 

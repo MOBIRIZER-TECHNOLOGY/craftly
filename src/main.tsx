@@ -4,6 +4,7 @@ import "./styles/base.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { startCustomFonts } from "./core/customFonts";
 import { installDatabaseNotices } from "./databaseNotices";
 import { installProblemCatcher } from "./problemCatcher";
 import { registerServiceWorker } from "./serviceWorker";
@@ -18,6 +19,10 @@ installProblemCatcher();
 
 // An uploaded SVG that was more than plain drawing was stored as a picture: the person is told (src/uploadNotices.ts).
 installUploadNotices();
+
+// The fonts the person uploaded are read from the library and made known to everything that draws text, before the first
+// design is drawn where that is possible; what draws earlier is drawn again when they are in (src/core/customFonts.ts).
+void startCustomFonts();
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>

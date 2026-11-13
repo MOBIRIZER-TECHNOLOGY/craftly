@@ -4,7 +4,8 @@ import { textPresetSizes } from "@/core/factory";
 import { useEditor } from "@/core/store";
 import type { Asset, BrandKit } from "@/core/types";
 import { insertImage } from "@/editor/insert";
-import { FONT_CATALOG, cssFontFamily, ensureFont } from "@/render/fonts";
+import { CustomFonts, useCustomFamilies } from "@/components/CustomFonts";
+import { FONT_CATALOG, cssFontFamily, customFontDefs, ensureFont, getFontDef } from "@/render/fonts";
 import {
   Button,
   ColorPicker,
@@ -69,6 +70,7 @@ export default function BrandTab() {
             <Logos kit={kit} save={save} />
             <Colors kit={kit} save={save} />
             <Fonts kit={kit} save={save} />
+            <YourFonts />
           </>
         )}
       </PanelScroll>
@@ -252,15 +254,19 @@ function Colors({ kit, save }: SectionProps) {
 
 function Fonts({ kit, save }: SectionProps) {
   const design = useEditor((s) => s.design);
+  const uploaded = useCustomFamilies();
 
+  // the uploaded families first, then the bundled ones
   const options = useMemo(
     () =>
-      FONT_CATALOG.filter((f) => !kit.fonts.includes(f.family)).map((f) => ({
-        value: f.family,
-        textValue: f.family,
-        label: <span style={{ fontFamily: cssFontFamily(f.family), fontSize: 16 }}>{f.family}</span>,
-      })),
-    [kit.fonts],
+      [...(uploaded ? customFontDefs() : []), ...FONT_CATALOG]
+        .filter((f) => !kit.fonts.includes(f.family))
+        .map((f) => ({
+          value: f.family,
+          textValue: f.family,
+          label: <span style={{ fontFamily: cssFontFamily(f.family), fontSize: 16 }}>{f.family}</span>,
+        })),
+    [kit.fonts, uploaded],
   );
 
   const use = (family: string) => {
@@ -303,6 +309,25 @@ function Fonts({ kit, save }: SectionProps) {
         />
       </div>
       <p className="cf-brandtab__hint">Click a font to apply it to the selected text, or to add a heading in that font.</p>
+    </PanelSection>
+  );
+}
+
+/** The fonts the person uploaded: upload, rename, delete, and one click to use one (src/components/CustomFonts.tsx). */
+function YourFonts() {
+  const design = useEditor((s) => s.design);
+
+  const use = (family: string) => {
+    if (applyFontToSelection(family)) return;
+    const sizes = textPresetSizes(design?.width ?? 1920, design?.height ?? 1080);
+    // a heading is bold where the family has a bold file, and has the heaviest weight there is otherwise
+    const weights = getFontDef(family)?.weights ?? [400];
+    void addTextInFont("Add a heading", family, { fontSize: sizes.heading, fontWeight: weights.includes(700) ? 700 : weights[weights.length - 1] });
+  };
+
+  return (
+    <PanelSection title="Your fonts">
+      <CustomFonts onUse={use} />
     </PanelSection>
   );
 }

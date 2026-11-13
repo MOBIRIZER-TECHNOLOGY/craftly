@@ -101,3 +101,14 @@
   height: 18px;
   color: var(--c-primary);
 }
+
+/* a family the design names that is neither bundled nor uploaded on this device */
+.cf-font__missing {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--c-hover);
+  color: var(--c-ink-2);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
