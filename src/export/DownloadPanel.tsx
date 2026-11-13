@@ -13,6 +13,7 @@ import {
   IconFileImage,
   IconImage,
   IconImages,
+  IconLayers,
   IconPrint,
   IconVideo,
   NumberField,
@@ -26,7 +27,9 @@ import {
 import { ANIM_RESOLUTIONS, GIF_FPS_CHOICES, VIDEO_FPS, animationProblem, formatDuration, isAnimatedFormat, resolutionLabel, type AnimResolution } from "./animated/frames";
 import { detectVideoSupport, type VideoSupport } from "./animated/video";
 import { describeExportError, isCancelled } from "./errors";
-import { downloadBlob, exportDesign } from "./exporters";
+import { downloadBlob, exportDesign, type ExportFormat } from "./exporters";
+import { exportSeveralSizes } from "./multiSize";
+import { CURRENT_SIZE_ID, MAX_SIZES, defaultSizeIds, multiSizeOptions, planMultiSize, sizeChoices, sizeLabel, type MultiSizeFormat } from "./multiSizePlan";
 import { MAX_BLEED_MM, MAX_EXPORT_SIDE, estimateExportBytes, formatBytes, pagesLabel, planRaster, resolveExportOptions } from "./options";
 import {
   DEFAULT_DOWNLOAD_SETTINGS,
@@ -78,7 +81,9 @@ function useTabHidden(active: boolean): boolean {
 /* file type select                                                    */
 /* ------------------------------------------------------------------ */
 
-type FileKey = "png" | "jpg" | "pdf-standard" | "pdf-print" | "svg" | "gif" | "webm";
+/** Downloads that are more than one kind of file. They are chosen in the same list, but are not remembered as a format. */
+type Bundle = "sizes";
+type FileKey = "png" | "jpg" | "pdf-standard" | "pdf-print" | "svg" | "gif" | "webm" | Bundle;
 
 function Option({ name, hint, badge }: { name: string; hint: string; badge?: string }) {
   return (
@@ -102,6 +107,7 @@ const FILE_OPTIONS: SelectOption<FileKey>[] = [
   { value: "svg", icon: <IconFileCode aria-hidden="true" />, textValue: "SVG", label: <Option name="SVG" hint="Editable vector" /> },
   { value: "gif", icon: <IconImages aria-hidden="true" />, textValue: "Animated GIF", label: <Option name="Animated GIF" hint="Plays on any device" /> },
   { value: "webm", icon: <IconVideo aria-hidden="true" />, textValue: "Video (WebM)", label: <Option name="Video (WebM)" hint="Smooth, small files" /> },
+  { value: "sizes", icon: <IconLayers aria-hidden="true" />, textValue: "Several sizes", label: <Option name="Several sizes" hint="One ZIP, a file per size" /> },
 ];
 
 /** The list as this browser can use it: a video the browser cannot record stays visible but disabled, with the reason. */
@@ -175,6 +181,10 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
   const activePageId = useEditor((s) => s.activePageId);
   const [settings, setSettings] = useState<DownloadSettings>(loadSettings);
   const [custom, setCustom] = useState<Set<number> | null>(null);
+  const [bundle, setBundle] = useState<Bundle | null>(null);
+  // several sizes: the ticked sizes (null until one is changed: the defaults for this design) and the format of every file
+  const [sizeIds, setSizeIds] = useState<Set<string> | null>(null);
+  const [sizesFormat, setSizesFormat] = useState<MultiSizeFormat>("png");
   const [progress, setProgress] = useState<Progress | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const alive = useRef(true);
@@ -214,25 +224,49 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
   const pages = useMemo(() => pagesFor(settings.pagesMode, pageCount, activeIndex, customSet), [settings.pagesMode, customSet, activeIndex, pageCount]);
 
   const options = useMemo(() => toExportOptions(settings, pages), [settings, pages]);
-  const estimate = useMemo(() => (design && pages.length ? estimateExportBytes(design, options) : 0), [design, options, pages.length]);
+  const several = bundle === "sizes";
+  const width = design?.width ?? 0;
+  const height = design?.height ?? 0;
+  const typeId = design?.typeId ?? "";
+  const choices = useMemo(() => (several ? sizeChoices({ width, height, typeId }) : []), [several, width, height, typeId]);
+  const tickedSizes = useMemo(() => sizeIds ?? new Set(several ? defaultSizeIds({ width, height, typeId }) : []), [sizeIds, several, width, height, typeId]);
+  const sizePlan = useMemo(() => (design && several ? planMultiSize(design, [...tickedSizes], pages, sizesFormat) : null), [design, several, tickedSizes, pages, sizesFormat]);
+  const estimate = useMemo(() => {
+    if (!design || !pages.length) return 0;
+    if (!sizePlan) return estimateExportBytes(design, options);
+    // every size is weighed as the design at that size: what is on the pages stays, the pixels change
+    const each = multiSizeOptions(sizesFormat, settings.quality, pages);
+    return sizePlan.sizes.reduce((sum, s) => sum + estimateExportBytes({ width: s.width, height: s.height, pages: design.pages }, each), 0);
+  }, [design, options, pages, sizePlan, sizesFormat, settings.quality]);
   // a GIF or video: the timeline of the chosen pages (picture size, length, whether anything moves)
   const animation = useMemo(
-    () => (design && pages.length && isAnimatedFormat(options.format) ? resolveExportOptions(design, options).animation : null),
-    [design, options, pages.length],
+    () => (design && pages.length && !bundle && isAnimatedFormat(options.format) ? resolveExportOptions(design, options).animation : null),
+    [design, options, pages.length, bundle],
   );
   const video = getVideoSupport();
   const fileOptions = useMemo(() => optionsFor(video), [video]);
-  const tabHidden = useTabHidden(progress !== null && settings.format === "webm");
+  const tabHidden = useTabHidden(progress !== null && !bundle && settings.format === "webm");
 
   if (!design) return <div className="cf-dl cf-dl--empty">Open a design to download it.</div>;
 
   const busy = progress !== null;
   const multi = pageCount > 1;
   const sizing = sizeText(design, settings.scale);
-  const animated = isAnimatedFormat(settings.format);
+  /** what the panel shows the choices of: one kind of file, or a download made of several */
+  const format: ExportFormat | Bundle = bundle ?? settings.format;
+  const animated = !bundle && isAnimatedFormat(settings.format);
   const problem = animation ? animationProblem(animation) : null;
   /** many sites refuse GIFs bigger than this */
-  const bigGif = settings.format === "gif" && estimate > 15 * 1024 * 1024;
+  const bigGif = format === "gif" && estimate > 15 * 1024 * 1024;
+  /** why this download cannot start (a page that is missing is said in the footer, like for every other download) */
+  const refusal = problem ?? sizePlan?.problem ?? null;
+
+  const toggleSize = (id: string) => {
+    const next = new Set(tickedSizes);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSizeIds(next);
+  };
 
   const toggleCustom = (index: number) => {
     const next = new Set(customSet);
@@ -242,13 +276,16 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
   };
 
   const run = async () => {
-    if (abortRef.current || !pages.length || problem) return; // the ref (not `busy`) is the lock: two clicks in one tick must not start two exports
+    if (abortRef.current || !pages.length || refusal) return; // the ref (not `busy`) is the lock: two clicks in one tick must not start two exports
     const controller = new AbortController();
     abortRef.current = controller;
-    const total = pages.length;
+    const total = several ? pages.length * tickedSizes.size : pages.length;
     setProgress({ done: 0, total });
+    const report = (done: number, of: number) => alive.current && setProgress({ done, total: of });
     try {
-      const file = await exportDesign(design, options, (done, of) => alive.current && setProgress({ done, total: of }), controller.signal);
+      const file = several
+        ? await exportSeveralSizes(design, { sizeIds: [...tickedSizes], pages, format: sizesFormat, quality: settings.quality }, report, controller.signal)
+        : await exportDesign(design, options, report, controller.signal);
       downloadBlob(file.blob, file.name);
       toast.show({ kind: "success", message: `Downloaded ${file.name}` });
       if (file.note) toast.show({ kind: "info", message: file.note, duration: 9000 });
@@ -257,7 +294,11 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
       if (isCancelled(error)) toast.show({ kind: "info", message: "Download cancelled" });
       else {
         console.error("Export failed", error);
-        toast.show({ kind: "error", message: describeExportError(error, { scale: options.format === "png" || options.format === "jpg" ? options.scale : undefined }) });
+        // the size multiplier belongs in the message only where one was chosen: a single PNG or JPG
+        toast.show({
+          kind: "error",
+          message: describeExportError(error, { scale: !several && (options.format === "png" || options.format === "jpg") ? options.scale : undefined }),
+        });
       }
     } finally {
       abortRef.current = null;
@@ -269,17 +310,19 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
     ? null
     : progress.done >= progress.total
       ? "Finishing up…"
-      : settings.format === "webm"
-        ? tabHidden
-          ? "Recording pauses while this tab is in the background. Switch back to keep going."
-          : `Recording ${Math.floor(progress.done / VIDEO_FPS)} s of ${Math.round(progress.total / VIDEO_FPS)} s…`
-        : settings.format === "gif"
-          ? progress.done === 0
-            ? "Preparing your download…"
-            : `Rendering frame ${progress.done + 1} of ${progress.total}…`
-          : progress.total === 1
-            ? "Preparing your download…"
-            : `Preparing page ${progress.done + 1} of ${progress.total}…`;
+      : several
+        ? `Rendering picture ${progress.done + 1} of ${progress.total}…`
+        : format === "webm"
+          ? tabHidden
+            ? "Recording pauses while this tab is in the background. Switch back to keep going."
+            : `Recording ${Math.floor(progress.done / VIDEO_FPS)} s of ${Math.round(progress.total / VIDEO_FPS)} s…`
+          : format === "gif"
+            ? progress.done === 0
+              ? "Preparing your download…"
+              : `Rendering frame ${progress.done + 1} of ${progress.total}…`
+            : progress.total === 1
+              ? "Preparing your download…"
+              : `Preparing page ${progress.done + 1} of ${progress.total}…`;
 
   const sliderSize = (
     <>
@@ -303,10 +346,12 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
       <Field label="File type" id="cf-dl-type">
         <Select<FileKey>
           aria-label="File type"
-          value={fileKeyOf(settings)}
+          value={bundle ?? fileKeyOf(settings)}
           options={fileOptions}
           disabled={busy}
           onChange={(key) => {
+            setBundle(key === "sizes" ? key : null);
+            if (key === "sizes") return;
             if (key === "pdf-standard") patch({ format: "pdf", pdfMode: "standard" });
             else if (key === "pdf-print") patch({ format: "pdf", pdfMode: "print" });
             else patch({ format: key });
@@ -314,14 +359,14 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         />
       </Field>
 
-      {settings.format === "png" && (
+      {format === "png" && (
         <div className="cf-dl__group">
           {sliderSize}
           <Switch checked={settings.transparent} onChange={(transparent) => patch({ transparent })} label="Transparent background" disabled={busy} />
         </div>
       )}
 
-      {settings.format === "jpg" && (
+      {format === "jpg" && (
         <div className="cf-dl__group">
           {sliderSize}
           <Slider
@@ -338,7 +383,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         </div>
       )}
 
-      {settings.format === "pdf" && (
+      {format === "pdf" && (
         <div className="cf-dl__group">
           <Field label="Presets">
             <Segmented<"standard" | "print">
@@ -386,7 +431,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         </div>
       )}
 
-      {settings.format === "svg" && (
+      {format === "svg" && (
         <div className="cf-dl__group">
           <Switch checked={settings.embedFonts} onChange={(embedFonts) => patch({ embedFonts })} label="Embed fonts" disabled={busy} />
           <p className="cf-dl__hint">Text looks the same everywhere. Turn off for a smaller file; the SVG then relies on fonts installed on the viewing device.</p>
@@ -405,7 +450,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
               options={ANIM_RESOLUTIONS.map((r) => ({ value: r, label: resolutionLabel(r), disabled: busy }))}
             />
           </Field>
-          {settings.format === "gif" ? (
+          {format === "gif" ? (
             <Field label="Frame rate">
               <Segmented<number>
                 aria-label="Frame rate"
@@ -430,6 +475,60 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
             <p className="cf-dl__note">Nothing is animated yet - use Animate on the toolbar</p>
           ) : bigGif ? (
             <p className="cf-dl__note cf-dl__note--warn">Many sites accept GIFs of about 15 MB at most. A lower resolution or frame rate makes this one smaller.</p>
+          ) : null}
+        </div>
+      )}
+
+      {sizePlan && (
+        <div className="cf-dl__group">
+          <Field
+            label="Sizes"
+            aside={
+              <span className="cf-dl__count" aria-live="polite">
+                {sizePlan.sizes.length} of {MAX_SIZES}
+              </span>
+            }
+          >
+            <div className="cf-dl__sizes" role="group" aria-label="Sizes to download">
+              {choices.map((choice) => (
+                <Checkbox
+                  key={choice.id}
+                  className="cf-dl__size"
+                  checked={tickedSizes.has(choice.id)}
+                  onChange={() => toggleSize(choice.id)}
+                  disabled={busy}
+                  label={
+                    <>
+                      <span className="cf-dl__size-name">{choice.id === CURRENT_SIZE_ID ? `${choice.name} (this design)` : choice.name}</span>
+                      <span className="cf-dl__size-px">{sizeLabel(choice)}</span>
+                    </>
+                  }
+                />
+              ))}
+            </div>
+          </Field>
+          <Field label="Format">
+            <Segmented<MultiSizeFormat>
+              aria-label="Format of each size"
+              size="sm"
+              fullWidth
+              value={sizesFormat}
+              onChange={setSizesFormat}
+              options={[
+                { value: "png", label: "PNG", disabled: busy },
+                { value: "jpg", label: "JPG", disabled: busy },
+                { value: "pdf", label: "PDF", disabled: busy },
+              ]}
+            />
+          </Field>
+          <p className="cf-dl__hint">
+            Every size is made from a copy that is scaled to fit and centred, as Resize does it. This design is not changed. The files come together in one .zip
+            {sizesFormat === "pdf" ? ", one PDF for each size." : ", each exactly as many pixels as its size."}
+          </p>
+          {sizePlan.problem && pages.length ? (
+            <p className="cf-dl__note cf-dl__note--error" role="alert">
+              {sizePlan.problem}
+            </p>
           ) : null}
         </div>
       )}
@@ -472,7 +571,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         {multi && settings.pagesMode !== "custom" ? (
           <p className="cf-dl__hint">
             {settings.pagesMode === "current" ? `Page ${activeIndex + 1} of ${pageCount}` : "Every page in this design"}
-            {pages.length > 1 && animated ? " - played one after another" : pages.length > 1 && settings.format !== "pdf" ? " - saved together as a .zip" : ""}
+            {pages.length > 1 && animated ? " - played one after another" : pages.length > 1 && format !== "pdf" && !bundle ? " - saved together as a .zip" : ""}
           </p>
         ) : null}
       </Field>
@@ -483,12 +582,13 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
             <>
               Estimated size <strong>~{formatBytes(estimate)}</strong>
               {animation ? <> · {formatDuration(animation.total)}</> : null}
+              {sizePlan ? <> · {sizePlan.files === 1 ? "1 file" : `${sizePlan.files} files`}</> : null}
             </>
           ) : (
             "Select at least one page to download."
           )}
         </p>
-        <Button variant="primary" size="lg" block icon={<IconDownload aria-hidden="true" />} loading={busy} disabled={!pages.length || !!problem} onClick={run}>
+        <Button variant="primary" size="lg" block icon={<IconDownload aria-hidden="true" />} loading={busy} disabled={!pages.length || !!refusal} onClick={run}>
           Download
         </Button>
         {busy ? (
