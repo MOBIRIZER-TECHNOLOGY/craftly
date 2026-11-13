@@ -3,19 +3,19 @@
  * a key, what a viewer may and may not do, two browsers editing at once through it, a room that survives a restart, and the limits
  * that keep one visitor from using the server up.
  */
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join as join2 } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { Live, type SocketLike } from "@/collab/live";
 import { designsEqual } from "@/collab/ops";
 import type { ClientMsg, ServerMsg } from "@/collab/protocol";
 import { createDesign, createPage, createShape, solid } from "@/core/factory";
 import type { Design } from "@/core/types";
-import { createLiveServer, type LiveServer, type LiveServerOptions } from "./live";
+import { closeWithin, createLiveServer, type LiveServer, type LiveServerOptions } from "./live";
 import { FileStorage, MemoryStorage, ROOM_ID, type LiveStorage } from "./storage";
 
 const design = (): Design =>
@@ -38,7 +38,11 @@ afterEach(async () => {
   for (const live of lives.splice(0)) live.stop();
   for (const s of sockets.splice(0)) s.terminate();
   for (const server of servers.splice(0)) await server.close();
+  vi.restoreAllMocks();
 });
+
+/** What the server writes to its log from here on, kept and not printed. */
+const logged = () => vi.spyOn(console, "error").mockImplementation(() => undefined);
 
 async function boot(options: Partial<LiveServerOptions> = {}, storage: LiveStorage = new MemoryStorage()) {
   const server = createLiveServer({ storage, ...options });
@@ -523,11 +527,59 @@ describe("a store that cannot be read", () => {
         throw new Error("the disk is gone");
       },
     };
+    const log = logged();
     const b = await boot({}, failing);
     const lives = [join(b, "A".repeat(22), "k".repeat(12)), join(b, "../../etc/passwd", "k".repeat(12))];
     await until("both to be sent away", () => lives.every((l) => l.status === "denied"));
-    expect(lives.every((l) => l.denied === "not-found")).toBe(true);
+    // the store was asked for the first and failed, which is not the same as a room that is not there; it was never asked for the second
+    expect(lives.map((l) => l.denied)).toEqual(["server-error", "not-found"]);
+    expect(log).toHaveBeenCalledTimes(1);
     expect((await fetch(`${b.http}/api/health`)).status).toBe(503);
+  });
+
+  it.each<[string, (file: string) => void]>([
+    ["is damaged", (file) => writeFileSync(file, '{"design": {"pages": [')],
+    ["holds something that is not a room", (file) => writeFileSync(file, JSON.stringify({ rev: 1 }))],
+    [
+      "cannot be read",
+      (file) => {
+        rmSync(file);
+        mkdirSync(file); // a folder where the file should be: reading it fails, and not with "there is no such file"
+      },
+    ],
+  ])("says that the server has a problem, and writes it down, when the file of a room %s: the design is not gone", async (_what, spoil) => {
+    const dir = mkdtempSync(join2(tmpdir(), "craftly-live-test-"));
+    try {
+      const storage = new FileStorage(dir);
+      const b = await boot({}, storage);
+      const made = await makeRoom(b);
+      const file = join2(dir, `${made.room}.json`);
+      spoil(file);
+      const log = logged();
+      const visitor = join(b, made.room, made.editKey);
+      await until("the visitor to be sent away", () => visitor.status === "denied");
+      expect(visitor.denied).toBe("server-error");
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(String(log.mock.calls[0][0])).toContain(made.room);
+      // over HTTP it is an error of the server too, which a browser asks again later, and not a 404, which it takes as final
+      const stop = await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } });
+      expect(stop.status).toBe(500);
+      expect(((await stop.json()) as { error: string }).error).toMatch(/the server has a problem/);
+      const image = await fetch(`${b.http}/api/rooms/${made.room}/assets/img-1`, { headers: { "x-craftly-key": made.editKey } });
+      expect(image.status).toBe(500);
+      expect(log).toHaveBeenCalledTimes(3);
+      await expect(storage.load(made.room)).rejects.toThrow();
+      expect(existsSync(file)).toBe(true); // nothing is thrown away: the operator may be able to mend it
+      // a room that was never there is still just that, and nothing is written down for it
+      const nowhere = join(b, "A".repeat(22), made.editKey);
+      await until("the other visitor to be sent away", () => nowhere.status === "denied");
+      expect(nowhere.denied).toBe("not-found");
+      expect(await storage.load("A".repeat(22))).toBeNull();
+      expect(log).toHaveBeenCalledTimes(3);
+      expect(b.server.rooms()).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("with files on a disk, turns away a room id that would lead out of the folder", async () => {
@@ -969,5 +1021,88 @@ describe("an image that takes its time to arrive", () => {
     expect((await fetch(at, { headers: { "x-craftly-key": made.viewKey } })).status).toBe(404);
     expect((await fetch(at, { method: "PUT", headers: { "x-craftly-key": made.editKey }, body: "not json" })).status).toBe(400);
     await until("the room to leave memory", () => b.server.rooms() === 0);
+  });
+});
+
+describe("looking after itself", () => {
+  it("does not write to the disk for every question about its health: the answer is kept for a while, a bad one too", async () => {
+    let checks = 0;
+    let broken = false;
+    class Counted extends MemoryStorage {
+      override async checkWritable() {
+        checks++;
+        if (broken) throw new Error("the disk is gone");
+      }
+    }
+    const b = await boot({ healthCacheMs: 150 }, new Counted());
+    const ask = async () => (await fetch(`${b.http}/api/health`)).status;
+    expect(await Promise.all([ask(), ask(), ask()])).toEqual([200, 200, 200]);
+    expect(await ask()).toBe(200);
+    expect(checks).toBe(1);
+    broken = true;
+    await new Promise((r) => setTimeout(r, 200));
+    expect(await ask()).toBe(503);
+    expect(await ask()).toBe(503);
+    expect(checks).toBe(2);
+    broken = false;
+    await new Promise((r) => setTimeout(r, 200));
+    expect(await ask()).toBe(200);
+    expect(checks).toBe(3);
+  });
+
+  it("keeps the answer about its health for five seconds unless it is told otherwise", async () => {
+    let checks = 0;
+    class Counted extends MemoryStorage {
+      override async checkWritable() {
+        checks++;
+      }
+    }
+    const b = await boot({ healthCacheMs: undefined }, new Counted());
+    for (let i = 0; i < 3; i++) {
+      expect((await fetch(`${b.http}/api/health`)).status).toBe(200);
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    expect(checks).toBe(1);
+  });
+
+  it("writes down what went wrong when it answers a request with an error of its own", async () => {
+    const storage = new MemoryStorage();
+    storage.save = async () => {
+      throw new Error("disk full");
+    };
+    const log = logged();
+    const b = await boot({}, storage);
+    const res = await fetch(`${b.http}/api/rooms`, { method: "POST", body: JSON.stringify({ design: design() }) });
+    expect(res.status).toBe(500);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(String(log.mock.calls[0][1])).toContain("disk full");
+  });
+
+  it("waits for a server to close, but no longer than it is told to", async () => {
+    const closes = (how: () => Promise<void>) => ({ close: how });
+    expect(
+      await closeWithin(
+        closes(async () => undefined),
+        1000,
+      ),
+    ).toBe(true);
+    const started = Date.now();
+    expect(
+      await closeWithin(
+        closes(() => new Promise<void>(() => undefined)),
+        60,
+      ),
+    ).toBe(false);
+    expect(Date.now() - started).toBeLessThan(1000);
+    await expect(
+      closeWithin(
+        closes(() => Promise.reject(new Error("could not save"))),
+        1000,
+      ),
+    ).rejects.toThrow("could not save");
+    // and a real one, with nothing left to do, closes in time
+    const b = await boot();
+    servers.length = 0;
+    expect(await closeWithin(b.server, 2000)).toBe(true);
   });
 });

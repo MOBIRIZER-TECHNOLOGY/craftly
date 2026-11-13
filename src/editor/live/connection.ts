@@ -45,6 +45,7 @@ const DENIED: Record<DeniedReason, string> = {
   "bad-request": "The server did not understand this link.",
   "server-full": "The server is full. Try again in a moment.",
   "too-large": "This design is too big for the server.",
+  "server-error": "The server has a problem and could not open this shared design. The design may still be there: try again later.",
   invalid: "The server sent something that Craftly does not accept, so the connection was closed. Only join designs from a server you trust.",
 };
 

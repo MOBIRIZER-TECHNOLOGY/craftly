@@ -28,6 +28,7 @@ export interface RoomRecord {
 }
 
 export interface LiveStorage {
+  /** The room, or null when there is none. A room that is there and cannot be read is an error, not a room that is gone. */
   load(id: string): Promise<RoomRecord | null>;
   save(id: string, record: RoomRecord): Promise<void>;
   remove(id: string): Promise<void>;
@@ -87,15 +88,20 @@ export class FileStorage implements LiveStorage {
     let text: string;
     try {
       text = await readFile(this.path(id), "utf8");
-    } catch {
-      return null;
+    } catch (error) {
+      // Only "there is no such file" means that there is no such room. A disk that fails, or a file that may not be read, is a
+      // problem of the server, and whoever asks must not be told that the design is gone.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
+    let record: unknown;
     try {
-      const record: unknown = JSON.parse(text);
-      return looksLikeRecord(record) ? record : null;
-    } catch {
-      return null;
+      record = JSON.parse(text);
+    } catch (error) {
+      throw new Error("the file of this room is damaged: it is not JSON", { cause: error });
     }
+    if (!looksLikeRecord(record)) throw new Error("the file of this room is damaged: it does not hold a room");
+    return record;
   }
 
   async save(id: string, record: RoomRecord): Promise<void> {

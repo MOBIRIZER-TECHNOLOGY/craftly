@@ -53,6 +53,8 @@ export interface LiveServerOptions {
   maxConnections?: number;
   /** The most connections to one room that have not shown their key yet. */
   maxWaitingPerRoom?: number;
+  /** How long an answer about the health of the storage is kept, so that not every `GET /api/health` writes to the disk. */
+  healthCacheMs?: number;
 }
 
 export interface LiveServer {
@@ -78,6 +80,7 @@ const DEFAULTS = {
   maxUnjoinedMessageBytes: 8 * 1024,
   maxConnections: 5000,
   maxWaitingPerRoom: 20,
+  healthCacheMs: 5000,
 };
 
 /** A burst and a rate, with what was not given (or given as undefined, as a setting that is not set is) taken from the default. */
@@ -138,6 +141,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     maxBufferedBytes: options.maxBufferedBytes ?? 2 * (options.maxDesignBytes ?? DEFAULTS.maxDesignBytes),
     maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
     maxWaitingPerRoom: options.maxWaitingPerRoom ?? DEFAULTS.maxWaitingPerRoom,
+    healthCacheMs: options.healthCacheMs ?? DEFAULTS.healthCacheMs,
   };
   const loaded = new Map<string, Loaded>();
   const loading = new Map<string, Promise<Loaded | null>>();
@@ -383,6 +387,25 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     });
   };
 
+  /**
+   * Whether the storage can be written to, asked at most once in `healthCacheMs`. The check writes a file and waits for the disk,
+   * and anybody may ask for `/api/health` as often as they like: the answer of a moment ago is given to all who ask meanwhile.
+   */
+  let health: { at: number; writable: Promise<boolean> } | null = null;
+  const storageWritable = (): Promise<boolean> => {
+    const now = Date.now();
+    if (!health || now - health.at >= o.healthCacheMs) {
+      health = {
+        at: now,
+        writable: o.storage.checkWritable().then(
+          () => true,
+          () => false,
+        ),
+      };
+    }
+    return health.writable;
+  };
+
   const target = (req: IncomingMessage): URL | null => {
     const raw = req.url ?? "";
     if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return null;
@@ -403,12 +426,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         return void res.end();
       }
       if (req.method === "GET" && url.pathname === "/api/health") {
-        try {
-          await o.storage.checkWritable();
-          return reply(res, 200, { ok: true, rooms: loaded.size });
-        } catch {
-          return reply(res, 503, { ok: false, error: "room storage is unavailable" });
-        }
+        if (await storageWritable()) return reply(res, 200, { ok: true, rooms: loaded.size });
+        return reply(res, 503, { ok: false, error: "room storage is unavailable" });
       }
       if (req.method === "POST" && url.pathname === "/api/rooms") return await createRoom(req, res);
       const asset = /^\/api\/rooms\/([^/]+)\/assets\/([^/]+)$/.exec(url.pathname);
@@ -416,8 +435,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       const del = /^\/api\/rooms\/([^/]+)$/.exec(url.pathname);
       if (req.method === "DELETE" && del) return await deleteRoom(del[1], req, res);
       reply(res, 404, { error: "not found" });
-    })().catch(() => {
-      if (!res.headersSent) reply(res, 500, { error: "something went wrong" });
+    })().catch((error: unknown) => {
+      // The storage failed, or a room that is there could not be read. It is written down for the operator, and answered as a
+      // problem of the server: a browser asks again later after a 500, where it takes a 404 to mean that the design is gone.
+      console.error(`Craftly could not answer ${req.method} ${url.pathname}`, error);
+      if (!res.headersSent) reply(res, 500, { error: "the server has a problem and could not do this; try again later" });
     });
   });
 
@@ -483,8 +505,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     let l: Loaded | null;
     try {
       l = await find(roomId);
-    } catch {
-      l = null; // a room that cannot be read is a room that is not there; the server goes on
+    } catch (error) {
+      // A room that cannot be read is not a room that is gone, and the person is not told that it is: the reason says that the
+      // server has a problem. It is written down for the operator, and the server goes on.
+      console.error(`Craftly could not read the shared design ${roomId}`, error);
+      return deny(ws, "server-error");
     }
     if (ws.readyState !== ws.OPEN) {
       // it went away while the room was being read: nobody is left to send the room out of memory on leaving, so that is asked for here
@@ -590,4 +615,20 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     },
     rooms: () => loaded.size,
   };
+}
+
+/**
+ * Closes a server and waits for that no longer than `ms`: whether it closed in time. Closing waits for every save and every
+ * request that is at work, and one of those may hang (a disk that does not answer, an upload that never ends), so whoever stops
+ * the process needs an end to the wait. Nothing that was acknowledged is lost by not waiting: an edit is saved before it is
+ * acknowledged. Rejects when closing fails.
+ */
+export function closeWithin(server: Pick<LiveServer, "close">, ms: number): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const late = setTimeout(() => resolve(false), ms);
+    server
+      .close()
+      .then(() => resolve(true), reject)
+      .finally(() => clearTimeout(late));
+  });
 }

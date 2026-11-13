@@ -21,9 +21,12 @@ import type { Op } from "./ops";
 export type Role = "edit" | "view";
 export const canEdit = (role: Role): boolean => role === "edit";
 
-/** Why a browser is not let in or is sent away. `invalid` is never sent: it is what a browser says of a server that sent something it cannot use. */
-export type DeniedReason = "no-access" | "not-found" | "bad-request" | "server-full" | "too-large" | "invalid";
-const DENIED_REASONS: ReadonlySet<string> = new Set<DeniedReason>(["no-access", "not-found", "bad-request", "server-full", "too-large", "invalid"]);
+/**
+ * Why a browser is not let in or is sent away. `invalid` is never sent: it is what a browser says of a server that sent something it cannot use.
+ * `server-error` is a server that could not read the room (its disk failed, or the file is damaged), which is not a room that is gone.
+ */
+export type DeniedReason = "no-access" | "not-found" | "bad-request" | "server-full" | "too-large" | "server-error" | "invalid";
+const DENIED_REASONS: ReadonlySet<string> = new Set<DeniedReason>(["no-access", "not-found", "bad-request", "server-full", "too-large", "server-error", "invalid"]);
 
 /** The longest key that a browser may show; the server's are 22 characters, and the editor reads links with keys of up to 100. */
 export const MAX_KEY_LENGTH = 200;

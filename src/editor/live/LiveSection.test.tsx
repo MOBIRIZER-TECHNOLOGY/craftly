@@ -48,6 +48,7 @@ describe("when the server turns this browser away, or is turned away", () => {
     ["invalid", /does not accept/i],
     ["no-access", /not allowed in/i],
     ["not-found", /no longer there/i],
+    ["server-error", /server has a problem/i],
   ] as const)("says why, in words, for %s", (reason, words) => {
     useEditor.getState().actions.setLiveLink(link);
     useLiveStatus.setState({ status: "denied", reason, role: null });
