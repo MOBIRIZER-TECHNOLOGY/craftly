@@ -123,41 +123,47 @@ export async function dbGetAllKeys(store: StoreName): Promise<string[]> {
   return keys.map(String);
 }
 
+/**
+ * Settles when the transaction does, not when a write in it was taken: a browser that has no room left takes the write and says
+ * so only when the transaction ends, so until then nothing is stored. It always rejects with an error: the transaction's own, or
+ * that of the write that failed (reported on the transaction first, while the transaction itself has none yet), or one that says
+ * no more than that it was given up.
+ */
+function committed(tx: IDBTransaction): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let failed: DOMException | null = null;
+    tx.oncomplete = () => resolve();
+    tx.onerror = (event) => {
+      failed = (event.target as IDBRequest | null)?.error ?? failed;
+    };
+    // a write that fails gives the whole transaction up, so this is where every failure ends
+    tx.onabort = () => reject(tx.error ?? failed ?? new Error("The storage transaction was aborted."));
+  });
+}
+
 /** `key` is only used by the out-of-line `meta` store. */
 export async function dbPut<T>(store: StoreName, value: T, key?: string): Promise<void> {
-  const db = await openDb();
-  await wrap(
-    db
-      .transaction(store, "readwrite")
-      .objectStore(store)
-      .put(value as never, key),
-  );
+  const tx = (await openDb()).transaction(store, "readwrite");
+  tx.objectStore(store).put(value as never, key);
+  await committed(tx);
 }
 
 export async function dbPutMany(writes: Array<{ store: StoreName; value: unknown }>): Promise<void> {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([...new Set(writes.map((w) => w.store))], "readwrite");
-    for (const w of writes) tx.objectStore(w.store).put(w.value as never);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });
+  const tx = (await openDb()).transaction([...new Set(writes.map((w) => w.store))], "readwrite");
+  for (const w of writes) tx.objectStore(w.store).put(w.value as never);
+  await committed(tx);
 }
 
 export async function dbDelete(store: StoreName, key: string): Promise<void> {
-  const db = await openDb();
-  await wrap(db.transaction(store, "readwrite").objectStore(store).delete(key));
+  const tx = (await openDb()).transaction(store, "readwrite");
+  tx.objectStore(store).delete(key);
+  await committed(tx);
 }
 
 export async function dbDeleteMany(store: StoreName, keys: string[]): Promise<void> {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(store, "readwrite");
-    for (const k of keys) tx.objectStore(store).delete(k);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  const tx = (await openDb()).transaction(store, "readwrite");
+  for (const k of keys) tx.objectStore(store).delete(k);
+  await committed(tx);
 }
 
 export async function metaGet<T>(key: string, fallback: T): Promise<T> {

@@ -17,8 +17,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
-import { diffDesign } from "@/collab/ops";
-import { checkOps, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
+import { checkDesign, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
 import { Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
 import { ROOM_ID, type LiveStorage, type RoomRecord, type SharedAsset } from "./storage";
@@ -223,12 +222,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     if (!design || typeof design !== "object" || !Array.isArray(design.pages) || design.pages.length < 1 || design.pages.length > 500) {
       return reply(res, 400, { error: "send { design } with at least one page" });
     }
-    // a design is acceptable when it could be added, page by page, to an empty one: the same check as for every batch
-    const blank = { ...design, pages: [{ id: "-", background: { type: "solid", color: "#ffffff" }, elements: [] }] } as unknown as Design;
-    const checked = checkOps(JSON.parse(JSON.stringify(diffDesign(blank, design))));
-    if (typeof checked === "string") return reply(res, 400, { error: checked });
-    if (typeof design.title !== "string" || typeof design.width !== "number" || typeof design.height !== "number")
-      return reply(res, 400, { error: "a design needs a title and a size" });
+    // A design is acceptable when a browser would accept it as a welcome: the same check of everything in it as for a batch, but not
+    // the limit of what one batch may carry, which a design that many batches built up can exceed. Its size in bytes bounds it.
+    const problem = checkDesign(design);
+    if (problem) return reply(res, 400, { error: problem });
     const previous = roomCreation;
     let release!: () => void;
     roomCreation = new Promise<void>((resolve) => {

@@ -17,6 +17,7 @@
  */
 import { getAsset } from "@/core/assets";
 import { blendOf } from "@/core/blend";
+import { svgProblem } from "@/core/svgSafety";
 import type { Design, DesignElement, Fill, GraphicElement, ImageElement, LineElement, Page, ShapeElement, Stroke, TableElement } from "@/core/types";
 import { isNeutral, renderFiltered } from "@/render/imageFilters";
 import { drawableSize, loadImage, type Drawable } from "@/render/images";
@@ -207,74 +208,12 @@ function scopeIds(inner: string, prefix: string): string {
   let out = inner;
   for (const id of ids) {
     const e = escapeRe(id);
+    // the new text is handed over by a function: in a text given as it is, an id such as "$`" would stand for the markup around it
     out = out
-      .replace(new RegExp(`(\\sid\\s*=\\s*["'])${e}(["'])`, "g"), `$1${prefix}${id}$2`)
-      .replace(new RegExp(`url\\(\\s*(["']?)#${e}\\1\\s*\\)`, "g"), `url(#${prefix}${id})`)
-      .replace(new RegExp(`((?:xlink:)?href\\s*=\\s*["'])#${e}(["'])`, "g"), `$1#${prefix}${id}$2`);
+      .replace(new RegExp(`(\\sid\\s*=\\s*["'])${e}(["'])`, "g"), (_all, open: string, close: string) => `${open}${prefix}${id}${close}`)
+      .replace(new RegExp(`url\\(\\s*(["']?)#${e}\\1\\s*\\)`, "g"), () => `url(#${prefix}${id})`)
+      .replace(new RegExp(`((?:xlink:)?href\\s*=\\s*["'])#${e}(["'])`, "g"), (_all, open: string, close: string) => `${open}#${prefix}${id}${close}`);
   }
-  return out;
-}
-
-/** The most times a piece of markup is cleaned again; a drawing that still changes after that keeps growing what it is cleaned of. */
-const MAX_CLEANINGS = 16;
-
-/**
- * Drops anything active or external from inlined markup: scripts, event handlers (however they are written: after a space or a
- * slash, in quotes or without), foreign objects, remote hrefs, `@import` rules and `url(...)` references that leave the document.
- * Taking one thing out can leave another made of what was around it (`<scr<script></script>ipt>`), so it goes on until the markup no
- * longer changes; markup that never settles is not a drawing and comes back empty. (Graphics that arrive from other people are
- * refused before this, by `svgProblem`; this is for what is already in a design, whoever put it there.)
- */
-function sanitizeInline(markup: string): string {
-  // whole scripts and foreign objects first, with what is inside them, until none is left...
-  const blocks = (text: string) => text.replace(/<script\b[\s\S]*?<\/script\s*>/gi, "").replace(/<foreignObject\b[\s\S]*?<\/foreignObject\s*>/gi, "");
-  // ...then what is left of the rest: tags that are never closed or that close themselves, handlers, and addresses that leave the drawing
-  const rest = (text: string) =>
-    text
-      .replace(/<\/?(?:script|foreignObject)\b[^>]*>/gi, "")
-      .replace(/[\s/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-      .replace(/@import[^;{]*;?/gi, "")
-      .replace(/url\(\s*(["']?)(?!#|data:)[^)]*\)/gi, "none")
-      .replace(/\s(xlink:href|href)\s*=\s*("([^"]*)"|'([^']*)')/gi, (all, _name: string, _q: string, a: string | undefined, b: string | undefined) => {
-        const value = (a ?? b ?? "").trim();
-        return value.startsWith("#") || /^data:image\//i.test(value) ? all : "";
-      });
-  const settle = (text: string, clean: (text: string) => string): string | null => {
-    let out = text;
-    for (let pass = 0; pass < MAX_CLEANINGS; pass++) {
-      const next = clean(out);
-      if (next === out) return out;
-      out = next;
-    }
-    return null;
-  };
-  const whole = settle(markup, blocks);
-  return (whole === null ? null : settle(whole, rest)) ?? "";
-}
-
-/**
- * <style> blocks of an inlined graphic apply to the whole document, so two graphics that both define `.cls-1`
- * (Illustrator's habit) would restyle each other. Class names are prefixed per graphic, in the rules and in the markup.
- */
-function scopeClasses(inner: string, prefix: string): string {
-  const styles = [...inner.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)];
-  if (!styles.length) return inner;
-  const names = new Set<string>();
-  for (const m of styles) for (const c of m[1].matchAll(/\.(-?[A-Za-z_][\w-]*)/g)) names.add(c[1]);
-  if (!names.size) return inner;
-  let out = inner.replace(
-    /(<style\b[^>]*>)([\s\S]*?)(<\/style\s*>)/gi,
-    (_all, open: string, css: string, close: string) => `${open}${css.replace(/\.(-?[A-Za-z_][\w-]*)/g, (_m, name: string) => `.${prefix}${name}`)}${close}`,
-  );
-  out = out.replace(
-    /\sclass\s*=\s*(["'])(.*?)\1/g,
-    (_all, q: string, value: string) =>
-      ` class=${q}${value
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((c) => (names.has(c) ? prefix + c : c))
-        .join(" ")}${q}`,
-  );
   return out;
 }
 
@@ -571,7 +510,12 @@ class PageBuilder {
   private graphicCount = 0;
 
   private graphic(el: GraphicElement, m: Matrix, a: number): string {
-    const parts = splitSvg(sanitizeInline(graphicMarkup(el)));
+    // The markup goes into the file as it is, and the file is opened as a document of its own, where a script would run. A list
+    // of what to take out can be walked around (a script behind a prefix, a page in another namespace, an address written with an
+    // escape), so nothing is taken out: a graphic is written only when all of it is plain drawing, as it is drawn now (recoloured,
+    // with its line width), and left out otherwise. Every graphic the app makes is plain drawing.
+    const markup = graphicMarkup(el);
+    const parts = svgProblem(markup) === null ? splitSvg(markup) : null;
     if (!parts) {
       this.doc.warn("A graphic could not be read and was left out.");
       return "";
@@ -586,7 +530,7 @@ class PageBuilder {
       .trimEnd();
     const filter = this.shadowFilterFor(el, m, true);
     const opacity = a < 0.9995 ? ` opacity="${num(a)}"` : "";
-    const nested = `<svg x="0" y="0" width="${num(el.width)}" height="${num(el.height)}" viewBox="${escAttr(viewBox)}"${pAR ? ` preserveAspectRatio="${escAttr(pAR)}"` : ""}${kept}>${scopeClasses(scopeIds(parts.inner, prefix), prefix)}</svg>`;
+    const nested = `<svg x="0" y="0" width="${num(el.width)}" height="${num(el.height)}" viewBox="${escAttr(viewBox)}"${pAR ? ` preserveAspectRatio="${escAttr(pAR)}"` : ""}${kept}>${scopeIds(parts.inner, prefix)}</svg>`;
     // the filter / opacity sit on a wrapper: on the nested <svg> itself the viewport clip would cut the shadow off
     return filter || opacity ? `<g${filter ? ` filter="url(#${filter})"` : ""}${opacity}>${nested}</g>` : nested;
   }

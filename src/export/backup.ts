@@ -307,7 +307,7 @@ export interface RestoreResult {
   folders: { added: number };
   versions: { added: number; damaged: number };
   brandKit: BrandKitAction;
-  /** items the backup listed that could not be used at all (an id that is not safe, no file name) */
+  /** items the backup listed that could not be used at all (an id that is not safe, no file name, an upload that is no picture) */
   skipped: number;
   /** designs and saved versions that a newer Craftly made: not damaged, and left out until this one is updated */
   newer: number;

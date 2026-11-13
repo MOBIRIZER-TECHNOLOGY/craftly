@@ -897,6 +897,52 @@ describe("clipboard", () => {
     expect(elements()).toHaveLength(0);
   });
 
+  it("copy, cut and paste are left to the browser while a popover or dialog is open over the page", () => {
+    open();
+    actions().select(["r"]);
+    for (const mark of [() => (document.body.dataset.cfOverlay = "1"), () => document.body.setAttribute("data-cf-modal-open", "")]) {
+      mark();
+      const data = clip({ "text/plain": "typed" });
+      expect(send("copy", data)).toBe(false);
+      expect(send("cut", data)).toBe(false);
+      expect(send("paste", data)).toBe(false);
+      expect(data.setData).not.toHaveBeenCalled();
+      expect(state().clipboard).toBeNull();
+      expect(ids()).toEqual(["t", "t2", "r", "e", "img", "frame"]);
+      document.body.removeAttribute("data-cf-overlay");
+      document.body.removeAttribute("data-cf-modal-open");
+    }
+    // with nothing over the page they work again
+    expect(send("cut", clip())).toBe(true);
+    expect(ids()).not.toContain("r");
+  });
+
+  it("copy, cut and paste are left to the browser while presenting", () => {
+    open();
+    actions().setPresenting(true);
+    actions().select(["r"]);
+    const data = clip({ "text/plain": "typed" });
+    expect(send("copy", data)).toBe(false);
+    expect(send("cut", data)).toBe(false);
+    expect(send("paste", data)).toBe(false);
+    expect(data.setData).not.toHaveBeenCalled();
+    expect(state().clipboard).toBeNull();
+    expect(ids()).toEqual(["t", "t2", "r", "e", "img", "frame"]);
+  });
+
+  it("copy, cut and paste stand back when another handler already took the event", () => {
+    open();
+    actions().select(["r"]);
+    const claim = (e: Event) => e.preventDefault();
+    for (const type of ["copy", "cut", "paste"] as const) {
+      document.addEventListener(type, claim, true);
+      send(type, clip({ "text/plain": "typed" }));
+      document.removeEventListener(type, claim, true);
+    }
+    expect(state().clipboard).toBeNull();
+    expect(ids()).toEqual(["t", "t2", "r", "e", "img", "frame"]);
+  });
+
   it("copy, cut and paste do nothing without an open design", () => {
     resetEditor();
     expect(send("copy", clip())).toBe(false);

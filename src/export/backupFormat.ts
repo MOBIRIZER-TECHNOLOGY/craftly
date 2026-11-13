@@ -13,6 +13,7 @@
  *
  * Restoring only ever adds. Nothing that is in the library now is replaced or removed (see `planRestore`).
  */
+import { isAcceptedImage } from "@/core/assets";
 import { createMigrator, type MigrationError, type MigrationErrorCode, type MigrationStep } from "@/core/schema/migrator";
 import type { BrandKit, Folder } from "@/core/types";
 import { extensionForMime } from "./projectFormat";
@@ -182,6 +183,9 @@ function readDesign(item: unknown): ManifestDesign | null {
 function readUpload(item: unknown): ManifestUpload | null {
   if (!isObject(item) || !isSafeId(item.id) || typeof item.file !== "string" || !item.file) return null;
   const mime = typeof item.mime === "string" && item.mime ? item.mime : (mimeForExtension(item.file) ?? "image/png");
+  // The file is stored under the type the backup gives it, and a backup can be made by hand: only what the upload field takes
+  // comes back, judged by the type alone (a name proves nothing here). A web page kept in the app's storage could be opened as one.
+  if (!isAcceptedImage(new File([], "", { type: mime }))) return null;
   return {
     id: item.id,
     name: text(item.name, "Upload"),
@@ -219,7 +223,7 @@ function readBrandKit(value: unknown): BrandKit | null {
 }
 
 /**
- * Parses and validates a manifest. Entries that cannot be used (an unsafe id, no file name) are left out and
+ * Parses and validates a manifest. Entries that cannot be used (an unsafe id, no file name, an upload that is no picture) are left out and
  * counted in `skipped`; a file that is not a manifest at all, or comes from a newer app, throws `BackupError`.
  */
 export function parseManifest(source: string): { manifest: BackupManifest; skipped: number } {

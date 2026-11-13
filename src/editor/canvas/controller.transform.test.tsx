@@ -3,7 +3,7 @@
  * the eight resize handles for every kind of element, rotating, and dragging the end points of a line. Each gesture
  * must change the document as the user expects and leave exactly one undo step.
  */
-import { act, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { createChart, createGroup, createImage, createLine, createShape, createTable, createText } from "@/core/factory";
 import type { GroupElement, ImageElement, LineElement, TableElement, TextElement } from "@/core/types";
@@ -819,6 +819,89 @@ describe("gestures with several moves, and handles that are only pressed", () =>
     rig.down(400, 400, { target: rig.handle("line:1") });
     rig.up(400, 400);
     expect(state().past).toHaveLength(0);
+  });
+});
+
+describe("a second pointer, and a drag that loses its pointer", () => {
+  const resizing = async () => {
+    const rig = await mountWorkspace(canvasDesign(shapes()));
+    noSnap();
+    selectIds("a");
+    rig.down(300, 200, { target: rig.handle("resize:se") });
+    rig.move(350, 220);
+    return rig;
+  };
+
+  it("ignores a second finger that touches the canvas while a handle is dragged, so the resize ends as one undo step", async () => {
+    const rig = await resizing();
+    rig.down(500, 450, { pointerId: 2 });
+    expect(state().selection).toEqual(["a"]);
+    expect(useGesture.getState().marquee).toBeNull();
+    rig.move(360, 230);
+    expect(boxOf("a")).toEqual([100, 100, 260, 130]);
+    rig.up(360, 230);
+    rig.up(500, 450, { pointerId: 2 });
+    expect(state().past).toHaveLength(1);
+    expect(useGesture.getState().active).toBe(false);
+    act(() => getActions().undo());
+    expect(boxOf("a")).toEqual([100, 100, 200, 100]);
+  });
+
+  it("ignores a second finger on another element while the first one is being moved", async () => {
+    const rig = await mountWorkspace(canvasDesign(shapes()));
+    noSnap();
+    rig.down(200, 150);
+    rig.move(260, 150);
+    rig.down(500, 150, { pointerId: 2 });
+    expect(state().selection).toEqual(["a"]);
+    rig.move(280, 150);
+    rig.up(280, 150);
+    expect(boxOf("a")).toEqual([180, 100, 200, 100]);
+    expect(boxOf("b")).toEqual([400, 100, 200, 100]);
+    expect(state().past).toHaveLength(1);
+  });
+
+  it("closes the step of a drag whose release never arrived when the same pointer presses again", async () => {
+    const rig = await resizing();
+    rig.down(500, 150);
+    expect(state().past).toHaveLength(1);
+    expect(useGesture.getState().hud).toBeNull();
+    expect(state().selection).toEqual(["b"]);
+    rig.move(540, 150);
+    rig.up(540, 150);
+    expect(boxOf("a")).toEqual([100, 100, 250, 120]);
+    expect(boxOf("b")).toEqual([440, 100, 200, 100]);
+    expect(state().past).toHaveLength(2);
+  });
+
+  it("ends a drag that loses its pointer capture the way a cancelled one ends", async () => {
+    const rig = await mountWorkspace(canvasDesign(shapes()));
+    selectIds("a");
+    rig.down(300, 150, { target: rig.handle("resize:e") });
+    rig.move(852, 150);
+    expect(state().snapGuides).not.toEqual([]);
+    expect(useGesture.getState().hud).not.toBeNull();
+    fireEvent.lostPointerCapture(rig.host, { pointerId: 1 });
+    expect(boxOf("a")).toEqual([100, 100, 756, 100]);
+    expect(state().past).toHaveLength(1);
+    expect(state().snapGuides).toEqual([]);
+    expect(useGesture.getState().hud).toBeNull();
+    expect(useGesture.getState().active).toBe(false);
+    rig.move(600, 150);
+    expect(boxOf("a")).toEqual([100, 100, 756, 100]);
+    act(() => getActions().undo());
+    expect(boxOf("a")).toEqual([100, 100, 200, 100]);
+  });
+
+  it("goes on with the drag when another pointer loses its capture, and ignores a lost capture when nothing is going on", async () => {
+    const rig = await resizing();
+    fireEvent.lostPointerCapture(rig.host, { pointerId: 2 });
+    expect(useGesture.getState().active).toBe(true);
+    rig.move(360, 230);
+    expect(boxOf("a")).toEqual([100, 100, 260, 130]);
+    rig.up(360, 230);
+    fireEvent.lostPointerCapture(rig.host, { pointerId: 1 });
+    expect(state().past).toHaveLength(1);
   });
 });
 

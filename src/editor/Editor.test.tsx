@@ -596,6 +596,26 @@ describe("leaving the editor", () => {
     expect(saveDesign).not.toHaveBeenCalled();
   });
 
+  it("writes an edit made while an older save was running, although the editor is closed before that save ends", async () => {
+    const { design, unmount } = await mountEditor();
+    const library = await vi.importActual<typeof import("@/core/library")>("@/core/library");
+    let finish: () => void = () => undefined;
+    vi.mocked(saveDesign).mockClear();
+    vi.mocked(saveDesign).mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => (finish = resolve));
+      return library.saveDesign(...args);
+    });
+    act(() => actions().setTitle("Being saved"));
+    act(() => void window.dispatchEvent(new CustomEvent("craftly:save-now")));
+    expect(state().saveState).toBe("saving");
+    act(() => actions().setTitle("Changed during the save"));
+    unmount();
+    expect(state().design).toBeNull();
+    finish();
+    await waitFor(async () => expect((await getDesign(design.id))?.title).toBe("Changed during the save"));
+    expect(saveDesign).toHaveBeenCalledTimes(2);
+  });
+
   it("writes nothing when no design was ever opened", async () => {
     const view = render(<Editor designId="nope" />);
     await screen.findByText("We couldn't find this design");

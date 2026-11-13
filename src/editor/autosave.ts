@@ -5,6 +5,7 @@
 import { saveDesign, saveThumbnail, saveVersion } from "@/core/library";
 import { recordProblem } from "@/core/problems";
 import { useEditor } from "@/core/store";
+import type { Design } from "@/core/types";
 import { toast } from "@/ui";
 import { renderPageToCanvas } from "@/render/renderPage";
 
@@ -22,19 +23,24 @@ export function installAutosave(revision?: string | null): (() => void) & { flus
   let lastVersionDoc: unknown = useEditor.getState().design;
   let saving = false;
   let queued = false;
+  let queuedReport = true;
+  /** The design as it was when the service was stopped with a save still waiting for the running one (see `uninstall`). */
+  let parting: Design | null = null;
 
-  async function flush(reportFailure = true) {
+  async function flush(reportFailure = true, last?: Design) {
     window.clearTimeout(timer);
     timer = 0;
     const s = useEditor.getState();
-    const design = s.design;
-    if (!design || design.id !== designId || s.saveState === "saved") return;
+    // `last` is written after the editor has gone: it is not what the store holds any more, and the store is left alone
+    const design = last ?? s.design;
+    if (!design || design.id !== designId || (!last && s.saveState === "saved")) return;
     if (saving) {
       queued = true;
+      queuedReport = reportFailure;
       return;
     }
     saving = true;
-    s.actions.setSaveState("saving");
+    if (!last) s.actions.setSaveState("saving");
     try {
       const committed = await saveDesign(design, undefined, revision);
       if (revision !== undefined) revision = committed;
@@ -80,6 +86,10 @@ export function installAutosave(revision?: string | null): (() => void) & { flus
       if (queued && active) {
         queued = false;
         void flush();
+      } else if (parting) {
+        const last = parting;
+        parting = null;
+        void flush(queuedReport, last);
       }
     }
   }
@@ -107,6 +117,11 @@ export function installAutosave(revision?: string | null): (() => void) & { flus
   };
   window.addEventListener("beforeunload", onUnload);
   const uninstall = () => {
+    // A save asked for while another one was running waits for it, and would be dropped now that the service stops: the edit
+    // made since the running save began would be lost. So the design is kept as it is at this moment (the store is about to
+    // close it, or to open another one) and written when the running save has ended.
+    const s = useEditor.getState();
+    if (queued && s.design?.id === designId && s.saveState === "unsaved") parting = s.design;
     active = false;
     window.removeEventListener("beforeunload", onUnload);
     unsub();

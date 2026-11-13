@@ -252,6 +252,13 @@ describe("applyOps", () => {
     expect(applyOp(d, { k: "el.move", page: "p", id: "g", parent: "g", index: 0 })).toBe(d);
   });
 
+  it("leaves an element where it was when it is told to move into something that is not a group", () => {
+    const g = createGroup([rect("in")], { id: "g", x: 0, y: 0, width: 100, height: 50 }) as GroupElement;
+    const d = designOf(page("p", [g, rect("plain"), rect("out")]));
+    expect(applyOp(d, { k: "el.move", page: "p", id: "out", parent: "plain", index: 0 })).toBe(d);
+    expect(applyOp(d, { k: "el.move", page: "p", id: "in", parent: "plain", index: 0 })).toBe(d);
+  });
+
   it("puts at the end what it is told to put at a place that is not a number", () => {
     const d = base();
     expect(ids(first(applyOp(d, { k: "el.add", page: "p", parent: null, index: Number.NaN, el: rect("n") })))).toEqual(["a", "b", "n"]);

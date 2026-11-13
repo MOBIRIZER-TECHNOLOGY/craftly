@@ -72,16 +72,106 @@ function readOutbox(key: string): StoredOutbox | undefined {
   }
 }
 
+/** The design as it is now, as a design of its own in the library that is not shared: what a person goes back to for edits that did not get through. */
+function recoveryCopy(design: Design, id: string): Design {
+  const now = Date.now();
+  return { ...portableDesign(design), id, title: `${design.title} (unsent changes)`, createdAt: now, updatedAt: now, trashedAt: null };
+}
+
+/** The names in localStorage that start with `prefix`; none where there is no such storage. */
+function storedNames(prefix: string): string[] {
+  try {
+    return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? "").filter((name) => name.startsWith(prefix));
+  } catch {
+    return [];
+  }
+}
+
 export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   const actions = () => useEditor.getState().actions;
   let looking = link.role === "view";
   if (looking) actions().setMode("view");
   let closed = false;
   let warned = false;
-  const key = `craftly:outbox:${useEditor.getState().design?.id}:${link.server}:${link.room}`;
+  const designId = useEditor.getState().design?.id;
+  const key = `craftly:outbox:${designId}:${link.server}:${link.room}`;
   const media = sharedMedia(link, env.fetch);
   const outbox = readOutbox(key);
   const allowedUploads = new Set(outbox?.uploads);
+
+  /**
+   * Makes what keeps a recovery copy in the library and says so; when the library cannot take it, the copy is offered as a download
+   * (once: the download is of the copy as it was last). `told` is whether the person has been told about this copy already: it is
+   * still kept then, without another word.
+   */
+  const keeper = () => {
+    let latest: Design;
+    let offered = false;
+    return (copy: Design, what: string, told = false) => {
+      latest = copy;
+      void saveDesign(copy).then(
+        () => void (told || toast.error(`${what} A recovery copy is in Projects.`, { duration: 0 })),
+        () => {
+          if (offered) return;
+          offered = true;
+          toast.error(`${what} Download a recovery copy.`, {
+            duration: 0,
+            actionLabel: "Download copy",
+            onAction: () =>
+              void exportProjectFile(latest)
+                .then((blob) => downloadBlob(blob, projectFileName(latest.title)))
+                .catch(() => toast.error("Could not download the recovery copy.")),
+          });
+        },
+      );
+    };
+  };
+  const keepLocal = keeper();
+  const keepRefused = keeper();
+
+  // The edits that wait to be confirmed are kept for a reload in sessionStorage, which goes with the tab (and has to: two tabs that
+  // shared them would share a name and batch numbers). The design itself is saved in the library with those edits in it, and the
+  // welcome of the server replaces it with the server's. So that a tab which was closed with edits waiting does not lose them
+  // without a word, each client that has such edits leaves a mark in localStorage, which outlives the tab. A mark of a client
+  // other than this tab's own means that the design as it is here may hold edits the server never had: it is kept as a recovery
+  // copy, before anything of the server's is shown.
+  const marks = `craftly:unsent:${designId}:${link.server}:${link.room}:`;
+  let marked = outbox ? marks + outbox.client : null;
+  const mark = (client: string | null) => {
+    const next = client === null ? null : marks + client;
+    if (next === null && marked === null) return;
+    try {
+      // (a mark that stays is written again each time: another tab that opened this design took it for a mark of a closed tab and
+      // removed it, and this tab may still be closed with edits waiting)
+      if (marked && marked !== next) localStorage.removeItem(marked);
+      if (next) localStorage.setItem(next, "1");
+    } catch {
+      // without this storage a closed tab loses its unsent edits as it did before there were marks
+    }
+    marked = next;
+  };
+  const orphans = storedNames(marks).filter((name) => name !== marked);
+  const opened = useEditor.getState().design;
+  if (orphans.length && opened) {
+    keepLocal(recoveryCopy(opened, uid("d")), "This design has changes from an earlier visit that never reached the server. The shared version is shown now.");
+    for (const name of orphans) localStorage.removeItem(name);
+  }
+
+  // One recovery copy for all the edits that are refused while this tab has the design: a room that is full refuses every edit,
+  // and a copy and a message for each would fill the library and the screen.
+  const recoveryKey = `craftly:recovery:${designId}`;
+  let recoveryId: string | null = null;
+  let refusedBefore = false;
+  const recoveryIdOnce = (): string => {
+    if (recoveryId) return recoveryId;
+    try {
+      recoveryId = sessionStorage.getItem(recoveryKey) ?? uid("d");
+      sessionStorage.setItem(recoveryKey, recoveryId);
+    } catch {
+      recoveryId ??= uid("d");
+    }
+    return recoveryId;
+  };
   let mediaError = "";
   const showMediaError = (message: string) => {
     if (closed || mediaError === message) return;
@@ -94,6 +184,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     createSocket: env.createSocket,
     outbox,
     onOutbox(outbox) {
+      mark(outbox.queue.length ? outbox.client : null);
       try {
         if (outbox.queue.length) sessionStorage.setItem(key, JSON.stringify({ ...outbox, uploads: [...allowedUploads] }));
         else {
@@ -112,20 +203,9 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     onRejected(reason) {
       const design = useEditor.getState().design;
       if (!design) return;
-      const now = Date.now();
-      const copy: Design = { ...portableDesign(design), id: uid("d"), title: `${design.title} (unsent changes)`, createdAt: now, updatedAt: now, trashedAt: null };
-      void saveDesign(copy).then(
-        () => toast.error(`The server refused an edit: ${reason} A recovery copy is in Projects.`, { duration: 0 }),
-        () =>
-          toast.error(`The server refused an edit: ${reason} Download a recovery copy.`, {
-            duration: 0,
-            actionLabel: "Download copy",
-            onAction: () =>
-              void exportProjectFile(copy)
-                .then((blob) => downloadBlob(blob, projectFileName(copy.title)))
-                .catch(() => toast.error("Could not download the recovery copy.")),
-          }),
-      );
+      // the design still has the refused edit in it here: it is taken out right after (onChange)
+      keepRefused(recoveryCopy(design, recoveryIdOnce()), `The server refused an edit: ${reason}`, refusedBefore);
+      refusedBefore = true;
     },
     onChange: () => {
       const shared = live.design;

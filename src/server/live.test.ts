@@ -150,6 +150,21 @@ describe("making a room", () => {
     expect(await b.storage.count()).toBe(0);
   });
 
+  it("takes a design that holds more than one batch may carry: its size in bytes is the limit, and it can be joined", async () => {
+    const b = await boot();
+    // four elements with 90,000 numbers each: more values than a batch of operations may carry
+    const heavy = {
+      ...design(),
+      pages: [createPage({ id: "p", elements: ["a", "b", "c", "d"].map((id) => ({ ...createShape("rect", { id }), numbers: Array<number>(90_000).fill(1) })) })],
+    };
+    const res = await fetch(`${b.http}/api/rooms`, { method: "POST", body: JSON.stringify({ design: heavy }) });
+    expect(res.status).toBe(201);
+    const made = (await res.json()) as Made;
+    const live = join(b, made.room, made.editKey);
+    await until("the big design to arrive", () => live.status === "live");
+    expect(live.design?.pages[0].elements).toHaveLength(4);
+  });
+
   it("refuses a design that is bigger than it may be, and an unknown address", async () => {
     const b = await boot({ maxDesignBytes: 2000 });
     const big = await fetch(`${b.http}/api/rooms`, { method: "POST", body: JSON.stringify({ design: design(), padding: "x".repeat(5000) }) });
@@ -375,6 +390,38 @@ describe("editing together", () => {
     second.join("same-client");
     await until("the old one to be closed", () => first.closed() === 4000);
     await until("the second welcome", () => second.heard.some((m) => m.t === "welcome"));
+  });
+
+  it("does not let two tabs that start under one name take each other's place for good: both stay, and the changes of both arrive", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    let welcomes = 0;
+    const tab = () => {
+      const live = new Live({
+        url: `${b.ws}?room=${encodeURIComponent(made.room)}`,
+        key: made.editKey,
+        client: "0123456789abcdef", // a duplicated tab starts with the name of the tab it was copied from
+        createSocket: (url) => new WebSocket(url) as unknown as SocketLike,
+        onChange: () => undefined,
+        onStatus: (status) => void (status === "live" && welcomes++),
+      });
+      lives.push(live);
+      live.start();
+      return live;
+    };
+    const one = tab();
+    await until("the first tab to be live", () => one.status === "live");
+    const two = tab();
+    await until("both tabs to be live", () => one.status === "live" && two.status === "live" && welcomes === 3);
+    await new Promise((r) => setTimeout(r, 1500)); // under one name each would have replaced the other about every half second
+    expect(welcomes).toBe(3); // the first, the second, and the first again under a name of its own
+    one.edit(one.design!, rename(one.design!, "From one"));
+    two.edit(two.design!, addShape(two.design!, "from-two"));
+    await until("both changes to be saved", async () => {
+      const saved = (await b.storage.load(made.room))!.design;
+      return saved.title === "From one" && saved.pages[0].elements.some((e) => e.id === "from-two");
+    });
+    expect(Object.keys((await b.storage.load(made.room))!.seqs)).toHaveLength(2);
   });
 });
 

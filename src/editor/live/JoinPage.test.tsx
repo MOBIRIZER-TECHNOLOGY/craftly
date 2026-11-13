@@ -145,6 +145,39 @@ describe("a link to a server that is new on this device", () => {
     expect(screen.queryByRole("heading", { name: "Join this shared design?" })).toBeNull();
   });
 
+  it("asks again when another link to another new server is opened after a join that failed, and no longer shows the old problem", async () => {
+    join.mockRejectedValue(new Error("This shared design is no longer there."));
+    const onOpen = vi.fn();
+    const view = render(<JoinPage token={joinToken(link)} onOpen={onOpen} />);
+    await question();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Join" }));
+    expect(await screen.findByText("This shared design is no longer there.")).toBeTruthy();
+    expect(join).toHaveBeenCalledTimes(1);
+
+    // the hash changes to a link of a server nobody said yes to: the page stays mounted and gets another token
+    const elsewhere: LiveLink = { ...link, server: "https://other.example.test" };
+    view.rerender(<JoinPage token={joinToken(elsewhere)} onOpen={onOpen} />);
+    expect(await question()).toBeTruthy();
+    expect(screen.getByText(/This link connects to other\.example\.test,/)).toBeTruthy();
+    expect(screen.queryByText("This shared design is no longer there.")).toBeNull();
+    expect(join).toHaveBeenCalledTimes(1);
+    expect(isKnownServer(elsewhere.server)).toBe(false);
+  });
+
+  it("does not go on asking about the server of the link before when the next link leads to a server that is known", async () => {
+    const onOpen = vi.fn();
+    const view = render(<JoinPage token={joinToken(link)} onOpen={onOpen} />);
+    await question();
+    const known: LiveLink = { ...link, server: "https://known.example.test" };
+    rememberServer(known.server);
+    join.mockResolvedValue({ design: shared(), role: "edit" });
+    view.rerender(<JoinPage token={joinToken(known)} onOpen={onOpen} />);
+    await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
+    expect(join).toHaveBeenCalledWith(known);
+    expect(screen.queryByRole("heading", { name: "Join this shared design?" })).toBeNull();
+    expect(isKnownServer(link.server)).toBe(false);
+  });
+
   it("goes home and connects to nothing when the person says no", async () => {
     window.location.hash = "#/join/x";
     render(<JoinPage token={joinToken(link)} onOpen={vi.fn()} />);

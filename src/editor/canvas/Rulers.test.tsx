@@ -2,7 +2,7 @@
  * The rulers along the top and left edge of the workspace and the guides dragged out of them: painting the scale,
  * dropping a guide on the page, moving a guide and dragging it back onto the ruler to remove it.
  */
-import { act, configure, waitFor } from "@testing-library/react";
+import { act, configure, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createShape } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
@@ -142,6 +142,24 @@ describe("dragging a guide out of a ruler", () => {
     expect(state().past).toHaveLength(0);
   });
 
+  it("drops no guide and takes the preview away when the drag is cancelled", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    showRulers();
+    const ruler = top(rig);
+    rig.pointerAt("pointerDown", 300, 10, { target: ruler });
+    rig.pointerAt("pointerMove", 300, 200, { target: ruler });
+    fireEvent.pointerCancel(ruler, { pointerId: 1, clientX: 300, clientY: 200 });
+    expect(rig.container.querySelector(".cf-gline--draft")).toBeNull();
+    expect(rig.container.querySelector(".cf-hud")).toBeNull();
+    expect(guides()).toBeUndefined();
+    // the drag is over: what the pointer does next is not part of it
+    rig.pointerAt("pointerMove", 300, 250, { target: ruler });
+    expect(rig.container.querySelector(".cf-gline--draft")).toBeNull();
+    rig.pointerAt("pointerUp", 300, 250, { target: ruler });
+    expect(guides()).toBeUndefined();
+    expect(state().past).toHaveLength(0);
+  });
+
   it("does not start a canvas gesture when a ruler is pressed", async () => {
     const rig = await mountWorkspace(canvasDesign([createShape("rect", { id: "a", x: 0, y: 0, width: 400, height: 400 })]));
     showRulers();
@@ -228,6 +246,22 @@ describe("guides on the page", () => {
     rig.pointerAt("pointerUp", 200, 10, { target: horizontal });
     expect(guides()!.horizontal).toEqual([]);
     expect(state().past).toHaveLength(2);
+  });
+
+  it("keeps a guide where it was when the move is cancelled, as one undo step, and leaves undo working", async () => {
+    const rig = await mountWorkspace(withGuides());
+    showRulers();
+    const guide = line(rig, "v");
+    rig.pointerAt("pointerDown", ...page(300, 100), { target: guide });
+    rig.pointerAt("pointerMove", ...page(350, 100), { target: guide });
+    fireEvent.pointerCancel(guide, { pointerId: 1, clientX: 10, clientY: 148 });
+    // cancelled over the ruler: the guide is not removed, it stays where the pointer last put it
+    expect(guides()!.vertical).toEqual([350]);
+    expect(state().past).toHaveLength(1);
+    rig.pointerAt("pointerMove", ...page(420, 100), { target: guide });
+    expect(guides()!.vertical).toEqual([350]);
+    act(() => getActions().undo());
+    expect(guides()!.vertical).toEqual([300]);
   });
 
   it("cannot be moved in view mode", async () => {

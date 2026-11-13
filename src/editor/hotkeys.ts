@@ -200,9 +200,16 @@ function onKeyDown(e: KeyboardEvent) {
 
 /* ---------------- clipboard ---------------- */
 
+/**
+ * Copy, cut and paste stand back exactly where the keys do (see `onKeyDown`): while a popover or dialog is over the page, while
+ * presenting, and when another handler took the event. The browser then does what it always does, so text selected in a dialog
+ * is what gets copied, and nothing is cut from or pasted into a page that cannot be seen.
+ */
+const clipboardIsOurs = (e: ClipboardEvent) => !e.defaultPrevented && !overlayOpen() && !useEditor.getState().presenting;
+
 function onCopy(e: ClipboardEvent) {
   const s = useEditor.getState();
-  if (!s.design || isTyping(e.target) || !s.selection.length) return;
+  if (!s.design || !clipboardIsOurs(e) || isTyping(e.target) || !s.selection.length) return;
   s.actions.copy();
   const clip = useEditor.getState().clipboard;
   if (clip && e.clipboardData) {
@@ -214,14 +221,14 @@ function onCopy(e: ClipboardEvent) {
 
 function onCut(e: ClipboardEvent) {
   const s = useEditor.getState();
-  if (!s.design || isTyping(e.target) || !s.selection.length || s.mode === "view") return;
+  if (!s.design || !clipboardIsOurs(e) || isTyping(e.target) || !s.selection.length || s.mode === "view") return;
   onCopy(e);
   useEditor.getState().actions.deleteElements();
 }
 
 function onPaste(e: ClipboardEvent) {
   const s = useEditor.getState();
-  if (!s.design || isTyping(e.target) || s.mode === "view") return;
+  if (!s.design || !clipboardIsOurs(e) || isTyping(e.target) || s.mode === "view") return;
   const dt = e.clipboardData;
   if (!dt) return;
   const files = Array.from(dt.files).filter((f) => f.type.startsWith("image/"));

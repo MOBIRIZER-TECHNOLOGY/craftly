@@ -353,6 +353,47 @@ describe("panning", () => {
     expect(rig.host.style.cursor).toBe("");
   });
 
+  it("stops panning with Space when the window loses focus while the key is held", async () => {
+    const rig = await mountWorkspace(canvasDesign([createShape("rect", { id: "a", x: 100, y: 100, width: 200, height: 100 })]));
+    fireEvent.keyDown(document.body, { code: "Space", key: " " });
+    // the key is released in another window: this one never hears of it
+    fireEvent.blur(window);
+    expect(rig.host.style.cursor).toBe("");
+    rig.down(200, 150);
+    expect(state().selection).toEqual(["a"]);
+    rig.move(230, 170);
+    rig.up(230, 170);
+    expect([rig.scroller.scrollLeft, rig.scroller.scrollTop]).toEqual([0, 0]);
+  });
+
+  it("stops panning with Space when the page is hidden while the key is held", async () => {
+    const rig = await mountWorkspace(canvasDesign([createShape("rect", { id: "a", x: 100, y: 100, width: 200, height: 100 })]));
+    fireEvent.keyDown(document.body, { code: "Space", key: " " });
+    fireEvent(document, new Event("visibilitychange"));
+    expect(rig.host.style.cursor).toBe("");
+    rig.down(200, 150);
+    expect(state().selection).toEqual(["a"]);
+  });
+
+  it("keeps the grabbing cursor of a drag that is under way when the window loses focus", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    fireEvent.keyDown(document.body, { code: "Space", key: " " });
+    rig.down(200, 150);
+    fireEvent.blur(window);
+    expect(rig.host.style.cursor).toBe("grabbing");
+    rig.up(200, 150);
+    expect(rig.host.style.cursor).toBe("");
+  });
+
+  it("no longer listens for the window losing focus once the workspace is unmounted", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    fireEvent.keyDown(document.body, { code: "Space", key: " " });
+    rig.unmount();
+    fireEvent.blur(window);
+    fireEvent(document, new Event("visibilitychange"));
+    expect(rig.host.style.cursor).toBe("grab");
+  });
+
   it("leaves Space alone in text fields and on buttons", async () => {
     const rig = await mountWorkspace(canvasDesign());
     const input = document.body.appendChild(document.createElement("input"));

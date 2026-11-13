@@ -44,6 +44,14 @@ const PING_EVERY_MS = 15_000;
 const SILENCE_LIMIT_MS = 45_000;
 const WAIT_MIN_MS = 500;
 const WAIT_MAX_MS = 10_000;
+/** The code the server closes a connection with when the same client has joined on another one (src/server/live.ts). */
+const REPLACED = 4000;
+
+/**
+ * What `prepareEdit` rejects with when trying again cannot help (an image the server will never take, or one that is gone): the edit
+ * is given up as one that the server refused, and the connection goes on. Any other error is taken for a passing one and tried again.
+ */
+export class PermanentSendError extends Error {}
 
 const newName = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -55,6 +63,8 @@ export class Live {
   private stopped = false;
   private everLive = false;
   private attempts = 0;
+  /** an edit could not be prepared for sending and has not got through since */
+  private stuck = false;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private pinger: ReturnType<typeof setInterval> | null = null;
   private lastHeard = 0;
@@ -97,8 +107,13 @@ export class Live {
       }
       this.hear(heard);
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.socket !== socket) return;
+      // The server closes a connection this way when another one joins under the same name. This page did not make that other
+      // one (it lets go of its socket before it opens the next), so it is another tab that started with a copy of what this tab
+      // keeps for a reload, name and batch numbers included. Under one name the two would close each other's connection for good
+      // and number different batches alike, of which the server applies only the first. This one goes on under a name of its own.
+      if ((event as { code?: unknown } | null)?.code === REPLACED) this.session.rename(newName());
       this.lost();
     };
     socket.onerror = () => undefined;
@@ -125,20 +140,40 @@ export class Live {
   private send(msg: ClientMsg): void {
     const socket = this.socket;
     if (socket?.readyState !== OPEN) return;
-    const design = msg.t === "ops" && this.opts.prepareEdit ? this.session.design : null;
-    if (!design) {
+    const prepare = this.opts.prepareEdit;
+    if (msg.t !== "ops" || !prepare) {
       socket.send(JSON.stringify(msg));
       return;
     }
     this.sends = this.sends
       .then(async () => {
         if (socket !== this.socket) return;
-        await this.opts.prepareEdit?.(design);
+        // Read when its turn has come, and without the batches made after it: a batch before this one may have been given up
+        // meanwhile, and what a later batch needs is not a reason to hold this one back.
+        const design = this.session.designAt(msg.seq);
+        if (!design) return; // it left the queue while it waited here
+        await prepare(design);
+        if (this.stuck) {
+          this.stuck = false;
+          this.attempts = 0;
+        }
         if (socket === this.socket && socket.readyState === OPEN) socket.send(JSON.stringify(msg));
       })
       .catch((error: unknown) => {
         if (socket !== this.socket) return;
-        this.opts.onSendError?.(error instanceof Error ? error.message : "Could not send a shared image.");
+        const reason = error instanceof Error ? error.message : "Could not send a shared image.";
+        if (error instanceof PermanentSendError) {
+          // Trying again cannot help, and every edit behind this one would wait for it for ever. It is given up the way an edit
+          // that the server refused is, the person is told the same way, and the connection stays for the rest.
+          if (!this.session.drop(msg.seq)) return;
+          this.opts.onRejected?.(reason);
+          this.opts.onChange();
+          return;
+        }
+        // The same edit is tried again after the next welcome. Until it gets through, a welcome does not bring the wait back to
+        // the shortest, or a server that lets this browser in and then fails the upload would be asked twice a second for good.
+        this.stuck = true;
+        this.opts.onSendError?.(reason);
         socket.close();
         this.lost();
       });
@@ -156,7 +191,8 @@ export class Live {
       return;
     }
     if (outcome.joined) {
-      this.attempts = 0;
+      if (!this.session.pending) this.stuck = false;
+      if (!this.stuck) this.attempts = 0;
       this.everLive = true;
       this.setStatus("live");
     }

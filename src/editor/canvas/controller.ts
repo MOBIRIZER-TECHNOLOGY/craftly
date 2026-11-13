@@ -225,6 +225,13 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     if (target.closest("[data-cf-ui]")) return;
     const s = st();
     if (!s.design || s.presenting) return;
+    if (gesture) {
+      // a second finger (or pen) while one is dragging starts nothing: taking over here would leave the first drag's undo step
+      // open for good, because its release would no longer be recognised
+      if (gesture.pointerId !== e.pointerId) return;
+      // the same pointer pressing again means the release of the last drag never arrived: that drag is over
+      abortGesture(e);
+    }
     host.focus({ preventScroll: true });
 
     if (e.button === 2) {
@@ -793,11 +800,22 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     endGesture(e);
   }
 
-  function onPointerCancel(e: PointerEvent) {
+  /** Ends the running gesture without its release: what was changed so far stays, as one undo step. */
+  function abortGesture(e: PointerEvent) {
     const g = gesture;
     if (!g) return;
     if ((g.kind === "move" && g.moved) || ((g.kind === "resize" || g.kind === "rotate" || g.kind === "line") && g.started)) act().endTransaction();
     endGesture(e);
+  }
+
+  function onPointerCancel(e: PointerEvent) {
+    abortGesture(e);
+  }
+
+  // A drag can lose its pointer with neither a release nor a cancel (the browser takes the capture away): it ends like a
+  // cancelled one. Releasing the capture at the end of a gesture fires this too, but by then there is no gesture left.
+  function onLostPointerCapture(e: PointerEvent) {
+    if (gesture?.pointerId === e.pointerId) abortGesture(e);
   }
 
   /* ---------------- double click / context menu ---------------- */
@@ -901,17 +919,19 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       e.preventDefault();
     }
   }
+  function releaseSpace() {
+    spaceDown = false;
+    if (!gesture) host.style.cursor = "";
+  }
   function onKeyUp(e: KeyboardEvent) {
-    if (e.code === "Space") {
-      spaceDown = false;
-      if (!gesture) host.style.cursor = "";
-    }
+    if (e.code === "Space") releaseSpace();
   }
 
   host.addEventListener("pointerdown", onPointerDown);
   host.addEventListener("pointermove", onPointerMove);
   host.addEventListener("pointerup", onPointerUp);
   host.addEventListener("pointercancel", onPointerCancel);
+  host.addEventListener("lostpointercapture", onLostPointerCapture);
   host.addEventListener("dblclick", onDoubleClick);
   host.addEventListener("contextmenu", onContextMenu);
   host.addEventListener("wheel", onWheel, { passive: false });
@@ -919,6 +939,10 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   host.addEventListener("drop", onDrop);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
+  // Space released in another window or tab is never heard of here: once the window loses focus or the page is hidden, the
+  // key no longer counts as held, or every click after coming back would pan.
+  window.addEventListener("blur", releaseSpace);
+  document.addEventListener("visibilitychange", releaseSpace);
 
   // A path that is being placed is made when another tool is chosen, and when another page is chosen (it goes on the page it was
   // drawn on); it is dropped when the design is closed or another one opened under it.
@@ -935,6 +959,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       host.removeEventListener("pointermove", onPointerMove);
       host.removeEventListener("pointerup", onPointerUp);
       host.removeEventListener("pointercancel", onPointerCancel);
+      host.removeEventListener("lostpointercapture", onLostPointerCapture);
       host.removeEventListener("dblclick", onDoubleClick);
       host.removeEventListener("contextmenu", onContextMenu);
       host.removeEventListener("wheel", onWheel);
@@ -942,6 +967,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       host.removeEventListener("drop", onDrop);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", releaseSpace);
+      document.removeEventListener("visibilitychange", releaseSpace);
       stopWatchingTool();
       cancelPen();
       if (hoverRaf) cancelAnimationFrame(hoverRaf);

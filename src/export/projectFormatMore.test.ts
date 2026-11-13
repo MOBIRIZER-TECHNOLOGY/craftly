@@ -30,7 +30,8 @@ describe("which elements a project file may contain", () => {
       createLine(),
       createImage({ src: "https://example.test/a.png" }),
       createImage({ src: null }),
-      createGraphic({ svg: `<svg viewBox="0 0 1 1"/>` }),
+      // (with a closing tag: the factory adds a namespace to the opening one, which makes no sense of a root that closes itself)
+      createGraphic({ svg: `<svg viewBox="0 0 1 1"><path d="M0 0h1v1z"/></svg>` }),
       createGroup([createShape("rect")]),
       createTable(),
       createChart(),

@@ -191,7 +191,7 @@ search_assets   { kind: "template" | "graphic" | "icon" | "photo", query, limit 
 ### 5.6 Safety, privacy and law
 
 - **Data minimisation:** send the digest and the selection, not the library; strip file names and object URLs; show what was sent ("View what will be shared").
-- **Prompt injection:** text on a page, imported `.craftly` files and OCR output are *data*. The tool layer can only edit the document (no network, no files, no navigation), which bounds the damage; cap the number of calls; never run model-written script; render model-written SVG only through `<img>` and run it through the existing `sanitizeInline`.
+- **Prompt injection:** text on a page, imported `.craftly` files and OCR output are *data*. The tool layer can only edit the document (no network, no files, no navigation), which bounds the damage; cap the number of calls; never run model-written script; render model-written SVG only through `<img>` and accept it only when the existing `svgProblem` finds nothing wrong with it.
 - **Keys and abuse:** in option C the key lives only on the proxy; per-device tokens, a bot check, daily quotas, a kill switch.
 - **Disclosure and rights:** label AI-generated images, keep provenance metadata where the provider supports it, and check the licence of every model and dataset you ship or call. Requirements differ by region (transparency for generated content, children's data, GDPR): get advice before a public launch.
 - **Trust:** update the About dialog, the README and a short privacy page; AI stays off until the user opts in, and "turn off and delete my AI settings" is one click.

@@ -9,6 +9,7 @@ import { backgroundWithoutRemoteImage, withoutRemoteImages } from "@/core/imageS
 import { pageDuration } from "@/core/animation";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
 import { createMigrator, MigrationError, type MigrationStep } from "@/core/schema/migrator";
+import { svgProblem } from "@/core/svgSafety";
 import { MAX_TRANSITION_DURATION } from "@/core/transition";
 import type { AnimDirection, Design, DesignElement, Fill, Page, PageTransition } from "@/core/types";
 
@@ -157,7 +158,9 @@ export function isUsableElement(el: unknown): el is DesignElement {
     case "image":
       return isObject(el.crop) && isObject(el.filter) && (el.src === null || typeof el.src === "string") && typeof el.mask === "string";
     case "graphic":
-      return typeof el.svg === "string" && isNum(el.viewW) && isNum(el.viewH) && isObject(el.colors);
+      // the markup is drawn and written into exported files as it is, so only plain drawing comes in (every graphic the app makes
+      // is that); one with no markup at all draws nothing, and live editing lets it through too (src/collab/protocol.ts)
+      return typeof el.svg === "string" && (el.svg === "" || svgProblem(el.svg) === null) && isNum(el.viewW) && isNum(el.viewH) && isObject(el.colors);
     case "group":
       return Array.isArray(el.children);
     case "table":

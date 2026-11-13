@@ -575,6 +575,22 @@ describe("restoreBackup", () => {
     expect(await getDesign("d_poster")).not.toBeNull();
   });
 
+  it("does not store a file that the backup calls something other than a picture, and says that it left one out", async () => {
+    await seed();
+    const { blob } = await createBackup({ now: NOW });
+    await wipeDatabase();
+    const crafted = await withManifest(blob, (manifest) => {
+      const uploads = manifest.uploads as Array<{ id: string; mime: string }>;
+      uploads.find((u) => u.id === "a_logo")!.mime = "text/html";
+    });
+    expect((await inspectBackup(crafted)).skipped).toBe(1);
+    const result = await restoreBackup(crafted);
+    expect(result.skipped).toBe(1);
+    expect(result.uploads).toEqual({ added: 1, same: 0, damaged: 0 });
+    expect(await getAsset("a_logo")).toBeNull();
+    expect((await listAssets()).map((a) => a.id)).toEqual(["a_unused"]);
+  });
+
   it("does not bring back the history of a design that could not be restored", async () => {
     await seed();
     const { blob } = await createBackup({ now: NOW });
@@ -755,6 +771,30 @@ describe("restoreBackup", () => {
     const other = new Error("something else");
     vi.mocked(restoreRecords).mockRejectedValueOnce(other);
     await expect(restoreBackup(blob)).rejects.toBe(other);
+  });
+
+  it("says the browser is out of room when a picture does not fit, which the browser reports on the write and not on the transaction", async () => {
+    await seed();
+    const { blob } = await createBackup({ now: NOW });
+    await wipeDatabase();
+    const full = Object.assign(new Error("full"), { name: "QuotaExceededError" });
+    const real = IDBDatabase.prototype.transaction;
+    const spy = vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (this: IDBDatabase, ...args: Parameters<IDBDatabase["transaction"]>) {
+      const [stores, mode] = args;
+      if (mode !== "readwrite" || ![stores].flat().includes("assets")) return real.apply(this, args);
+      // a transaction on the uploads whose write fails: it has no error of its own, the failed write has
+      const tx = { error: null, objectStore: () => ({ put: () => undefined }) } as unknown as IDBTransaction;
+      queueMicrotask(() => {
+        tx.onerror?.call(tx, { target: { error: full } } as unknown as Event);
+        tx.onabort?.call(tx, new Event("abort"));
+      });
+      return tx;
+    });
+    try {
+      await expect(restoreBackup(blob)).rejects.toMatchObject({ name: "BackupError", code: "storage" });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

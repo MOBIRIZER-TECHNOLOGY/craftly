@@ -28,7 +28,7 @@ export function App() {
   if (route.name === "sandbox" && Sandbox) view = <Sandbox />;
   else if (route.name === "gallery" && Gallery) view = <Gallery />;
   else if (route.name === "design" && route.id) view = <Editor key={route.id} designId={route.id} />;
-  else if (route.name === "join" && route.id) view = <JoinPage token={route.id} />;
+  else if (route.name === "join" && route.id) view = <JoinPage key={route.id} token={route.id} />;
   else view = <Dashboard />;
   return (
     <>

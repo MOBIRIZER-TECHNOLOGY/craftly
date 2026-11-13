@@ -201,7 +201,10 @@ describe("when the database misbehaves", () => {
         objectStoreNames: { contains: () => true },
         transaction: () => {
           const t: Record<string, unknown> = { error: reason, objectStore: () => store };
-          queueMicrotask(() => fire(t, "onerror", "onabort"));
+          queueMicrotask(() => {
+            (t.onerror as ((event: unknown) => void) | undefined)?.({ target: { error: reason } });
+            fire(t, "onabort");
+          });
           return t;
         },
       };
@@ -234,6 +237,83 @@ describe("when the database misbehaves", () => {
       await expect(db.metaSet("k", 1)).rejects.toBe(reason);
       // an upgrade that finds every store already there does not create them again
       expect(database.createObjectStore).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a database that takes every write and then cannot keep it", () => {
+    /**
+     * Every request succeeds; what happens to the transaction afterwards is up to `ending`, which gets the transaction and the
+     * handlers that were put on it. This is how a browser that is out of room behaves: it says so when the transaction ends.
+     */
+    function database(ending: (transaction: Record<string, unknown>) => void) {
+      const request = () => {
+        const r: Record<string, unknown> = { result: undefined, error: null };
+        queueMicrotask(() => fire(r, "onsuccess"));
+        return r;
+      };
+      const store = { put: request, delete: request };
+      const db = {
+        createObjectStore: vi.fn(),
+        objectStoreNames: { contains: () => true },
+        transaction: () => {
+          const t: Record<string, unknown> = { error: null, objectStore: () => store };
+          // after the requests have said they succeeded
+          setTimeout(() => ending(t), 0);
+          return t;
+        },
+      };
+      vi.stubGlobal("indexedDB", {
+        open() {
+          const r: Record<string, unknown> = {};
+          queueMicrotask(() => {
+            r.result = db;
+            fire(r, "onsuccess");
+          });
+          return r;
+        },
+      });
+    }
+    const quota = Object.assign(new Error("no room"), { name: "QuotaExceededError" });
+    const writes = (db: typeof import("./persistence")) => [
+      () => db.dbPut("assets", { id: "a" }),
+      () => db.metaSet("k", 1),
+      () => db.dbDelete("assets", "a"),
+      () => db.dbPutMany([{ store: "assets", value: { id: "a" } }]),
+      () => db.dbDeleteMany("assets", ["a"]),
+    ];
+
+    it("does not say a value is stored when the browser gives the transaction up for want of room, although the write itself was taken", async () => {
+      database((t) => {
+        t.error = quota;
+        fire(t, "onabort");
+      });
+      const db = await fresh();
+      for (const write of writes(db)) await expect(write()).rejects.toBe(quota);
+    });
+
+    it("says a value is stored once the transaction is complete", async () => {
+      database((t) => fire(t, "oncomplete"));
+      const db = await fresh();
+      for (const write of writes(db)) await expect(write()).resolves.toBeUndefined();
+    });
+
+    it("rejects with the error of the write that failed when the transaction has none of its own", async () => {
+      database((t) => {
+        // the browser reports a failed write on the transaction first, while the transaction itself has no error yet
+        (t.onerror as ((event: unknown) => void) | undefined)?.({ target: { error: quota } });
+        fire(t, "onabort");
+      });
+      const db = await fresh();
+      for (const write of writes(db)) await expect(write()).rejects.toBe(quota);
+    });
+
+    it("rejects with an error of its own when the browser gives no reason at all", async () => {
+      database((t) => {
+        (t.onerror as ((event: unknown) => void) | undefined)?.({ target: null });
+        fire(t, "onabort");
+      });
+      const db = await fresh();
+      for (const write of writes(db)) await expect(write()).rejects.toThrow("The storage transaction was aborted.");
     });
   });
 });

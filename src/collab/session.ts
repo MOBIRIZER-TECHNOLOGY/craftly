@@ -80,6 +80,34 @@ export class Session {
     return this.queue.length;
   }
 
+  /**
+   * The design as it is once the batch with this number has been applied, without the batches made after it: what has to be ready
+   * (its images uploaded) before that batch is sent. Null when the batch no longer waits to be confirmed.
+   */
+  designAt(seq: number): Design | null {
+    if (!this.server || !this.queue.some((b) => b.seq === seq)) return null;
+    return this.queue.reduce((d, batch) => (batch.seq <= seq ? applyOps(d, batch.ops) : d), this.server);
+  }
+
+  /** Gives up a batch that was refused or cannot be sent: it is no longer shown or sent again. False when it was not waiting. */
+  drop(seq: number): boolean {
+    const before = this.queue.length;
+    this.queue = this.queue.filter((b) => b.seq !== seq);
+    if (before === this.queue.length) return false;
+    this.shown = null;
+    this.persist();
+    return true;
+  }
+
+  /**
+   * Goes on under another name. The batches that wait keep their numbers and are sent again under the new name, of which the
+   * server has seen none, so nothing that was not confirmed is lost.
+   */
+  rename(client: string): void {
+    this.opts = { ...this.opts, client };
+    this.persist();
+  }
+
   /** The connection is open: ask for the design. */
   open(): void {
     if (this.status === "ended") return;
@@ -123,14 +151,8 @@ export class Session {
     switch (msg.t) {
       case "ack":
         return this.ack(msg.seq, msg.rev);
-      case "rejected": {
-        const before = this.queue.length;
-        this.queue = this.queue.filter((b) => b.seq !== msg.seq);
-        this.shown = null;
-        if (before === this.queue.length) return NOTHING;
-        this.persist();
-        return { changed: true, ended: null, rejected: msg.reason };
-      }
+      case "rejected":
+        return this.drop(msg.seq) ? { changed: true, ended: null, rejected: msg.reason } : NOTHING;
       case "ops": {
         if (msg.rev <= this.rev) return NOTHING; // heard already
         if (msg.rev !== this.rev + 1) return this.resync(); // one was missed

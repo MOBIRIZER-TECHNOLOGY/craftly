@@ -428,48 +428,39 @@ describe("graphics", () => {
     expect(plain.svg).not.toContain("<g opacity");
   });
 
-  it("removes scripts, event handlers and links that leave the document, in either kind of quote", async () => {
-    const dirty = `<svg viewBox="0 0 10 10" onload="x()"><script>alert(1)</script><a href='https://evil.test/x'><circle onclick='y()' r="5" style="fill:url(https://evil.test/f)"/></a><image href="data:image/png;base64,AAAA"/><use xlink:href='#local'/></svg>`;
-    const { svg } = await toSvg(pageOf([graphic(dirty)]));
+  // Nothing is taken out of a graphic to make it fit for a file: one that is not plain drawing all through is left out whole.
+  it.each([
+    ["a script", `<svg viewBox="0 0 10 10"><circle r="5"/><script>alert(1)</script></svg>`],
+    ["a script that closes itself, or is never closed", `<svg viewBox="0 0 10 10"><script href="#x"/><circle r="5"/><script>alert(1)</svg>`],
+    [
+      "a script behind a prefix that names the namespace of drawings",
+      `<svg viewBox="0 0 10 10"><circle r="5"/><x:script xmlns:x="http://www.w3.org/2000/svg">alert(1)</x:script></svg>`,
+    ],
+    ["a tag built around another", `<svg viewBox="0 0 10 10"><scr<script></script>ipt>alert(1)</scr<script></script>ipt><circle r="5"/></svg>`],
+    ["a page inside the drawing", `<svg viewBox="0 0 10 10"><circle r="5"/><foreignObject><div onclick="alert(1)"/></foreignObject></svg>`],
+    ["a page in the namespace of web pages", `<svg viewBox="0 0 10 10"><circle r="5"/><iframe xmlns="http://www.w3.org/1999/xhtml" src="javascript:alert(1)"/></svg>`],
+    ["an event handler", `<svg viewBox="0 0 10 10" onload="alert(1)"><circle r="5"/></svg>`],
+    ["an event handler after a slash", `<svg viewBox="0 0 10 10"><g/onclick="alert(1)"><circle r="5"/></g></svg>`],
+    ["an event handler with no quotes", `<svg viewBox="0 0 10 10"><circle onmouseover=alert(1) r="5"/></svg>`],
+    ["an event handler in capitals", `<svg viewBox="0 0 10 10"><rect ONFOCUS = "alert(1)" width="1" height="1"/></svg>`],
+    ["a link that leaves the drawing", `<svg viewBox="0 0 10 10"><a href='https://evil.test/x'><circle r="5"/></a></svg>`],
+    ["a link that an animation points somewhere else", `<svg viewBox="0 0 10 10"><a><set attributeName="href" to="javascript:alert(1)"/><circle r="5"/></a></svg>`],
+    ["a picture, which could come from anywhere", `<svg viewBox="0 0 10 10"><image href="https://evil.test/pixel.png" width="1" height="1"/></svg>`],
+    ["a paint on the web", `<svg viewBox="0 0 10 10"><circle r="5" fill="url(https://evil.test/f#a)"/></svg>`],
+    ["an address on the web that a style writes with an escape", `<svg viewBox="0 0 10 10"><circle r="5" style="fill:\\75rl(https://evil.test/f)"/></svg>`],
+    ["a style sheet", `<svg viewBox="0 0 10 10"><style>@import url(https://evil.test/x.css); circle{fill:red}</style><circle r="5"/></svg>`],
+  ])("leaves out a graphic that holds %s, and says so", async (_what, markup) => {
+    const { svg, warnings } = await toSvg(pageOf([graphic(markup)]));
+    expect(warnings).toEqual(["A graphic could not be read and was left out."]);
+    expect(svg).not.toContain("<svg x=");
+    for (const part of ["alert", "script", "iframe", "evil.test", "75rl", "<circle"]) expect(svg).not.toContain(part);
+  });
+
+  it("leaves out a graphic whose line width is text that would be markup of its own", async () => {
+    const width = '2"><script>alert(1)</script><g fill="' as unknown as number;
+    const { svg, warnings } = await toSvg(pageOf([graphic(`<svg viewBox="0 0 10 10"><circle r="5"/></svg>`, { strokeWidth: width })]));
+    expect(warnings).toHaveLength(1);
     expect(svg).not.toContain("alert");
-    expect(svg).not.toContain("evil.test");
-    expect(svg).not.toContain("onclick");
-    expect(svg).not.toContain("onload");
-    expect(svg).toContain('href="data:image/png;base64,AAAA"');
-    expect(svg).toContain("xlink:href='#local'");
-  });
-
-  it("removes event handlers however they are written: after a slash, with no quotes, in capitals", async () => {
-    const dirty = `<svg viewBox="0 0 10 10"/onload="a1()"><g/onclick="a2()"><circle onmouseover=a3() r="5"/><rect ONFOCUS = "a4()" width="1" height="1"/><path d="M0 0" onclick='a5()'/></g></svg>`;
-    const { svg } = await toSvg(pageOf([graphic(dirty)]));
-    for (const call of ["a1()", "a2()", "a3()", "a4()", "a5()"]) expect(svg).not.toContain(call);
-    expect(svg).not.toMatch(/[\s/]on(load|click|mouseover|focus)/i);
-    expect(svg).toContain("<circle");
-    expect(svg).toContain("<path");
-  });
-
-  it("removes what taking one thing out leaves behind: a tag or a handler that was built around another", async () => {
-    const dirty = `<svg viewBox="0 0 10 10"><scr<script></script>ipt>alert(1)</scr<script></script>ipt><circle r="5" on onclick="x()"click="alert(2)"/></svg>`;
-    const { svg } = await toSvg(pageOf([graphic(dirty)]));
-    expect(svg).not.toContain("<script");
-    expect(svg).not.toContain("alert");
-    expect(svg).not.toMatch(/onclick/i);
-  });
-
-  it("removes a script that is never closed or that closes itself, and a page inside the drawing the same way", async () => {
-    const dirty = `<svg viewBox="0 0 10 10"><script href="#x"/><circle r="5"/><script>unclosed(1)<foreignObject><div onclick="y()"/></svg>`;
-    const { svg } = await toSvg(pageOf([graphic(dirty)]));
-    expect(svg).not.toMatch(/<\/?script/i);
-    expect(svg).not.toMatch(/foreignObject/i);
-    expect(svg).toContain("<circle");
-  });
-
-  it("leaves out a graphic that keeps growing what it is cleaned of, which is not a drawing", async () => {
-    let bomb = "<script></script>";
-    for (let i = 0; i < 20; i++) bomb = `<scr${bomb}ipt></script>`;
-    const { svg } = await toSvg(pageOf([graphic(`<svg viewBox="0 0 10 10"><circle r="5"/>${bomb}</svg>`)]));
-    expect(svg).not.toContain("<circle");
-    expect(svg).not.toContain("script");
   });
 
   it("does not let the replacement colours of a graphic bring markup of their own", async () => {
@@ -480,17 +471,21 @@ describe("graphics", () => {
     expect(svg).toContain('fill="#ff0000"');
   });
 
-  it("leaves style rules alone when they name no classes", async () => {
-    const { svg } = await toSvg(pageOf([graphic(`<svg viewBox="0 0 10 10"><style>circle{fill:red}</style><circle r="5"/></svg>`)]));
-    expect(svg).toContain("<style>circle{fill:red}</style>");
+  it("renames an id as it is written, even one that means something to the tool that does the renaming", async () => {
+    // "$`" stands for "everything before this" when it is handed to a text replacement: the text before would become attributes
+    const sly = '<svg viewBox="0 0 10 10">" onmouseover=\'alert(1)\'><g id="$`"/></svg>';
+    const { svg } = await toSvg(pageOf([graphic(sly)]));
+    expect(svg).not.toMatch(/<g id="g1-" onmouseover/);
+    expect(svg).toContain('<g id="g1-$`"/>');
   });
 
   it("renames ids and the references to them per graphic", async () => {
-    const withId = `<svg viewBox="0 0 10 10"><defs><linearGradient id="g1"/></defs><circle r="5" fill="url(#g1)"/></svg>`;
+    const withId = `<svg viewBox="0 0 10 10"><defs><linearGradient id="g1"/><linearGradient id="g2" xlink:href="#g1"/></defs><circle r="5" fill="url(#g1)"/></svg>`;
     const { svg } = await toSvg(pageOf([graphic(withId), graphic(withId)]));
     expect(svg).toContain('id="g1-g1"');
     expect(svg).toContain('id="g2-g1"');
     expect(svg).toContain("url(#g2-g1)");
+    expect(svg).toContain('<linearGradient id="g2-g2" xlink:href="#g2-g1"/>');
   });
 });
 

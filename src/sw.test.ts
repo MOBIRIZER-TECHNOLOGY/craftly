@@ -24,6 +24,11 @@ const BUILD_CACHES = /^craftly-[a-f0-9]{10}$/;
 const builds = async (worker: ReturnType<typeof loadWorker>) => (await worker.caches.keys()).filter((name) => BUILD_CACHES.test(name));
 const text = async (response: Response | undefined) => (await response?.text()) ?? "(no response)";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** The answer as a browser hands it over after it followed a redirect; a copy of it says the same, as it does in a browser. */
+function redirected(response: Response): Response {
+  const clone = response.clone.bind(response);
+  return Object.assign(Object.defineProperty(response, "redirected", { value: true }), { clone: () => redirected(clone()) });
+}
 
 /** An installed and active worker of `build`, over the storage of the one before it. */
 async function running(build: string, over: Partial<Parameters<typeof loadWorker>[0]> = {}) {
@@ -90,6 +95,18 @@ describe("the service worker", () => {
       const stored = [...worker.caches.stores.get("craftly-b1")!.entries.keys()];
       expect(stored.some((url) => url.endsWith("/assets/index-b1.js"))).toBe(true);
       expect(stored.some((url) => url.endsWith("missing.png"))).toBe(false);
+    });
+
+    it("stores a plain copy of the shell when the host sent the request for it on to another address: a browser opens no page from an answer that was redirected", async () => {
+      const network = serveBuild(new FakeNetwork(), "b1");
+      network.serve("/index.html", () => redirected(new Response("<html>shell b1</html>", { status: 200, headers: { "content-type": "text/html; charset=utf-8" } })));
+      const worker = loadWorker({ buildId: "b1", network });
+      await worker.install();
+      const shell = worker.caches.stores.get("craftly-b1")!.entries.get(`${ORIGIN}/index.html`)!;
+      expect(shell.redirected).toBe(false);
+      expect(shell.status).toBe(200);
+      expect(shell.headers.get("content-type")).toBe("text/html; charset=utf-8");
+      expect(await shell.text()).toBe("<html>shell b1</html>");
     });
 
     it("fails, and so leaves the running worker alone, when the shell cannot be fetched", async () => {
@@ -239,6 +256,28 @@ describe("the service worker", () => {
       const worker = await running("b1");
       worker.network.online = false;
       expect(await text(await worker.request("/some/route", { mode: "navigate" }))).toBe("<html>shell b1</html>");
+    });
+
+    it("opens the shell of the build that is running when there is no connection, not the one the build before it left behind", async () => {
+      const first = await running("aaaaaaaaaa");
+      const second = await running("bbbbbbbbbb", { network: serveBuild(first.network, "bbbbbbbbbb"), caches: first.caches });
+      second.network.online = false;
+      expect(await text(await second.request("/", { mode: "navigate" }))).toBe("<html>shell bbbbbbbbbb</html>");
+    });
+
+    it("opens the shell of the build that is running when the host is in trouble, too", async () => {
+      const first = await running("aaaaaaaaaa");
+      const second = await running("bbbbbbbbbb", { network: serveBuild(first.network, "bbbbbbbbbb"), caches: first.caches });
+      second.network.serve("/", () => new Response("<html>503</html>", { status: 503, headers: { "content-type": "text/html" } }));
+      expect(await text(await second.request("/", { mode: "navigate" }))).toBe("<html>shell bbbbbbbbbb</html>");
+    });
+
+    it("opens the shell of another build when its own cache has none, which is better than no app", async () => {
+      const first = await running("aaaaaaaaaa");
+      const second = await running("bbbbbbbbbb", { network: serveBuild(first.network, "bbbbbbbbbb"), caches: first.caches });
+      await second.caches.stores.get("craftly-bbbbbbbbbb")!.delete("./index.html");
+      second.network.online = false;
+      expect(await text(await second.request("/", { mode: "navigate" }))).toBe("<html>shell aaaaaaaaaa</html>");
     });
 
     it("serves a file of the build from the cache, without asking the network", async () => {

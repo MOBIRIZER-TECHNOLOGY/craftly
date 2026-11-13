@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape } from "@/core/factory";
 import type { Design } from "@/core/types";
-import { Live, type LiveStatus, type SocketLike } from "./live";
+import { Live, PermanentSendError, type LiveStatus, type SocketLike } from "./live";
 import type { ClientMsg, ServerMsg } from "./protocol";
 
 class FakeSocket implements SocketLike {
@@ -33,9 +33,9 @@ class FakeSocket implements SocketLike {
   say(msg: ServerMsg | string) {
     this.onmessage?.({ data: typeof msg === "string" ? msg : JSON.stringify(msg) });
   }
-  lose() {
+  lose(code?: number) {
     this.readyState = 3;
-    this.onclose?.({});
+    this.onclose?.({ code });
   }
 }
 
@@ -182,6 +182,137 @@ describe("sending", () => {
     const ops = last().sent.filter((m) => m.t === "ops") as Array<Extract<ClientMsg, { t: "ops" }>>;
     expect(ops.map((m) => m.seq)).toEqual([1, 2]);
     expect(live.status).toBe("live");
+  });
+});
+
+describe("an edit that has to be prepared before it is sent (its images are uploaded)", () => {
+  const opsSent = (socket: FakeSocket) => (socket.sent.filter((m) => m.t === "ops") as Array<Extract<ClientMsg, { t: "ops" }>>).map((m) => m.seq);
+  const withBad = (d: Design): Design => ({ ...d, pages: d.pages.map((p) => ({ ...p, elements: [...p.elements, createShape("rect", { id: "bad" })] })) });
+  const hasBad = (d: Design) => d.pages[0].elements.some((e) => e.id === "bad");
+  const settle = () => vi.advanceTimersByTimeAsync(0);
+
+  it("waits longer each time while the same edit cannot be prepared, although the server welcomes it every time, and starts over once it has gone", async () => {
+    let failing = true;
+    const errors: string[] = [];
+    const live = make({
+      prepareEdit: async () => {
+        if (failing) throw new Error("the upload did not get through");
+      },
+      onSendError: (reason) => errors.push(reason),
+    });
+    live.start();
+    last().open();
+    last().say(welcome());
+    const d0 = live.design!;
+    live.edit(d0, { ...d0, title: "Renamed" });
+    await settle();
+    expect(errors).toEqual(["the upload did not get through"]);
+    expect(last().readyState).toBe(3);
+    expect(live.status).toBe("reconnecting");
+    expect(live.session.pending).toBe(1); // the edit is kept and tried again
+    for (const wait of [500, 1000, 2000]) {
+      const count = sockets.length;
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(sockets).toHaveLength(count); // a welcome in between does not bring the wait back to the shortest
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sockets).toHaveLength(count + 1);
+      if (wait === 2000) failing = false;
+      last().open();
+      last().say(welcome());
+      await settle();
+    }
+    expect(opsSent(last())).toEqual([1]);
+    expect(live.status).toBe("live");
+    last().lose();
+    vi.advanceTimersByTime(500); // the edit got through: back to the shortest wait
+    expect(sockets).toHaveLength(5);
+  });
+
+  it("says something even when what went wrong while preparing is not an error with a message", async () => {
+    const errors: string[] = [];
+    const live = make({ prepareEdit: () => Promise.reject("nope"), onSendError: (reason) => errors.push(reason) });
+    live.start();
+    last().open();
+    last().say(welcome());
+    live.edit(live.design!, { ...live.design!, title: "Renamed" });
+    await settle();
+    expect(errors).toEqual(["Could not send a shared image."]);
+  });
+
+  it("gives up an edit that can never be prepared as if the server had refused it, stays connected, and sends the edits before and behind it", async () => {
+    const refusals: string[] = [];
+    const errors: string[] = [];
+    const live = make({
+      prepareEdit: async (design) => {
+        if (hasBad(design)) throw new PermanentSendError("the image is too big for this room");
+      },
+      onRejected: (reason) => refusals.push(reason),
+      onSendError: (reason) => errors.push(reason),
+    });
+    live.start();
+    last().open();
+    // three edits made before the design has arrived: they are sent together after the welcome
+    const d0 = base();
+    const d1 = { ...d0, title: "One" };
+    const d2 = withBad(d1);
+    live.edit(d0, d1);
+    live.edit(d1, d2);
+    live.edit(d2, { ...d2, title: "Three" });
+    last().say(welcome(0, 0, d0));
+    const before = changes;
+    await settle();
+    expect(opsSent(last())).toEqual([1, 3]);
+    expect(refusals).toEqual(["the image is too big for this room"]);
+    expect(errors).toEqual([]);
+    expect(changes).toBe(before + 1);
+    expect(sockets).toHaveLength(1);
+    expect(live.status).toBe("live");
+    expect(live.session.pending).toBe(2);
+    expect(hasBad(live.design!)).toBe(false);
+    expect(live.design!.title).toBe("Three");
+    vi.advanceTimersByTime(20_000);
+    expect(sockets).toHaveLength(1); // nothing is tried again
+  });
+
+  it("does not send an edit that left the queue while the one before it was being prepared", async () => {
+    const waiting: Array<() => void> = [];
+    const live = make({ prepareEdit: () => new Promise<void>((resolve) => waiting.push(resolve)) });
+    live.start();
+    last().open();
+    last().say(welcome());
+    const d0 = live.design!;
+    const d1 = { ...d0, title: "One" };
+    live.edit(d0, d1);
+    live.edit(d1, { ...d1, title: "Two" });
+    await settle();
+    last().say({ t: "rejected", seq: 2, reason: "no" });
+    waiting.shift()?.();
+    await settle();
+    waiting.shift()?.(); // were the second prepared all the same, it would go out here
+    await settle();
+    expect(opsSent(last())).toEqual([1]);
+  });
+});
+
+describe("another tab with the same name (a duplicated tab copies what a reload keeps)", () => {
+  it("takes another name when the server says another connection took its place, and sends what was not confirmed under that name", async () => {
+    const kept: Array<{ client: string; seqs: number[] }> = [];
+    const live = make({ onOutbox: (outbox) => kept.push({ client: outbox.client, seqs: outbox.queue.map((b) => b.seq) }) });
+    live.start();
+    last().open();
+    last().say(welcome());
+    const d0 = live.design!;
+    live.edit(d0, { ...d0, title: "Renamed" });
+    last().lose(4000); // the other tab joined with the same name
+    expect(live.status).toBe("reconnecting");
+    vi.advanceTimersByTime(500);
+    last().open();
+    const join = last().sent[0] as Extract<ClientMsg, { t: "join" }>;
+    expect(join.client).toMatch(/^[a-f0-9]{16}$/);
+    expect(kept.at(-1)).toEqual({ client: join.client, seqs: [1] }); // what a reload keeps goes by the new name too
+    last().say(welcome());
+    expect(last().sent.at(-1)).toMatchObject({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "Renamed" } }] });
+    expect(live.session.pending).toBe(1);
   });
 });
 

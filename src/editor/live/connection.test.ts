@@ -3,10 +3,12 @@
  * and another person on a connection of their own. A person starts sharing, the other joins with the link, and what either does
  * shows up for the other, while undo takes back only the person's own steps.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { WebSocket } from "ws";
 import { Live, type SocketLike } from "@/collab/live";
-import { createDesign, createPage, createShape, createText } from "@/core/factory";
+import { getAsset } from "@/core/assets";
+import { createDesign, createImage, createPage, createShape, createText } from "@/core/factory";
+import { saveDesign } from "@/core/library";
 import { useEditor } from "@/core/store";
 import type { Design, LiveLink } from "@/core/types";
 import { createLiveServer, type LiveServer } from "@/server/live";
@@ -14,6 +16,14 @@ import { MemoryStorage } from "@/server/storage";
 import { connectLive, joinDesign, shareDesign, stopSharing, useLiveStatus } from "./connection";
 import { toast } from "@/ui";
 import { joinToken, parseJoinToken, websocketUrl } from "./links";
+import { downloadBlob } from "@/export/download";
+import { exportProjectFile } from "@/export/projectFile";
+
+// The library, the images and the download need a browser. What the connection asks of them is what is checked here.
+vi.mock("@/core/library", async (original) => ({ ...(await original<typeof import("@/core/library")>()), saveDesign: vi.fn() }));
+vi.mock("@/core/assets", async (original) => ({ ...(await original<typeof import("@/core/assets")>()), getAsset: vi.fn() }));
+vi.mock("@/export/projectFile", async (original) => ({ ...(await original<typeof import("@/export/projectFile")>()), exportProjectFile: vi.fn() }));
+vi.mock("@/export/download", async (original) => ({ ...(await original<typeof import("@/export/download")>()), downloadBlob: vi.fn() }));
 
 /** every address that a socket was opened with */
 const addresses: string[] = [];
@@ -357,6 +367,221 @@ function scripted(replies: () => unknown[]): SocketLike {
   });
   return socket as unknown as SocketLike;
 }
+
+/** What a browser keeps under names, made up: the tests run where there is none. */
+function fakeStorage(): Storage {
+  const kept = new Map<string, string>();
+  return {
+    get length() {
+      return kept.size;
+    },
+    key: (i: number) => [...kept.keys()][i] ?? null,
+    getItem: (name: string) => kept.get(name) ?? null,
+    setItem: (name: string, value: string) => void kept.set(name, String(value)),
+    removeItem: (name: string) => void kept.delete(name),
+    clear: () => kept.clear(),
+  };
+}
+const names = (storage: Storage, prefix: string) => Array.from({ length: storage.length }, (_, i) => storage.key(i)!).filter((name) => name.startsWith(prefix));
+
+describe("edits that do not get through", () => {
+  const save = vi.mocked(saveDesign);
+  const copies = () => save.mock.calls.map(([copy]) => copy);
+  const xOf = (d: Design, id: string) => d.pages[0].elements.find((e) => e.id === id)?.x;
+  const fake = { server: "https://full.example.test", room: "A".repeat(22), key: "k".repeat(12), role: "edit" as const };
+  const told = () => error.mock.calls.map(([message]) => String(message));
+  let error: MockInstance<typeof toast.error>;
+  /** every socket of `refusing` and `deaf`, so that a test can close one the way a server does */
+  let made: Array<{ onclose: ((e: unknown) => void) | null; readyState: number }>;
+
+  /** A server that lets a browser in with the design it has open, and then refuses every edit (as one whose room is full does) or says nothing. */
+  function answering(edit: (seq: number) => unknown[]): SocketLike {
+    const first = JSON.parse(JSON.stringify(s().design)) as Design;
+    const socket = {
+      readyState: 0,
+      onopen: null as ((e: unknown) => void) | null,
+      onclose: null as ((e: unknown) => void) | null,
+      onerror: null,
+      onmessage: null as ((e: { data: unknown }) => void) | null,
+      send(data: string) {
+        const msg = JSON.parse(data) as { t: string; seq: number };
+        const replies = msg.t === "join" ? [{ t: "welcome", role: "edit", rev: 0, lastSeq: 0, design: first }] : msg.t === "ops" ? edit(msg.seq) : [];
+        for (const reply of replies) queueMicrotask(() => socket.onmessage?.({ data: JSON.stringify(reply) }));
+      },
+      close() {
+        socket.readyState = 3;
+        socket.onclose?.({});
+      },
+    };
+    made.push(socket);
+    queueMicrotask(() => {
+      socket.readyState = 1;
+      socket.onopen?.({});
+    });
+    return socket as unknown as SocketLike;
+  }
+  const refusing = { createSocket: () => answering((seq) => [{ t: "rejected", seq, reason: "This shared design exceeds the room size limit." }]) };
+  const deaf = { createSocket: () => answering(() => []) };
+
+  beforeEach(() => {
+    made = [];
+    save.mockReset();
+    save.mockResolvedValue("revision");
+    vi.mocked(getAsset).mockReset();
+    vi.mocked(getAsset).mockResolvedValue(null);
+    vi.mocked(exportProjectFile).mockReset();
+    vi.mocked(downloadBlob).mockReset();
+    vi.stubGlobal("sessionStorage", fakeStorage());
+    vi.stubGlobal("localStorage", fakeStorage());
+    error = vi.spyOn(toast, "error").mockReturnValue(0); // the real one needs a window
+  });
+  afterEach(() => {
+    for (const stop of stops.splice(0)) stop(); // while the storage is still there
+    vi.unstubAllGlobals();
+    error.mockRestore();
+  });
+
+  it("keeps one recovery copy and says so once when the server refuses one edit after another, also after a reload of the tab", async () => {
+    const stop = connectLive(fake, refusing);
+    await until("live", () => useLiveStatus.getState().status === "live");
+    a().updateElements(["a"], { x: 11 });
+    await until("the first copy", () => save.mock.calls.length === 1);
+    await until("the refused edit to be taken back", () => el("a").x === 0);
+    a().updateElements(["a"], { x: 22 });
+    await until("the second copy", () => save.mock.calls.length === 2);
+    const [first, second] = copies();
+    expect(first).toMatchObject({ title: "Together (unsent changes)", trashedAt: null });
+    expect(first.id).not.toBe(s().design!.id);
+    expect(first.live).toBeUndefined(); // the copy is the person's own: opening it connects to nobody
+    expect(xOf(first, "a")).toBe(11);
+    expect(second.id).toBe(first.id); // the same copy, as it is now
+    expect(xOf(second, "a")).toBe(22);
+    expect(told()).toEqual(["The server refused an edit: This shared design exceeds the room size limit. A recovery copy is in Projects."]);
+
+    // the tab is loaded again: what it keeps for a reload says which copy is this design's
+    stop();
+    stops.push(connectLive(fake, refusing));
+    await until("live again", () => useLiveStatus.getState().status === "live");
+    a().updateElements(["a"], { x: 33 });
+    await until("the third copy", () => save.mock.calls.length === 3);
+    expect(copies()[2].id).toBe(first.id);
+  });
+
+  it("offers the copy as it was last as a download, once, when the library cannot keep it", async () => {
+    save.mockRejectedValue(new Error("the disk is full"));
+    vi.mocked(exportProjectFile).mockResolvedValue(new Blob(["file"]));
+    stops.push(connectLive(fake, refusing));
+    await until("live", () => useLiveStatus.getState().status === "live");
+    a().updateElements(["a"], { x: 11 });
+    await until("the first refusal to be told", () => error.mock.calls.length === 1);
+    await until("the refused edit to be taken back", () => el("a").x === 0);
+    a().updateElements(["a"], { x: 22 });
+    await until("the second copy to fail", () => save.mock.calls.length === 2);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(error).toHaveBeenCalledTimes(1);
+    const [message, options] = error.mock.calls[0];
+    expect(message).toBe("The server refused an edit: This shared design exceeds the room size limit. Download a recovery copy.");
+    expect(options).toMatchObject({ duration: 0, actionLabel: "Download copy" });
+    options!.onAction!();
+    await until("the download", () => vi.mocked(downloadBlob).mock.calls.length === 1);
+    expect(xOf(vi.mocked(exportProjectFile).mock.calls[0][0], "a")).toBe(22);
+    expect(vi.mocked(downloadBlob).mock.calls[0][1]).toMatch(/unsent changes/);
+
+    // and says so when even that fails
+    vi.mocked(exportProjectFile).mockRejectedValue(new Error("no"));
+    options!.onAction!();
+    await until("the failure to be told", () => told().includes("Could not download the recovery copy."));
+  });
+
+  it("gives up an edit whose image the server will never have, keeps a recovery copy, stays connected and sends the next edit", async () => {
+    const link = await shareDesign(address, env);
+    // the image is not on this device and the room does not have it either
+    const noImages = { ...env, fetch: (async () => ({ ok: false, status: 404 })) as unknown as typeof fetch };
+    stops.push(connectLive(link, noImages));
+    const editor = person(link);
+    await until("both to be live", () => useLiveStatus.getState().status === "live" && editor.status === "live");
+    const pic = a().addElement(createImage({ src: "asset:gone", width: 10, height: 10 }));
+    await until("the copy", () => save.mock.calls.length === 1);
+    expect(copies()[0].pages[0].elements.some((e) => e.id === pic)).toBe(true);
+    await until("the image to be taken back", () => !s().design!.pages[0].elements.some((e) => e.id === pic));
+    expect(told()).toEqual(["The server refused an edit: An uploaded image is missing. Replace it to sync this design. A recovery copy is in Projects."]);
+    expect(useLiveStatus.getState().status).toBe("live");
+    a().updateElements(["a"], { x: 77 });
+    await until("the next edit to reach the other", () => editor.design?.pages[0].elements[0].x === 77);
+    expect(editor.design!.pages[0].elements.some((e) => e.id === pic)).toBe(false);
+  });
+
+  it("keeps a recovery copy of the design as it is here, and says so, when it is opened with edits that a tab which is gone never got to the server", async () => {
+    const link = await shareDesign(address, env);
+    const stop = connectLive(link, env);
+    await until("live", () => useLiveStatus.getState().status === "live");
+    await server.close();
+    await until("this person to notice", () => useLiveStatus.getState().status === "reconnecting");
+    a().updateElements(["a"], { x: 99 }); // waits for the server, and is saved with the design on this device
+    expect(names(localStorage, "craftly:unsent:")).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+
+    // the tab is closed, and the design is opened in another one later: what a tab keeps for a reload is not there
+    stop();
+    sessionStorage.clear();
+    server = createLiveServer({ storage });
+    await server.listen(Number(new URL(address).port));
+    stops.push(connectLive(link, env));
+    expect(save).toHaveBeenCalledTimes(1); // before the server has said anything
+    const copy = copies()[0];
+    expect(copy).toMatchObject({ title: "Together (unsent changes)", trashedAt: null });
+    expect(copy.id).not.toBe(s().design!.id);
+    expect(copy.live).toBeUndefined();
+    expect(xOf(copy, "a")).toBe(99);
+    await until("the server's version to be shown", () => el("a").x === 0);
+    expect(told()).toEqual(["This design has changes from an earlier visit that never reached the server. The shared version is shown now. A recovery copy is in Projects."]);
+    expect(names(localStorage, "craftly:unsent:")).toEqual([]);
+    expect(save).toHaveBeenCalledTimes(1);
+  }, 40_000);
+
+  it("makes no copy when the tab that made the edits comes back with them (a reload): they are sent, and the mark goes when the server has them", async () => {
+    const link = await shareDesign(address, env);
+    const stop = connectLive(link, env);
+    await until("live", () => useLiveStatus.getState().status === "live");
+    await server.close();
+    await until("this person to notice", () => useLiveStatus.getState().status === "reconnecting");
+    a().updateElements(["a"], { x: 99 });
+    stop();
+    server = createLiveServer({ storage });
+    await server.listen(Number(new URL(address).port));
+    stops.push(connectLive(link, env));
+    await until("the edit to reach the server", async () => (await storage.load(link.room))!.design.pages[0].elements[0].x === 99);
+    await until("the mark to go", () => names(localStorage, "craftly:unsent:").length === 0);
+    expect(save).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(el("a").x).toBe(99);
+  }, 40_000);
+
+  it("moves its mark when it goes on under another name, so that the tab it was copied from is not taken for one that is gone", async () => {
+    stops.push(connectLive(fake, deaf));
+    await until("live", () => useLiveStatus.getState().status === "live");
+    a().updateElements(["a"], { x: 5 }); // never confirmed
+    const before = names(localStorage, "craftly:unsent:");
+    expect(before).toHaveLength(1);
+    made[0].readyState = 3;
+    made[0].onclose?.({ code: 4000 }); // another tab joined under the same name
+    const after = names(localStorage, "craftly:unsent:");
+    expect(after).toHaveLength(1);
+    expect(after).not.toEqual(before);
+    const kept = JSON.parse(sessionStorage.getItem(names(sessionStorage, "craftly:outbox:")[0])!) as { client: string };
+    expect(after[0].endsWith(`:${kept.client}`)).toBe(true);
+  });
+
+  it("writes its mark again with the next edit when another tab that opened the design has removed it", async () => {
+    stops.push(connectLive(fake, deaf));
+    await until("live", () => useLiveStatus.getState().status === "live");
+    a().updateElements(["a"], { x: 5 }); // never confirmed
+    const [mine] = names(localStorage, "craftly:unsent:");
+    localStorage.removeItem(mine); // what a second tab does with a mark that is not its own
+    a().updateElements(["a"], { x: 6 });
+    expect(names(localStorage, "craftly:unsent:")).toEqual([mine]);
+  });
+});
 
 describe("a server that cannot be trusted (a link can lead to any server)", () => {
   const link = { server: "https://evil.example.test", room: "A".repeat(22), key: "k".repeat(12), role: "edit" as const };

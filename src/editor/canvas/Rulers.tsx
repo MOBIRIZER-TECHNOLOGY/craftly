@@ -114,15 +114,18 @@ export function Rulers() {
       return { pos: axis === "v" ? d.x : d.y, inside: ev.clientX - r.left > RULER && ev.clientY - r.top > RULER };
     };
     const move = (ev: PointerEvent) => setDraft({ axis, pos: toPos(ev).pos });
+    // a cancelled drag (the browser took the pointer away) ends like a released one, except that it drops no guide
     const up = (ev: PointerEvent) => {
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
+      target.removeEventListener("pointercancel", up);
       const { pos, inside } = toPos(ev);
       setDraft(null);
-      if (inside) useEditor.getState().actions.addGuide(axis, pos);
+      if (inside && ev.type !== "pointercancel") useEditor.getState().actions.addGuide(axis, pos);
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up);
+    target.addEventListener("pointercancel", up);
     setDraft({ axis, pos: toPos(e.nativeEvent).pos });
   };
 
@@ -176,14 +179,18 @@ export function Guides() {
       return { value: axis === "v" ? d.x : d.y, overRuler: axis === "v" ? ev.clientX - r.left < RULER : ev.clientY - r.top < RULER };
     };
     const move = (ev: PointerEvent) => actions.moveGuide(axis, index, pos(ev).value);
+    // a cancelled drag still closes the undo step (left open, it would block undo and the history), but it removes nothing:
+    // the guide stays where the pointer last put it
     const up = (ev: PointerEvent) => {
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
-      if (pos(ev).overRuler) actions.removeGuide(axis, index);
+      target.removeEventListener("pointercancel", up);
+      if (ev.type !== "pointercancel" && pos(ev).overRuler) actions.removeGuide(axis, index);
       actions.endTransaction();
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up);
+    target.addEventListener("pointercancel", up);
   };
 
   const line = (axis: "v" | "h", pos: number, index: number) => (

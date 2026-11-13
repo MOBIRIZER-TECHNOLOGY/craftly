@@ -2,7 +2,7 @@
  * Runs `public/sw.js` outside a browser: the file is plain script that talks to `self`, `caches` and `fetch`, so it is
  * evaluated with stand-ins for those three (an in-memory Cache Storage that keeps the order caches were made in, a
  * network that can be switched off, and a worker scope that records what it was asked to do) in a `node:vm` context
- * that has only those and `URL`. Its listeners are then fired by hand, the way the browser fires them.
+ * that has only those, `URL` and `Response`. Its listeners are then fired by hand, the way the browser fires them.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -130,7 +130,7 @@ export function loadWorker(options: WorkerOptions = {}): Worker {
     clients: { claim },
   };
   const source = readFileSync(join(process.cwd(), "public", "sw.js"), "utf8").replaceAll("__BUILD_ID__", buildId);
-  runInNewContext(source, { self: scope, caches, fetch: (input: string | Request) => network.fetch(input), URL }, { filename: "sw.js" });
+  runInNewContext(source, { self: scope, caches, fetch: (input: string | Request) => network.fetch(input), URL, Response }, { filename: "sw.js" });
 
   const extendable = async (type: string) => {
     const pending: Array<Promise<unknown>> = [];

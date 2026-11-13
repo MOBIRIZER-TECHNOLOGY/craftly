@@ -8,8 +8,9 @@
  *    port that comes with the message, so a page can tell whether it already runs it (src/serviceWorker.ts)
  *  - activate: claims the open pages and deletes the caches of older builds, except the build that ran before this one:
  *    a tab that is still open on it may ask for one more of its files
- *  - navigation requests: network first, fall back to the cached app shell. Only the app's own page, answered as a page and as
- *    a success, is kept as the shell: an error page of the host, or whatever answers another address (/robots.txt), is not
+ *  - navigation requests: network first, fall back to the cached app shell of this build. Only the app's own page, answered as
+ *    a page and as a success, is kept as the shell: an error page of the host, or whatever answers another address
+ *    (/robots.txt), is not
  *  - same-origin assets: cache first (any build's cache), filled lazily for anything that was not precached
  *  - WebAssembly files (the ONNX runtime of the on-device photo tools) go to a cache of their own: they are fetched on
  *    first use, not on the first visit, and a new build keeps them because their names change only with their content
@@ -36,6 +37,12 @@ self.addEventListener("install", (event) => {
     (async () => {
       const cache = await caches.open(VERSION);
       await cache.addAll(SHELL);
+      // a host that sends ./index.html on to ./ (Cloudflare Pages does) has its answer stored as one that was redirected, and a
+      // browser opens no page from such an answer: what arrived is stored again as an answer of its own
+      const stored = await cache.match("./index.html");
+      if (stored && stored.redirected) {
+        await cache.put("./index.html", new Response(stored.body, { status: stored.status, statusText: stored.statusText, headers: stored.headers }));
+      }
       try {
         const res = await fetch("./precache.json", { cache: "no-store" });
         const { files, runtime = [] } = await res.json();
@@ -77,6 +84,14 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// The shell to open when the network gives none: the one of this build. Cache Storage looks through its caches oldest first and
+// the cache of the build before this one is kept, so asking all of them at once would start the old app (which cannot open a
+// database that this build has upgraded). Another build's shell is only for when this one has none.
+const storedShell = async () => {
+  const own = await (await caches.open(VERSION)).match("./index.html", { ignoreVary: true });
+  return own || caches.match("./index.html", { ignoreVary: true });
+};
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
@@ -95,9 +110,9 @@ self.addEventListener("fetch", (event) => {
             return res;
           }
           // the host is in trouble (a 5xx page, a gateway's error): the app is all on this device, so open the copy that is here
-          return res.status >= 500 ? (await caches.match("./index.html", { ignoreVary: true })) || res : res;
+          return res.status >= 500 ? (await storedShell()) || res : res;
         })
-        .catch(() => caches.match("./index.html", { ignoreVary: true })),
+        .catch(() => storedShell()),
     );
     return;
   }

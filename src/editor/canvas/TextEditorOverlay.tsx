@@ -236,14 +236,23 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* the DOM keeps absolute px sizes; rebuild from the model when the zoom changes */
-  const firstZoom = useRef(zoom);
+  /*
+   * The DOM keeps absolute px sizes, so they are rescaled when the zoom changes. They are rescaled where they are: building
+   * the box again from the model would throw the caret and the selection away, and the next format chosen in the toolbar
+   * would have nothing to apply to. A size is rounded as it is when the box is read back (styleAt), so zooming never makes
+   * it drift.
+   */
+  const shownZoom = useRef(zoom);
   useEffect(() => {
-    if (firstZoom.current === zoom) return;
-    firstZoom.current = zoom;
+    const from = shownZoom.current;
+    if (from === zoom) return;
+    shownZoom.current = zoom;
     const root = ref.current;
     if (!root) return;
-    root.replaceChildren(buildDom(elRef.current.paragraphs, elRef.current, zoom));
+    root.querySelectorAll<HTMLElement>("[style]").forEach((node) => {
+      const size = node.style.fontSize;
+      if (size.endsWith("px")) node.style.fontSize = `${(Math.round((parseFloat(size) / from) * 10) / 10) * zoom}px`;
+    });
   }, [zoom]);
 
   /* element-level list / alignment changed while editing: the paragraph DOM was built once, so sync it */

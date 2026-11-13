@@ -622,11 +622,14 @@ describe("formatting the selected characters", () => {
     expect(editor.querySelector<HTMLElement>("span span")!.style.fontSize).toBe("90px");
     expect(paragraphs()[0].runs[0]).toEqual({ text: "Hello", size: 90 });
     expect(window.getSelection()?.toString()).toBe("Hello");
+    // zooming leaves the box and its selection as they are, so the next size goes to the same characters
     act(() => getActions().setZoom(2));
-    select(editor, 0, 5);
-    await waitFor(() => expect(textEditing.hasSelection()).toBe(true));
-    applyInline({ size: 50 });
-    expect(paragraphs()[0].runs.some((r) => r.size === 50)).toBe(true);
+    expect(editor.querySelector<HTMLElement>("span span")!.style.fontSize).toBe("180px");
+    expect(window.getSelection()?.toString()).toBe("Hello");
+    expect(applyInline({ size: 50 })).toBe(true);
+    // 50 design pixels are 100 on screen at this zoom (the stand-in browser wraps the old span instead of restyling it)
+    expect(Array.from(editor.querySelectorAll<HTMLElement>("span")).some((span) => span.style.fontSize === "100px")).toBe(true);
+    expect(window.getSelection()?.toString()).toBe("Hello");
   });
 
   it("does not touch the box when the browser leaves no sized fragment behind", async () => {
@@ -654,12 +657,35 @@ describe("formatting the selected characters", () => {
 });
 
 describe("keeping the editor and the document in step", () => {
-  it("rebuilds the box from the document when the zoom changes", async () => {
+  it("rescales the sizes in the box when the zoom changes", async () => {
     const { editor } = await openEditor({ paragraphs: [{ runs: [{ text: "Big", size: 80 }] }] });
     expect(editor.querySelector<HTMLElement>("span")!.style.fontSize).toBe("80px");
     act(() => getActions().setZoom(2));
     expect(editor.querySelector<HTMLElement>("span")!.style.fontSize).toBe("160px");
     expect(editor.textContent).toBe("Big");
+  });
+
+  it("keeps the selected characters selected when the zoom changes, so the next format still applies to them", async () => {
+    const { editor } = await openEditor({ paragraphs: [{ runs: [{ text: "Hello", size: 80 }, { text: " bold", bold: true }, { text: " world" }] }] });
+    const [sized, bold] = Array.from(editor.querySelectorAll<HTMLElement>("span"));
+    select(editor, 1, 4);
+    await waitFor(() => expect(textEditing.hasSelection()).toBe(true));
+    act(() => getActions().setZoom(2));
+    expect(window.getSelection()?.toString()).toBe("ell");
+    expect(textEditing.hasSelection()).toBe(true);
+    // the very same nodes are still in the box: the sized one is rescaled, the others are left as they were
+    expect(editor.contains(sized)).toBe(true);
+    expect(sized.style.fontSize).toBe("160px");
+    expect(bold.style.fontSize).toBe("");
+    expect(bold.style.fontWeight).toBe("700");
+  });
+
+  it("does not let a size drift when the zoom goes back and forth", async () => {
+    const { editor } = await openEditor({ paragraphs: [{ runs: [{ text: "Big", size: 80 }] }] });
+    for (const zoom of [0.37, 1.13, 0.61, 3.3, 1]) act(() => getActions().setZoom(zoom));
+    expect(editor.querySelector<HTMLElement>("span")!.style.fontSize).toBe("80px");
+    fireEvent.input(editor);
+    expect(paragraphs()[0].runs[0].size).toBe(80);
   });
 
   it("follows list and alignment changes made from the toolbar", async () => {

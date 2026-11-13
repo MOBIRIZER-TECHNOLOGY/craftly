@@ -216,6 +216,23 @@ describe("the manifest", () => {
       expect(manifest.versions[0].createdAt).toBe(0);
     });
 
+    it("keeps an upload only when its type is a picture, as the upload field does, and counts the others as unusable", () => {
+      const { manifest, skipped } = parseManifest(
+        JSON.stringify({
+          craftlyBackup: 1,
+          uploads: [
+            { id: "a_png", file: "uploads/a_png.png", mime: "image/png" },
+            { id: "a_page", file: "uploads/a_page.png", mime: "text/html" },
+            { id: "a_script", file: "uploads/a_script.svg", mime: "application/javascript" },
+            { id: "a_tiff", file: "uploads/a_tiff.tiff", mime: "IMAGE/TIFF" },
+            { id: "a_odd", file: "uploads/a_odd.png", mime: "text/html;image/png" },
+          ],
+        }),
+      );
+      expect(manifest.uploads.map((u) => u.id)).toEqual(["a_png", "a_tiff"]);
+      expect(skipped).toBe(3);
+    });
+
     it("treats a missing list as an empty one", () => {
       const { manifest, skipped } = parseManifest('{"craftlyBackup":1}');
       expect(manifest).toMatchObject({ designs: [], uploads: [], folders: [], versions: [], brandKit: null });

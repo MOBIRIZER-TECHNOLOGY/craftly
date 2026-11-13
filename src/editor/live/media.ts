@@ -1,3 +1,4 @@
+import { PermanentSendError } from "@/collab/live";
 import { cacheSharedAsset, getAsset, prepareAssetFromFile } from "@/core/assets";
 import type { Design, LiveLink } from "@/core/types";
 import { blobToDataUrl } from "@/export/encoding";
@@ -6,6 +7,11 @@ import { retryAssetImage } from "@/render/images";
 import { apiUrl } from "./links";
 
 const assetPath = (link: LiveLink, id: string) => apiUrl(link.server, `/api/rooms/${encodeURIComponent(link.room)}/assets/${encodeURIComponent(id)}`);
+/**
+ * Whether the server refused the request itself (too big, the room is full of images, the id is taken, not allowed), so that asking
+ * again gets the same answer; as opposed to a server that is busy or broken for the moment, which is asked again later.
+ */
+const refused = (status: number) => status >= 400 && status < 500 && status !== 408 && status !== 429;
 const imageType = /^image\/(?:png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
 
 export function sharedMedia(link: LiveLink, request: typeof fetch = fetch) {
@@ -23,7 +29,8 @@ export function sharedMedia(link: LiveLink, request: typeof fetch = fetch) {
             uploaded.add(id);
             continue;
           }
-          throw new Error("An uploaded image is missing. Replace it to sync this design.");
+          if (refused(existing.status)) throw new PermanentSendError("An uploaded image is missing. Replace it to sync this design.");
+          throw new Error(`Could not check a shared image (server response ${existing.status}).`);
         }
         const url = await blobToDataUrl(asset.blob);
         const res = await request(assetPath(link, id), {
@@ -32,6 +39,10 @@ export function sharedMedia(link: LiveLink, request: typeof fetch = fetch) {
           body: JSON.stringify({ mime: asset.mime, base64: url.slice(url.indexOf(",") + 1) }),
           signal: AbortSignal.timeout(15000),
         });
+        if (refused(res.status))
+          throw new PermanentSendError(
+            `An uploaded image cannot be shared (server response ${res.status}). It may be too big for the server, or the shared design may hold as many images as it may.`,
+          );
         if (!res.ok) throw new Error(`Could not share an uploaded image (server response ${res.status}). Check the image size and try again.`);
         uploaded.add(id);
       }

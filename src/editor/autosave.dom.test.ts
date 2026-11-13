@@ -294,4 +294,114 @@ describe("uninstalling", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(saves()).toHaveLength(0);
   });
+
+  it("still writes the newest edit when the editor is closed while an older save is running", async () => {
+    const design = open();
+    const autosave = installAutosave();
+    stop = autosave;
+    const slow = slowSave();
+    edit("Busy");
+    await vi.advanceTimersByTimeAsync(700);
+    edit("Newest");
+    // what the editor does on its way out: ask for a save, stop the service, close the design
+    void autosave.flush();
+    autosave();
+    getActions().closeDesign();
+    expect(saves()).toHaveLength(1);
+    slow.finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saves().map((c) => [c[0].id, c[0].title])).toEqual([
+      [design.id, "Busy"],
+      [design.id, "Newest"],
+    ]);
+    expect(state().design).toBeNull();
+  });
+
+  it("writes that last edit to its own design, and leaves a design opened in the meantime alone", async () => {
+    const first = open();
+    const autosave = installAutosave();
+    stop = autosave;
+    const slow = slowSave();
+    edit("Busy");
+    await vi.advanceTimersByTimeAsync(700);
+    edit("Newest");
+    void autosave.flush();
+    autosave();
+    getActions().closeDesign();
+    const second = open();
+    slow.finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saves()).toHaveLength(2);
+    expect(saves()[1][0]).toMatchObject({ id: first.id, title: "Newest" });
+    expect(state().design?.id).toBe(second.id);
+    expect(state().saveState).toBe("saved");
+  });
+
+  it("writes that last edit after the older save failed, too", async () => {
+    open();
+    const autosave = installAutosave();
+    stop = autosave;
+    const slow = slowSave();
+    edit("Busy");
+    await vi.advanceTimersByTimeAsync(700);
+    edit("Newest");
+    void autosave.flush();
+    autosave();
+    getActions().closeDesign();
+    slow.fail(new Error("disk"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saves().map((c) => c[0].title)).toEqual(["Busy", "Newest"]);
+  });
+
+  it("writes nothing more when the save that is running already holds the newest state", async () => {
+    open();
+    const autosave = installAutosave();
+    stop = autosave;
+    const slow = slowSave();
+    edit("Busy");
+    await vi.advanceTimersByTimeAsync(700);
+    window.dispatchEvent(new CustomEvent("craftly:save-now")); // asked again, with nothing new
+    autosave();
+    getActions().closeDesign();
+    slow.finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saves()).toHaveLength(1);
+  });
+
+  it("writes nothing more when the design was closed before the service was stopped", async () => {
+    open();
+    const autosave = installAutosave();
+    stop = autosave;
+    const slow = slowSave();
+    edit("Busy");
+    await vi.advanceTimersByTimeAsync(700);
+    edit("Newest");
+    void autosave.flush();
+    getActions().closeDesign();
+    autosave();
+    slow.finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saves()).toHaveLength(1);
+  });
+
+  it("keeps a failure of that last write quiet when the editor asked for it quietly, and writes it down otherwise", async () => {
+    for (const report of [false, true]) {
+      clearProblems();
+      open();
+      const autosave = installAutosave();
+      const slow = slowSave();
+      edit("Busy");
+      await vi.advanceTimersByTimeAsync(700);
+      edit("Newest");
+      void autosave.flush(report);
+      autosave();
+      getActions().closeDesign();
+      vi.mocked(saveDesign).mockRejectedValueOnce(new Error("quota exceeded"));
+      slow.finish();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(saves().at(-1)?.[0].title).toBe("Newest");
+      expect(listProblems().map((p) => p.message)).toEqual(report ? ["quota exceeded"] : []);
+      expect(state().design).toBeNull();
+    }
+  });
 });

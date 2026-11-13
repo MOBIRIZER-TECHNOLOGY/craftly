@@ -329,7 +329,8 @@ export function applyOp(d: Design, op: Op): Design {
         if (!el) return list;
         // an element cannot go into itself or into what it holds
         if (op.parent !== null && (op.parent === op.id || (el.type === "group" && findElement(el.children, op.parent)))) return list;
-        if (op.parent !== null && !findElement(list, op.parent)) return list;
+        // nor into what is not there or is not a group: it would be taken out of its place and put nowhere
+        if (op.parent !== null && findElement(list, op.parent)?.type !== "group") return list;
         return insertElement(
           edit(list, op.id, () => null),
           op.parent,

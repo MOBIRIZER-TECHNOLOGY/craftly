@@ -78,7 +78,7 @@ function checkXml(xml: string): { ids: string[]; refs: string[]; tags: Record<st
 }
 
 const sampleGraphic =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10" fill="none" stroke="#112233" stroke-width="2"><defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs><rect id="r" width="20" height="10" fill="url(#g)"/><script>alert(1)</script><circle cx="5" cy="5" r="3" onclick="evil()"/></svg>';
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10" fill="none" stroke="#112233" stroke-width="2"><defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs><rect id="r" width="20" height="10" fill="url(#g)"/><circle cx="5" cy="5" r="3"/></svg>';
 
 describe("document", () => {
   it("is a standalone, well-formed SVG sized like the design", async () => {
@@ -453,7 +453,7 @@ describe("tables, charts and graphics", () => {
     );
   });
 
-  it("inlines graphics as nested svg with scoped ids and without scripts", async () => {
+  it("inlines graphics as nested svg with scoped ids", async () => {
     const g = createGraphic({ svg: sampleGraphic, x: 20, y: 30, width: 200, height: 100, colors: { "#112233": "#aa00ff" } });
     const { svg } = await render([g, createGraphic({ svg: sampleGraphic, x: 300, y: 30, width: 100, height: 50 })]);
     expect(svg).toContain('<svg x="0" y="0" width="200" height="100" viewBox="0 0 20 10"');
@@ -461,26 +461,22 @@ describe("tables, charts and graphics", () => {
     expect(svg).toContain('id="g1-g"');
     expect(svg).toContain('id="g2-g"');
     expect(svg).toContain('fill="url(#g1-g)"');
-    expect(svg).not.toContain("<script");
-    expect(svg).not.toContain("onclick");
     checkXml(svg);
   });
 });
 
-describe("inlined graphics stay isolated", () => {
-  const styled =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style>@import url(https://evil.example/x.css); .cls-1{fill:#ff0000;background:url(https://evil.example/t.png)}.cls-2{stroke:#00ff00}</style><rect class="cls-1" width="5" height="5"/><rect class="cls-1 other cls-2" x="5" width="5" height="5"/><image href="https://evil.example/pixel.png" width="1" height="1"/><use href="#a"/><g id="a"/></svg>';
-
-  it("prefixes class names per graphic and removes anything that leaves the document", async () => {
-    const { svg } = await render([createGraphic({ svg: styled, x: 0, y: 0, width: 50, height: 50 }), createGraphic({ svg: styled, x: 60, y: 0, width: 50, height: 50 })]);
-    expect(svg).toContain(".g1-cls-1{fill:#ff0000");
-    expect(svg).toContain(".g2-cls-2{stroke:#00ff00}");
-    expect(svg).toContain('class="g1-cls-1 other g1-cls-2"');
-    expect(svg).toContain('class="g2-cls-1"');
-    expect(svg).not.toContain("evil.example");
-    expect(svg).not.toContain("@import");
-    expect(svg).toContain('<use xlink:href="#g1-a"'.replace("xlink:", "")); // internal references survive, renamed
-    checkXml(svg);
+describe("the graphics that ship with the app", () => {
+  it("are all written into the file, recoloured and with a line width of their own, none left out", async () => {
+    const { GRAPHICS } = await import("@/data/graphics");
+    const { extractSvgColors } = await import("@/core/svg");
+    expect(GRAPHICS.length).toBeGreaterThan(100);
+    const elements = GRAPHICS.map((def, i) => {
+      const colors = Object.fromEntries(extractSvgColors(def.svg).map((key, n) => [key, n % 2 ? "rgba(17, 34, 51, 0.5)" : "#123456"]));
+      return createGraphic({ svg: def.svg, width: 40, height: 40, colors, ...(i % 2 ? { strokeWidth: 3 } : {}) });
+    });
+    const { svg, warnings } = await render(elements);
+    expect(warnings).toEqual([]);
+    expect(svg.split('<svg x="0"').length - 1).toBe(GRAPHICS.length);
   });
 });
 

@@ -114,6 +114,25 @@ describe("adding an upload", () => {
     expect(await listAssets()).toEqual([]);
   });
 
+  it("fails, and tells nobody of a new upload, when the browser takes the picture and then has no room to keep it", async () => {
+    const full = Object.assign(new Error("full"), { name: "QuotaExceededError" });
+    // every write is taken, and the transaction is given up when it ends: the way a browser that is out of room behaves
+    vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(() => {
+      const request = {} as IDBRequest;
+      const tx = { error: full, objectStore: () => ({ put: () => request }) } as unknown as IDBTransaction;
+      setTimeout(() => {
+        request.onsuccess?.call(request, new Event("success"));
+        setTimeout(() => tx.onabort?.call(tx, new Event("abort")), 0);
+      }, 0);
+      return tx;
+    });
+    const heard = vi.fn();
+    const stop = subscribeAssets(heard);
+    await expect(addAssetFromFile(fakeFile("big.png", "image/png"))).rejects.toBe(full);
+    stop();
+    expect(heard).not.toHaveBeenCalled();
+  });
+
   it("tells subscribers about a new upload", async () => {
     const heard = vi.fn();
     const stop = subscribeAssets(heard);

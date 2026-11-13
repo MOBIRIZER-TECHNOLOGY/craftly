@@ -23,12 +23,15 @@ export function JoinPage({ token, onOpen = open }: { token: string; onOpen?: (de
   const [problem, setProblem] = useState<string | null>(null);
   /** the server of the link, while the person is asked whether to connect to it */
   const [asking, setAsking] = useState<string | null>(null);
-  /** set once the person has said yes for the link that is open */
-  const [agreed, setAgreed] = useState(false);
+  /** the link that the person has said yes for: a yes is for one link and not for the next one that is opened in this tab */
+  const [agreed, setAgreed] = useState<string | null>(null);
   const yes = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let cancelled = false;
+    // Another link in the same tab only changes the token, and the page stays: what was said about the link before is not about this one.
+    setProblem(null);
+    setAsking(null);
     const link = parseJoinToken(token);
     if (!link) {
       setProblem("This is not a link that Craftly made. Ask the person who shared the design for a new one.");
@@ -39,7 +42,7 @@ export function JoinPage({ token, onOpen = open }: { token: string; onOpen?: (de
         // a design that was joined before is opened from the library: nothing is asked of any server here
         const known = await findShared(link);
         if (known) return void (!cancelled && onOpen(known));
-        if (!agreed && !isKnownServer(link.server)) return void (!cancelled && setAsking(link.server));
+        if (agreed !== token && !isKnownServer(link.server)) return void (!cancelled && setAsking(link.server));
         const { design, role } = await joinDesign(link);
         if (cancelled) return;
         const id = await saveJoined(design, { ...link, role });
@@ -62,7 +65,7 @@ export function JoinPage({ token, onOpen = open }: { token: string; onOpen?: (de
     if (!asking) return;
     rememberServer(asking);
     setAsking(null);
-    setAgreed(true);
+    setAgreed(token);
   };
 
   return (

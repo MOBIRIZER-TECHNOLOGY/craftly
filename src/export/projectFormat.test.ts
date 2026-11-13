@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createChart, createDesign, createGraphic, createGroup, createImage, createLine, createPage, createShape, createTable, createText, solid } from "@/core/factory";
-import type { Design, ImageElement, ShapeElement } from "@/core/types";
+import type { Design, DesignElement, ImageElement, ShapeElement } from "@/core/types";
+import { GRAPHICS } from "@/data/graphics";
+import { getIconSvg, loadIconIndex } from "@/data/icons";
+import { TEMPLATES } from "@/data/templates";
+import { qrSvg } from "@/editor/panels/tabs/apps/qrSvg";
 import {
   MAX_GROUP_DEPTH,
   MAX_TITLE_LENGTH,
@@ -354,6 +358,64 @@ describe("what a file may not do to the app", () => {
     const clean = { skipped: 0 };
     parseProjectFile(fileOf(design), clean);
     expect(clean.skipped).toBe(0);
+  });
+});
+
+describe("the markup of a graphic that comes from outside", () => {
+  const fileOf = (design: Design) => serializeProjectFile(buildProjectFile(design, {}));
+  const plain = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle r="5" fill="#ff0000"/></svg>';
+  /** a graphic as the app makes it, holding markup the app would never make */
+  const graphic = (id: string, svg: string) => ({ ...createGraphic({ id, svg: plain }), svg });
+  const hostile = [
+    graphic("script", '<svg viewBox="0 0 10 10"><script>alert(1)</script></svg>'),
+    graphic("prefixed", '<svg viewBox="0 0 10 10"><x:script xmlns:x="http://www.w3.org/2000/svg">alert(1)</x:script></svg>'),
+    graphic("page", '<svg viewBox="0 0 10 10"><iframe xmlns="http://www.w3.org/1999/xhtml" src="javascript:alert(1)"/></svg>'),
+    graphic("escaped", '<svg viewBox="0 0 10 10"><rect width="5" height="5" style="fill:\\75rl(https://evil.test/f)"/></svg>'),
+    graphic("handler", '<svg viewBox="0 0 10 10" onload="alert(1)"/>'),
+    graphic("words", "hello"),
+  ];
+
+  it("leaves a graphic out of a file when its markup is anything but plain drawing, and counts it", () => {
+    const design = createDesign({ width: 800, height: 600, pages: [createPage({ elements: [graphic("good", plain), ...hostile, createGroup([hostile[1]], { id: "group" })] })] });
+    const report = { skipped: 0 };
+    const parsed = parseProjectFile(fileOf(design), report);
+    expect(parsed.design.pages[0].elements.map((e) => e.id)).toEqual(["good", "group"]);
+    expect((parsed.design.pages[0].elements[1] as { children: unknown[] }).children).toEqual([]);
+    expect(report.skipped).toBe(hostile.length + 1);
+    expect(JSON.stringify(parsed.design)).not.toContain("alert");
+  });
+
+  it("leaves it out of what is pasted or dropped too", () => {
+    const report = { skipped: 0 };
+    expect(usableElements([graphic("good", plain), ...hostile], report).map((e) => e.id)).toEqual(["good"]);
+    expect(report.skipped).toBe(hostile.length);
+  });
+
+  it("keeps a graphic that has no markup at all, which draws nothing", () => {
+    expect(isUsableElement(graphic("empty", ""))).toBe(true);
+  });
+
+  it("keeps every graphic the app makes itself: the Elements panel, the templates, the icons and a QR code", async () => {
+    const refused: string[] = [];
+    // as the factory stores it, which is the markup with a namespace and a viewBox on it, and read back from a file
+    const check = (name: string, svg: string) => {
+      if (!isUsableElement(JSON.parse(JSON.stringify(createGraphic({ svg }))))) refused.push(name);
+    };
+    expect(GRAPHICS.length).toBeGreaterThan(100);
+    for (const def of GRAPHICS) check(`graphic ${def.id}`, def.svg);
+    const visit = (name: string, elements: DesignElement[]) => {
+      for (const el of elements) {
+        if (el.type === "graphic") check(`${name} ${el.id}`, el.svg);
+        else if (el.type === "group") visit(name, el.children);
+      }
+    };
+    expect(TEMPLATES.length).toBeGreaterThan(50);
+    for (const template of TEMPLATES) for (const page of template.pages) visit(`template ${template.id}`, page.elements);
+    const icons = await loadIconIndex();
+    expect(icons.length).toBeGreaterThan(500);
+    for (const icon of icons) check(`icon ${icon.id}`, (await getIconSvg(icon.id)) ?? "missing");
+    check("qr", qrSvg("https://example.test/a?b=c", "H", "#112233", "#ffffff"));
+    expect(refused).toEqual([]);
   });
 });
 
