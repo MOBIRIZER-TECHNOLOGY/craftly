@@ -9,6 +9,11 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 - Portable project files and library backups omit live links. Project import stages images before committing the design, and export reports missing images. Service-worker cleanup preserves unrelated same-origin caches.
 - See [verification](docs/VERIFICATION.md#production-readiness-regressions) for the 16 regression cases and remaining release checks.
 
+## Unreleased work of the night of 2026-11-13 (branch `overnight-2026-11-13`, see docs/OVERNIGHT-PLAN.md)
+
+- (items are added below this line as they are finished)
+- **CI builds the bundle of the live server and starts it.** Nothing ran `dist-server/live.mjs` before, so a bundle that did not start would have been found by the first person to deploy it. `npm run server:smoke` (`scripts/server-smoke.mjs`) builds the bundle, starts it on a free port with a temporary data folder, waits for `GET /api/health` to answer 200, makes a room with `POST /api/rooms`, sends SIGTERM and requires exit code 0; CI runs it after the production build. On Windows a process cannot be asked to stop, so the clean exit is checked on Linux and macOS only. The README now says that `server:build` uses the esbuild that Vite brings along, which is not named in `package.json`.
+
 ## Unreleased fixes from a second review of the code (2026-11-13)
 
 - **The live server no longer drops every connection after a minute.** The server pings each connection and drops one that did not answer by the next round, but it listened for the answers in a place that an upgrade handled by hand never reaches, so no answer was ever seen: every browser lost its connection after 30 to 60 seconds, came back, and was sent the whole design again. The answer is now listened for on the connection itself (`src/server/live.ts`; the interval is the new option `heartbeatMs`).

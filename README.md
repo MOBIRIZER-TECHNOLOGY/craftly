@@ -153,7 +153,12 @@ npm run format      # Prettier: writes the layout of the code (npm run format:ch
 npm test            # unit and component tests: logic in Node, every screen in jsdom (a few minutes)
 npm run coverage    # the same with V8 coverage; fails when statements, branches, functions or lines fall below 95 %
 npm run e2e         # browser journeys against a running dev server (see e2e/README.md)
+npm run server      # the live server for working together: builds dist-server/live.mjs, then runs it (docs/COLLABORATION.md)
+npm run server:build  # only the bundle: one file, dist-server/live.mjs, that needs Node and the ws package
+npm run server:smoke  # builds the bundle, starts it on a free port with a temporary data folder, asks /api/health, makes a room, stops it
 ```
+
+`server:build` calls `esbuild`, which is not in `package.json`: it is installed because Vite depends on it (0.28.2 in `package-lock.json` today). A Vite release that drops or replaces esbuild would break the server build and nothing else; `npm run server:smoke` runs in CI after the production build, so that would be seen there. Naming esbuild as a development dependency of its own is the fix, and it is not done yet.
 
 To run part of the suite: `npx vitest run src/editor/panels` (a folder or file), or one of the two projects, `npx vitest run --project logic` or `--project ui`.
 
@@ -174,7 +179,7 @@ src/
 e2e/           browser journeys (playwright-core + a local Chrome): 250 scripted checks over the whole app
 docs/          design notes, the reverse-engineering report, the roadmap, the accessibility audit, the on-device AI design, how it was verified
 public/        the service worker, the web app manifest, the icons and the hosting headers (_headers)
-scripts/       the generator of THIRD-PARTY-NOTICES.md (npm run notices)
+scripts/       the generator of THIRD-PARTY-NOTICES.md (npm run notices) and the start check of the server bundle (npm run server:smoke)
 ```
 
 **Quality gates.** The build type-checks in strict mode. Lint and formatting run separately. `npm run coverage` measures the configured Node and jsdom suites with V8 and requires 95% on statements, branches, functions and lines. Playwright browser journeys exercise the built app separately. See [verification and coverage](docs/VERIFICATION.md) and the [test harness guide](src/test/README.md).
