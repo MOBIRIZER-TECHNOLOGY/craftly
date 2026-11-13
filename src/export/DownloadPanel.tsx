@@ -16,6 +16,7 @@ import {
   IconLayers,
   IconPrint,
   IconVideo,
+  IconWebsite,
   NumberField,
   Segmented,
   Select,
@@ -43,6 +44,7 @@ import {
   type DownloadSettings,
   type PagesMode,
 } from "./settings";
+import { exportWebPage, webPageOptions } from "./webPageExport";
 
 /* ------------------------------------------------------------------ */
 /* settings                                                            */
@@ -82,7 +84,7 @@ function useTabHidden(active: boolean): boolean {
 /* ------------------------------------------------------------------ */
 
 /** Downloads that are more than one kind of file. They are chosen in the same list, but are not remembered as a format. */
-type Bundle = "sizes";
+type Bundle = "sizes" | "html";
 type FileKey = "png" | "jpg" | "pdf-standard" | "pdf-print" | "svg" | "gif" | "webm" | Bundle;
 
 function Option({ name, hint, badge }: { name: string; hint: string; badge?: string }) {
@@ -108,6 +110,7 @@ const FILE_OPTIONS: SelectOption<FileKey>[] = [
   { value: "gif", icon: <IconImages aria-hidden="true" />, textValue: "Animated GIF", label: <Option name="Animated GIF" hint="Plays on any device" /> },
   { value: "webm", icon: <IconVideo aria-hidden="true" />, textValue: "Video (WebM)", label: <Option name="Video (WebM)" hint="Smooth, small files" /> },
   { value: "sizes", icon: <IconLayers aria-hidden="true" />, textValue: "Several sizes", label: <Option name="Several sizes" hint="One ZIP, a file per size" /> },
+  { value: "html", icon: <IconWebsite aria-hidden="true" />, textValue: "Web page (HTML)", label: <Option name="Web page (HTML)" hint="A slideshow in any browser" /> },
 ];
 
 /** The list as this browser can use it: a video the browser cannot record stays visible but disabled, with the reason. */
@@ -185,6 +188,8 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
   // several sizes: the ticked sizes (null until one is changed: the defaults for this design) and the format of every file
   const [sizeIds, setSizeIds] = useState<Set<string> | null>(null);
   const [sizesFormat, setSizesFormat] = useState<MultiSizeFormat>("png");
+  // web page: presenter notes are private, so they are left out until someone asks for them, every time
+  const [webNotes, setWebNotes] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const alive = useRef(true);
@@ -233,11 +238,13 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
   const sizePlan = useMemo(() => (design && several ? planMultiSize(design, [...tickedSizes], pages, sizesFormat) : null), [design, several, tickedSizes, pages, sizesFormat]);
   const estimate = useMemo(() => {
     if (!design || !pages.length) return 0;
+    // a web page: its pictures, a third larger for being written as text
+    if (bundle === "html") return Math.round((estimateExportBytes(design, { ...webPageOptions(design, 0), pages }) * 4) / 3);
     if (!sizePlan) return estimateExportBytes(design, options);
     // every size is weighed as the design at that size: what is on the pages stays, the pixels change
     const each = multiSizeOptions(sizesFormat, settings.quality, pages);
     return sizePlan.sizes.reduce((sum, s) => sum + estimateExportBytes({ width: s.width, height: s.height, pages: design.pages }, each), 0);
-  }, [design, options, pages, sizePlan, sizesFormat, settings.quality]);
+  }, [design, options, pages, bundle, sizePlan, sizesFormat, settings.quality]);
   // a GIF or video: the timeline of the chosen pages (picture size, length, whether anything moves)
   const animation = useMemo(
     () => (design && pages.length && !bundle && isAnimatedFormat(options.format) ? resolveExportOptions(design, options).animation : null),
@@ -285,7 +292,10 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
     try {
       const file = several
         ? await exportSeveralSizes(design, { sizeIds: [...tickedSizes], pages, format: sizesFormat, quality: settings.quality }, report, controller.signal)
-        : await exportDesign(design, options, report, controller.signal);
+        : bundle === "html"
+          ? // the file says which language it is in; the words on the pages are pictures, so that is the language of its own few words
+            await exportWebPage(design, { pages, notes: webNotes, lang: document.documentElement.lang || "en" }, report, controller.signal)
+          : await exportDesign(design, options, report, controller.signal);
       downloadBlob(file.blob, file.name);
       toast.show({ kind: "success", message: `Downloaded ${file.name}` });
       if (file.note) toast.show({ kind: "info", message: file.note, duration: 9000 });
@@ -297,7 +307,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         // the size multiplier belongs in the message only where one was chosen: a single PNG or JPG
         toast.show({
           kind: "error",
-          message: describeExportError(error, { scale: !several && (options.format === "png" || options.format === "jpg") ? options.scale : undefined }),
+          message: describeExportError(error, { scale: !bundle && (options.format === "png" || options.format === "jpg") ? options.scale : undefined }),
         });
       }
     } finally {
@@ -350,8 +360,11 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
           options={fileOptions}
           disabled={busy}
           onChange={(key) => {
-            setBundle(key === "sizes" ? key : null);
-            if (key === "sizes") return;
+            if (key === "sizes" || key === "html") {
+              setBundle(key);
+              return;
+            }
+            setBundle(null);
             if (key === "pdf-standard") patch({ format: "pdf", pdfMode: "standard" });
             else if (key === "pdf-print") patch({ format: "pdf", pdfMode: "print" });
             else patch({ format: key });
@@ -530,6 +543,20 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
               {sizePlan.problem}
             </p>
           ) : null}
+        </div>
+      )}
+
+      {format === "html" && (
+        <div className="cf-dl__group">
+          <p className="cf-dl__hint">
+            One .html file that shows the pages as a slideshow in any browser, for people who do not have Craftly: next and back with the buttons, the arrow keys, a click or a
+            swipe, and a full screen button. Nothing is loaded from the internet.
+          </p>
+          <p className="cf-dl__hint">Every page is a picture. Animations, transitions and links are not carried over; pages change with a short fade.</p>
+          <Switch checked={webNotes} onChange={setWebNotes} label="Include speaker notes" disabled={busy} />
+          <p className="cf-dl__hint">
+            {webNotes ? "The notes are shown under each page. Everyone who gets the file can read them." : "Notes are private and stay out of the file."}
+          </p>
         </div>
       )}
 

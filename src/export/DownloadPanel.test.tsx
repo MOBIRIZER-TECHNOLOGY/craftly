@@ -106,8 +106,8 @@ describe("<DownloadPanel> choices", () => {
     mountPanel();
     await user.click(fileType());
     const names = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(names).toHaveLength(8);
-    ["PNG", "JPG", "PDF Standard", "PDF Print", "SVG", "Animated GIF", "Video (WebM)", "Several sizes"].forEach((name, i) => expect(names[i]).toContain(name));
+    expect(names).toHaveLength(9);
+    ["PNG", "JPG", "PDF Standard", "PDF Print", "SVG", "Animated GIF", "Video (WebM)", "Several sizes", "Web page (HTML)"].forEach((name, i) => expect(names[i]).toContain(name));
     const video = screen.getByRole("option", { name: /Video \(WebM\)/ });
     expect(video.getAttribute("aria-disabled")).toBe("true");
     expect(video.textContent).toContain("Not supported in this browser");
