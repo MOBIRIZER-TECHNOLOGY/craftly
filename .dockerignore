@@ -1,0 +1,24 @@
+# What `docker build -f Dockerfile.server .` does not need to be sent. The Dockerfile copies package.json,
+# package-lock.json, tsconfig.json, src/ and scripts/ and nothing else; this list keeps the large and the private folders
+# out of the build context altogether.
+.git
+.github
+.claude
+.remember
+node_modules
+dist
+dist-*
+coverage
+*.log
+
+# rooms of a server that was run here, and anything with secrets in it
+live-data
+.env
+.env.*
+
+# not part of the server
+docs
+e2e
+public
+reports
+research_notes

@@ -36,7 +36,7 @@ Requires Node 22.22.2+, 24.15+ or 26+ (the test tools need these; the dev server
 | Area | Highlights |
 | --- | --- |
 | **Dashboard** | Home with search, design-type shortcuts, recent designs, template carousels; Projects with folders, stars, drag-to-folder, sort and filter; Templates browser with previews; Brand kit; Trash with restore |
-| **Canvas** | Click / shift-click / marquee selection, move, 8-handle resize (corners proportional, Alt = from centre), rotation with snapping (45 degrees, or 15 with Shift), flip, group / ungroup, z-order, align and distribute, smart snapping to page, elements and guides, rulers and draggable guides, zoom from 5 % to 400 % (wheel and keys; the slider covers 10-300 %; fit / fill), pan (space-drag), keyboard nudging, lock and hide |
+| **Canvas** | Click / shift-click / marquee selection, move, 8-handle resize (corners proportional, Alt = from centre), rotation with snapping (45 degrees, or 15 with Shift), flip, group / ungroup, z-order, align and distribute, smart snapping to page, elements and guides, rulers and draggable guides, zoom from 5 % to 400 % (wheel and keys; the slider covers 10-300 %; fit / fill), pan (space-drag), on a touch screen pinch to zoom and two fingers to move the view, keyboard nudging, lock and hide |
 | **Templates** | 72 original templates (141 pages): 10 seven-page presentation decks, 24 social posts, stories and thumbnails, posters, flyers, documents, resumes, logos, invitations, business cards, certificates, menus and banners. Start a design from one, apply a whole deck, or drop a single page onto the current page (with undo) |
 | **Elements** | Text, 47 shapes (45 drawings, plus a rounded square and an ellipse that reuse two of them), lines and arrows, 2,000+ icons, 161 hand-drawn illustrations, 44 procedural stock photos, frames and photo grids, 136 backgrounds (colours, gradients, patterns, textures), tables, charts, freehand drawing, a **Pen** for paths of straight sides and curves with point editing ([the Pen tool](#the-pen-tool)), and **Combine** to make one shape of several (union, subtract, intersect, exclude; [combining shapes](#combining-shapes)) |
 | **Text** | 44 bundled font families, size, colour and gradient, bold / italic / underline / strike, case, alignment (incl. justify), bullet and numbered lists, letter and line spacing, per-selection formatting, nine effects (shadow, lift, hollow, splice, outline, echo, glitch, neon, background), curved text |
@@ -138,7 +138,7 @@ Several people can edit one design at the same time, and see each other's change
 | Microsoft Edge | The readiness regression run covered 12 cases and selected editor, backup, migration, offline and recovery journeys. |
 | Firefox | Not tested yet. Image filters use the canvas `filter` property, which Firefox supports; WebM export needs `MediaRecorder` |
 | Safari | Not tested yet. Image filters are limited in Safari's canvas, and WebM export may be unavailable |
-| Phones and tablets | The layout adapts (under 900 px the tabs move to a bottom dock that scrolls sideways to reach Projects and Apps, and an open panel covers the lower part of the page), but there is no pinch-zoom or two-finger pan yet |
+| Phones and tablets | The layout adapts (under 900 px the tabs move to a bottom dock that scrolls sideways to reach Projects and Apps, and an open panel covers the lower part of the page). On the canvas one finger selects and drags, and two fingers zoom (pinch) and move the view; one finger does not scroll the canvas. The touch gestures are tested with made-up pointer events only, not yet on a real touch screen |
 | AI photo tools | Need WebGPU (Chrome and Edge 113+, Safari 26+, Firefox 141+ on Windows), and half-precision shaders for the background remover; run with the real models in Chrome on an integrated Intel GPU only |
 
 ## Develop
@@ -153,7 +153,7 @@ npm run format      # Prettier: writes the layout of the code (npm run format:ch
 npm test            # unit and component tests: logic in Node, every screen in jsdom (a few minutes)
 npm run coverage    # the same with V8 coverage; fails when statements, branches, functions or lines fall below 95 %
 npm run e2e         # browser journeys against a running dev server (see e2e/README.md)
-npm run server      # the live server for working together: builds dist-server/live.mjs, then runs it (docs/COLLABORATION.md)
+npm run server      # the live server for working together: builds dist-server/live.mjs, then runs it (docs/DEPLOY.md)
 npm run server:build  # only the bundle: one file, dist-server/live.mjs, that needs Node and the ws package
 npm run server:smoke  # builds the bundle, starts it on a free port with a temporary data folder, asks /api/health, makes a room, stops it
 ```
@@ -179,7 +179,7 @@ src/
 e2e/           browser journeys (playwright-core + a local Chrome): 250 scripted checks over the whole app
 docs/          design notes, the reverse-engineering report, the roadmap, the accessibility audit, the on-device AI design, how it was verified
 public/        the service worker, the web app manifest, the icons and the hosting headers (_headers)
-scripts/       the generator of THIRD-PARTY-NOTICES.md (npm run notices) and the start check of the server bundle (npm run server:smoke)
+scripts/       the generator of THIRD-PARTY-NOTICES.md (npm run notices) the start check of the server bundle (npm run server:smoke) and the package files of a deployed server (docs/DEPLOY.md)
 ```
 
 **Quality gates.** The build type-checks in strict mode. Lint and formatting run separately. `npm run coverage` measures the configured Node and jsdom suites with V8 and requires 95% on statements, branches, functions and lines. Playwright browser journeys exercise the built app separately. See [verification and coverage](docs/VERIFICATION.md) and the [test harness guide](src/test/README.md).
@@ -196,7 +196,7 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before sending a change, and [`CHANGEL
 
 ## Deploy
 
-Craftly is a static site: `npm run build` writes everything to `dist/` and any static host can serve it (Netlify, Cloudflare Pages, Vercel, GitHub Pages, an S3 bucket behind a CDN, nginx).
+Craftly is a static site: `npm run build` writes everything to `dist/` and any static host can serve it (Netlify, Cloudflare Pages, Vercel, GitHub Pages, an S3 bucket behind a CDN, nginx). The optional live server for working together is deployed separately: [`docs/DEPLOY.md`](docs/DEPLOY.md) has both parts in one place, with a Dockerfile for the server (`Dockerfile.server`, written but not built yet), its settings, a reverse proxy for TLS and backups.
 
 - **Routing needs no setup.** Pages use the URL hash (`#/design/...`), so there are no rewrite rules.
 - **HTTPS is required** for the service worker and for installing the app (`localhost` is exempt).

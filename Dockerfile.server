@@ -1,0 +1,58 @@
+# The Craftly live server (working together on one design) as a container image. The editor itself is static files and
+# needs no container: see docs/DEPLOY.md.
+#
+#   docker build -f Dockerfile.server -t craftly-live .
+#   docker run -d --name craftly-live -p 127.0.0.1:8787:8787 -v craftly-live-data:/data \
+#     -e ALLOW_ORIGIN=https://editor.example.org craftly-live
+#
+# NOT BUILT YET: this file was written on a machine without Docker. Its steps were run there by hand outside a container
+# (the build from only the files copied below, the generated package files, `npm ci` from them, the server started from the
+# result, the health command), but no image has been built from it. Build it once and read the output before relying on it.
+
+# ---- stage 1: build the bundle -------------------------------------------------------------------------------------
+FROM node:22-alpine AS build
+WORKDIR /app
+
+# The whole development install, because the bundler (esbuild) comes with Vite. Nothing of it reaches the final image.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+# What the bundle is made from: the sources (src/server and what it imports from src/collab and src/core), the tsconfig
+# that maps "@/..." to src/, and the script that writes the runtime package files.
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+
+# dist-server/live.mjs, then a package.json and package-lock.json that name only what the bundle imports (ws), at the
+# version and checksum of the project's package-lock.json.
+RUN npm run server:build && node scripts/server-runtime-package.mjs dist-server/runtime
+
+# ---- stage 2: the image that runs ----------------------------------------------------------------------------------
+FROM node:22-alpine
+ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
+    PORT=8787 \
+    DATA_DIR=/data
+WORKDIR /app
+
+# Only ws, checked against the checksum in the lock file. `npm ci --omit=dev` with the project's own package.json would
+# also install the editor's fonts and libraries, which the server never loads.
+COPY --from=build /app/dist-server/runtime/package.json /app/dist-server/runtime/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
+
+COPY --from=build /app/dist-server/live.mjs ./live.mjs
+
+# The rooms. The folder belongs to the user the server runs as; a named volume mounted here takes that owner over, a
+# folder of the host mounted here must be writable by uid 1000.
+RUN mkdir /data && chown node:node /data
+VOLUME /data
+
+USER node
+EXPOSE 8787
+
+# Asks the server itself, on the port it was told to use. /api/health answers 200 only when the data folder can be written.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+
+# Node is process 1 and gets SIGTERM from `docker stop` directly; the server handles it (it saves and exits).
+CMD ["node", "live.mjs"]
