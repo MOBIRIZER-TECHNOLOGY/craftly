@@ -41,6 +41,16 @@ describe("<ShortcutsDialog>", () => {
     expect(keys("Take the last point back")).toEqual(["Backspace", "Ctrl", "Z"]);
   });
 
+  it("lists the keys that draw a path without a pointer", () => {
+    mount();
+    const keys = (label: string) => Array.from(rowOf(label).querySelectorAll("kbd")).map((k) => k.textContent);
+    expect(keys("Move the Pen's keyboard point by 1 px or 10 px")).toEqual(["Arrow Keys", "Shift", "Arrow Keys"]);
+    expect(keys("Place a corner point at the keyboard point (on the first point: close the path, on the last: end it)")).toEqual(["Enter"]);
+    expect(keys("Place a smooth point at the keyboard point")).toEqual(["Shift", "Enter"]);
+    expect(keys("Pull the curve of the last point by 1 px or 10 px")).toEqual(["Alt", "Arrow Keys", "Alt", "Shift", "Arrow Keys"]);
+    expect(keys("Go to the first point, where Enter closes the path")).toEqual(["Home"]);
+  });
+
   it("shows each key as a key cap and alternatives with 'or'", () => {
     mount();
     const undo = rowOf("Undo");

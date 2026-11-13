@@ -271,6 +271,45 @@
   transform-origin: center;
   transform: scale(1.7);
 }
+/* the point that the arrow keys move while the Pen is in hand: a cross in a box of 24 px, so that scrolling it into view shows what is round it */
+.cf-pencursor {
+  position: absolute;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  pointer-events: none;
+}
+.cf-pencursor::before,
+.cf-pencursor::after {
+  content: "";
+  position: absolute;
+  background: var(--c-ring);
+  box-shadow: 0 0 0 1px #fff;
+}
+.cf-pencursor::before {
+  left: 11px;
+  top: 0;
+  width: 2px;
+  height: 24px;
+}
+.cf-pencursor::after {
+  left: 0;
+  top: 11px;
+  width: 24px;
+  height: 2px;
+}
+.cf-pencursor__readout {
+  position: absolute;
+  left: 28px;
+  top: 28px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  background: var(--c-ink);
+  color: #fff;
+  font: 600 12px/1 var(--font-ui);
+  white-space: nowrap;
+}
 .cf-drawpreview polyline {
   fill: none;
   stroke: var(--c-ring);

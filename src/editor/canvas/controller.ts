@@ -17,7 +17,7 @@ import type { DesignElement, GroupElement, ID, Point, Rect } from "@/core/types"
 import { getDrawStroke } from "@/editor/panels/shared/drawSettings";
 import { elementPath } from "@/core/penShape";
 import { stopPathEdit, startPathEdit, usePathEdit } from "./pathEditStore";
-import { cancelPen, finishPen, penDrag, penHover, penPress } from "./penTool";
+import { cancelPen, finishPen, forgetPenCursor, hidePenCursor, penCursorShown, penDrag, penHover, penPress } from "./penTool";
 import { insertImageFiles, insertPayload, readDragPayload, DRAG_MIME } from "../insert";
 import { selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
@@ -176,6 +176,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   let spaceDown = false;
   let hoverRaf = 0;
   let lastHoverEvent: PointerEvent | null = null;
+  /** where the pointer last was while the Pen was in hand (client px), to tell a pointer that moves from one that only reports */
+  let lastPenMove: Point | null = null;
 
   const st = () => useEditor.getState();
   const act = () => getActions();
@@ -320,6 +322,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     if (target.closest("[data-cf-ui]")) return;
     const s = st();
     if (!s.design || s.presenting) return;
+    // the pointer is in use: the keyboard's point of the Pen goes, and starts on the last point when the arrows ask for it again
+    forgetPenCursor();
     const touch = e.pointerType === "touch";
     // The first finger of a touch comes down when no other is on the screen: whatever was remembered of earlier fingers
     // is out of date, should their release never have arrived.
@@ -508,6 +512,12 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const g = gesture;
     if (!g) {
       if (st().tool === "pen") {
+        // A browser also reports a pointer that lies still, when the page scrolls under it, and the page scrolls to follow the
+        // keyboard's point: such a report must not take the path away from the keyboard.
+        const still = lastPenMove !== null && lastPenMove.x === e.clientX && lastPenMove.y === e.clientY;
+        lastPenMove = { x: e.clientX, y: e.clientY };
+        if (still && penCursorShown()) return;
+        hidePenCursor();
         penHover(toDesign(e), e.shiftKey);
         return;
       }
@@ -1059,8 +1069,9 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   document.addEventListener("visibilitychange", releaseSpace);
 
   // A path that is being placed is made when another tool is chosen, and when another page is chosen (it goes on the page it was
-  // drawn on); it is dropped when the design is closed or another one opened under it.
+  // drawn on); it is dropped when the design is closed or another one opened under it. The keyboard's point goes with each of them.
   const stopWatchingTool = useEditor.subscribe((s, prev) => {
+    if (prev.tool !== s.tool || prev.design?.id !== s.design?.id || prev.activePageId !== s.activePageId) forgetPenCursor();
     if (prev.tool === "pen" && s.tool !== "pen") finishPen(false, true);
     else if (prev.design?.id !== s.design?.id) cancelPen();
     else if (prev.activePageId !== s.activePageId) finishPen(false, true);
@@ -1085,6 +1096,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       document.removeEventListener("visibilitychange", releaseSpace);
       stopWatchingTool();
       cancelPen();
+      forgetPenCursor();
       if (hoverRaf) cancelAnimationFrame(hoverRaf);
     },
   };

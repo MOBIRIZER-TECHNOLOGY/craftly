@@ -5,6 +5,7 @@ import type { DesignElement } from "@/core/types";
 import { handlesFor, selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
 import { usePathEdit } from "./pathEditStore";
+import { PenCursor } from "./PenCursor";
 import { PenPreview } from "./PenPreview";
 import { handleFraction, type Handle } from "./resize";
 
@@ -116,7 +117,7 @@ export function SnapGuides() {
   );
 }
 
-/** Marquee rectangle and freehand preview. */
+/** Marquee rectangle and freehand preview, the path of the Pen and its keyboard point. */
 export function GesturePreview() {
   const zoom = useEditor((s) => s.zoom);
   const marquee = useGesture((s) => s.marquee);
@@ -124,6 +125,7 @@ export function GesturePreview() {
   return (
     <>
       <PenPreview />
+      <PenCursor />
       {marquee && <div className="cf-marquee" style={{ left: marquee.x * zoom, top: marquee.y * zoom, width: marquee.w * zoom, height: marquee.h * zoom }} />}
       {path && path.length > 1 && (
         <svg className="cf-drawpreview">

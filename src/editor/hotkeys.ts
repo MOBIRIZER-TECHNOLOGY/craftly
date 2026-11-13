@@ -10,7 +10,7 @@ import { getActions, getActivePage, useEditor } from "@/core/store";
 import { measureTextElement } from "@/render/textLayout";
 import { pathEditKey } from "./canvas/pathEditActions";
 import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore";
-import { backspacePen, finishPen, hasPenDraft, penHistory } from "./canvas/penTool";
+import { backspacePen, finishPen, hasPenDraft, penHistory, penKey } from "./canvas/penTool";
 import { stopPreview, usePreview } from "./canvas/preview";
 import { insertImageFiles } from "./insert";
 import { pasteDataIntoSelection } from "./panels/context/dataImport";
@@ -82,6 +82,13 @@ function onKeyDown(e: KeyboardEvent) {
     return;
   }
   if (s.mode === "view") return;
+
+  // with the Pen in hand the arrows move its keyboard point, Enter places a point there, Alt and the arrows pull the curve of
+  // the last point and Home goes to the first one; Enter stays the end of the path for somebody who draws with the pointer
+  if (s.tool === "pen" && penKey(e, s.design)) {
+    e.preventDefault();
+    return;
+  }
 
   // while a path is being placed, Enter makes it and Backspace takes the last point back; while its points are edited the
   // keys move, delete and walk through them (src/editor/canvas/penTool.ts, pathEditActions.ts)

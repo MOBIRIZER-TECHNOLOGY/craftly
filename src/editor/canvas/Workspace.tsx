@@ -99,7 +99,8 @@ export function Workspace({ children }: { children?: ReactNode }) {
       data-cf-workspace
     >
       <span id="cf-workspace-hint" className="cf-sr-only">
-        Tab moves between the elements of the page and then on to the next control. The arrow keys move the selected element.
+        Tab moves between the elements of the page and then on to the next control. The arrow keys move the selected element. With the Pen, the arrow keys move its point and Enter
+        places a point there.
       </span>
       <div ref={scrollRef} className="cf-workspace__scroll">
         <div ref={contentRef} className="cf-workspace__content">

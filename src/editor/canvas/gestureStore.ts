@@ -12,6 +12,18 @@ export interface PenDraft {
   pageId: ID;
 }
 
+/**
+ * The point that the arrow keys move over the page while the Pen is in hand (design px): Enter places a point of the path
+ * there. It is hidden, but remembered, while the pointer is in use.
+ */
+export interface PenCursor {
+  x: number;
+  y: number;
+  shown: boolean;
+  /** what the last key did, in words, for a screen reader */
+  say: string;
+}
+
 interface GestureStore {
   /** marquee / creation preview in design px */
   marquee: Rect | null;
@@ -21,6 +33,8 @@ interface GestureStore {
   drawPath: Point[] | null;
   /** the path being placed with the Pen tool; unlike the rest it outlives a single pointer gesture */
   pen: PenDraft | null;
+  /** the keyboard's point of the Pen tool; null until an arrow key asks for it */
+  penCursor: PenCursor | null;
   /** a gesture is moving/resizing/rotating (hides hover outlines, toolbars dim) */
   active: boolean;
   set(patch: Partial<Omit<GestureStore, "set">>): void;
@@ -31,6 +45,7 @@ export const useGesture = create<GestureStore>()((set) => ({
   hud: null,
   drawPath: null,
   pen: null,
+  penCursor: null,
   active: false,
   set: (patch) => set(patch),
 }));
