@@ -53,33 +53,41 @@ export function PresenceOverlay() {
   );
 }
 
-/** One other person on the open page: an outline around each element they selected, their name on the first, and their pointer. */
+type Box = NonNullable<ReturnType<typeof worldBox>>;
+
+const outlineStyle = (box: Box, zoom: number, color: string): CSSProperties => ({
+  left: box.x * zoom,
+  top: box.y * zoom,
+  width: box.width * zoom,
+  height: box.height * zoom,
+  transform: box.rotation ? `rotate(${box.rotation}deg)` : undefined,
+  borderColor: color,
+});
+
+/** One other person on the open page: an outline around each element they selected, their name on the first; the text box they are typing in, which says so; and their pointer. */
 function PersonLayer({ person, page, zoom }: { person: Person; page: Page; zoom: number }) {
   let named = false;
+  const typing = person.editing === null ? null : worldBox(page, person.editing);
   return (
     <div className="cf-presence__person" style={{ "--cf-presence": person.color } as CSSProperties}>
       {person.selection.map((id) => {
-        const box = worldBox(page, id);
+        // the text box they are typing in has an outline of its own, below
+        const box = id === person.editing ? null : worldBox(page, id);
         if (!box) return null;
         const first = !named;
         named = true;
         return (
-          <div
-            key={id}
-            className="cf-presence__outline"
-            style={{
-              left: box.x * zoom,
-              top: box.y * zoom,
-              width: box.width * zoom,
-              height: box.height * zoom,
-              transform: box.rotation ? `rotate(${box.rotation}deg)` : undefined,
-              borderColor: person.color,
-            }}
-          >
+          <div key={id} className="cf-presence__outline" style={outlineStyle(box, zoom, person.color)}>
             {first ? <span className="cf-presence__tag cf-presence__tag--outline">{person.name}</span> : null}
           </div>
         );
       })}
+      {typing ? (
+        // One person at a time types in a text box (docs/COLLABORATION.md): this is how the others see that it is taken.
+        <div className="cf-presence__outline cf-presence__outline--typing" style={outlineStyle(typing, zoom, person.color)}>
+          <span className="cf-presence__tag cf-presence__tag--outline">{person.name} is typing…</span>
+        </div>
+      ) : null}
       {person.pointer ? (
         <div className="cf-presence__pointer" style={{ transform: `translate(${person.pointer.x * zoom}px, ${person.pointer.y * zoom}px)`, color: person.color }}>
           <svg className="cf-presence__arrow" width="16" height="19" viewBox="0 0 16 19">

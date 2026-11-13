@@ -216,3 +216,9 @@
 .cf-live-join .cf-editor-state__actions {
   justify-content: center;
 }
+
+/* a text box that somebody else is typing in: it is taken, and says by whom */
+
+.cf-presence__outline--typing {
+  border-style: dashed;
+}

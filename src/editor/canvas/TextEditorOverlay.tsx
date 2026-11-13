@@ -354,9 +354,9 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
       document.removeEventListener("selectionchange", onSel);
       registerTextEditor(null);
       useTextSelectionStyle.getState().set({ active: false, collapsed: true, style: {} });
-      // discard text boxes that were left empty
+      // discard text boxes that were left empty (not one that somebody else is typing in, in a shared design: it is theirs now)
       const text = root.textContent?.replace(/\u200b/g, "").trim() ?? "";
-      if (!text) {
+      if (!text && getActions().textHolder(id) === null) {
         const s = useEditor.getState();
         const page = getActivePage(s);
         if (page && findElement(page, id)) getActions().deleteElements([id]);

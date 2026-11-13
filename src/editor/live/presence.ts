@@ -106,6 +106,9 @@ export function heardPresence(msg: PresenceHeard, now = Date.now()): void {
   usePresence.setState({ people: [...rest, person].sort((a, b) => a.peer - b.peer) });
 }
 
+/** Who of the others is typing in this text box, if anybody. Somebody who was taken off the list no longer is. */
+export const typingIn = (id: string): Person | undefined => usePresence.getState().people.find((p) => p.editing === id);
+
 /** Takes the people off the list who have not been heard of for too long: their browser is gone, or their network is. */
 export function forgetStale(now: number): void {
   const people = usePresence.getState().people;

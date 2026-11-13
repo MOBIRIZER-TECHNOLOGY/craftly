@@ -117,6 +117,27 @@ describe("the others on the page", () => {
   });
 });
 
+describe("a text box that somebody else is typing in", () => {
+  it("has one outline in their colour that says who is typing in it, and not a second one for being selected", () => {
+    there(2, { selection: ["a"], editing: "a" });
+    mount();
+    const outlines = [...overlay().querySelectorAll<HTMLElement>(".cf-presence__outline")];
+    expect(outlines).toHaveLength(1);
+    expect(outlines[0].classList.contains("cf-presence__outline--typing")).toBe(true);
+    expect(outlines[0].style).toMatchObject({ left: "50px", top: "25px", width: "100px", height: "40px", transform: "rotate(30deg)" });
+    expect(outlines[0].style.borderColor).toBe(hexToRgb(colorOf(2)));
+    expect(outlines[0].textContent).toBe("Bo is typing…");
+  });
+
+  it("says so beside the name on what else they have selected, and nothing for a box that is not on this page", () => {
+    there(2, { selection: ["inner", "a"], editing: "a" });
+    there(3, { name: "Cy", selection: [], editing: "gone" });
+    mount();
+    const texts = [...overlay().querySelectorAll<HTMLElement>(".cf-presence__outline")].map((o) => o.textContent);
+    expect(texts).toEqual(["Bo", "Bo is typing…"]);
+  });
+});
+
 describe("this person's own pointer", () => {
   it("is followed over the canvas in the pixels of the design, and is gone when it leaves", () => {
     mount();

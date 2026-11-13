@@ -394,3 +394,53 @@ describe("a line that is attached survives all of it", () => {
     expect(designsEqual(copy, s().design!)).toBe(true);
   });
 });
+
+describe("a text box that somebody else is typing in", () => {
+  /** who the connection says is typing in which text box, and what it was told about boxes that were not opened */
+  let holders: Record<string, string>;
+  let refused: Array<[string, string]>;
+  const withTexts = () => {
+    open([createText({ id: "t", text: "Hello" }), createText({ id: "u", text: "World" })]);
+    holders = {};
+    refused = [];
+    a().startLive({ change: () => undefined, textHolder: (id) => holders[id] ?? null, textRefused: (id, holder) => void refused.push([id, holder]) });
+  };
+
+  it("is not opened for typing, whichever way that is asked for, and the connection is told so that the person can be", () => {
+    withTexts();
+    holders.t = "Ana";
+    a().select(["t"]);
+    a().startTextEdit("t");
+    expect(s().editingTextId).toBeNull();
+    expect(s().selection).toEqual(["t"]); // it can still be selected, moved and styled
+    expect(refused).toEqual([["t", "Ana"]]);
+    expect(a().textHolder("t")).toBe("Ana");
+  });
+
+  it("is opened once that person has stopped, and another text box is open to everybody meanwhile", () => {
+    withTexts();
+    holders.t = "Ana";
+    a().startTextEdit("u");
+    expect(s().editingTextId).toBe("u");
+    a().endTextEdit();
+    delete holders.t;
+    a().startTextEdit("t");
+    expect(s().editingTextId).toBe("t");
+    expect(refused).toEqual([]);
+    expect(a().textHolder("t")).toBeNull();
+  });
+
+  it("is nobody's in a design that is not shared, and with a connection that knows nothing of who types where", () => {
+    withTexts();
+    holders.t = "Ana";
+    a().stopLive();
+    expect(a().textHolder("t")).toBeNull();
+    a().startTextEdit("t");
+    expect(s().editingTextId).toBe("t");
+    a().endTextEdit();
+    a().startLive(bridge);
+    expect(a().textHolder("t")).toBeNull();
+    a().startTextEdit("t");
+    expect(s().editingTextId).toBe("t");
+  });
+});

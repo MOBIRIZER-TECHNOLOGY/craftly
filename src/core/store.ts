@@ -110,6 +110,13 @@ export interface EditorState {
 /** What the store tells the connection to the people who share the design with this person (src/collab): every change, as the design before and after. */
 export interface LiveBridge {
   change(before: Design, after: Design): void;
+  /**
+   * Who else is typing in this text box, by the name they are shown under, or null. Text typed into one box by two people is
+   * one value, of which one side would be lost, so a box that somebody is typing in is not opened here (docs/COLLABORATION.md).
+   */
+  textHolder?(id: ID): string | null;
+  /** A text box was not opened for typing because `holder` is typing in it: where the person is told. */
+  textRefused?(id: ID, holder: string): void;
 }
 
 /** One step of this person's own work in a shared design, as operations: to do it again, and to take it back. */
@@ -232,6 +239,8 @@ export interface EditorActions {
   /** `selectId` keeps another element (e.g. the enclosing group) as the visible selection */
   startTextEdit(id: ID, selectId?: ID): void;
   endTextEdit(): void;
+  /** Who else is typing in this text box in a shared design, or null: such a box is not opened for typing here. */
+  textHolder(id: ID): string | null;
 
   /* crop */
   startCrop(id: ID): void;
@@ -1037,11 +1046,15 @@ export const useEditor = create<EditorState>()((set, get) => {
       const page = pageOf(s.design, s.activePageId);
       const el = page && ops.findElement(page, id);
       if (!el || el.type !== "text" || el.locked || s.mode === "view") return;
+      // one person at a time types in a text box of a shared design: the box stays closed here, and the person is told who has it
+      const holder = bridge?.textHolder?.(id) ?? null;
+      if (holder !== null) return void bridge?.textRefused?.(id, holder);
       set({ editingTextId: id, selection: [selectId ?? id], croppingId: null });
     },
     endTextEdit() {
       if (get().editingTextId) set({ editingTextId: null });
     },
+    textHolder: (id) => bridge?.textHolder?.(id) ?? null,
 
     /* ---------------- crop ---------------- */
     startCrop(id) {

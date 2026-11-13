@@ -265,6 +265,68 @@ async function startServer() {
     return `Bob is "${name}" at ${JSON.stringify(await where.jsonValue())} for Ann`;
   });
 
+  await step("a text box that one person is typing in stays closed for the other, who is told who has it, and opens once it is free", async () => {
+    await ann.page.getByRole("tab", { name: "Text", exact: true }).click();
+    await ann.page
+      .getByRole("button", { name: /Add a heading/i })
+      .first()
+      .click();
+    await ann.page.waitForFunction(() => !!window.__editor.getState().editingTextId, null, { timeout: 8000 });
+    await ann.page.keyboard.type("Ann was here", { delay: 15 });
+    const textId = await ann.page.evaluate(() => window.__editor.getState().editingTextId);
+    const typing = bob.page.locator(".cf-presence__outline--typing");
+    await typing.waitFor({ timeout: 8000 });
+    const label = await typing.textContent();
+    if (!/^Guest \d+ is typing…$/.test(label)) throw new Error("what Bob is shown on the box: " + label);
+    const textOf = (who) =>
+      who.page.evaluate((id) => {
+        const s = window.__editor.getState();
+        const el = s.design.pages.flatMap((p) => p.elements).find((e) => e.id === id);
+        return el ? el.paragraphs.map((p) => p.runs.map((r) => r.text).join("")).join("\n") : null;
+      }, textId);
+    await bob.page.waitForFunction(
+      (id) => {
+        const el = window.__editor
+          .getState()
+          .design.pages.flatMap((p) => p.elements)
+          .find((e) => e.id === id);
+        return !!el && JSON.stringify(el.paragraphs).includes("Ann was here");
+      },
+      textId,
+      { timeout: 8000 },
+    );
+    // Bob double-clicks the text with the real pointer: it does not open, and he is told why
+    const box = await typing.boundingBox();
+    const [mx, my] = [box.x + box.width / 2, box.y + box.height / 2];
+    await bob.page.mouse.dblclick(mx, my);
+    await bob.page.locator(".cf-toast__message", { hasText: "is typing in this text" }).first().waitFor({ timeout: 5000 });
+    if (await bob.page.evaluate(() => window.__editor.getState().editingTextId)) throw new Error("the box opened for Bob while Ann was typing in it");
+    await shot(bob, "text-is-taken");
+    // Ann types on, and nothing of hers is lost
+    await ann.page.keyboard.type(" first", { delay: 15 });
+    const typed = await textOf(ann);
+    await ann.page.keyboard.press("Escape");
+    await typing.waitFor({ state: "detached", timeout: 8000 });
+    if ((await textOf(ann)) !== typed || !typed.includes("Ann was here first")) throw new Error("Ann's text: " + JSON.stringify(typed));
+    // now it is free: the same double click opens it for Bob, and Ann sees that he has it
+    await bob.page.mouse.dblclick(mx, my);
+    await bob.page.waitForFunction((id) => window.__editor.getState().editingTextId === id, textId, { timeout: 5000 });
+    await ann.page.locator(".cf-presence__outline--typing").waitFor({ timeout: 8000 });
+    await bob.page.keyboard.press("Escape");
+    await ann.page.locator(".cf-presence__outline--typing").waitFor({ state: "detached", timeout: 8000 });
+    if ((await textOf(bob)) !== typed) throw new Error("the text changed by being opened: " + JSON.stringify(await textOf(bob)));
+    // the page is left as the steps below expect it: two boxes
+    await ann.page.evaluate((id) => {
+      const { actions } = window.__editor.getState();
+      actions.deleteElements([id]);
+      actions.clearSelection();
+    }, textId);
+    await bob.page.evaluate(() => window.__editor.getState().actions.clearSelection());
+    await until("the text to be gone for Bob", bob, (x) => x.els.length === 2);
+    await until("the text to be gone for Ann", ann, (x) => x.els.length === 2);
+    return `"${label}", refused with a message, "${typed}" kept, then opened for Bob`;
+  });
+
   await step("changes made at the same moment to different things both survive, for both people", async () => {
     await Promise.all([
       ann.page.evaluate((id) => window.__editor.getState().actions.updateElements([id], { x: 120 }), secondId),

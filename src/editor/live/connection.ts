@@ -18,7 +18,7 @@ import { toast } from "@/ui";
 import { create } from "zustand";
 import { apiUrl, normalizeServer, websocketUrl } from "./links";
 import { sharedMedia } from "./media";
-import { clearPresence, heardPresence, startPresence } from "./presence";
+import { clearPresence, heardPresence, shownName, startPresence, typingIn } from "./presence";
 
 export interface LiveEnv {
   createSocket?: (url: string) => SocketLike;
@@ -239,7 +239,16 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       const me = live.peer;
       if (me !== null) stopPresence = startPresence((state) => live.present(state), me);
     },
-    onPresence: (heard) => heardPresence(heard),
+    onPresence: (heard) => {
+      heardPresence(heard);
+      // One person at a time types in a text box. The server passes on that somebody types in a box only for the first who said
+      // so (src/collab/room.ts), so hearing it of the box this person is typing in means that the other was first: both opened it
+      // in the same moment, before either had heard of the other. This one gives way. What was typed here until now has been
+      // sent, edit by edit, and stays in the text until the other types on.
+      if ("gone" in heard || heard.editing === null || heard.editing !== useEditor.getState().editingTextId) return;
+      actions().endTextEdit();
+      toast.info(`${shownName(heard.name, heard.peer)} started typing in this text a moment before you, so it was closed here. One person at a time types in a text box.`);
+    },
   });
   useLiveStatus.setState({ status: "connecting", reason: null, role: null });
   actions().startLive({
@@ -248,6 +257,9 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       for (const id of collectAssetIds(after)) if (!known.has(id)) allowedUploads.add(id);
       live.edit(before, after);
     },
+    // a text box that somebody else is typing in is not opened here (the store asks before it opens one), and the person is told who has it
+    textHolder: (id) => typingIn(id)?.name ?? null,
+    textRefused: (_id, holder) => void toast.info(`${holder} is typing in this text. You can type in it when they are done.`),
   });
   live.start();
   return () => {
