@@ -7,6 +7,7 @@
  * is how long the server may take to close when it is told to stop. See docs/COLLABORATION.md.
  */
 import { closeWithin, createLiveServer } from "./live";
+import { listenWarning } from "./listenWarning";
 import { FileStorage } from "./storage";
 
 const env = process.env;
@@ -37,6 +38,9 @@ const server = createLiveServer({
 const host = env.HOST ?? "127.0.0.1";
 const address = await server.listen(number("PORT", 0, 65535) ?? 8787, host);
 console.log(`Craftly live server on http://${host}:${address.port} (rooms are kept in ${env.DATA_DIR ?? "live-data"})`);
+// Reachable from other machines, the server needs a proxy with TLS in front of it, and says so (src/server/listenWarning.ts).
+const warning = listenWarning(host);
+if (warning) console.warn(warning);
 
 // Told to stop, the server saves what is at work and closes every connection. That may hang (a disk that does not answer, an
 // upload that never ends) or fail, and a process that then stays for ever is killed by whatever runs it, without a word in the

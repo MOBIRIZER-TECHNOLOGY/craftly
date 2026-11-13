@@ -35,7 +35,7 @@ docker run -d --name craftly-live --restart unless-stopped \
 ```
 
 - `-p 127.0.0.1:8787:8787` publishes the port to the machine itself only, where the reverse proxy reaches it. Do not publish it to the world without TLS in front.
-- The image sets `HOST=0.0.0.0`, `PORT=8787` and `DATA_DIR=/data`. The other settings (section 2.3) are passed with `-e`.
+- The image sets `HOST=0.0.0.0`, `PORT=8787` and `DATA_DIR=/data`. With that `HOST` the server prints a warning at every start that it speaks plain HTTP and WebSocket and needs a proxy with TLS in front (section 2.4). In a container that is expected: publish the port to `127.0.0.1` only, as above, or to the network of the proxy. The other settings (section 2.3) are passed with `-e`.
 - `docker stop` sends SIGTERM; the server saves and exits.
 - If you mount a folder of the host instead of a named volume (`-v /srv/craftly-live:/data`), it must be writable by uid 1000, the `node` user of the image.
 
@@ -80,7 +80,7 @@ ReadWritePaths=/var/lib/craftly-live
 WantedBy=multi-user.target
 ```
 
-Keep `HOST=127.0.0.1` here: the proxy is on the same machine, and nothing else should reach the port.
+Keep `HOST=127.0.0.1` here: the proxy is on the same machine, and nothing else should reach the port. With any other `HOST` the server says at its start that other machines can reach it without TLS.
 
 ### 2.3 Settings
 
