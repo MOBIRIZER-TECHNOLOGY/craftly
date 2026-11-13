@@ -1,7 +1,7 @@
 # Report of the night of 2026-11-13
 
 What was done of `docs/OVERNIGHT-PLAN.md`, how it was checked, and what is left. Everything is on the local branch
-`overnight-2026-11-13` (36 commits on top of `main`, about 220 files, about 27,900 lines added). Nothing was pushed, published or
+`overnight-2026-11-13` (36 commits on top of `main`, 219 files, about 27,900 lines added). Nothing was pushed, published or
 deployed, and `main` was not touched after the commit of the day's fixes.
 
 ## In one paragraph
