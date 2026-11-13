@@ -1,5 +1,6 @@
 import type { Template } from "@/core/types";
 import { BANNER_TEMPLATES } from "./banners";
+import { BANNER_TEMPLATES_2 } from "./banners-2";
 import { BRUTALIST } from "./presentations-brutalist";
 import { CORPORATE } from "./presentations-corporate";
 import { EDITORIAL } from "./presentations-editorial";
@@ -28,4 +29,5 @@ export const PRESENTATIONS_TEMPLATES: Template[] = [
   withMotion(NEON, { entrance: "wipe", transition: "zoom" }),
   withMotion(WELLNESS, { entrance: "fade", transition: "dissolve", transitionSeconds: 1, pageSeconds: 6 }),
   ...BANNER_TEMPLATES,
+  ...BANNER_TEMPLATES_2,
 ];

@@ -45,7 +45,13 @@ describe("browsing templates", () => {
     await openTemplates(certificates());
     expect(screen.getByRole("searchbox", { name: "Search Certificate templates" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Gold and Navy Achievement Certificate" })).toBeTruthy();
-    expect(cardNames().sort()).toEqual(["Burgundy Appreciation Certificate", "Gold and Navy Achievement Certificate", "Teal Course Completion Certificate"]);
+    expect(cardNames().sort()).toEqual([
+      "Burgundy Appreciation Certificate",
+      "Employee of the Year Certificate",
+      "Gold and Navy Achievement Certificate",
+      "Star Reader Award for Kids",
+      "Teal Course Completion Certificate",
+    ]);
     expect(screen.getByRole("button", { name: "Certificates" }).getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -128,7 +134,7 @@ describe("browsing templates", () => {
       const user = await openTemplates(certificates());
       await user.click(screen.getByRole("button", { name: "Filter templates" }));
       await user.click(screen.getByRole("menuitemcheckbox", { name: "Same shape as this design" }));
-      await waitFor(() => expect(cardNames()).toHaveLength(3));
+      await waitFor(() => expect(cardNames()).toHaveLength(5));
     });
 
     it("lets 'Show all templates' switch the filter off too", async () => {
