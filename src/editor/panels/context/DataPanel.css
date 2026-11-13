@@ -138,7 +138,7 @@
 }
 
 .cf-data__refused {
-  color: var(--c-danger);
+  color: var(--c-danger-ink);
 }
 
 .cf-data__after {
