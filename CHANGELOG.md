@@ -12,6 +12,7 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 ## Unreleased work of the night of 2026-11-13 (branch `overnight-2026-11-13`, see docs/OVERNIGHT-PLAN.md)
 
 - (items are added below this line as they are finished)
+- **The actions of the CI workflow are pinned to commits.** `uses: actions/checkout@v4` runs whatever the tag `v4` points to on the day, and a tag can be moved. The three actions (`checkout` 4.4.0, `setup-node` 4.4.0, `upload-artifact` 4.6.2: the latest releases of the major version in use, which are the commits `v4` pointed to on 2026-11-13) are now named by their full commit, with the version in a comment. Dependabot already watches `github-actions` weekly and keeps such pins up to date. The workflow was not run after the change, because nothing is pushed.
 - **CI builds the bundle of the live server and starts it.** Nothing ran `dist-server/live.mjs` before, so a bundle that did not start would have been found by the first person to deploy it. `npm run server:smoke` (`scripts/server-smoke.mjs`) builds the bundle, starts it on a free port with a temporary data folder, waits for `GET /api/health` to answer 200, makes a room with `POST /api/rooms`, sends SIGTERM and requires exit code 0; CI runs it after the production build. On Windows a process cannot be asked to stop, so the clean exit is checked on Linux and macOS only. The README now says that `server:build` uses the esbuild that Vite brings along, which is not named in `package.json`.
 
 ## Unreleased fixes from a second review of the code (2026-11-13)
