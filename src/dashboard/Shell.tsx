@@ -27,6 +27,7 @@ import { designPath, navigate, type Route } from "@/router";
 import { importProjectFile } from "@/export/projectFile";
 import { ProjectFileError, type ImportReport } from "@/export/projectFormat";
 import { AboutDialog } from "./AboutDialog";
+import { closeBackupDialog, useBackupDialogRequest } from "./backupReminderState";
 import { openCreateDialog } from "./createDialogState";
 import { pickFiles } from "./files";
 import "./Shell.css";
@@ -146,6 +147,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const scrollRef = useRef<HTMLDivElement>(null);
   const desktopMenu = useAccountMenu(false);
   const mobileMenu = useAccountMenu(true);
+  // the backup reminder's "Back up now" asks for the dialog too (backupReminderState.ts)
+  const backupRequest = useBackupDialogRequest();
 
   // every page starts at the top
   useEffect(() => {
@@ -260,6 +263,12 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           </div>
         </main>
       </div>
+
+      {backupRequest.loaded ? (
+        <Suspense fallback={null}>
+          <BackupDialog open={backupRequest.open} startNow={backupRequest.start} onClose={closeBackupDialog} />
+        </Suspense>
+      ) : null}
 
       {/* ---- bottom tab bar (phones) ---- */}
       <nav className="cf-dtabbar" aria-label="Main">

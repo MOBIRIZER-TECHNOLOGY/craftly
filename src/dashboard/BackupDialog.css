@@ -38,6 +38,34 @@
   font-size: var(--fs-sm);
 }
 
+/* the reminder's interval, under the download button of the first card */
+.cf-backup__remind {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--c-line);
+}
+
+.cf-backup__remind-label {
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+/* what the chosen file needs from the person (one more click, or the browser said no) */
+.cf-backup__note {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--c-bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+  color: var(--c-ink);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
 .cf-backup__actions {
   display: flex;
   flex-wrap: wrap;

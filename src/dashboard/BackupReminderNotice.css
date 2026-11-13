@@ -1,0 +1,50 @@
+/* The backup reminder at the top of a dashboard page. Quiet on purpose: grey, one line, no warning colours.
+   The region itself is always on the page and takes no room while it is empty. */
+
+.cf-dremind-region:focus {
+  outline: none;
+}
+
+.cf-dremind {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 40px 0;
+  padding: 8px 10px 8px 14px;
+  border-radius: var(--r-md);
+  background: var(--c-bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+}
+
+.cf-dremind__icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--c-ink-3);
+}
+
+.cf-dremind__text {
+  flex: 1;
+  min-width: 0;
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cf-dremind__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 759px) {
+  .cf-dremind {
+    flex-wrap: wrap;
+    margin: 12px 16px 0;
+  }
+
+  .cf-dremind__text {
+    flex-basis: calc(100% - 30px);
+  }
+}

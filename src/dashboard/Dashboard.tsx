@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, type ReactNode } from "react";
 import { useRoute } from "@/router";
+import { BackupReminderNotice } from "./BackupReminderNotice";
 import { BrandPage } from "./BrandPage";
 import { CreateDialog } from "./CreateDialog";
 import { closeCreateDialog, consumeOpenCreateRequest } from "./createDialogState";
@@ -78,7 +79,7 @@ export function Dashboard() {
   return (
     <>
       <Shell route={route}>
-        {error ? <StorageNotice detail={error} /> : null}
+        {error ? <StorageNotice detail={error} /> : <BackupReminderNotice />}
         {page}
       </Shell>
       <CreateDialog />

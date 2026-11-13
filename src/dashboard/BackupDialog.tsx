@@ -17,7 +17,10 @@ import {
 } from "@/export/backup";
 import { downloadBlob } from "@/export/download";
 import { navigate } from "@/router";
-import { Button, IconAlert, IconDownload, IconSuccess, IconUpload, IconWarning, Modal, Progress, Spinner } from "@/ui";
+import { Button, IconAlert, IconDownload, IconSuccess, IconUpload, IconWarning, Modal, Progress, Segmented, Spinner } from "@/ui";
+import { BackupFileError, canKeepBackupFile, chooseBackupFile, forgetBackupFile, getKeptBackupFile, writeBackupFile, writePermission, type KeptBackupFile } from "./backupFile";
+import type { ReminderInterval } from "./backupReminder";
+import { noteBackedUp, setReminderInterval, snoozeBackupReminder, useReminderState } from "./backupReminderState";
 import { useAssets, useDesigns, useFolders } from "./data";
 import { pickFiles } from "./files";
 import { formatBytes, formatRelative, plural } from "./format";
@@ -25,8 +28,8 @@ import "./BackupDialog.css";
 
 type Phase =
   | { name: "idle" }
-  | { name: "backing-up"; progress: BackupProgress | null }
-  | { name: "backed-up"; fileName: string; bytes: number; counts: BackupCounts }
+  | { name: "backing-up"; progress: BackupProgress | null; /** the chosen file that is being written, once the backup is packed */ writing?: string }
+  | { name: "backed-up"; fileName: string; bytes: number; counts: BackupCounts; /** the chosen file it was written to; null for a download */ savedTo: string | null }
   | { name: "reading" }
   | { name: "review"; file: File; found: BackupInspection }
   | { name: "restoring"; progress: { done: number; total: number } | null }
@@ -36,6 +39,12 @@ type Phase =
 
 const IDLE: Phase = { name: "idle" };
 const ACCEPT = ".zip,application/zip,application/x-zip-compressed";
+const REMINDER_OPTIONS: Array<{ value: ReminderInterval; label: string }> = [
+  { value: 7, label: "1 week" },
+  { value: 14, label: "2 weeks" },
+  { value: 30, label: "1 month" },
+  { value: 0, label: "Never" },
+];
 
 /* ------------------------------------------------------------------ */
 /* Words                                                              */
@@ -123,12 +132,21 @@ function backupDate(exportedAt: string): string {
 /* Dialog                                                             */
 /* ------------------------------------------------------------------ */
 
-/** "Back up & restore": one file with the whole library, and the way back. Opened from the account menu. */
-export function BackupDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+/**
+ * "Back up & restore": one file with the whole library, and the way back. Opened from the account menu, and by the
+ * dashboard's backup reminder, which sets `startNow`: the backup then starts as the dialog opens.
+ */
+export function BackupDialog({ open, onClose, startNow = false }: { open: boolean; onClose: () => void; startNow?: boolean }) {
   const [phase, setPhase] = useState<Phase>(IDLE);
   const [lastBackup, setLastBackup] = useState<number | null | undefined>(undefined);
   const [storage, setStorage] = useState<StorageStatus | null>(null);
   const [asking, setAsking] = useState(false);
+  // the file that "Back up now" writes to: undefined until it was looked up, null when there is none
+  const [kept, setKept] = useState<KeptBackupFile | null | undefined>(undefined);
+  const [fileNote, setFileNote] = useState<string | null>(null);
+  const canKeepFile = canKeepBackupFile();
+  const reminder = useReminderState();
+  const started = useRef(false);
   const abort = useRef<AbortController | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const visible = useRef(open);
@@ -149,6 +167,7 @@ export function BackupDialog({ open, onClose }: { open: boolean; onClose: () => 
   };
   const begin = () => {
     stopWork();
+    started.current = true; // whatever the person starts by hand, the reminder's own start is no longer wanted
     abort.current = new AbortController();
     return abort.current.signal;
   };
@@ -161,7 +180,11 @@ export function BackupDialog({ open, onClose }: { open: boolean; onClose: () => 
       return;
     }
     setPhase(IDLE);
+    setFileNote(null);
+    started.current = false;
     let live = true;
+    if (canKeepBackupFile()) void getKeptBackupFile().then((file) => live && setKept(file));
+    else setKept(null);
     getLastBackupAt().then(
       (value) => live && setLastBackup(value),
       () => live && setLastBackup(null),
@@ -194,20 +217,73 @@ export function BackupDialog({ open, onClose }: { open: boolean; onClose: () => 
     return true;
   };
 
-  const startBackup = async () => {
+  /** Makes the backup and hands it over: into `target`, the file the person chose to keep up to date, or as a download. */
+  const startBackup = async (target: KeptBackupFile | null = null) => {
     const signal = begin();
+    setFileNote(null);
     setPhase({ name: "backing-up", progress: null });
     try {
       const made = await createBackup({ signal, onProgress: (progress) => setPhase((now) => (now.name === "backing-up" ? { name: "backing-up", progress } : now)) });
-      downloadBlob(made.blob, made.fileName);
+      if (target) {
+        setPhase({ name: "backing-up", progress: null, writing: target.name });
+        setKept(await writeBackupFile(target, made.blob, { signal }));
+      } else downloadBlob(made.blob, made.fileName);
       const when = Date.now();
       await markBackedUp(when).catch(() => undefined); // the file is on its way whether or not this is remembered
       setLastBackup(when);
-      setPhase({ name: "backed-up", fileName: made.fileName, bytes: made.blob.size, counts: made.counts });
+      noteBackedUp(when);
+      setPhase({ name: "backed-up", fileName: made.fileName, bytes: made.blob.size, counts: made.counts, savedTo: target ? target.name : null });
     } catch (error) {
-      if (!fail(error, "Couldn't back up", "Something went wrong while making the backup. Nothing was changed.")) setPhase(IDLE);
+      if (error instanceof BackupFileError) {
+        if (error.code === "cancelled") setPhase(IDLE);
+        else setPhase({ name: "failed", title: "Couldn't write the backup file", message: error.message });
+      } else if (!fail(error, "Couldn't back up", "Something went wrong while making the backup. Nothing was changed.")) setPhase(IDLE);
     }
   };
+
+  /**
+   * "Back up now": into the chosen file. The browser's permission comes first, before the backup is made: it may only
+   * be asked for right after a click (`clicked`), and making the backup can take longer than a click stays fresh.
+   */
+  const backUpToFile = async (target: KeptBackupFile, clicked: boolean) => {
+    setFileNote(null);
+    const permission = await writePermission(target.handle, clicked);
+    if (!visible.current) return;
+    if (permission === "granted") await startBackup(target);
+    else if (permission === "denied")
+      setFileNote(`Your browser did not allow Craftly to write to “${target.name}”. Press “Back up now” to be asked again, or download the backup.`);
+    else setFileNote(`Press “Back up now” so that your browser lets Craftly write to “${target.name}”.`);
+  };
+
+  const chooseFileToKeep = async () => {
+    try {
+      // straight from the click: the browser only opens its "Save as" dialog for a click
+      const chosen = await chooseBackupFile();
+      if (!chosen || !visible.current) return;
+      setKept(chosen);
+      // the file the browser just made is empty: a first backup goes into it now, while the permission is fresh
+      if (!cannotBackUp) await startBackup(chosen);
+    } catch (error) {
+      setPhase({ name: "failed", title: "Couldn't use that file", message: error instanceof BackupFileError ? error.message : "Something went wrong with that file." });
+    }
+  };
+
+  const stopUsingFile = async () => {
+    await forgetBackupFile().catch(() => undefined);
+    setKept(null);
+    setFileNote(null);
+  };
+
+  // The dashboard's reminder opened the dialog with "Back up now": start once what is needed is known. A chosen file is
+  // only written when the browser still allows it; that click was on another button a moment ago, so nothing is asked.
+  useEffect(() => {
+    // An empty library may only be a list that is still being read again, so it does not use the one start up.
+    if (!open || !startNow || started.current || !designsReady || kept === undefined || nothingToBackUp) return;
+    started.current = true;
+    if (kept) void backUpToFile(kept, false);
+    else void startBackup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per opening, when the library and the chosen file are known
+  }, [open, startNow, designsReady, kept, nothingToBackUp]);
 
   const chooseFile = () => {
     // straight from the click: the browser only opens its file dialog for a click
@@ -229,6 +305,8 @@ export function BackupDialog({ open, onClose }: { open: boolean; onClose: () => 
     try {
       const result = await restoreBackup(file, { signal, onProgress: (progress) => setPhase((now) => (now.name === "restoring" ? { name: "restoring", progress } : now)) });
       setPhase({ name: "restored", result });
+      // A browser that never made a backup has just been filled from one: "you have not backed up yet" can wait a week.
+      if (lastBackup === null) void snoozeBackupReminder();
     } catch (error) {
       if (!fail(error, "Couldn't restore", "Something went wrong while restoring. Anything restored before the problem is kept.")) setPhase({ name: "stopped" });
     }
@@ -241,7 +319,8 @@ export function BackupDialog({ open, onClose }: { open: boolean; onClose: () => 
     setAsking(false);
   };
 
-  const bar = phase.name === "backing-up" ? backupBar(phase.progress) : null;
+  // while the chosen file is written there is nothing to count: the browser writes it in one piece
+  const bar = phase.name !== "backing-up" ? null : phase.writing ? { text: `Writing “${phase.writing}”…`, value: undefined } : backupBar(phase.progress);
   const restoreProgress = phase.name === "restoring" ? phase.progress : null;
   const nearlyFull = storage ? storageIsNearlyFull(storage) : false;
   const showStorage = storage !== null && (storage.usage !== undefined || storage.persisted !== undefined);
@@ -264,16 +343,68 @@ export function BackupDialog({ open, onClose }: { open: boolean; onClose: () => 
               {lastBackup === undefined ? null : <p className="cf-backup__when">{lastBackup === null ? "No backup yet" : `Last backup: ${formatRelative(lastBackup)}`}</p>}
               <div className="cf-backup__actions">
                 <Button
-                  variant="primary"
+                  variant={kept ? "secondary" : "primary"}
                   icon={<IconDownload aria-hidden="true" />}
                   disabled={cannotBackUp}
                   onClick={() => void startBackup()}
-                  data-autofocus={cannotBackUp ? undefined : true}
+                  data-autofocus={cannotBackUp || kept ? undefined : true}
                 >
                   Download backup
                 </Button>
               </div>
+              <div className="cf-backup__remind">
+                <p className="cf-backup__remind-label" id={`${titleId}-remind`}>
+                  Remind me when my last backup is older than
+                </p>
+                <Segmented
+                  size="sm"
+                  aria-label="Remind me when my last backup is older than"
+                  value={reminder.settings.intervalDays}
+                  options={REMINDER_OPTIONS}
+                  onChange={(days) => void setReminderInterval(days)}
+                />
+                <p className="cf-backup__when">A quiet line on the dashboard, and only when designs changed since the last backup.</p>
+              </div>
             </section>
+
+            {canKeepFile ? (
+              <section className="cf-backup__card" aria-labelledby={`${titleId}-keep`}>
+                <h3 className="cf-backup__title" id={`${titleId}-keep`}>
+                  Keep a backup file up to date
+                </h3>
+                {kept ? (
+                  <>
+                    <p className="cf-backup__text">
+                      “{kept.name}”, {kept.writtenAt === null ? "nothing written to it yet" : `last written ${formatRelative(kept.writtenAt)}`}.
+                    </p>
+                    <p className="cf-backup__when">
+                      “Back up now” replaces what is in the file with a new backup, with no download. Craftly writes when you press the button, not on its own, and your browser may
+                      ask you to allow it again.
+                    </p>
+                  </>
+                ) : (
+                  <p className="cf-backup__text">
+                    Choose a file once, and “Back up now” writes each new backup into it, with no download to find and file away. Craftly writes when you press the button, not on
+                    its own: a browser lets a page write to your file only after a click.
+                  </p>
+                )}
+                <div role="status">{fileNote ? <p className="cf-backup__note">{fileNote}</p> : null}</div>
+                <div className="cf-backup__actions">
+                  {kept ? (
+                    <>
+                      <Button variant="ghost" onClick={() => void stopUsingFile()}>
+                        Stop using this file
+                      </Button>
+                      <Button variant="primary" disabled={cannotBackUp} onClick={() => void backUpToFile(kept, true)} data-autofocus={cannotBackUp ? undefined : true}>
+                        Back up now
+                      </Button>
+                    </>
+                  ) : (
+                    <Button onClick={() => void chooseFileToKeep()}>Choose a file to keep up to date</Button>
+                  )}
+                </div>
+              </section>
+            ) : null}
 
             <section className="cf-backup__card" aria-labelledby={`${titleId}-restore`}>
               <h3 className="cf-backup__title" id={`${titleId}-restore`}>
@@ -339,12 +470,16 @@ export function BackupDialog({ open, onClose }: { open: boolean; onClose: () => 
           <>
             <div className="cf-backup__done" role="status">
               <IconSuccess className="cf-backup__done-icon" aria-hidden="true" />
-              <h3 className="cf-backup__title">Backup downloaded</h3>
+              <h3 className="cf-backup__title">{phase.savedTo === null ? "Backup downloaded" : "Backup saved"}</h3>
             </div>
             <p className="cf-backup__text">
-              {phase.fileName}, {formatBytes(phase.bytes)}. It holds {describeCounts(phase.counts) || "nothing"}.
+              {phase.savedTo === null ? phase.fileName : `“${phase.savedTo}”`}, {formatBytes(phase.bytes)}. It holds {describeCounts(phase.counts) || "nothing"}.
             </p>
-            <p className="cf-backup__text">Keep it somewhere safe, such as a cloud drive or an external disk. To get everything back, choose “Restore from a backup”.</p>
+            <p className="cf-backup__text">
+              {phase.savedTo === null
+                ? "Keep it somewhere safe, such as a cloud drive or an external disk. To get everything back, choose “Restore from a backup”."
+                : "It replaced the backup that was in the file before. A file on this computer is lost with the computer: keep it in a folder that a cloud drive copies, or on an external disk."}
+            </p>
             <div className="cf-backup__actions">
               <Button onClick={() => setPhase(IDLE)}>Make another backup</Button>
               <Button variant="primary" onClick={close} data-autofocus>
