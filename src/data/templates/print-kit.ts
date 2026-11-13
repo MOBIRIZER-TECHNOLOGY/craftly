@@ -3,8 +3,8 @@
  * dsl.ts: library illustrations by id, photos with a real aspect ratio and focal point, hairline
  * rules and frames, a font-bound text writer and a few ornament builders.
  */
-import { defaultFilter } from "@/core/factory";
-import type { Color, DesignElement, GraphicElement, ImageElement, ImageFilter, LinearGradientFill } from "@/core/types";
+import { createGroup, createTable, defaultFilter } from "@/core/factory";
+import type { Color, DesignElement, GraphicElement, GroupElement, ImageElement, ImageFilter, LinearGradientFill, TableElement } from "@/core/types";
 import { getGraphic } from "@/data/graphics";
 import { getPhotoDef } from "@/data/photos";
 import { G, L, P, R, S, T, type ShapeOpts, type TextOpts } from "./dsl";
@@ -29,6 +29,37 @@ export function gx(id: string, x: number, y: number, w: number, h: number, opts:
 export function gxw(id: string, x: number, y: number, w: number, opts: Partial<GraphicElement> = {}): DesignElement {
   const def = getGraphic(id);
   return def ? gx(id, x, y, w, Math.round(w / ratioOf(def.svg)), opts) : invisible(x, y, w, w);
+}
+
+/** Library illustration by width that stands on a baseline: its bottom edge sits on `baseY`. */
+export function gxb(id: string, x: number, baseY: number, w: number, opts: Partial<GraphicElement> = {}): DesignElement {
+  const def = getGraphic(id);
+  const h = def ? Math.round(w / ratioOf(def.svg)) : w;
+  return def ? gx(id, x, baseY - h, w, h, opts) : invisible(x, baseY - h, w, h);
+}
+
+/* ---------------- groups and tables ---------------- */
+
+/**
+ * Elements a person would move as one (a mark, a row of bars, a pattern of tiles), given in page
+ * coordinates. Only for elements that are not rotated and whose size is known here: shapes, graphics, photos.
+ */
+export function group(name: string, children: DesignElement[]): GroupElement {
+  const x = Math.min(...children.map((c) => c.x));
+  const y = Math.min(...children.map((c) => c.y));
+  const right = Math.max(...children.map((c) => c.x + c.width));
+  const bottom = Math.max(...children.map((c) => c.y + c.height));
+  for (const c of children) {
+    c.x -= x;
+    c.y -= y;
+  }
+  return createGroup(children, { name, x, y, width: right - x, height: bottom - y });
+}
+
+/** Table with a header row: column widths, one row height, and the cells row by row. */
+export function table(x: number, y: number, colWidths: number[], rowHeight: number, cells: string[][], opts: Partial<TableElement> = {}): TableElement {
+  const width = colWidths.reduce((a, b) => a + b, 0);
+  return createTable({ x, y, width, height: rowHeight * cells.length, colWidths, rowHeights: cells.map(() => rowHeight), cells, headerRow: true, ...opts });
 }
 
 /* ---------------- photos ---------------- */
