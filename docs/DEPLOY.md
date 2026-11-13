@@ -99,6 +99,7 @@ All settings are environment variables, read once at the start by `src/server/ma
 | `ROOM_CREATE_PER_HOUR` | `10` | How many rooms one address may make in any hour (0 to 100000; `0` for no limit). Every attempt counts. Beyond it the answer is 429 with `Retry-After`. An IPv6 address is counted by its /64. Behind a proxy, set `TRUST_PROXY` too, or all visitors share the proxy's address and this one allowance. |
 | `ROOM_CREATE_KEY` | (none) | A secret that whoever starts to share must give: the editor asks for it ("Key to start sharing") when the server answers that it wants one. Not set: anybody who can reach the server may make rooms. At least 8 characters, no spaces, printable ASCII (the server does not start otherwise); make it long and random, `openssl rand -base64 24` for example. It is one key for everybody you let share, and changing it is the only way to take it back. Every attempt counts towards `ROOM_CREATE_PER_HOUR`, which limits guessing: leave that on. People who are given a link join, edit and look without the key. The editor does not store it; people type it each time they start to share, or let their password manager do it. For a public server set it, unless making rooms is meant to be open to everybody. |
 | `ADMIN_KEY` | (none) | The operator's key, for listing and removing rooms (section 2.7). Not set: the server has no such interface. At least 16 characters, no spaces, printable ASCII (the server does not start otherwise); make it long and random, and different from `ROOM_CREATE_KEY`. Whoever has it can see the titles of all rooms and remove any of them; it does not let anybody into a room. |
+| `METRICS_KEY` | (none) | The key a scraper shows to read `GET /metrics` (section 2.8), as `Authorization: Bearer <key>`. Not set: the server shows no numbers (404). At least 16 characters, no spaces, printable ASCII; long and random, and different from `ADMIN_KEY`: it lets a scraper read counts and nothing else. |
 | `TRUST_PROXY` | off | `1` when **exactly one** reverse proxy stands in front of the server and the server cannot be reached around it. The address of a visitor (for `ROOM_CREATE_PER_HOUR`) is then the last entry of `X-Forwarded-For`, the one your proxy wrote. Off (`0` or not set), the header is never read. Do not turn it on for a server that can be reached directly: anybody could then write the header and be counted as whoever they like. A chain of two proxies (a CDN in front of nginx, say) is not supported: the inner one would be counted as the visitor. |
 | `ROOM_TTL_DAYS` | (never) | A room that nobody has used for so many days is removed, with its link: used means edited, an image added, or joined (also only to look). Not set or `0`: rooms are kept until their owner stops sharing, and `MAX_ROOMS` rooms that nobody uses fill the server for good. For a public server set it, to `30` for example. Nobody loses a design by it: every person who opened a shared design has a copy in their own library, and only the link stops working. The server looks once when it starts and then every hour; a room with somebody in it is never removed. |
 | `MAX_CONNECTIONS` | `5000` | The most WebSocket connections at one time, to all rooms together. One more is answered with 503 and tries again by itself. |
@@ -235,11 +236,71 @@ What to know:
 - No key of a room can be listed or recovered: the server keeps only hashes, and does not hand those out either. A person who lost their link needs a new one from whoever shared the design.
 - Listing reads every room once (to find its title and size). On a server with thousands of big rooms that takes a while and is disk work; it does not block the people who are editing, but do not put it in a loop.
 
+### 2.8 Metrics
+
+Start the server with `METRICS_KEY` set (section 2.3). `GET /metrics` then answers in the text format Prometheus reads, for a request that shows the key as a bearer token:
+
+```bash
+curl -H "Authorization: Bearer $METRICS_KEY" http://127.0.0.1:8787/metrics
+```
+
+```text
+# HELP craftly_live_rooms_in_memory Rooms that are in memory now.
+# TYPE craftly_live_rooms_in_memory gauge
+craftly_live_rooms_in_memory 3
+# HELP craftly_live_batches_applied_total Batches of edits that were applied, saved and acknowledged.
+# TYPE craftly_live_batches_applied_total counter
+craftly_live_batches_applied_total 1284
+# HELP craftly_live_connections_closed_total WebSocket connections the server closed for a limit: ...
+# TYPE craftly_live_connections_closed_total counter
+craftly_live_connections_closed_total{reason="slow_reader"} 0
+craftly_live_connections_closed_total{reason="rate"} 2
+...
+```
+
+A scrape configuration for Prometheus, with the key in a file that only Prometheus can read:
+
+```yaml
+scrape_configs:
+  - job_name: craftly-live
+    scrape_interval: 30s
+    metrics_path: /metrics
+    scheme: http # https when Prometheus reaches the server through the TLS proxy
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/craftly-metrics-key
+    static_configs:
+      - targets: ["127.0.0.1:8787"]
+```
+
+What is counted (every name starts with `craftly_live_`):
+
+| Metric | Kind | What it is |
+| --- | --- | --- |
+| `uptime_seconds` | gauge | Seconds since the process started. A value that falls is a restart. |
+| `rooms_in_memory`, `rooms_stored` | gauge | Rooms somebody is at now, and rooms kept on disk (counted at most every five seconds). `rooms_stored` near `MAX_ROOMS` means new rooms will be refused: set `ROOM_TTL_DAYS`, or remove rooms (section 2.7). |
+| `connections`, `peers_joined` | gauge | Open WebSocket connections, and those that have shown a key. A wide gap between the two is connections that stand at a door. |
+| `messages_received_total`, `bytes_received_total` | counter | What browsers sent over WebSockets. |
+| `batches_applied_total`, `batches_rejected_total` | counter | Edits that were saved and acknowledged, and edits that were refused (not well formed, from a link that only looks, or not saved). |
+| `saves_total`, `save_failures_total` | counter | Room records written, and those that could not be. **A failure is a disk problem and worth an alert at the first one.** |
+| `save_duration_seconds_sum`, `_count` | summary | How long writing a record took. `rate(sum) / rate(count)` is the mean; a mean that climbs is a disk that is slow or designs that grow. |
+| `rooms_created_total`, `rooms_removed_total`, `rooms_expired_total` | counter | Rooms made, removed by their owner or by you, and removed for their age. |
+| `connections_closed_total{reason}` | counter | Connections the server closed for a limit: `slow_reader`, `rate`, `join_rate`, `size`, `silent`, `waiting`. A few are ordinary (a laptop that sleeps is `silent`); many of one kind is somebody testing the limits, or a limit that is too low for your people. |
+| `upgrades_refused_total{reason}` | counter | Connections refused before they were made: `connections` (`MAX_CONNECTIONS` is reached) or `origin` (a page of an origin that is not in `ALLOW_ORIGIN`). |
+| `http_responses_total{class}` | counter | HTTP answers by `2xx`, `3xx`, `4xx`, `5xx`, the scrapes included. `5xx` is the storage failing. |
+
+What to know:
+
+- No metric names a room, a person, an address or a path, and none ever will by a label: the values of every label are a fixed list.
+- The endpoint is not for pages (a request with an `Origin` header is refused, there are no CORS headers) and ten wrong keys in an hour lock an address out for the rest of it, which it shares with wrong `ADMIN_KEY`s. Scrape the server directly, or keep `/metrics` away from the public at the proxy as for `/api/admin/` (section 2.7).
+- Counters start at 0 with the process. Memory and CPU are not here: take them from the system (`node_exporter`, the container runtime).
+- Suggested alerts: `increase(craftly_live_save_failures_total[5m]) > 0`; `craftly_live_rooms_stored` above 90 % of `MAX_ROOMS`; `craftly_live_connections` near `MAX_CONNECTIONS`; `increase(craftly_live_http_responses_total{class="5xx"}[5m]) > 0`; and the scrape failing (`up == 0`).
+
 ## 3. What is not there yet
 
 - **A built and tested image.** `Dockerfile.server` has never been through `docker build` (section 2.1). No image is published anywhere, and CI does not build one.
 - **A deployment on a real host.** The proxy configurations, the systemd unit, the backup and the restore are written from reading, not from running them in public.
-- **Metrics.** There is no metrics endpoint. One is planned (connections, rooms in memory, saves, refusals, in a form Prometheus reads). Until then `/api/health` and the start line are all the server says about itself.
+- **Dashboards and alert rules.** The metrics are there (section 2.8), with a few alerts suggested in words; no Grafana dashboard and no rules file is shipped, and no real Prometheus has scraped the endpoint yet.
 - **Logs.** The server writes a line when it starts. There is no access log; use the proxy's.
 - **Accounts.** There are none. Who may make a room, how long rooms live and whether an operator can list and delete rooms (section 2.7) depend on the settings in section 2.3: if a setting is not in that table, the server does not have it. Without `ROOM_CREATE_KEY` anybody who can reach `POST /api/rooms` can make rooms up to `MAX_ROOMS`; with it, everybody who has that one key can, and the server does not know one of them from another.
 - **More than one server.** A room lives in the memory of one process and the files of one folder. Two servers behind a load balancer would each have their own rooms; there is no shared storage and no way to spread a room over processes.

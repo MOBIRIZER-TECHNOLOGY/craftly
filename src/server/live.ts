@@ -10,6 +10,8 @@
  *                                        (with `roomCreateKey` set, only for whoever shows that key in `x-craftly-create-key`)
  *        DELETE /api/rooms/:id           with the owner key in `x-craftly-key`: stops sharing and sends everyone away
  *        GET /api/health
+ *        GET /metrics                    counters for a scraper, in the text format of Prometheus, and only when the server was given
+ *                                        `metricsKey` (shown as `Authorization: Bearer ...`). Never for a page.
  *        GET /api/admin/rooms            for the operator, and only when the server was given `adminKey` (shown in
  *        DELETE /api/admin/rooms/:id     `x-craftly-admin-key`): which rooms there are, and removing one. Never for a page.
  *
@@ -29,6 +31,7 @@ import { checkDesign, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Ro
 import { Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
 import { clientAddress, hourlyLimit } from "./address";
+import { createMetrics, METRICS_CONTENT_TYPE, type LabelOf } from "./metrics";
 import { ROOM_ID, type LiveStorage, type RoomRecord, type SharedAsset } from "./storage";
 
 export interface LiveServerOptions {
@@ -51,6 +54,12 @@ export interface LiveServerOptions {
    * that does not exist.
    */
   adminKey?: string;
+  /**
+   * The key of whatever collects the server's numbers. Only with it does `GET /metrics` answer, in the text format of
+   * Prometheus, for a request that shows the key as `Authorization: Bearer <key>`. Not set (or empty): 404. The numbers name no
+   * room and no person, but they say how much a server is used, and whoever may ask every second is given work to do.
+   */
+  metricsKey?: string;
   /** How many wrong operator keys one address may show in an hour; after that it is not listened to, also not with the right key. 0 for no limit. */
   wrongKeysPerHour?: number;
   /** How many rooms one address may make in an hour (every attempt counts); 0 for no limit. */
@@ -210,6 +219,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const now = options.now ?? Date.now;
   const roomsMade = hourlyLimit(o.roomCreatePerHour, now);
   const wrongKeys = hourlyLimit(o.wrongKeysPerHour, now);
+  // what the server counts about itself (always counted: a few additions; shown only to whoever has the key for it)
+  const metrics = createMetrics();
   // A join is noted in the storage at most this often for a room, so that looking at a design does not write to the disk every
   // time: once a day, and more often when rooms live for less than four days, so that a room in use cannot expire between two notes.
   const noteUseEvery = o.roomTtlMs ? Math.min(DAY, o.roomTtlMs / 4) : DAY;
@@ -237,8 +248,22 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const persist = async (l: Loaded, next: RoomRecord, designJson?: string) => {
     const { assets, ...record } = next;
     if (assets) for (const [assetId, asset] of Object.entries(assets)) await o.storage.saveAsset(l.id, assetId, asset);
-    await o.storage.save(l.id, record, designJson);
+    await saveRecord(l.id, record, designJson);
     l.record = record;
+  };
+
+  /** Writes the record of a room, and counts it: that it was written or could not be, and how long that took either way. */
+  const saveRecord = async (id: string, record: RoomRecord, designJson?: string) => {
+    const started = performance.now();
+    try {
+      await o.storage.save(id, record, designJson);
+      metrics.count("saves_total");
+    } catch (error) {
+      metrics.count("save_failures_total");
+      throw error;
+    } finally {
+      metrics.saveTook((performance.now() - started) / 1000);
+    }
   };
 
   const open = (id: string, record: RoomRecord): Loaded => {
@@ -263,6 +288,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       await persist(l, next, designJson);
       l.usedAt = next.updatedAt;
     };
+    l.room.onChange = () => metrics.count("batches_applied_total");
     loaded.set(id, l);
     return l;
   };
@@ -312,8 +338,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
    * Forgets a room and sends away whoever is at it: what "stop sharing" does, and what happens to a room that has expired. It runs
    * in the room's queue. When the storage cannot remove the room this throws, and the room is as it was.
    */
-  const forget = async (l: Loaded) => {
+  const forget = async (l: Loaded, why: "rooms_removed_total" | "rooms_expired_total") => {
     await o.storage.remove(l.id);
+    metrics.count(why);
     l.removed = true;
     if (l.idleTimer) clearTimeout(l.idleTimer);
     loaded.delete(l.id);
@@ -345,7 +372,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           if (l.sockets.size || l.pins) {
             l.usedAt = now();
             await o.storage.touch(id, l.usedAt);
-          } else await forget(l);
+          } else await forget(l, "rooms_expired_total");
         });
         unloadLater(l);
       } catch (error) {
@@ -481,7 +508,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       const { live: _live, ...content } = design;
       const at = now();
       const shared: Design = { ...content, id, createdAt: at, updatedAt: at, folderId: null, starred: false, trashedAt: null };
-      await o.storage.save(id, {
+      await saveRecord(id, {
         design: shared,
         rev: 0,
         seqs: {},
@@ -491,6 +518,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         createdAt: at,
         updatedAt: at,
       });
+      metrics.count("rooms_created_total");
       reply(res, 201, { room: id, editKey, viewKey, ownerKey });
     } finally {
       release();
@@ -507,7 +535,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     }
     await enqueue(l, async () => {
       if (l.removed) return reply(res, 404, { error: "no such shared design" });
-      await forget(l);
+      await forget(l, "rooms_removed_total");
       reply(res, 200, { ok: true });
     });
   };
@@ -653,12 +681,13 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     } catch (error) {
       console.error(`Craftly removes the shared design ${id}, which cannot be read, for the operator`, error);
       await o.storage.remove(id);
+      metrics.count("rooms_removed_total");
       return reply(res, 200, { ok: true });
     }
     if (!l) return reply(res, 404, { error: "no such shared design" });
     await enqueue(l, async () => {
       if (l.removed) return reply(res, 404, { error: "no such shared design" });
-      await forget(l);
+      await forget(l, "rooms_removed_total");
       reply(res, 200, { ok: true });
     });
   };
@@ -669,6 +698,50 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     const room = /^\/api\/admin\/rooms\/([^/]+)$/.exec(url.pathname);
     if (req.method === "DELETE" && room) return adminRemove(room[1], res);
     reply(res, 404, { error: "not found" });
+  };
+
+  /**
+   * How many rooms the storage holds, asked at most once in `healthCacheMs` however often the numbers are scraped (counting reads
+   * a folder). When the storage cannot say, the number of the last time it could is given, and none when it never could.
+   */
+  let stored: { at: number; count: Promise<number | undefined> } | null = null;
+  let storedBefore: number | undefined;
+  const roomsStored = (): Promise<number | undefined> => {
+    const at = Date.now();
+    if (!stored || at - stored.at >= o.healthCacheMs) {
+      stored = {
+        at,
+        count: o.storage.count().then(
+          (count) => (storedBefore = count),
+          () => storedBefore,
+        ),
+      };
+    }
+    return stored.count;
+  };
+
+  /**
+   * The server's numbers for a scraper (`metrics.ts` says which, and why no label ever names a room). Guarded like the operator's
+   * interface, by a key of its own shown as a bearer token, which is how a scraper is told to authenticate: there is nothing
+   * here unless the server was given that key, a request of a page is refused, and no CORS header is sent.
+   */
+  const metricsAnswer = async (req: IncomingMessage, res: ServerResponse) => {
+    const shown = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
+    if (!operator(req, res, o.metricsKey, shown)) return;
+    if (req.method !== "GET") return reply(res, 404, { error: "not found" });
+    let joined = 0;
+    for (const l of loaded.values()) joined += l.members.size;
+    const text = metrics.text({
+      uptime_seconds: process.uptime(),
+      rooms_in_memory: loaded.size,
+      rooms_stored: await roomsStored(),
+      connections: sockets.size,
+      peers_joined: joined,
+    });
+    res.statusCode = 200;
+    res.setHeader("content-type", METRICS_CONTENT_TYPE);
+    res.setHeader("cache-control", "no-store");
+    res.end(text);
   };
 
   /**
@@ -708,8 +781,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       console.error(`Craftly could not answer ${req.method} ${url?.pathname}`, error);
       if (!res.headersSent) reply(res, 500, { error: "the server has a problem and could not do this; try again later" });
     };
+    res.once("finish", () => metrics.countBy("http_responses_total", `${Math.floor(res.statusCode / 100)}xx` as LabelOf<"http_responses_total">));
     // what is the operator's is no part of what pages may call: it is answered before, and without, the CORS headers
     if (url?.pathname.startsWith("/api/admin/")) return void admin(req, url, res).catch(failed);
+    if (url?.pathname === "/metrics") return void metricsAnswer(req, res).catch(failed);
     cors(req, res);
     if (!url) return reply(res, 400, { error: "invalid request target" });
     void (async () => {
@@ -747,7 +822,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     // What a connection does not read waits here, in memory, and a connection that reads nothing would have it grow for as long as
     // the room has something to say. Past the limit it is dropped at once (a polite close would wait behind everything else that
     // waits); a browser that was only slow comes back by itself and is sent the design as it is then.
-    if (ws.bufferedAmount > o.maxBufferedBytes) ws.terminate();
+    if (ws.bufferedAmount > o.maxBufferedBytes) {
+      metrics.countBy("connections_closed_total", "slow_reader");
+      ws.terminate();
+    }
   };
   const deny = (ws: WebSocket, reason: DeniedReason) => {
     send(ws, { t: "denied", reason });
@@ -762,11 +840,13 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     }
     if (foreign(req)) {
       // a page of another site: refused before it is a connection, and before a room is read for it
+      metrics.countBy("upgrades_refused_total", "origin");
       socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       return;
     }
     if (sockets.size >= o.maxConnections) {
       // refused before it is a connection; a browser sees a connection that failed and tries again later
+      metrics.countBy("upgrades_refused_total", "connections");
       socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       return;
     }
@@ -782,7 +862,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const connection = async (ws: WebSocket, roomId: string) => {
     sockets.add(ws);
     ws.on("close", () => sockets.delete(ws));
-    ws.on("error", () => undefined);
+    // (a message longer than `maxMessageBytes` is not handed over: `ws` closes the connection with 1009 and says so here)
+    ws.on("error", (error: Error & { code?: string }) => {
+      if (error.code === "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH") metrics.countBy("connections_closed_total", "size");
+    });
     // the answer to a ping of the heartbeat below (asked for here: an upgrade handled by hand never reaches the "connection" event of `wss`)
     ws.on("pong", () => answered.set(ws, true));
     // what arrives while the room is being loaded waits here
@@ -790,9 +873,14 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     let handle: ((data: RawData) => void) | null = null;
     let shownKey = false;
     ws.on("message", (data) => {
+      metrics.count("messages_received_total");
+      metrics.count("bytes_received_total", sizeOf(data));
       // Until the key has been shown the only message with a use is a join, which is tiny. Anything bigger is not read: parsing
       // megabytes for whoever asks is work that a stranger could have the server do.
-      if (!shownKey && sizeOf(data) > o.maxUnjoinedMessageBytes) return void ws.close(1009, "too big before the key");
+      if (!shownKey && sizeOf(data) > o.maxUnjoinedMessageBytes) {
+        metrics.countBy("connections_closed_total", "size");
+        return void ws.close(1009, "too big before the key");
+      }
       if (handle) handle(data);
       else early.push(data);
     });
@@ -816,9 +904,17 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     // connection belongs to the room (which stays in memory for it, and sends it away with everybody else) but is not one of the people in it.
     // Only so many may stand at the door of one room. This one is not turned away for good (a browser takes `denied` as final): it is
     // asked to come back, and it does by itself, with waits that grow.
-    if (l.sockets.size - l.members.size >= o.maxWaitingPerRoom) return void ws.close(1013, "try again later");
+    if (l.sockets.size - l.members.size >= o.maxWaitingPerRoom) {
+      metrics.countBy("connections_closed_total", "waiting");
+      return void ws.close(1013, "try again later");
+    }
     l.sockets.add(ws);
-    const peer: Peer = { send: (msg) => send(ws, msg) };
+    const peer: Peer = {
+      send: (msg) => {
+        if (msg.t === "rejected") metrics.count("batches_rejected_total");
+        send(ws, msg);
+      },
+    };
     const silent = setTimeout(() => deny(ws, "bad-request"), o.joinWaitMs);
     let tokens = o.rate.burst;
     let bytes = o.byteRate.burst;
@@ -840,7 +936,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       bytes = Math.min(o.byteRate.burst, bytes + seconds * o.byteRate.perSecond) - sizeOf(data);
       joins = Math.min(o.joinRate.burst, joins + seconds * o.joinRate.perSecond);
       refilled = at;
-      if (--tokens < 0 || bytes < 0) return void ws.close(1008, "slow down");
+      if (--tokens < 0 || bytes < 0) {
+        metrics.countBy("connections_closed_total", "rate");
+        return void ws.close(1008, "slow down");
+      }
       let msg: ClientMsg;
       try {
         msg = JSON.parse(data.toString()) as ClientMsg;
@@ -850,7 +949,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       if (!msg || typeof msg !== "object") return;
       if (msg.t === "join") {
         // every join is answered with the whole design, megabytes of it for a few bytes, so it has a small allowance of its own
-        if (--joins < 0) return void ws.close(1008, "slow down");
+        if (--joins < 0) {
+          metrics.countBy("connections_closed_total", "join_rate");
+          return void ws.close(1008, "slow down");
+        }
         const role = roleOf(l, msg.key);
         if (!role) return void deny(ws, "no-access");
         if (typeof msg.client !== "string" || !CLIENT_NAME.test(msg.client)) return void deny(ws, "bad-request");
@@ -873,7 +975,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
             await l.room.receive(peer, msg);
           } catch (error) {
             console.error("Craftly could not persist a shared edit", error);
-            send(ws, { t: "rejected", seq: msg.seq, reason: "The server could not save this edit." });
+            peer.send({ t: "rejected", seq: msg.seq, reason: "The server could not save this edit." });
           }
         });
       } else if (msg.t === "ping") void l.room.receive(peer, msg);
@@ -884,8 +986,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   // a connection that stopped answering is dropped (the browser's own pings keep a live one busy as well)
   const heartbeat = setInterval(() => {
     for (const ws of sockets) {
-      if (answered.get(ws) === false) ws.terminate();
-      else {
+      if (answered.get(ws) === false) {
+        metrics.countBy("connections_closed_total", "silent");
+        ws.terminate();
+      } else {
         answered.set(ws, false);
         ws.ping();
       }

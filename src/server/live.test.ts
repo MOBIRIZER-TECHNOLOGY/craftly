@@ -17,6 +17,8 @@ import { createDesign, createPage, createShape, solid } from "@/core/factory";
 import type { Design } from "@/core/types";
 import { whole } from "@/test/wholeElement";
 import { closeWithin, createLiveServer, type LiveServer, type LiveServerOptions } from "./live";
+import { METRICS_CONTENT_TYPE } from "./metrics";
+import { parseMetrics } from "./metricsText";
 import { FileStorage, MemoryStorage, ROOM_ID, type LiveStorage, type RoomRecord, type SharedAsset } from "./storage";
 
 const design = (): Design =>
@@ -2260,5 +2262,296 @@ describe("what a room record remembers of the clients that edited", () => {
     await storage.save(made.room, older);
     expect(await editAs(first, made, "early", "Fourth")).toBe(4);
     expect(await storage.load(made.room)).toMatchObject({ rev: 4, seqs: { early: 4 }, seqSeen: { early: at }, seqFloor: 0 });
+  });
+});
+
+describe("what the server says about itself", () => {
+  const METRICS_KEY = "a-key-for-the-scraper-0123456789";
+  const scrape = (b: Booted, headers: Record<string, string> = { authorization: `Bearer ${METRICS_KEY}` }, path = "/metrics") => fetch(`${b.http}${path}`, { headers });
+  /** Scrapes, checks that what came is the format, and gives a way to read one number of it (by its name without the prefix). */
+  const numbers = async (b: Booted) => {
+    const res = await scrape(b);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe(METRICS_CONTENT_TYPE);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const text = await res.text();
+    const parsed = parseMetrics(text);
+    expect(parsed.problems).toEqual([]);
+    const read = (name: string) => parsed.samples.get(`craftly_live_${name}`);
+    return Object.assign(read, { text });
+  };
+  const closed = (reason: string) => `connections_closed_total{reason="${reason}"}`;
+
+  it("says nothing unless the server was given a key for it", async () => {
+    const b = await boot();
+    expect((await scrape(b)).status).toBe(404);
+    expect((await scrape(b, {})).status).toBe(404);
+  });
+
+  it("answers only whoever shows the key as a bearer token, never a page, and stops listening to an address that guesses", async () => {
+    const b = await boot({ metricsKey: METRICS_KEY, allowOrigin: "*" });
+    expect((await scrape(b)).status).toBe(200);
+    // it is read, and nothing else: with the key too
+    expect((await fetch(`${b.http}/metrics`, { method: "POST", headers: { authorization: `Bearer ${METRICS_KEY}` } })).status).toBe(404);
+    const withoutIt: Record<string, string>[] = [
+      {},
+      { authorization: "Bearer wrong" },
+      { authorization: METRICS_KEY },
+      { authorization: `Basic ${METRICS_KEY}` },
+      { "x-craftly-admin-key": METRICS_KEY },
+    ];
+    for (const headers of withoutIt) {
+      const res = await scrape(b, headers);
+      expect(res.status).toBe(401);
+      expect(await res.text()).not.toContain("craftly_live_");
+    }
+    expect((await scrape(b, {}, `/metrics?key=${METRICS_KEY}`)).status).toBe(401);
+    const page = await scrape(b, { authorization: `Bearer ${METRICS_KEY}`, origin: "https://app.example.test" });
+    expect(page.status).toBe(403);
+    expect(page.headers.get("access-control-allow-origin")).toBeNull();
+    expect((await scrape(b)).headers.get("access-control-allow-origin")).toBeNull();
+    // six wrong keys so far; four more and the right one is refused as well
+    for (let i = 0; i < 4; i++) await scrape(b, { authorization: `Bearer guess-${i}` });
+    expect((await scrape(b)).status).toBe(429);
+  });
+
+  it("is a different key from the operator's: neither opens what the other guards", async () => {
+    const b = await boot({ metricsKey: METRICS_KEY, adminKey: "the-operators-own-key-0123456789" });
+    expect((await scrape(b, { authorization: "Bearer the-operators-own-key-0123456789" })).status).toBe(401);
+    expect((await fetch(`${b.http}/api/admin/rooms`, { headers: { "x-craftly-admin-key": METRICS_KEY } })).status).toBe(401);
+  });
+
+  it("counts what happens: rooms, connections, messages, batches, saves and answers, between one scrape and the next", async () => {
+    const b = await boot({ metricsKey: METRICS_KEY, healthCacheMs: 0 });
+    const before = await numbers(b);
+    expect(before("uptime_seconds")).toBeGreaterThan(0);
+    for (const name of [
+      "rooms_in_memory",
+      "rooms_stored",
+      "connections",
+      "peers_joined",
+      "rooms_created_total",
+      "batches_applied_total",
+      "saves_total",
+      "save_duration_seconds_count",
+    ]) {
+      expect(before(name), name).toBe(0);
+    }
+
+    const [made, other] = [await makeRoom(b), await makeRoom(b)];
+    const editor = raw(b, made.room, made.editKey);
+    const viewer = raw(b, made.room, made.viewKey);
+    const waiting = raw(b, made.room, made.editKey); // connected, key not shown
+    await Promise.all([editor.opened, viewer.opened, waiting.opened]);
+    editor.join("editor");
+    viewer.join("viewer");
+    await until("both in", () => editor.heard.some((m) => m.t === "welcome") && viewer.heard.some((m) => m.t === "welcome"));
+    editor.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "Renamed" } }] });
+    editor.say({ t: "ops", seq: 2, ops: [{ k: "el.set", page: "p", id: "a", set: { x: "a" } }] }); // refused
+    viewer.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "Not mine to change" } }] }); // refused
+    await until("the answers", () => editor.heard.filter((m) => m.t === "ack" || m.t === "rejected").length === 2 && viewer.heard.some((m) => m.t === "rejected"));
+    expect((await fetch(`${b.http}/api/rooms/${other.room}`, { method: "DELETE", headers: { "x-craftly-key": other.ownerKey } })).status).toBe(200);
+    expect((await fetch(`${b.http}/api/nothing`)).status).toBe(404);
+    expect((await fetch(`${b.http}/api/rooms`, { method: "POST", body: "not json" })).status).toBe(400);
+
+    const after = await numbers(b);
+    expect(after("rooms_created_total")).toBe(2);
+    expect(after("rooms_removed_total")).toBe(1);
+    expect(after("rooms_expired_total")).toBe(0);
+    expect(after("rooms_stored")).toBe(1);
+    expect(after("rooms_in_memory")).toBe(1);
+    expect(after("connections")).toBe(3);
+    expect(after("peers_joined")).toBe(2);
+    expect(after("messages_received_total")).toBe(5); // two joins, three batches
+    expect(after("bytes_received_total")).toBeGreaterThan(300);
+    expect(after("bytes_received_total")).toBeLessThan(2000);
+    expect(after("batches_applied_total")).toBe(1);
+    expect(after("batches_rejected_total")).toBe(2);
+    expect(after("saves_total")).toBe(3); // two rooms made, one edit
+    expect(after("save_failures_total")).toBe(0);
+    expect(after("save_duration_seconds_count")).toBe(3);
+    expect(after("save_duration_seconds_sum")).toBeGreaterThan(0);
+    expect(after("save_duration_seconds_sum")).toBeLessThan(5);
+    // the answers so far: the first scrape, two rooms made and one removed are 2xx; the address that is not there and the bad body are 4xx
+    expect(after('http_responses_total{class="2xx"}')).toBe(4);
+    expect(after('http_responses_total{class="4xx"}')).toBe(2);
+    expect(after('http_responses_total{class="5xx"}')).toBe(0);
+    expect(after("uptime_seconds")).toBeGreaterThanOrEqual(before("uptime_seconds")!);
+    // nothing that names a room, a key or a person
+    for (const secret of [made.room, other.room, made.editKey, made.viewKey, "editor", "Renamed", "127.0.0.1"]) expect(after.text).not.toContain(secret);
+  });
+
+  it("counts a save that fails, the batch that was refused for it, and the answer that was an error", async () => {
+    class Full extends MemoryStorage {
+      full = false;
+      async save(id: string, record: RoomRecord, designJson?: string) {
+        if (this.full) throw new Error("the disk is full");
+        return super.save(id, record, designJson);
+      }
+      async count(): Promise<number> {
+        if (this.full) throw new Error("the disk is full");
+        return super.count();
+      }
+    }
+    const storage = new Full();
+    const b = await boot({ metricsKey: METRICS_KEY, healthCacheMs: 0 }, storage);
+    const made = await makeRoom(b);
+    expect((await numbers(b))("rooms_stored")).toBe(1);
+    const log = logged();
+    storage.full = true;
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join("editor");
+    s.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "Not saved" } }] });
+    await until("the refusal", () => s.heard.some((m) => m.t === "rejected"));
+    expect((await fetch(`${b.http}/api/rooms`, { method: "POST", body: JSON.stringify({ design: design() }) })).status).toBe(500);
+    const after = await numbers(b);
+    expect(log).toHaveBeenCalled();
+    expect(after("saves_total")).toBe(1);
+    expect(after("save_failures_total")).toBe(1);
+    expect(after("save_duration_seconds_count")).toBe(2);
+    expect(after("batches_applied_total")).toBe(0);
+    expect(after("batches_rejected_total")).toBe(1);
+    expect(after("rooms_created_total")).toBe(1);
+    expect(after('http_responses_total{class="5xx"}')).toBe(1);
+    // the storage cannot be counted now: the number of a moment ago is given, and not a made-up one
+    expect(after("rooms_stored")).toBe(1);
+  });
+
+  it("leaves out the number of stored rooms when the storage has never been able to say", async () => {
+    class Blind extends MemoryStorage {
+      async count(): Promise<number> {
+        throw new Error("the disk is gone");
+      }
+    }
+    const b = await boot({ metricsKey: METRICS_KEY }, new Blind());
+    const now = await numbers(b);
+    expect(now("rooms_stored")).toBeUndefined();
+    expect(now("rooms_in_memory")).toBe(0);
+  });
+
+  it("asks the storage how many rooms it holds at most once in a while, however often it is scraped", async () => {
+    const storage = new MemoryStorage();
+    const count = vi.spyOn(storage, "count");
+    const b = await boot({ metricsKey: METRICS_KEY, healthCacheMs: 60_000 }, storage);
+    for (let i = 0; i < 5; i++) await numbers(b);
+    expect(count).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts the connections it closed, by the limit that closed them", async () => {
+    const b = await boot({
+      metricsKey: METRICS_KEY,
+      rate: { burst: 6, perSecond: 0.001 },
+      joinRate: { burst: 2, perSecond: 0.001 },
+      maxUnjoinedMessageBytes: 300,
+      maxMessageBytes: 5000,
+      maxWaitingPerRoom: 1,
+    });
+    const made = await makeRoom(b);
+    const fresh = async (client: string | null) => {
+      const s = raw(b, made.room, made.editKey);
+      await s.opened;
+      if (client) {
+        s.join(client);
+        await until(`${client} to be welcomed`, () => s.heard.some((m) => m.t === "welcome"));
+      }
+      return s;
+    };
+    // too many messages
+    const chatty = await fresh("chatty");
+    for (let i = 0; i < 8; i++) chatty.say({ t: "ping" });
+    await until("chatty to be closed", () => chatty.closed() === 1008);
+    // too many joins
+    const asking = await fresh("asking");
+    asking.join("asking");
+    asking.join("asking");
+    await until("asking to be closed", () => asking.closed() === 1008);
+    // a message that is too big, before the key and after it
+    const stranger = await fresh(null);
+    stranger.say({ t: "join", client: "big", key: made.editKey, padding: "x".repeat(400) });
+    await until("the stranger to be closed", () => stranger.closed() === 1009);
+    const member = await fresh("member");
+    member.say({ t: "ops", seq: 1, ops: [{ k: "design", set: { title: "x".repeat(6000) } }] });
+    await until("the member to be closed", () => member.closed() !== null);
+    // one too many at the door
+    const first = await fresh(null);
+    const second = await fresh(null);
+    await until("the second at the door to be sent away", () => second.closed() === 1013);
+    expect(first.closed()).toBeNull();
+
+    const now = await numbers(b);
+    expect(now(closed("rate"))).toBe(1);
+    expect(now(closed("join_rate"))).toBe(1);
+    expect(now(closed("size"))).toBe(2);
+    expect(now(closed("waiting"))).toBe(1);
+    expect(now(closed("slow_reader"))).toBe(0);
+    expect(now(closed("silent"))).toBe(0);
+  });
+
+  it("counts a connection it dropped because it did not read what it was sent", async () => {
+    const b = await boot({ metricsKey: METRICS_KEY, maxBufferedBytes: 1024 * 1024, joinRate: { burst: 1000 }, rate: { burst: 1000, perSecond: 100 }, idleCloseMs: 20 });
+    const made = await makeRoom(b, { ...design(), title: "x".repeat(300_000) });
+    const deaf = raw(b, made.room, made.viewKey);
+    await deaf.opened;
+    deaf.join("deaf");
+    await until("the welcome", () => deaf.heard.some((m) => m.t === "welcome"));
+    deaf.ws.pause();
+    for (let i = 0; i < 300; i++) deaf.join("deaf");
+    await until("the server to drop the one that does not read", async () => (await numbers(b))(closed("slow_reader")) === 1, 8000);
+    deaf.ws.resume();
+    expect((await numbers(b))(closed("silent"))).toBe(0);
+  });
+
+  it("counts a connection it dropped because it did not answer the pings", async () => {
+    const b = await boot({ metricsKey: METRICS_KEY, heartbeatMs: 100 });
+    const made = await makeRoom(b);
+    const mute = new WebSocket(`${b.ws}?room=${made.room}`, { autoPong: false });
+    sockets.push(mute);
+    await new Promise<void>((resolve) => mute.on("open", () => resolve()));
+    mute.send(JSON.stringify({ t: "join", client: "mute", key: made.viewKey }));
+    await until("the server to drop the one that does not answer", async () => (await numbers(b))(closed("silent")) === 1, 4000);
+    expect((await numbers(b))(closed("slow_reader"))).toBe(0);
+  });
+
+  it("counts the connections it refused before they were made", async () => {
+    const b = await boot({ metricsKey: METRICS_KEY, maxConnections: 1, allowOrigin: ["https://app.example.test"] });
+    const made = await makeRoom(b);
+    const knock = (headers: Record<string, string> = {}) =>
+      new Promise<number | "open">((resolve) => {
+        const ws = new WebSocket(`${b.ws}?room=${made.room}`, { headers });
+        sockets.push(ws);
+        ws.on("open", () => resolve("open"));
+        ws.on("unexpected-response", (_req, res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        });
+        ws.on("error", () => undefined);
+      });
+    expect(await knock({ origin: "https://evil.example.test" })).toBe(403);
+    expect(await knock({ origin: "https://app.example.test" })).toBe("open");
+    expect(await knock()).toBe(503);
+    expect(await knock()).toBe(503);
+    const now = await numbers(b);
+    expect(now('upgrades_refused_total{reason="origin"}')).toBe(1);
+    expect(now('upgrades_refused_total{reason="connections"}')).toBe(2);
+    expect(now("connections")).toBe(1);
+  });
+
+  it("counts a room that expired apart from one that was removed, and one the operator removed with those of the owners", async () => {
+    let at = 1_700_000_000_000;
+    const b = await boot(
+      { metricsKey: METRICS_KEY, adminKey: "the-operators-own-key-0123456789", roomTtlMs: 10 * 24 * 60 * 60 * 1000, sweepEveryMs: 20, now: () => at },
+      new MemoryStorage(() => at),
+    );
+    const [old, doomed] = [await makeRoom(b), await makeRoom(b)];
+    expect((await fetch(`${b.http}/api/admin/rooms/${doomed.room}`, { method: "DELETE", headers: { "x-craftly-admin-key": "the-operators-own-key-0123456789" } })).status).toBe(
+      200,
+    );
+    at += 11 * 24 * 60 * 60 * 1000;
+    await until("the old room to expire", async () => (await b.storage.load(old.room)) === null);
+    const now = await numbers(b);
+    expect(now("rooms_expired_total")).toBe(1);
+    expect(now("rooms_removed_total")).toBe(1);
+    expect(now("rooms_created_total")).toBe(2);
   });
 });

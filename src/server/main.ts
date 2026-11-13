@@ -7,7 +7,8 @@
  * TRUST_PROXY (1 when exactly one reverse proxy stands in front: the address of a visitor is then read from X-Forwarded-For), and
  * ROOM_TTL_DAYS (a room that nobody has used for so many days is removed; not set or 0: never), and ROOM_CREATE_KEY (a secret that
  * whoever starts to share must show; not set: anybody may), and ADMIN_KEY (the operator's key for listing and removing rooms,
- * scripts/rooms.mjs; not set: there is no such interface). What is not set keeps the default
+ * scripts/rooms.mjs; not set: there is no such interface), and METRICS_KEY (the key of a scraper for GET /metrics; not set: the
+ * server shows no numbers). What is not set keeps the default
  * of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000) is how long the server may take to close when it
  * is told to stop. See docs/COLLABORATION.md and docs/DEPLOY.md.
  */
@@ -73,6 +74,8 @@ const server = createLiveServer({
   roomCreateKey: secret("ROOM_CREATE_KEY", 8),
   // off unless it is set: nothing answers under /api/admin/ then
   adminKey: secret("ADMIN_KEY", 16),
+  // off unless it is set: /metrics answers 404 then
+  metricsKey: secret("METRICS_KEY", 16),
 });
 
 const host = env.HOST ?? "127.0.0.1";
