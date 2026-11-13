@@ -3,7 +3,8 @@
  * with a key (one key lets them edit, another only look), keeps what the rooms say to each connection ordered, saves a room
  * before acknowledging a change, and refuses what it cannot afford: a message or a body that is too big, a connection that sends too
  * many messages or too many bytes, or asks for the design too often, or does not read what it is sent; too many people in a room or
- * waiting at its door, too many connections, too many rooms.
+ * waiting at its door, too many connections, too many rooms, too many rooms made from one address in an hour. When it is given a
+ * list of origins, it also refuses a page of any other origin that wants to connect or to change something.
  *
  * HTTP:  POST /api/rooms {design}        makes a room from a design: { room, editKey, viewKey, ownerKey } (the keys are shown once)
  *        DELETE /api/rooms/:id           with the owner key in `x-craftly-key`: stops sharing and sends everyone away
@@ -21,12 +22,26 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { checkDesign, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
 import { Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
+import { clientAddress, hourlyLimit } from "./address";
 import { ROOM_ID, type LiveStorage, type RoomRecord, type SharedAsset } from "./storage";
 
 export interface LiveServerOptions {
   storage: LiveStorage;
-  /** The origins that may call the HTTP interface from a page: "*", or a list (the page's own origin). None: no CORS headers. */
+  /**
+   * The origins that may call the HTTP interface from a page: "*", or a list (the page's own origin). None: no CORS headers.
+   * A list is also a refusal: a request that makes, changes or removes something (POST, PUT, DELETE) and a WebSocket connection
+   * are turned away when they name an origin that is not on it. A request that names no origin is not a page and is not refused.
+   */
   allowOrigin?: string | string[];
+  /** How many rooms one address may make in an hour (every attempt counts); 0 for no limit. */
+  roomCreatePerHour?: number;
+  /**
+   * Whether exactly one reverse proxy stands in front of the server. Only then is the address of a visitor taken from the last
+   * entry of `X-Forwarded-For` (see `clientAddress`); otherwise the header is never read.
+   */
+  trustProxy?: boolean;
+  /** The time, in milliseconds; a test gives its own clock. */
+  now?: () => number;
   maxRooms?: number;
   maxPeersPerRoom?: number;
   /** The most a message from a browser may be, in bytes. */
@@ -81,6 +96,7 @@ const DEFAULTS = {
   maxConnections: 5000,
   maxWaitingPerRoom: 20,
   healthCacheMs: 5000,
+  roomCreatePerHour: 10,
 };
 
 /** A burst and a rate, with what was not given (or given as undefined, as a setting that is not set is) taken from the default. */
@@ -142,7 +158,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
     maxWaitingPerRoom: options.maxWaitingPerRoom ?? DEFAULTS.maxWaitingPerRoom,
     healthCacheMs: options.healthCacheMs ?? DEFAULTS.healthCacheMs,
+    roomCreatePerHour: options.roomCreatePerHour ?? DEFAULTS.roomCreatePerHour,
+    trustProxy: options.trustProxy ?? false,
   };
+  const now = options.now ?? Date.now;
+  const roomsMade = hourlyLimit(o.roomCreatePerHour, now);
   const loaded = new Map<string, Loaded>();
   const loading = new Map<string, Promise<Loaded | null>>();
   const sockets = new Set<WebSocket>();
@@ -236,6 +256,20 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     res.setHeader("access-control-max-age", "600");
   };
 
+  /**
+   * Whether a request comes from a page that may not use this server: the server was given a list of origins, the request names
+   * its origin, as every browser does for a WebSocket and for anything that is not a plain GET, and that origin is not on the list.
+   * The CORS headers above do not do this. They stop a page from reading an answer, not from sending the request: making a room
+   * needs no permission beforehand (its body has no content type that would), and a WebSocket is not subject to CORS at all.
+   * It keeps the pages of other sites out, not a program, which names whatever origin it likes or none.
+   */
+  const foreign = (req: IncomingMessage): boolean => {
+    const allow = o.allowOrigin;
+    if (!allow || allow === "*") return false;
+    const origin = req.headers.origin;
+    return origin !== undefined && !(Array.isArray(allow) ? allow : [allow]).includes(origin);
+  };
+
   const reply = (res: ServerResponse, status: number, body: unknown) => {
     res.statusCode = status;
     res.setHeader("content-type", "application/json; charset=utf-8");
@@ -259,6 +293,13 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     });
 
   const createRoom = async (req: IncomingMessage, res: ServerResponse) => {
+    // Asked before the body is read: reading and checking up to 16 MiB is the work that an address with no allowance left is not
+    // given. Every attempt counts, also one that is then refused for another reason.
+    const wait = roomsMade.take(clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], o.trustProxy));
+    if (wait) {
+      res.setHeader("retry-after", String(wait));
+      return reply(res, 429, { error: "too many shared designs were started from this address; try again later" });
+    }
     const text = await readBody(req, o.maxDesignBytes);
     if (text === null) {
       res.setHeader("connection", "close");
@@ -429,6 +470,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         if (await storageWritable()) return reply(res, 200, { ok: true, rooms: loaded.size });
         return reply(res, 503, { ok: false, error: "room storage is unavailable" });
       }
+      if ((req.method === "POST" || req.method === "PUT" || req.method === "DELETE") && foreign(req)) {
+        return reply(res, 403, { error: "this server does not take requests from this origin" });
+      }
       if (req.method === "POST" && url.pathname === "/api/rooms") return await createRoom(req, res);
       const asset = /^\/api\/rooms\/([^/]+)\/assets\/([^/]+)$/.exec(url.pathname);
       if (asset && (req.method === "GET" || req.method === "PUT")) return await roomAsset(asset[1], asset[2], req, res);
@@ -468,6 +512,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     const url = target(req);
     if (!url || url.pathname !== "/ws" || closing) {
       socket.destroy();
+      return;
+    }
+    if (foreign(req)) {
+      // a page of another site: refused before it is a connection, and before a room is read for it
+      socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       return;
     }
     if (sockets.size >= o.maxConnections) {

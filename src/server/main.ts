@@ -3,8 +3,10 @@
  * Settings come from the environment: PORT (8787), HOST (127.0.0.1; 0.0.0.0 to be reachable from other machines), DATA_DIR
  * (live-data), ALLOW_ORIGIN (the origin of the editor, a comma separated list, or *; none by default), MAX_ROOMS, MAX_PEERS_PER_ROOM,
  * and what one visitor may cost: MAX_CONNECTIONS, MAX_WAITING_PER_ROOM, MAX_BUFFERED_BYTES, MAX_UNJOINED_MESSAGE_BYTES, BYTE_BURST,
- * BYTES_PER_SECOND, JOIN_BURST, JOIN_EVERY_MS. What is not set keeps the default of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000)
- * is how long the server may take to close when it is told to stop. See docs/COLLABORATION.md.
+ * BYTES_PER_SECOND, JOIN_BURST, JOIN_EVERY_MS, ROOM_CREATE_PER_HOUR (rooms one address may make in an hour; 0 for no limit) and
+ * TRUST_PROXY (1 when exactly one reverse proxy stands in front: the address of a visitor is then read from X-Forwarded-For). What
+ * is not set keeps the default of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000) is how long the server may take to close when it
+ * is told to stop. See docs/COLLABORATION.md and docs/DEPLOY.md.
  */
 import { closeWithin, createLiveServer } from "./live";
 import { listenWarning } from "./listenWarning";
@@ -18,7 +20,19 @@ const number = (name: string, min: number, max: number) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}: expected an integer between ${min} and ${max}.`);
   return value;
 };
-const origins = env.ALLOW_ORIGIN?.split(",").map((s) => s.trim());
+/** A setting that is on or off: 1 or true, 0 or false. Not set is off. */
+const flag = (name: string) => {
+  const raw = (env[name] ?? "").trim().toLowerCase();
+  if (raw === "" || raw === "0" || raw === "false") return false;
+  if (raw === "1" || raw === "true") return true;
+  throw new Error(`Invalid ${name}: expected 1 or 0.`);
+};
+// a variable that is set to nothing is a variable that is not set: it must not become a list that holds no origin and refuses every page
+const named = (env.ALLOW_ORIGIN ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const origins = named.length ? named : undefined;
 const joinEveryMs = number("JOIN_EVERY_MS", 1, Number.MAX_SAFE_INTEGER);
 
 const server = createLiveServer({
@@ -33,6 +47,9 @@ const server = createLiveServer({
   byteRate: { burst: number("BYTE_BURST", 1024, Number.MAX_SAFE_INTEGER), perSecond: number("BYTES_PER_SECOND", 1, Number.MAX_SAFE_INTEGER) },
   // one join every so many milliseconds, once the burst is used up
   joinRate: { burst: number("JOIN_BURST", 1, Number.MAX_SAFE_INTEGER), perSecond: joinEveryMs === undefined ? undefined : 1000 / joinEveryMs },
+  roomCreatePerHour: number("ROOM_CREATE_PER_HOUR", 0, 100_000),
+  // Exactly one proxy is trusted (the one that connects to this server), so the setting is on or off and not a number of proxies.
+  trustProxy: flag("TRUST_PROXY"),
 });
 
 const host = env.HOST ?? "127.0.0.1";

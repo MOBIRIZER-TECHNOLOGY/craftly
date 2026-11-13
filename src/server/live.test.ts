@@ -758,14 +758,17 @@ describe("production regressions", () => {
 
 describe("connections over time", () => {
   it("keeps a connection that answers the server's pings", async () => {
-    const b = await boot({ heartbeatMs: 40 });
+    // A round is long enough for an answer to arrive on a machine that is busy with other things: with 40 ms this test failed
+    // once because a pong took longer than a round. It still proves what it is for: a server that did not hear the answers
+    // would drop the connection at the second round, after 300 ms.
+    const b = await boot({ heartbeatMs: 150 });
     const made = await makeRoom(b);
     const client = raw(b, made.room, made.editKey);
     await client.opened;
     client.join("tab-1");
     await until("welcome", () => client.heard.some((msg) => msg.t === "welcome"));
     // several rounds of the heartbeat: a connection that answers each ping is still there after them
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 700));
     expect(client.closed()).toBeNull();
     expect(client.ws.readyState).toBe(client.ws.OPEN);
   });
@@ -1104,5 +1107,132 @@ describe("looking after itself", () => {
     const b = await boot();
     servers.length = 0;
     expect(await closeWithin(b.server, 2000)).toBe(true);
+  });
+});
+
+describe("who may ask, and how often an address may make a room", () => {
+  const HOME = "https://app.example.test";
+  const post = (b: Booted, headers: Record<string, string> = {}) => fetch(`${b.http}/api/rooms`, { method: "POST", headers, body: JSON.stringify({ design: design() }) });
+  const picture = JSON.stringify({ mime: "image/png", base64: Buffer.from("a picture").toString("base64") });
+  /** A connection that says which page it comes from, as a browser does: whether it opened, or what the server answered instead. */
+  const knockFrom = (b: Booted, room: string, origin?: string) =>
+    new Promise<number | "open">((resolve) => {
+      const ws = new WebSocket(`${b.ws}?room=${room}`, origin === undefined ? {} : { origin });
+      sockets.push(ws);
+      ws.on("open", () => resolve("open"));
+      ws.on("unexpected-response", (_req, res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      ws.on("error", () => undefined);
+    });
+
+  it("refuses to make, change or remove anything for a page of an origin that is not on its list, and takes the same from a page that is", async () => {
+    const b = await boot({ allowOrigin: [HOME, "https://other.example.test"] });
+    const refused = await post(b, { origin: "https://evil.example.test" });
+    expect(refused.status).toBe(403);
+    expect(await b.storage.count()).toBe(0);
+    const res = await post(b, { origin: HOME });
+    expect(res.status).toBe(201);
+    const made = (await res.json()) as Made;
+    const image = `${b.http}/api/rooms/${made.room}/assets/img-1`;
+    const room = `${b.http}/api/rooms/${made.room}`;
+    for (const origin of ["https://evil.example.test", "null", "https://app.example.test.evil.test", "http://app.example.test"]) {
+      expect((await fetch(image, { method: "PUT", headers: { origin, "x-craftly-key": made.editKey }, body: picture })).status).toBe(403);
+      expect((await fetch(room, { method: "DELETE", headers: { origin, "x-craftly-key": made.ownerKey } })).status).toBe(403);
+    }
+    expect((await b.storage.load(made.room))?.assets).toBeUndefined();
+    // looking is not refused here: a page of another origin cannot read the answer (it is sent no permission), and it has no key
+    expect((await fetch(`${b.http}/api/health`, { headers: { origin: "https://evil.example.test" } })).status).toBe(200);
+    expect((await fetch(image, { method: "PUT", headers: { origin: "https://other.example.test", "x-craftly-key": made.editKey }, body: picture })).status).toBe(201);
+    expect((await fetch(room, { method: "DELETE", headers: { origin: HOME, "x-craftly-key": made.ownerKey } })).status).toBe(200);
+  });
+
+  it("refuses a connection from a page of an origin that is not on its list, before it is a connection", async () => {
+    const b = await boot({ allowOrigin: [HOME] });
+    const made = await makeRoom(b);
+    expect(await knockFrom(b, made.room, "https://evil.example.test")).toBe(403);
+    expect(await knockFrom(b, made.room, "null")).toBe(403);
+    expect(b.server.rooms()).toBe(0); // the room was not even read for them
+    expect(await knockFrom(b, made.room, HOME)).toBe("open");
+  });
+
+  it("does not refuse a request that names no origin, which is no page: a list of origins is about browsers", async () => {
+    const b = await boot({ allowOrigin: [HOME] });
+    const made = await makeRoom(b); // no Origin header
+    expect(await knockFrom(b, made.room)).toBe("open");
+    expect((await fetch(`${b.http}/api/rooms/${made.room}`, { method: "DELETE", headers: { "x-craftly-key": made.ownerKey } })).status).toBe(200);
+  });
+
+  it("takes a single origin given as a text as a list of one", async () => {
+    const b = await boot({ allowOrigin: HOME });
+    expect((await post(b, { origin: "https://evil.example.test" })).status).toBe(403);
+    expect((await post(b, { origin: HOME })).status).toBe(201);
+  });
+
+  it.each<[string, Partial<LiveServerOptions>]>([
+    ["is told that any origin may", { allowOrigin: "*" }],
+    ["is told nothing about origins", {}],
+  ])("asks no page where it comes from when it %s", async (_what, options) => {
+    const b = await boot(options);
+    const res = await post(b, { origin: "https://anywhere.example.test" });
+    expect(res.status).toBe(201);
+    const made = (await res.json()) as Made;
+    expect(await knockFrom(b, made.room, "https://anywhere.example.test")).toBe("open");
+  });
+
+  it("lets one address make only so many rooms in an hour, and says when to come back", async () => {
+    let at = Date.now();
+    const b = await boot({ roomCreatePerHour: 2, now: () => at });
+    expect((await post(b)).status).toBe(201);
+    at += 20 * 60_000;
+    expect((await post(b)).status).toBe(201);
+    const refused = await post(b);
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("2400");
+    expect(((await refused.json()) as { error: string }).error).toMatch(/too many/);
+    expect(await b.storage.count()).toBe(2);
+    at += 39 * 60_000;
+    expect((await post(b)).headers.get("retry-after")).toBe("60");
+    at += 60_000;
+    expect((await post(b)).status).toBe(201);
+    expect((await post(b)).status).toBe(429);
+    // only making rooms is counted: the rest of the server answers this address as before
+    expect((await fetch(`${b.http}/api/health`)).status).toBe(200);
+  });
+
+  it("answers an address that has made too many rooms before it reads what it sent", async () => {
+    const b = await boot({ roomCreatePerHour: 1 });
+    await makeRoom(b);
+    // a body that is not even a design: were it read, the answer would be 400
+    expect((await fetch(`${b.http}/api/rooms`, { method: "POST", body: "not json" })).status).toBe(429);
+  });
+
+  it("allows ten rooms an hour from one address unless it is told otherwise, and any number when the limit is 0", async () => {
+    const standard = await boot({ roomCreatePerHour: undefined });
+    for (let i = 0; i < 10; i++) expect((await post(standard)).status).toBe(201);
+    expect((await post(standard)).status).toBe(429);
+    const open = await boot({ roomCreatePerHour: 0 });
+    for (let i = 0; i < 12; i++) expect((await post(open)).status).toBe(201);
+  });
+
+  it("does not believe X-Forwarded-For unless it is told that a proxy is in front of it", async () => {
+    const b = await boot({ roomCreatePerHour: 1 });
+    expect((await post(b, { "x-forwarded-for": "198.51.100.1" })).status).toBe(201);
+    // the same connection's address, whatever the header claims
+    expect((await post(b, { "x-forwarded-for": "198.51.100.2" })).status).toBe(429);
+  });
+
+  it("behind a proxy, counts the address the proxy wrote last in X-Forwarded-For, and nothing a visitor wrote before it", async () => {
+    const b = await boot({ roomCreatePerHour: 1, trustProxy: true });
+    expect((await post(b, { "x-forwarded-for": "198.51.100.1" })).status).toBe(201);
+    expect((await post(b, { "x-forwarded-for": "198.51.100.1" })).status).toBe(429);
+    expect((await post(b, { "x-forwarded-for": "198.51.100.2" })).status).toBe(201);
+    // a visitor who writes the header himself gains nothing: the proxy adds the address it saw at the end
+    expect((await post(b, { "x-forwarded-for": "203.0.113.50, 198.51.100.2" })).status).toBe(429);
+    expect((await post(b, { "x-forwarded-for": "198.51.100.2, 203.0.113.50" })).status).toBe(201);
+    // without a header that can be used it is the proxy's own address that is counted
+    expect((await post(b)).status).toBe(201);
+    expect((await post(b, { "x-forwarded-for": "nonsense" })).status).toBe(429);
   });
 });
