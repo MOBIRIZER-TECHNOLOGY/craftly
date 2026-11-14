@@ -7,6 +7,7 @@ import { createDesign, createPage, solid } from "./factory";
 import { uid } from "./ids";
 import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany, metaGet, metaSet, openDb, wrap, writeTransaction, type StoreName } from "./persistence";
 import { clonePageWithIds } from "./ops";
+import { commentsForCopy } from "./comments";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "./schema/design";
 import { newerError } from "./schema/migrator";
 import { askForPersistentStorageOnce } from "./storage";
@@ -173,6 +174,8 @@ export async function duplicateDesign(id: string): Promise<Design | null> {
   // change to "the copy" would go to everybody in the room
   delete copy.live;
   copy.pages = src.pages.map((p) => clonePageWithIds(p));
+  // the comments are notes about the design and go with the copy, on the copies of their pages and elements
+  if (src.comments?.length) copy.comments = commentsForCopy(src.comments, src.pages, copy.pages);
   const prev = await getSummary(id);
   await dbPutMany([
     { store: "designs", value: copy },

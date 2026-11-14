@@ -110,6 +110,32 @@ describe("document", () => {
   });
 });
 
+describe("comments", () => {
+  it("are never drawn: a page with comments on it exports as the same drawing", async () => {
+    const page = createPage({ background: solid("#ffffff"), elements: [createShape("rect", { id: "a" })] });
+    const design = createDesign({ width: 800, height: 600, pages: [page] });
+    const noted = {
+      ...design,
+      comments: [
+        {
+          id: "c",
+          pageId: page.id,
+          anchor: { x: 5, y: 5, elementId: "a", dx: 0, dy: 0 },
+          author: { name: "Ann", colorIndex: 0 },
+          createdAt: 1,
+          text: "A private remark",
+          resolved: false,
+          replies: [],
+        },
+      ],
+    };
+    const plain = await svgModule.designPageToSvg(design, page, { embedFonts: false, title: "T" });
+    const withComments = await svgModule.designPageToSvg(noted, page, { embedFonts: false, title: "T" });
+    expect(withComments.svg).toBe(plain.svg);
+    expect(withComments.svg).not.toContain("private remark");
+  });
+});
+
 describe("backgrounds and fills", () => {
   it("writes gradients as userSpaceOnUse defs that match the canvas geometry", async () => {
     const { svg } = await render(

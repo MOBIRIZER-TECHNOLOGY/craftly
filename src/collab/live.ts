@@ -6,7 +6,7 @@
  */
 import type { Design } from "@/core/types";
 import type { PresenceHeard, PresenceState } from "./presence";
-import type { ClientMsg, DeniedReason } from "./protocol";
+import type { ClientMsg, DeniedReason, Feature } from "./protocol";
 import { Session, type Outbox } from "./session";
 
 export type LiveStatus = "connecting" | "live" | "reconnecting" | "denied" | "closed";
@@ -29,6 +29,8 @@ export interface LiveOptions {
   key: string;
   /** Names this page load to the server; another one is made when none is given. */
   client?: string;
+  /** What this browser says in its join that it understands beyond what every version does (protocol.ts). */
+  features?: Feature[];
   outbox?: Outbox;
   onOutbox?(outbox: Outbox): void;
   prepareEdit?(design: Design): Promise<void>;
@@ -75,7 +77,12 @@ export class Live {
 
   constructor(private opts: LiveOptions) {
     const client = opts.outbox?.client ?? opts.client ?? newName();
-    this.session = new Session({ client, key: opts.key, send: (msg) => this.send(msg), outbox: opts.outbox, onOutbox: opts.onOutbox });
+    this.session = new Session({ client, key: opts.key, send: (msg) => this.send(msg), outbox: opts.outbox, onOutbox: opts.onOutbox, features: opts.features });
+  }
+
+  /** Whether comments are shared with this server (`Session.sharesComments`): false until the welcome says so. */
+  get sharesComments(): boolean {
+    return this.session.sharesComments;
   }
 
   /** The design to show: what the server has confirmed with this person's unconfirmed changes on top. */

@@ -15,6 +15,7 @@ import { Workspace } from "./canvas/Workspace";
 import { DialogHost } from "./dialogs/DialogHost";
 import { installHotkeys } from "./hotkeys";
 import { connectLive } from "./live/connection";
+import { CommentsAnnouncer, CommentsPanel } from "./comments/CommentsPanel";
 import { GridView } from "./pages/GridView";
 import { PageStrip } from "./pages/PageStrip";
 import { LeftRail } from "./panels/LeftRail";
@@ -244,8 +245,10 @@ export function Editor({ designId }: { designId: string }) {
             {notesOpen && !gridView ? <NotesPanel /> : null}
             {showPageStrip && !gridView ? <PageStrip /> : null}
             <BottomBar />
+            <CommentsPanel />
           </main>
         </div>
+        <CommentsAnnouncer />
       </div>
       {presenting ? <PresentMode /> : null}
       <DialogHost />

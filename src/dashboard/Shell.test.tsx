@@ -330,6 +330,22 @@ describe("<Shell>", () => {
         expect(JSON.stringify(await getDesign(imported.id))).not.toContain("tracker.example");
       });
 
+      it("says when comments of the file could not be read, and keeps those that could", async () => {
+        const user = userEvent.setup();
+        const page = createPage({ id: "p" });
+        const good = { id: "c_ok", pageId: "p", anchor: { x: 1, y: 2 }, author: { name: "Ann", colorIndex: 1 }, createdAt: 1, text: "Keep me", resolved: false, replies: [] };
+        const design = {
+          ...createDesign({ width: 800, height: 600, title: "Noted", pages: [page] }),
+          comments: [good, { ...good, id: "c bad" }, { ...good, id: "c_gone", pageId: "gone" }],
+        };
+        stubFilePicker([new File([serializeProjectFile(buildProjectFile(design, {}))], "noted.craftly", { type: "application/json" })]);
+        mountShell();
+        await chooseImport(user);
+        expect(await screen.findByText("Imported “Noted”. 2 comments in the file could not be read and were left out.")).toBeTruthy();
+        const [imported] = await listDesigns();
+        expect((await getDesign(imported.id))?.comments?.map((c) => c.id)).toEqual(["c_ok"]);
+      });
+
       it("says how many items of the file were left out", async () => {
         const user = userEvent.setup();
         const design = createDesign({ width: 800, height: 600, title: "Patchy", pages: [createPage({ elements: [createShape("rect")] })] });

@@ -69,6 +69,7 @@ const GROUPS: Group[] = [
       { label: "Circle", keys: ["C"] },
       { label: "Line", keys: ["L"] },
       { label: "Path with the Pen (points and curves)", keys: ["P"] },
+      { label: "Comment: click the page to pin a note there", keys: ["M"] },
     ],
   },
   {

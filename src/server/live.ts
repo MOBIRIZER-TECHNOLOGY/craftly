@@ -27,7 +27,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
-import { checkDesign, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
+import { checkDesign, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
 import { Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
 import { clientAddress, hourlyLimit } from "./address";
@@ -972,7 +972,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           clearTimeout(silent);
           if (now() - l.usedAt >= noteUseEvery) noteUse(l);
         }
-        for (const old of l.room.join(peer, msg.client, role)) {
+        // what the browser understands beyond what every version does (a join from before features names none)
+        for (const old of l.room.join(peer, msg.client, role, joinFeatures(msg))) {
           const other = peerSockets.get(old);
           if (other && other !== ws) other.close(4000, "replaced");
         }

@@ -8,10 +8,11 @@
  * What the server says is not taken for granted: a link names the server and anybody can make a link. Every message is read with
  * `parseServerMsg` before any of it is used, and the first that cannot be used ends the session.
  */
+import { withoutComments } from "@/core/comments";
 import type { Design } from "@/core/types";
-import { applyOps, diffDesign, type Op } from "./ops";
+import { applyOps, diffDesign, isCommentOp, type Op } from "./ops";
 import type { PresenceHeard } from "./presence";
-import { checkSets, parseServerMsg, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "./protocol";
+import { checkSets, COMMENTS, parseServerMsg, type ClientMsg, type DeniedReason, type Feature, type Role, type ServerMsg } from "./protocol";
 
 export type SessionStatus = "offline" | "joining" | "live" | "ended";
 
@@ -23,6 +24,8 @@ export interface SessionOptions {
   send(msg: ClientMsg): void;
   outbox?: Outbox;
   onOutbox?(outbox: Outbox): void;
+  /** What this browser says in its join that it understands (protocol.ts); none is a browser that shares only what every version does. */
+  features?: Feature[];
 }
 
 /** What a message from the server means to whoever shows the design. */
@@ -62,6 +65,12 @@ export class Session {
   /** The number the server gave this connection, under which the others hear of this person; null without a connection, and with a server that gives none. */
   peer: number | null = null;
   rev = 0;
+  /**
+   * Whether comments are shared with this server: this browser said in its join that it understands them and the welcome said
+   * that the server supports them. Until then, and with a server from before comments, they are this person's own: none is sent
+   * (the operations are taken out of every batch) and none that the server holds is shown (docs/COLLABORATION.md, "Comments").
+   */
+  sharesComments = false;
   /** The design as the server has it, as far as this browser has heard. */
   server: Design | null = null;
   private queue: Batch[] = [];
@@ -130,7 +139,18 @@ export class Session {
   open(): void {
     if (this.status === "ended") return;
     this.status = "joining";
-    this.opts.send({ t: "join", client: this.opts.client, key: this.opts.key });
+    this.join();
+  }
+
+  /** Asks for the design, saying what this browser understands when it understands more than every version does. */
+  private join(): void {
+    const features = this.opts.features ?? [];
+    this.opts.send(features.length ? { t: "join", client: this.opts.client, key: this.opts.key, features } : { t: "join", client: this.opts.client, key: this.opts.key });
+  }
+
+  /** What of a batch goes to this server: without the comment operations when it does not share comments. */
+  private forServer(ops: Op[]): Op[] {
+    return this.sharesComments ? ops : ops.filter((op) => !isCommentOp(op));
   }
 
   /** The connection is gone; whatever was not confirmed is kept and sent again when there is another. */
@@ -142,7 +162,9 @@ export class Session {
   /** A change this person made, as the design before and after it: queued, and sent when there is a connection. */
   edit(before: Design, after: Design): void {
     if (this.status === "ended" || this.role === "view") return;
-    const ops = diffDesign(before, after);
+    // (before the first welcome it is not known whether comments are shared: they wait with the rest, and the welcome decides)
+    const all = diffDesign(before, after);
+    const ops = this.status === "live" ? this.forServer(all) : all;
     if (!ops.length) return;
     const batch = { seq: this.nextSeq++, ops };
     this.queue.push(batch);
@@ -179,10 +201,12 @@ export class Session {
       case "ops": {
         if (msg.rev <= this.rev) return NOTHING; // heard already
         if (msg.rev !== this.rev + 1) return this.resync(); // one was missed
-        const next = applyOps(this.server, msg.ops);
+        // (comments that this browser did not agree to share with this server are not taken from it either)
+        const ops = this.forServer(msg.ops);
+        const next = applyOps(this.server, ops);
         // each operation has the form it should (parseServerMsg); what they leave of the elements they changed is asked here,
         // as the server asks it of a batch: a server that sends `x: "a"` for a shape is not a Craftly server
-        if (checkSets(this.server, next, msg.ops)) return this.refuse();
+        if (checkSets(this.server, next, ops)) return this.refuse();
         this.server = next;
         this.rev = msg.rev;
         this.shown = null;
@@ -194,7 +218,11 @@ export class Session {
   private welcome(msg: Extract<ServerMsg, { t: "welcome" }>): Outcome {
     this.role = msg.role;
     this.peer = msg.peer ?? null;
-    this.server = msg.design;
+    this.sharesComments = (this.opts.features ?? []).includes(COMMENTS) && (msg.features ?? []).includes(COMMENTS);
+    // A server that does not share comments may still hold some, from the design that made its room: they are frozen there, and
+    // are not shown. What this browser made of comments while it waited stays on its own copy, and is not sent.
+    this.server = this.sharesComments ? msg.design : withoutComments(msg.design);
+    if (!this.sharesComments) this.queue = this.queue.map((b) => ({ seq: b.seq, ops: this.forServer(b.ops) })).filter((b) => b.ops.length > 0);
     this.rev = msg.rev;
     this.status = "live";
     // What the server has already applied is in the design it sent; the rest goes again, in order. The server counts this client
@@ -239,13 +267,17 @@ export class Session {
   /** Something does not add up: ask for the design again. */
   private resync(): Outcome {
     this.status = "joining";
-    this.opts.send({ t: "join", client: this.opts.client, key: this.opts.key });
+    this.join();
     return NOTHING;
   }
 }
 
-/** The shared parts of `shared` laid over a design of this person's own library: the same design when they are the same already. */
-export function withShared(local: Design, shared: Design): Design {
+/**
+ * The shared parts of `shared` laid over a design of this person's own library: the same design when they are the same already.
+ * `comments`: whether the comments are shared with this server (`Session.sharesComments`); when they are not, this person's own
+ * comments stay as they are.
+ */
+export function withShared(local: Design, shared: Design, comments = false): Design {
   if (
     local.pages === shared.pages &&
     local.title === shared.title &&
@@ -253,10 +285,12 @@ export function withShared(local: Design, shared: Design): Design {
     local.height === shared.height &&
     local.unit === shared.unit &&
     local.typeId === shared.typeId &&
-    local.guides === shared.guides
+    local.guides === shared.guides &&
+    (!comments || local.comments === shared.comments)
   )
     return local;
-  const { guides: _guides, ...rest } = local;
+  const { guides: _guides, comments: own, ...rest } = local;
+  const kept = comments ? shared.comments : own;
   return {
     ...rest,
     title: shared.title,
@@ -266,5 +300,6 @@ export function withShared(local: Design, shared: Design): Design {
     unit: shared.unit,
     pages: shared.pages,
     ...(shared.guides ? { guides: shared.guides } : {}),
+    ...(kept ? { comments: kept } : {}),
   };
 }

@@ -27,6 +27,7 @@
 .cf-workspace--tool-shape,
 .cf-workspace--tool-line,
 .cf-workspace--tool-pen,
+.cf-workspace--tool-comment,
 .cf-workspace--tool-draw {
   cursor: crosshair;
 }

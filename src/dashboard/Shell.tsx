@@ -88,6 +88,8 @@ function importProject(): void {
         notes.push(`${report.skipped === 1 ? "1 item" : `${report.skipped} items`} in the file could not be read and ${report.skipped === 1 ? "was" : "were"} left out.`);
       if (report.remote)
         notes.push(`${report.remote === 1 ? "1 picture" : `${report.remote} pictures`} that pointed to the web ${report.remote === 1 ? "was" : "were"} taken out.`);
+      if (report.comments)
+        notes.push(`${report.comments === 1 ? "1 comment" : `${report.comments} comments`} in the file could not be read and ${report.comments === 1 ? "was" : "were"} left out.`);
       if (notes.length) toast.info(`Imported “${design.title}”. ${notes.join(" ")}`);
       else toast.success(`Imported “${design.title}”`);
       navigate(designPath(design.id));

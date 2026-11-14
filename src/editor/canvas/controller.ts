@@ -19,6 +19,7 @@ import { elementPath } from "@/core/penShape";
 import { stopPathEdit, startPathEdit, usePathEdit } from "./pathEditStore";
 import { cancelPen, finishPen, forgetPenCursor, hidePenCursor, penCursorShown, penDrag, penHover, penPress } from "./penTool";
 import { insertImageFiles, insertPayload, readDragPayload, DRAG_MIME } from "../insert";
+import { placeDraft } from "../comments/commentsStore";
 import { selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
 import { fingerSpan, pinchZoom, scrollToKeep } from "./pinch";
@@ -376,6 +377,13 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     if (s.mode === "view") return;
     if (s.tool === "pen") {
       startPen(e);
+      return;
+    }
+    if (s.tool === "comment") {
+      // a pin where the page was pressed, on the element there if there is one; its editor takes the keyboard (src/editor/comments)
+      e.preventDefault();
+      const at = toDesign(e);
+      placeDraft(s.design, s.activePageId, at, pick(at));
       return;
     }
     if (s.tool !== "select") {

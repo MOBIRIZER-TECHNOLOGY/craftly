@@ -464,6 +464,52 @@ export interface LiveLink {
   ownerKey?: string;
 }
 
+/**
+ * Who wrote a comment or a reply: the name they gave (plain text, shown as text) and the index of their colour in the fixed list of
+ * presence colours (src/editor/live/presence.ts). No colour itself is ever stored or sent, only its place in that list.
+ */
+export interface CommentAuthor {
+  name: string;
+  colorIndex: number;
+}
+
+/**
+ * Where the pin of a comment is, in design pixels from the corner of its page. With `elementId` the pin follows that element (at
+ * `dx`, `dy` from its corner); `x`, `y` is where it was last known to be, and is where it stays when the element is gone.
+ */
+export interface CommentAnchor {
+  x: number;
+  y: number;
+  elementId?: ID;
+  dx?: number;
+  dy?: number;
+}
+
+/** An answer in the thread of a comment. */
+export interface CommentReply {
+  id: ID;
+  author: CommentAuthor;
+  /** epoch ms */
+  createdAt: number;
+  /** epoch ms of the last change of the text, when it was changed */
+  editedAt?: number;
+  /** plain text, never markup (src/core/comments.ts has the limits) */
+  text: string;
+}
+
+/** A note pinned to a place of a page (docs/COLLABORATION.md, "Comments"). It is never drawn into the design or an export. */
+export interface DesignComment {
+  id: ID;
+  pageId: ID;
+  anchor: CommentAnchor;
+  author: CommentAuthor;
+  createdAt: number;
+  editedAt?: number;
+  text: string;
+  resolved: boolean;
+  replies: CommentReply[];
+}
+
 export interface Design {
   id: ID;
   title: string;
@@ -485,6 +531,8 @@ export interface Design {
   guides?: { vertical: number[]; horizontal: number[] };
   /** present while the design is shared with other people; see `LiveLink` */
   live?: LiveLink;
+  /** notes pinned to places of the pages; none is the same as an empty list (an older design has none) */
+  comments?: DesignComment[];
   /**
    * The format of this document (src/core/schema/design.ts): CURRENT_DESIGN_VERSION when this build wrote it. A design read
    * from storage or a file passes through `migrateDesign` first, so the editor only ever holds the current version.

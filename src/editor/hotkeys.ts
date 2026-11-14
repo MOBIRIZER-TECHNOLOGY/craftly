@@ -200,6 +200,10 @@ function onKeyDown(e: KeyboardEvent) {
     } else if (key === "p") {
       e.preventDefault();
       a.setTool("pen");
+    } else if (key === "m") {
+      // the Comment tool: a click on the page places a pin with a note (src/editor/comments)
+      e.preventDefault();
+      a.setTool("comment");
     } else if (e.key === "?") {
       a.openDialog("shortcuts");
     }

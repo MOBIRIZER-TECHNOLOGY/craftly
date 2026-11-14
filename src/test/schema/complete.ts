@@ -281,6 +281,19 @@ export function completeDesign(): Complete<Design> {
     trashedAt: 1_700_000_900_000,
     guides: { vertical: [100, 960], horizontal: [200, 540] },
     live: { server: "https://live.example.test", room: "r_complete", key: "k_complete", role: "edit", ownerKey: "owner-key", viewKey: "v_complete" },
+    comments: [
+      {
+        id: "c_complete",
+        pageId: "p_1",
+        anchor: { x: 120, y: 80, elementId: "t1", dx: 12, dy: -4 },
+        author: { name: "Ann", colorIndex: 3 },
+        createdAt: 1_700_000_100_000,
+        editedAt: 1_700_000_200_000,
+        text: "Make the heading bigger",
+        resolved: true,
+        replies: [{ id: "r_complete", author: { name: "Bob", colorIndex: 7 }, createdAt: 1_700_000_300_000, editedAt: 1_700_000_400_000, text: "Done" }],
+      },
+    ],
     version: 1,
   };
 }

@@ -260,6 +260,23 @@ describe("duplicating", () => {
     expect((await getDesign(source.id))!.live).toEqual(live);
   });
 
+  it("keeps the comments, on the pages and elements of the copy (they are notes about the design)", async () => {
+    const author = { name: "Ann", colorIndex: 1 };
+    const pages = [createPage({ id: "page-1", elements: [createShape("rect", { id: "el-1" })] }), createPage({ id: "page-2" })];
+    const comments = [
+      { id: "c_on", pageId: "page-1", anchor: { x: 1, y: 2, elementId: "el-1", dx: 3, dy: 4 }, author, createdAt: 1, text: "On the box", resolved: false, replies: [] },
+      { id: "c_two", pageId: "page-2", anchor: { x: 5, y: 6 }, author, createdAt: 1, text: "Page two", resolved: true, replies: [] },
+    ];
+    const source = { ...make({ pages }), comments };
+    await saveDesign(source);
+    const copy = (await duplicateDesign(source.id))!;
+    expect(copy.comments!.map((c) => [c.text, c.pageId, c.anchor.elementId])).toEqual([
+      ["On the box", copy.pages[0].id, copy.pages[0].elements[0].id],
+      ["Page two", copy.pages[1].id, undefined],
+    ]);
+    expect((await getDesign(source.id))!.comments).toEqual(comments);
+  });
+
   it("answers null for a design that is not there", async () => {
     expect(await duplicateDesign("nope")).toBeNull();
     expect(await listDesigns()).toEqual([]);

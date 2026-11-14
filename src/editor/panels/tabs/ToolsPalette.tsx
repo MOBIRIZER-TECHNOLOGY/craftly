@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { useEditor, type ToolId } from "@/core/store";
-import { ColorPicker, ColorSwatch, IconBrush, IconButton, IconClose, IconPenTool, IconSelect, IconShapes, IconText, Popover, Slider, Tooltip, cx } from "@/ui";
+import { ColorPicker, ColorSwatch, IconBrush, IconButton, IconClose, IconComment, IconPenTool, IconSelect, IconShapes, IconText, Popover, Slider, Tooltip, cx } from "@/ui";
 import { autoDrawWidth, setDrawSettings, useDrawSettings } from "../shared/drawSettings";
 import { IconSlash } from "../shared/icons";
 import { ShapePreview } from "../shared/ShapePreview";
@@ -47,6 +47,8 @@ const TOOLS: ToolDef[] = [
   { id: "shape", label: "Shape", icon: <IconShapes />, tint: "var(--c-ink)", flyout: "shape" },
   { id: "line", label: "Line", shortcut: "L", icon: <IconSlash />, tint: "var(--c-blue)" },
   { id: "text", label: "Text", shortcut: "T", icon: <IconText />, tint: "var(--c-primary)" },
+  // a pin with a note where the page is clicked (src/editor/comments); last, so that the tools before it keep their places
+  { id: "comment", label: "Comment", shortcut: "M", icon: <IconComment />, tint: "var(--c-ink-2)" },
 ];
 
 /**

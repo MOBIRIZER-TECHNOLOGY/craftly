@@ -1,0 +1,289 @@
+/* Comments: the pins on the page, the editor of a new one, the Comments panel and the button of the top bar */
+
+/* the layer over the page takes no pointer events; its pins and the editor do */
+.cf-comments-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* A pin: a round button of 28 px (over the 24 px of WCAG 2.5.8) in the colour of its author, with its number in white (every
+   colour of the list is 4.5:1 or more under white), centred on its place */
+.cf-comment-pin {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--c-bg);
+  border-radius: var(--r-pill) var(--r-pill) var(--r-pill) var(--r-xs);
+  background: var(--cf-comment, var(--c-ink-2));
+  color: var(--c-ink-inverse);
+  box-shadow: var(--sh-2);
+  font: var(--fw-bold) var(--fs-sm) / 1 var(--font-ui);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.cf-comment-pin.is-resolved {
+  opacity: 0.75;
+}
+.cf-comment-pin:focus-visible {
+  outline: 2px solid var(--c-ring);
+  outline-offset: 2px;
+}
+.cf-comment-pin.is-highlighted {
+  box-shadow:
+    0 0 0 3px var(--c-bg),
+    0 0 0 6px var(--c-ring);
+}
+.cf-comment-pin--draft {
+  position: static;
+  transform: none;
+  pointer-events: none;
+}
+
+.cf-comment-draft {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  transform: translate(-14px, -14px);
+  pointer-events: auto;
+  z-index: 5;
+}
+.cf-comment-draft__box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  box-shadow: var(--sh-pop);
+}
+.cf-comment-draft__text,
+.cf-comment__input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font: var(--fw-regular) var(--fs-md) / 1.4 var(--font-ui);
+  resize: vertical;
+}
+.cf-comment-draft__text:focus-visible,
+.cf-comment__input:focus-visible {
+  outline: 2px solid var(--c-ring);
+  outline-offset: 1px;
+}
+.cf-comment-draft__actions,
+.cf-comment__form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* the panel lies over the right edge of the page area, below the top bar */
+.cf-comments-panel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: var(--z-toolbar);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: min(360px, calc(100% - 16px));
+  padding: 14px;
+  overflow: auto;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  box-shadow: var(--sh-pop);
+}
+.cf-comments-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cf-comments-panel__title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+}
+.cf-comments-panel__subtitle {
+  margin: 6px 0;
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+.cf-comments-panel__note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--c-warning-soft);
+  color: var(--c-ink);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.cf-comments-panel__hint,
+.cf-comments-panel__empty {
+  margin: 0;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.cf-comments-panel__filter {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.cf-comments-panel__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.cf-comments-panel__chip.is-on {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+  color: var(--c-primary-press);
+}
+.cf-comments-panel__chip:focus-within {
+  outline: 2px solid var(--c-ring);
+  outline-offset: 1px;
+}
+.cf-comments-panel__chip input {
+  margin: 0;
+}
+.cf-comments-panel__check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  font-size: var(--fs-sm);
+}
+.cf-comments-panel__threads,
+.cf-comment__replies {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cf-comment {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-sm);
+}
+.cf-comment:focus-visible,
+.cf-comment.is-highlighted {
+  outline: 2px solid var(--c-ring);
+  outline-offset: 1px;
+}
+.cf-comment.is-resolved {
+  background: var(--c-bg-subtle);
+}
+.cf-comment__title {
+  margin: 0;
+  color: var(--c-ink-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+.cf-comment__message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cf-comment__replies {
+  padding-left: 10px;
+  border-left: 2px solid var(--c-line);
+}
+.cf-comment__byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+}
+.cf-comment__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--cf-comment, var(--c-ink-2));
+}
+.cf-comment__time,
+.cf-comment__edited {
+  color: var(--c-ink-3);
+}
+.cf-comment__text {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cf-comment__actions,
+.cf-comment__own,
+.cf-comment__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.cf-comment__confirm span {
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+}
+.cf-comment__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* the number of open comments, on the button of the top bar */
+.cf-comments-button {
+  position: relative;
+}
+.cf-comments-button__badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: var(--r-pill);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font: var(--fw-bold) var(--fs-xs) / 16px var(--font-ui);
+  text-align: center;
+}
+
+@media (max-width: 899px) {
+  .cf-comments-panel {
+    top: auto;
+    left: 8px;
+    width: auto;
+    max-height: 70%;
+  }
+}

@@ -24,10 +24,11 @@
  * tells it the floor, and a session counts on from there, renumbering what it has made and never sent (session.ts). A client
  * that is in the room is never forgotten, so its numbers always mean what they meant when it was welcomed.
  */
+import { withoutComments } from "@/core/comments";
 import type { Design } from "@/core/types";
-import { applyOps } from "./ops";
+import { applyOps, isCommentOp, type Op } from "./ops";
 import { checkPresence, PRESENCE_STALE_MS, type PresenceState } from "./presence";
-import { canEdit, checkOps, checkSets, type ClientMsg, type Role, type ServerMsg } from "./protocol";
+import { canEdit, checkOps, checkSets, COMMENTS, type ClientMsg, type Role, type ServerMsg } from "./protocol";
 
 /** How long a client that is not in the room is remembered after it was last seen. */
 export const CLIENTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
@@ -62,6 +63,13 @@ interface Member {
   /** Where this person last said they are, and when; null until they say it. In memory only: it is never saved. */
   presence: PresenceState | null;
   heard: number;
+  /** Whether this browser said in its join that it understands comments: one that did not is sent nothing of them. */
+  comments: boolean;
+}
+
+/** What a browser said in its join that it understands (`joinFeatures` in protocol.ts reads it). */
+export interface JoinFeatures {
+  comments?: boolean;
 }
 
 export class Room {
@@ -146,7 +154,7 @@ export class Room {
    * back on another connection replaces the old one, which is no longer told anything; the peers that were replaced are returned so
    * that the host can close them.
    */
-  join(peer: Peer, client: string, role: Role): Peer[] {
+  join(peer: Peer, client: string, role: Role, features?: JoinFeatures): Peer[] {
     const replaced: Peer[] = [];
     for (const [other, member] of this.members) {
       if (member.client === client && other !== peer) {
@@ -154,12 +162,24 @@ export class Room {
         replaced.push(other);
       }
     }
-    // a connection that asks for the design again keeps its number and what it said about where it is
+    // a connection that asks for the design again keeps its number, what it said about where it is, and what it understands
     const had = this.members.get(peer);
-    const member: Member = { client, role, peer: had?.peer ?? ++this.numbered, presence: had?.presence ?? null, heard: had?.heard ?? 0 };
+    const comments = features ? features.comments === true : (had?.comments ?? false);
+    const member: Member = { client, role, peer: had?.peer ?? ++this.numbered, presence: had?.presence ?? null, heard: had?.heard ?? 0, comments };
     this.members.set(peer, member);
     if (this.lastSeq.has(client)) this.seen.set(client, this.now());
-    peer.send({ t: "welcome", role, rev: this.rev, lastSeq: this.lastOf(client), design: this.design, peer: member.peer });
+    // A browser that understands comments is told that they are shared here, and is sent them with the design. One that did not
+    // say so is from before comments: it is sent the design without them (it would keep a copy it can never bring up to date)
+    // and no comment operation later (`batch`), and is told of no feature, as a server from before features would tell it none.
+    const welcome: ServerMsg = {
+      t: "welcome",
+      role,
+      rev: this.rev,
+      lastSeq: this.lastOf(client),
+      design: comments ? this.design : withoutComments(this.design),
+      peer: member.peer,
+    };
+    peer.send(comments ? { ...welcome, features: [COMMENTS] } : welcome);
     // where the others are, as each last said it: without this a newcomer would see nobody until they move
     const at = this.now();
     for (const other of this.members.values()) {
@@ -223,7 +243,7 @@ export class Room {
     if (msg.t === "ping") peer.send({ t: "pong" });
     else if (msg.t === "ops") return this.batch(peer, member, msg.seq, msg.ops);
     else if (msg.t === "presence") this.present(peer, member, msg);
-    else if (msg.t === "join") this.join(peer, member.client, member.role); // a client that wants the design again
+    else if (msg.t === "join") this.join(peer, member.client, member.role); // a client that wants the design again (what it understands is kept)
   }
 
   private batch(peer: Peer, member: Member, seq: number, raw: unknown): void | Promise<void> {
@@ -252,7 +272,13 @@ export class Room {
       this.seen = kept.seen;
       this.floor = kept.floor;
       peer.send({ t: "ack", seq, rev: this.rev });
-      for (const other of this.members.keys()) if (other !== peer) other.send({ t: "ops", rev: this.rev, ops });
+      // A browser from before comments takes a kind of operation it does not know for a server that cannot be trusted, and ends its
+      // session: it is sent the batch without them. It is still sent the batch, empty if need be, so that its revision moves on.
+      let withoutTheirs: Op[] | null = null;
+      for (const [other, them] of this.members) {
+        if (other === peer) continue;
+        other.send({ t: "ops", rev: this.rev, ops: them.comments ? ops : (withoutTheirs ??= ops.filter((op) => !isCommentOp(op))) });
+      }
       this.onChange?.(this);
     };
     if (this.commit) return this.commit(next, this.rev + 1, Object.fromEntries(kept.seqs), { seen: Object.fromEntries(kept.seen), floor: kept.floor }).then(publish);

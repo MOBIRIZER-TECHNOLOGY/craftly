@@ -5,7 +5,8 @@
  */
 import { rememberServer } from "./knownServers";
 import { Live, type LiveStatus, type SocketLike } from "@/collab/live";
-import { checkOps, type DeniedReason, type Role } from "@/collab/protocol";
+import { checkOps, COMMENTS, type DeniedReason, type Role } from "@/collab/protocol";
+import { announceArrivals, useComments } from "../comments/commentsStore";
 import type { Outbox } from "@/collab/session";
 import { uid } from "@/core/ids";
 import { saveDesign } from "@/core/library";
@@ -193,6 +194,8 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     url: websocketUrl(link),
     key: link.key,
     createSocket: env.createSocket,
+    // this browser understands comments: a server that shares them says so in its welcome (docs/COLLABORATION.md, "Comments")
+    features: [COMMENTS],
     outbox,
     onOutbox(outbox) {
       mark(outbox.queue.length ? outbox.client : null);
@@ -224,8 +227,11 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       // Someone else may have deleted the text this person is typing in. The editing box then closes, and without a word the next
       // keys would land on the canvas as shortcuts with nothing to say why.
       const typingIn = useEditor.getState().editingTextId;
+      const before = useEditor.getState().design;
       actions().applyShared(shared);
       if (typingIn && !useEditor.getState().editingTextId) toast.info("Someone else deleted the text you were editing.");
+      // a comment or reply of somebody else is said to a screen reader, once (src/editor/comments/commentsStore.ts)
+      if (live.sharesComments) announceArrivals(before, useEditor.getState().design);
       if (collectAssetIds(shared).length)
         void media.download(shared).catch((error: unknown) => showMediaError(error instanceof Error ? error.message : "Could not load shared images."));
     },
@@ -235,6 +241,8 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
         actions().setMode("view");
       }
       useLiveStatus.setState({ status, reason, role: live.session.role });
+      // what the welcome said of comments; while the connection is away it stays what it was
+      if (status === "live") useComments.setState({ sharing: live.sharesComments ? "shared" : "unsupported" });
       presenceOff();
       const me = live.peer;
       if (me !== null) stopPresence = startPresence((state) => live.present(state), me);
@@ -260,6 +268,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     // a text box that somebody else is typing in is not opened here (the store asks before it opens one), and the person is told who has it
     textHolder: (id) => typingIn(id)?.name ?? null,
     textRefused: (_id, holder) => void toast.info(`${holder} is typing in this text. You can type in it when they are done.`),
+    sharesComments: () => live.sharesComments,
   });
   live.start();
   return () => {
@@ -269,6 +278,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     actions().stopLive();
     if (looking) actions().setMode("edit");
     useLiveStatus.setState(OFF);
+    useComments.setState({ sharing: "local" });
   };
 }
 
@@ -378,6 +388,8 @@ export function joinDesign(link: LiveLink, env: LiveEnv = {}): Promise<{ design:
       url: websocketUrl(link),
       key: link.key,
       createSocket: env.createSocket,
+      // the copy that is kept has the comments of a server that shares them, and none of one that does not
+      features: [COMMENTS],
       onChange: () => {
         const design = live.design;
         const role = live.session.role;

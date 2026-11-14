@@ -9,6 +9,7 @@ import { usePreview } from "./preview";
 import { Guides, Rulers } from "./Rulers";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { PresenceOverlay } from "../live/PresenceOverlay";
+import { CommentsOverlay } from "../comments/CommentsOverlay";
 import { layoutFor, screenToDesign, takeZoomAnchor, useView } from "./viewStore";
 import "./canvas.css";
 
@@ -118,6 +119,7 @@ export function Workspace({ children }: { children?: ReactNode }) {
             <PathEditOverlay />
             <TextEditorOverlay />
             <PresenceOverlay />
+            <CommentsOverlay />
           </div>
         </div>
       </div>

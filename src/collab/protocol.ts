@@ -16,6 +16,7 @@ import { isBlendMode } from "@/core/blend";
 import { isPlainColor } from "@/core/color";
 import { svgProblem } from "@/core/svgSafety";
 import type { Design, DesignElement } from "@/core/types";
+import { commentsProblem, isCommentId, readComment, readCommentPatch, readReply, readReplyPatch } from "@/core/comments";
 import { elementProblem } from "@/core/usableElement";
 import type { Op } from "./ops";
 import { parsePresence, type PresenceHeard, type PresenceSaid } from "./presence";
@@ -34,17 +35,29 @@ const DENIED_REASONS: ReadonlySet<string> = new Set<DeniedReason>(["no-access", 
 export const MAX_KEY_LENGTH = 200;
 
 /**
+ * What one end may say that it understands, beyond what every version does. `comments`: the comment operations (ops.ts) and a design
+ * with comments in a welcome. A browser lists what it understands in its join; a server answers in its welcome with those of them
+ * that it supports. Neither side sends the other anything of a feature the other did not name (docs/COLLABORATION.md, "Comments").
+ */
+export const COMMENTS = "comments";
+export const FEATURES = [COMMENTS] as const;
+export type Feature = (typeof FEATURES)[number];
+
+/**
  * `join` shows the key, in the first message of every connection and never in an address, which every server and proxy that it passes writes in a log.
+ * `features` says what this browser understands beyond what every version does; a browser from before features sends none.
  * `presence` says where this person is (presence.ts); it is passed on to the others and kept nowhere.
  */
-export type ClientMsg = { t: "join"; client: string; key: string } | { t: "ops"; seq: number; ops: Op[] } | { t: "ping" } | PresenceSaid;
+export type ClientMsg = { t: "join"; client: string; key: string; features?: Feature[] } | { t: "ops"; seq: number; ops: Op[] } | { t: "ping" } | PresenceSaid;
 
 /**
  * `peer` in a welcome is the number the server gave this connection, under which the others hear of this person. A server from
  * before there was presence sends none, and a browser then says nothing about where it is, to a server that would not pass it on.
+ * `features` are those of the join that the server supports; a server from before features sends none, and a browser then sends it
+ * nothing of any feature.
  */
 export type ServerMsg =
-  | { t: "welcome"; role: Role; rev: number; lastSeq: number; design: Design; peer?: number }
+  | { t: "welcome"; role: Role; rev: number; lastSeq: number; design: Design; peer?: number; features?: Feature[] }
   | { t: "ack"; seq: number; rev: number }
   | { t: "rejected"; seq: number; reason: string }
   | { t: "ops"; rev: number; ops: Op[] }
@@ -157,6 +170,67 @@ function checkElement(el: unknown, depth = 0): string | null {
   return null;
 }
 
+/** What a list of features may be, in a join or a welcome: a few short names. */
+const MAX_FEATURES = 16;
+const MAX_FEATURE_NAME = 40;
+const isFeatureList = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.length <= MAX_FEATURES && v.every((name) => typeof name === "string" && name.length > 0 && name.length <= MAX_FEATURE_NAME);
+
+/**
+ * What a browser said in its join that it understands (the server reads this; it is not checked otherwise, because a join from
+ * before features has none): comments only when `features` is a short list of short names with "comments" in it.
+ */
+export function joinFeatures(value: unknown): { comments: boolean } {
+  const features = isObject(value) ? value.features : undefined;
+  return { comments: isFeatureList(features) && features.includes(COMMENTS) };
+}
+
+/** The fields of each comment operation, and no other (the other operations are older and are not held to their fields). */
+const COMMENT_OP_FIELDS: Record<string, readonly string[]> = {
+  "comment.add": ["k", "comment", "index"],
+  "comment.set": ["k", "id", "set", "unset"],
+  "comment.del": ["k", "id"],
+  "reply.add": ["k", "comment", "reply", "index"],
+  "reply.set": ["k", "comment", "id", "set", "unset"],
+  "reply.del": ["k", "comment", "id"],
+};
+
+/** What is wrong with a comment operation, if anything: each touches one comment or reply by its id (src/core/comments.ts reads the rest). */
+function checkCommentOp(op: Record<string, unknown>): string | null {
+  const extra = Object.keys(op).find((key) => !COMMENT_OP_FIELDS[op.k as string].includes(key));
+  if (extra !== undefined) return `a field that this operation does not have (${extra.slice(0, 40)})`;
+  const removes = (): string | null =>
+    op.unset === undefined || (Array.isArray(op.unset) && op.unset.length === 1 && op.unset[0] === "editedAt") ? null : "only the time of an edit may be taken away";
+  switch (op.k) {
+    case "comment.add": {
+      if (!isIndex(op.index)) return "an addition needs an index";
+      const read = readComment(op.comment);
+      return typeof read === "string" ? read : null;
+    }
+    case "comment.set": {
+      if (!isCommentId(op.id)) return "a change needs the id of a comment";
+      if (op.set === undefined && op.unset === undefined) return "a change that changes nothing";
+      const read = op.set === undefined ? null : readCommentPatch(op.set);
+      return typeof read === "string" ? read : removes();
+    }
+    case "comment.del":
+      return isCommentId(op.id) ? null : "a deletion needs the id of a comment";
+    case "reply.add": {
+      if (!isCommentId(op.comment) || !isIndex(op.index)) return "a reply needs the id of its comment and an index";
+      const read = readReply(op.reply);
+      return typeof read === "string" ? read : null;
+    }
+    case "reply.set": {
+      if (!isCommentId(op.comment) || !isCommentId(op.id)) return "a change of a reply needs its id and that of its comment";
+      if (op.set === undefined && op.unset === undefined) return "a change that changes nothing";
+      const read = op.set === undefined ? null : readReplyPatch(op.set);
+      return typeof read === "string" ? read : removes();
+    }
+    default:
+      return isCommentId(op.comment) && isCommentId(op.id) ? null : "a deletion of a reply needs its id and that of its comment";
+  }
+}
+
 /** The operations, if every one of them has the form it should; otherwise what is wrong with the first that has not. */
 export function checkOps(value: unknown): Op[] | string {
   if (!Array.isArray(value)) return "a batch is a list of operations";
@@ -197,9 +271,10 @@ export function checkOps(value: unknown): Op[] | string {
         error = !isId(op.page) || !isId(op.id) ? "el.set needs a page and an id" : checkProps(op);
         break;
       default:
-        error = `unknown operation ${op.k.slice(0, 40)}`;
+        error = Object.hasOwn(COMMENT_OP_FIELDS, op.k) ? checkCommentOp(op) : `unknown operation ${op.k.slice(0, 40)}`;
     }
-    for (const part of [op.set, op.page, op.el]) error = error ?? (part === undefined ? null : checkValue(part, "", 0, budget));
+    // (a comment and a reply are read field by field above; they count towards what one batch may carry like everything else)
+    for (const part of [op.set, op.page, op.el, op.comment, op.reply]) error = error ?? (part === undefined ? null : checkValue(part, "", 0, budget));
     if (error) return `${op.k}: ${error}`;
   }
   return value as Op[];
@@ -280,6 +355,9 @@ export function checkDesign(value: unknown): string | null {
       if (error) return error;
     }
   }
+  // the comments, as strictly as a comment operation (src/core/comments.ts); a design from before comments has none
+  const comments = commentsProblem(value.comments);
+  if (comments) return comments;
   return checkValue(value, "", 0, { left: Infinity, depth: MAX_DESIGN_DEPTH });
 }
 
@@ -295,10 +373,14 @@ export function parseServerMsg(value: unknown): ServerMsg | string | null {
       if (value.role !== "edit" && value.role !== "view") return "welcome: the role is edit or view";
       if (!isCount(value.rev) || !isCount(value.lastSeq)) return "welcome: the revision and the last batch are counts";
       if (value.peer !== undefined && !isCount(value.peer)) return "welcome: the number of a connection is a count";
+      if (value.features !== undefined && !isFeatureList(value.features)) return "welcome: the features are a few short names";
       const problem = checkDesign(value.design);
       if (problem) return `welcome: ${problem}`;
-      const welcome: ServerMsg = { t: "welcome", role: value.role, rev: value.rev, lastSeq: value.lastSeq, design: value.design as Design };
-      return value.peer === undefined ? welcome : { ...welcome, peer: value.peer };
+      const welcome: Extract<ServerMsg, { t: "welcome" }> = { t: "welcome", role: value.role, rev: value.rev, lastSeq: value.lastSeq, design: value.design as Design };
+      if (value.peer !== undefined) welcome.peer = value.peer;
+      // (a newer server may name features that this version does not know: they are not kept)
+      if (value.features !== undefined) welcome.features = value.features.filter((name): name is Feature => (FEATURES as readonly string[]).includes(name));
+      return welcome;
     }
     case "presence": {
       const heard = parsePresence(value);

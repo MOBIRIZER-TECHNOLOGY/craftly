@@ -61,6 +61,27 @@ describe("exportWebPage", () => {
     expect(doc.querySelector(".slide")?.getAttribute("aria-label")).toBe("Page 1 of 3: Starters");
   });
 
+  it("never has the comments of the design in it, also with the presenter notes", async () => {
+    const design = designOf();
+    const noted: Design = {
+      ...design,
+      comments: [
+        {
+          id: "c",
+          pageId: design.pages[0].id,
+          anchor: { x: 1, y: 1 },
+          author: { name: "Ann", colorIndex: 0 },
+          createdAt: 1,
+          text: "A private remark",
+          resolved: false,
+          replies: [],
+        },
+      ],
+    };
+    const file = await exportWebPage(noted, { pages: [0, 1, 2], notes: true });
+    expect(await file.blob.text()).not.toContain("private remark");
+  });
+
   it("leaves the presenter notes out unless they are asked for", async () => {
     const without = await exportWebPage(designOf(), { pages: [0, 1, 2], notes: false });
     expect(await without.blob.text()).not.toContain("secret");

@@ -23,7 +23,25 @@ import { createPage, cloneElement, createLine, DEFAULT_INK, solid } from "./fact
 import { boundsOfElements } from "./geometry";
 import { uid } from "./ids";
 import * as ops from "./ops";
-import type { Anchor, Design, DesignElement, ElementAnimation, Fill, ID, LiveLink, Page, PageTransition, Point, SizeUnit, TextElement, TextParagraph } from "./types";
+import { carryComments, cleanCommentText, COMMENT_COORD_MAX, MAX_COMMENTS, MAX_REPLIES, settleComments } from "./comments";
+import type {
+  Anchor,
+  CommentAnchor,
+  CommentAuthor,
+  Design,
+  DesignComment,
+  DesignElement,
+  ElementAnimation,
+  Fill,
+  ID,
+  LiveLink,
+  Page,
+  PageTransition,
+  Point,
+  SizeUnit,
+  TextElement,
+  TextParagraph,
+} from "./types";
 import { alignAnchor, measureTextElement } from "@/render/textLayout";
 import { onFontsChange } from "@/render/fonts";
 import { rotatePoint } from "./geometry";
@@ -46,7 +64,7 @@ export type ContextPanelState =
   | { kind: "data"; /** a table's cell to put the keyboard into, as a double click on the table asks for */ cell?: { row: number; col: number } }
   | { kind: "animate"; tab: "element" | "page" };
 
-export type ToolId = "select" | "text" | "shape" | "line" | "draw" | "pen" | "hand";
+export type ToolId = "select" | "text" | "shape" | "line" | "draw" | "pen" | "hand" | "comment";
 
 export type DialogName = "resize" | "shortcuts" | "findReplace" | "download" | "share" | "settings" | "versions" | "rename" | "newDesign" | "models";
 
@@ -117,6 +135,19 @@ export interface LiveBridge {
   textHolder?(id: ID): string | null;
   /** A text box was not opened for typing because `holder` is typing in it: where the person is told. */
   textRefused?(id: ID, holder: string): void;
+  /**
+   * Whether the comments are shared with the others (the server said so in its welcome). When they are not, or the connection does
+   * not say, what others did never replaces this person's own comments (docs/COLLABORATION.md, "Comments").
+   */
+  sharesComments?(): boolean;
+}
+
+/** What a new comment is made of; the id, the time and the state are the store's. */
+export interface NewComment {
+  pageId: ID;
+  anchor: CommentAnchor;
+  text: string;
+  author: CommentAuthor;
 }
 
 /** One step of this person's own work in a shared design, as operations: to do it again, and to take it back. */
@@ -241,6 +272,21 @@ export interface EditorActions {
   endTextEdit(): void;
   /** Who else is typing in this text box in a shared design, or null: such a box is not opened for typing here. */
   textHolder(id: ID): string | null;
+
+  /*
+   * comments (src/core/comments.ts): no steps of undo, alone or in a shared design, because they are what people said and in a
+   * shared design what others answered; undo of a step around them leaves them as they are. Nothing is done while the design is
+   * only looked at. Texts are cleaned to plain text first; a text that is empty then does nothing.
+   */
+  /** Pins a new comment: its id, or "" when nothing was added (an empty text, no such page, the most comments a design may hold). */
+  addComment(comment: NewComment): ID;
+  /** Answers a comment: the id of the reply, or "" when nothing was added. */
+  replyToComment(commentId: ID, text: string, author: CommentAuthor): ID;
+  /** Changes the text of a comment, or of one of its replies, and notes when. */
+  editComment(commentId: ID, text: string, replyId?: ID): void;
+  setCommentResolved(commentId: ID, resolved: boolean): void;
+  /** Deletes a comment with its thread, or one of its replies. */
+  deleteComment(commentId: ID, replyId?: ID): void;
 
   /* crop */
   startCrop(id: ID): void;
@@ -429,8 +475,8 @@ export const useEditor = create<EditorState>()((set, get) => {
     return fitZoomFor(design, viewport.w, viewport.h, mode, stripHeight());
   }
 
-  /** the single door for document changes */
-  function commit(recipe: (d: Draft<Design>) => void, opts: UpdateOptions = {}): boolean {
+  /** the single door for document changes; `history: false` is a change that is no step of undo (comments) */
+  function commit(recipe: (d: Draft<Design>) => void, opts: UpdateOptions & { history?: false } = {}): boolean {
     const s = get();
     if (!s.design || s.mode === "view") return false;
     const base = s.design;
@@ -446,12 +492,15 @@ export const useEditor = create<EditorState>()((set, get) => {
    * A change of the document that has been made: what the editor works out by itself (text boxes, attached lines), the history, and
    * the people who share the design. record: false leaves the history alone (undo and redo themselves).
    */
-  function settle(base: Design, produced: Design, opts: UpdateOptions & { record?: boolean } = {}): void {
+  function settle(base: Design, produced: Design, opts: UpdateOptions & { record?: boolean; history?: false } = {}): void {
     const s = get();
-    let next = reflowLines(normalizeTexts(produced, base), base);
+    // (the comments of a page that went go with it, and a pin on an element that went stays where the element was: src/core/comments.ts)
+    let next = settleComments(base, reflowLines(normalizeTexts(produced, base), base));
     next = produce(next, (d) => {
       d.updatedAt = Date.now();
     });
+    // a change of the comments is no step of undo (see `addComment`): it changes nothing of the history
+    const history = opts.history !== false;
 
     let past = s.past;
     let future = s.future;
@@ -463,13 +512,13 @@ export const useEditor = create<EditorState>()((set, get) => {
       const forward = diffDesign(base, next);
       if (forward.length) {
         told = true;
-        if (opts.record !== false) recordLive({ forward, inverse: diffDesign(next, base) }, opts);
+        if (opts.record !== false && history) recordLive({ forward, inverse: diffDesign(next, base) }, opts);
       }
       canUndo = liveUndo.length > 0;
       canRedo = liveRedo.length > 0;
     } else {
-      if (txnDepth > 0) {
-        // inside a transaction: history is handled by endTransaction
+      if (txnDepth > 0 || !history) {
+        // inside a transaction history is handled by endTransaction; a change of the comments makes none
       } else {
         const now = Date.now();
         const merge = opts.coalesce && lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.at < 1200;
@@ -538,6 +587,13 @@ export const useEditor = create<EditorState>()((set, get) => {
     return pageOf(s.design, s.activePageId);
   };
 
+  /**
+   * A change of the comments: told to the others like any change, and no step of undo. Undo of the steps around it leaves the
+   * comments alone (`carryComments`), and in a shared design undo is made of this person's steps as operations, of which a comment
+   * is none: taking back a comment would take the answers of others with it, and bringing one back would bring an old copy of them.
+   */
+  const commitComments = (recipe: (d: Draft<Design>) => void): boolean => commit(recipe, { history: false });
+
   const withActivePage = (fn: (page: Draft<Page>, d: Draft<Design>) => void, opts?: UpdateOptions) => {
     const id = get().activePageId;
     commit((d) => {
@@ -605,7 +661,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     applyShared(shared) {
       const s = get();
       if (!bridge || !s.design) return;
-      const merged = withShared(s.design, shared);
+      const merged = withShared(s.design, shared, bridge.sharesComments?.() ?? false);
       if (merged === s.design) return;
       // what is derived is worked out here and not sent: the sizes of texts and the lines that follow shapes
       const design = reflowLines(normalizeTexts(merged, s.design), null);
@@ -1130,12 +1186,67 @@ export const useEditor = create<EditorState>()((set, get) => {
       });
     },
 
+    /* ---------------- comments ---------------- */
+    addComment({ pageId, anchor, text, author }) {
+      const s = get();
+      const clean = cleanCommentText(text);
+      const list = s.design?.comments ?? [];
+      if (!clean || !pageOf(s.design, pageId) || list.length >= MAX_COMMENTS) return "";
+      const hold = (n: number) => Math.max(-COMMENT_COORD_MAX, Math.min(COMMENT_COORD_MAX, Number.isFinite(n) ? n : 0));
+      const at: CommentAnchor = { x: hold(anchor.x), y: hold(anchor.y) };
+      if (anchor.elementId !== undefined) Object.assign(at, { elementId: anchor.elementId, dx: hold(anchor.dx ?? 0), dy: hold(anchor.dy ?? 0) });
+      const comment: DesignComment = { id: uid("c"), pageId, anchor: at, author: { ...author }, createdAt: Date.now(), text: clean, resolved: false, replies: [] };
+      return commitComments((d) => {
+        d.comments = [...(d.comments ?? []), comment] as Draft<DesignComment>[];
+      })
+        ? comment.id
+        : "";
+    },
+    replyToComment(commentId, text, author) {
+      const clean = cleanCommentText(text);
+      const id = uid("r");
+      let added = false;
+      commitComments((d) => {
+        const c = d.comments?.find((x) => x.id === commentId);
+        if (!clean || !c || c.replies.length >= MAX_REPLIES) return;
+        c.replies.push({ id, author: { ...author }, createdAt: Date.now(), text: clean });
+        added = true;
+      });
+      return added ? id : "";
+    },
+    editComment(commentId, text, replyId) {
+      const clean = cleanCommentText(text);
+      if (!clean) return;
+      commitComments((d) => {
+        const c = d.comments?.find((x) => x.id === commentId);
+        const target = replyId === undefined ? c : c?.replies.find((r) => r.id === replyId);
+        if (!target || target.text === clean) return;
+        target.text = clean;
+        target.editedAt = Date.now();
+      });
+    },
+    setCommentResolved(commentId, resolved) {
+      commitComments((d) => {
+        const c = d.comments?.find((x) => x.id === commentId);
+        if (c) c.resolved = resolved;
+      });
+    },
+    deleteComment(commentId, replyId) {
+      commitComments((d) => {
+        const c = d.comments?.find((x) => x.id === commentId);
+        if (!c || !d.comments) return;
+        if (replyId === undefined) d.comments = d.comments.filter((x) => x.id !== commentId);
+        else if (c.replies.some((r) => r.id === replyId)) c.replies = c.replies.filter((r) => r.id !== replyId);
+      });
+    },
+
     /* ---------------- history ---------------- */
     undo() {
       const s = get();
       if (bridge) return txnDepth > 0 ? undefined : liveStep("undo");
       if (txnDepth > 0 || !s.past.length || !s.design) return;
-      const prev = s.past[s.past.length - 1];
+      // the comments are no step: they stay as they are now (those of a page that comes back with the step come back with it)
+      const prev = carryComments(s.design, s.past[s.past.length - 1]);
       const past = s.past.slice(0, -1);
       const future = [s.design, ...s.future].slice(0, HISTORY_LIMIT);
       lastCoalesce = null;
@@ -1158,7 +1269,7 @@ export const useEditor = create<EditorState>()((set, get) => {
       const s = get();
       if (bridge) return txnDepth > 0 ? undefined : liveStep("redo");
       if (txnDepth > 0 || !s.future.length || !s.design) return;
-      const next = s.future[0];
+      const next = carryComments(s.design, s.future[0]);
       const future = s.future.slice(1);
       const past = [...s.past, s.design];
       lastCoalesce = null;

@@ -163,6 +163,9 @@ export {
   Eye as IconEye,
   EyeOff as IconEyeOff,
 
+  /* ---- comments ---- */
+  MessageSquare as IconComment,
+
   /* ---- text formatting ---- */
   Bold as IconBold,
   Italic as IconItalic,

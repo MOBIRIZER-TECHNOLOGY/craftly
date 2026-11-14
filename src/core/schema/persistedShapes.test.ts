@@ -65,11 +65,51 @@ const LIVE_LINK = [
   "$.live: object",
 ];
 /**
+ * A design's `comments` (2026-11-14, src/core/comments.ts, docs/COLLABORATION.md "Comments"): notes pinned to places of the pages.
+ * Optional for good: an older design has none, which every reader takes as an empty list, and an older release that reads a design
+ * with them keeps the field as it is (a file's other fields pass through `portableDesign`) and draws nothing of it.
+ */
+const COMMENTS = [
+  "$.comments: array",
+  "$.comments[].anchor.dx: number",
+  "$.comments[].anchor.dy: number",
+  "$.comments[].anchor.elementId: string",
+  "$.comments[].anchor.x: number",
+  "$.comments[].anchor.y: number",
+  "$.comments[].anchor: object",
+  "$.comments[].author.colorIndex: number",
+  "$.comments[].author.name: string",
+  "$.comments[].author: object",
+  "$.comments[].createdAt: number",
+  "$.comments[].editedAt: number",
+  "$.comments[].id: string",
+  "$.comments[].pageId: string",
+  "$.comments[].replies: array",
+  "$.comments[].replies[].author.colorIndex: number",
+  "$.comments[].replies[].author.name: string",
+  "$.comments[].replies[].author: object",
+  "$.comments[].replies[].createdAt: number",
+  "$.comments[].replies[].editedAt: number",
+  "$.comments[].replies[].id: string",
+  "$.comments[].replies[].text: string",
+  "$.comments[].replies[]: object",
+  "$.comments[].resolved: boolean",
+  "$.comments[].text: string",
+  "$.comments[]: object",
+];
+/**
  * A summary's `revision` (2026-11-10, src/core/library.ts): a new one with every write of the design, so that a tab that holds an
  * older copy does not write over a newer one. Optional for good: a summary stored before it has none, which is read as `null`.
  */
 const REVISION = ["$.revision: string"];
-const ADDED: Record<string, string[]> = { design: [...LIVE_LINK, ...BLEND, ...LINE_ATTACHMENTS], summary: REVISION, folder: [], brandKit: [], version: [], upload: [] };
+const ADDED: Record<string, string[]> = {
+  design: [...COMMENTS, ...LIVE_LINK, ...BLEND, ...LINE_ATTACHMENTS],
+  summary: REVISION,
+  folder: [],
+  brandKit: [],
+  version: [],
+  upload: [],
+};
 const DROPPED: Record<string, string[]> = { design: [], summary: [], folder: [], brandKit: [], version: [], upload: [] };
 
 const WHAT_NEXT =

@@ -12,7 +12,8 @@
  * Only what the people share is sent: the title, size and unit of the design, its guides, its pages and their elements. The
  * id, the dates, the folder, the star and the trash of a design belong to each person's own library.
  */
-import type { Design, DesignElement, GroupElement, ID, Page } from "@/core/types";
+import { MAX_COMMENTS, MAX_REPLIES, type CommentPatch, type ReplyPatch } from "@/core/comments";
+import type { CommentReply, Design, DesignComment, DesignElement, GroupElement, ID, Page } from "@/core/types";
 
 export type Props = Record<string, unknown>;
 
@@ -29,7 +30,27 @@ export type Op =
   | { k: "el.add"; page: ID; parent: ID | null; index: number; el: DesignElement }
   | { k: "el.del"; page: ID; id: ID }
   | { k: "el.move"; page: ID; id: ID; parent: ID | null; index: number }
-  | { k: "el.set"; page: ID; id: ID; set?: Props; unset?: string[] };
+  | { k: "el.set"; page: ID; id: ID; set?: Props; unset?: string[] }
+  | CommentOp;
+
+/**
+ * The operations of comments (docs/COLLABORATION.md, "Comments"). Each touches one comment or one reply, named by its id, so that two
+ * people who comment, answer or resolve at the same moment never take each other's words away. They are sent only to a server that
+ * said in its welcome that it shares comments, and passed on only to browsers that said in their join that they understand them:
+ * a browser from before comments ends its session at a kind of operation it does not know.
+ */
+export type CommentOp =
+  | { k: "comment.add"; comment: DesignComment; index: number }
+  | { k: "comment.set"; id: ID; set?: CommentPatch; unset?: "editedAt"[] }
+  | { k: "comment.del"; id: ID }
+  | { k: "reply.add"; comment: ID; reply: CommentReply; index: number }
+  | { k: "reply.set"; comment: ID; id: ID; set?: ReplyPatch; unset?: "editedAt"[] }
+  | { k: "reply.del"; comment: ID; id: ID };
+
+const COMMENT_KINDS: ReadonlySet<string> = new Set(["comment.add", "comment.set", "comment.del", "reply.add", "reply.set", "reply.del"]);
+
+/** Whether an operation is one of comments, which only those who share comments are sent. */
+export const isCommentOp = (op: Op): op is CommentOp => COMMENT_KINDS.has(op.k);
 
 /** What an element or a page is, which no operation changes. */
 const ELEMENT_FIXED: ReadonlySet<string> = new Set(["id", "type", "children"]);
@@ -60,6 +81,8 @@ export function jsonEqual(a: unknown, b: unknown): boolean {
 export function syncedView(d: Design): Props {
   const view: Props = { title: d.title, typeId: d.typeId, width: d.width, height: d.height, unit: d.unit, pages: d.pages };
   if (d.guides !== undefined) view.guides = d.guides;
+  // (no comments and an empty list are the same thing)
+  if (d.comments?.length) view.comments = d.comments;
   return view;
 }
 
@@ -152,7 +175,69 @@ function diffElements(out: Pieces, page: ID, parent: ID | null, prev: readonly D
   );
 }
 
-/** The operations that take a copy of `prev` to `next`: deletions first, then changes, then moves, then additions. */
+/** What a change of a comment may change, and of a reply; everything else of them is fixed once they are made. */
+const COMMENT_FIELDS = ["text", "editedAt", "resolved", "anchor"] as const;
+const REPLY_FIELDS = ["text", "editedAt"] as const;
+const COMMENT_SETTABLE: ReadonlySet<string> = new Set(COMMENT_FIELDS);
+const REPLY_SETTABLE: ReadonlySet<string> = new Set(REPLY_FIELDS);
+
+/**
+ * The difference between two lists of things with ids that are never reordered (comments, the replies of one): what went, what
+ * changed, and what came, each addition at its final index. `change` gives the operations for one that is in both.
+ */
+function diffAppendOnly<T extends { id: ID }>(
+  prev: readonly T[],
+  next: readonly T[],
+  del: (id: ID) => Op,
+  add: (item: T, index: number) => Op,
+  change: (was: T, now: T) => Op[],
+): Op[] {
+  if (prev === next) return [];
+  const before = new Map(prev.map((x) => [x.id, x]));
+  const after = new Set(next.map((x) => x.id));
+  const dels = prev.filter((x) => !after.has(x.id)).map((x) => del(x.id));
+  const sets: Op[] = [];
+  const adds: Op[] = [];
+  next.forEach((now, index) => {
+    const was = before.get(now.id);
+    if (!was) adds.push(add(now, index));
+    else if (was !== now) sets.push(...change(was, now));
+  });
+  return [...dels, ...sets, ...adds];
+}
+
+/** The operations of comments that take `prev` to `next`: one for each comment or reply that went, changed or came. */
+function diffComments(prev: readonly DesignComment[], next: readonly DesignComment[]): Op[] {
+  return diffAppendOnly(
+    prev,
+    next,
+    (id) => ({ k: "comment.del", id }),
+    (comment, index) => ({ k: "comment.add", comment, index }),
+    (was, now) => {
+      const out: Op[] = [];
+      const props = diffProps(was as unknown as Props, now as unknown as Props, COMMENT_FIELDS);
+      if (props) out.push({ k: "comment.set", id: now.id, ...(props as { set?: CommentPatch; unset?: "editedAt"[] }) });
+      out.push(
+        ...diffAppendOnly(
+          was.replies,
+          now.replies,
+          (id) => ({ k: "reply.del", comment: now.id, id }),
+          (reply, index) => ({ k: "reply.add", comment: now.id, reply, index }),
+          (a, b) => {
+            const changed = diffProps(a as unknown as Props, b as unknown as Props, REPLY_FIELDS);
+            return changed ? [{ k: "reply.set", comment: now.id, id: b.id, ...(changed as { set?: ReplyPatch; unset?: "editedAt"[] }) }] : [];
+          },
+        ),
+      );
+      return out;
+    },
+  );
+}
+
+/**
+ * The operations that take a copy of `prev` to `next`: deletions first, then changes, then moves, then additions; the comments
+ * last, so that a page that comes back is there before the comments on it.
+ */
 export function diffDesign(prev: Design, next: Design): Op[] {
   if (prev === next) return [];
   const out: Pieces = { del: [], set: [], move: [], add: [] };
@@ -176,7 +261,7 @@ export function diffDesign(prev: Design, next: Design): Op[] {
       () => true,
     );
   }
-  return [...out.del, ...out.set, ...out.move, ...out.add];
+  return [...out.del, ...out.set, ...out.move, ...out.add, ...diffComments(prev.comments ?? [], next.comments ?? [])];
 }
 
 /* ---------------- replaying operations ---------------- */
@@ -340,7 +425,10 @@ function step(d: Design, op: Op, used?: IdCounts): Design {
       if (d.pages.length < 2 || !d.pages.some((p) => p.id === op.id)) return d;
       // (every page of that id goes, should a design have come with two)
       if (used) for (const p of d.pages) if (p.id === op.id) freed(used, [p.id, ...idList(p.elements)]);
-      return { ...d, pages: d.pages.filter((p) => p.id !== op.id) };
+      const out = { ...d, pages: d.pages.filter((p) => p.id !== op.id) };
+      // the comments of a page go with it, on every copy alike (a browser that knows no comments has none to take)
+      if (d.comments?.some((c) => c.pageId === op.id)) out.comments = d.comments.filter((c) => c.pageId !== op.id);
+      return out;
     }
     case "page.move": {
       const from = d.pages.findIndex((p) => p.id === op.id);
@@ -382,7 +470,62 @@ function step(d: Design, op: Op, used?: IdCounts): Design {
       });
     case "el.set":
       return inElements(d, op.page, (list) => edit(list, op.id, (el) => withProps(el, op.set, op.unset, ELEMENT_FIXED)));
+    case "comment.add": {
+      const list = d.comments ?? [];
+      // a comment whose id is there already (the same batch twice), on a page that is not there, or one too many, is not added
+      if (list.length >= MAX_COMMENTS || list.some((c) => c.id === op.comment.id) || !d.pages.some((p) => p.id === op.comment.pageId)) return d;
+      return { ...d, comments: insertAt(list, op.index, op.comment) };
+    }
+    case "comment.set":
+      return inComment(d, op.id, (c) => withAllowed(c, op.set, op.unset, COMMENT_SETTABLE));
+    case "comment.del":
+      return d.comments?.some((c) => c.id === op.id) ? { ...d, comments: d.comments.filter((c) => c.id !== op.id) } : d;
+    case "reply.add":
+      return inComment(d, op.comment, (c) =>
+        c.replies.length >= MAX_REPLIES || c.replies.some((r) => r.id === op.reply.id) ? c : { ...c, replies: insertAt(c.replies, op.index, op.reply) },
+      );
+    case "reply.set":
+      return inComment(d, op.comment, (c) => {
+        const i = c.replies.findIndex((r) => r.id === op.id);
+        if (i < 0) return c;
+        const made = withAllowed(c.replies[i], op.set, op.unset, REPLY_SETTABLE);
+        if (made === c.replies[i]) return c;
+        const replies = c.replies.slice();
+        replies[i] = made;
+        return { ...c, replies };
+      });
+    case "reply.del":
+      return inComment(d, op.comment, (c) => (c.replies.some((r) => r.id === op.id) ? { ...c, replies: c.replies.filter((r) => r.id !== op.id) } : c));
   }
+}
+
+/** The design with the comment `id` replaced by what `fn` makes of it; the same design when there is none or nothing changes. */
+function inComment(d: Design, id: ID, fn: (c: DesignComment) => DesignComment): Design {
+  const list = d.comments;
+  const i = list ? list.findIndex((c) => c.id === id) : -1;
+  if (!list || i < 0) return d;
+  const made = fn(list[i]);
+  if (made === list[i]) return d;
+  const comments = list.slice();
+  comments[i] = made;
+  return { ...d, comments };
+}
+
+/** An object with those of `allowed` set and removed that the change names, and nothing else; the same object when nothing changes. */
+function withAllowed<T extends object>(obj: T, set: object | undefined, unset: readonly string[] | undefined, allowed: ReadonlySet<string>): T {
+  let out: Props | null = null;
+  const cur = obj as Props;
+  for (const [k, v] of Object.entries(set ?? {})) {
+    if (!allowed.has(k) || v === undefined || jsonEqual(cur[k], v)) continue;
+    (out ??= { ...cur })[k] = v;
+  }
+  // (of what may be set, only the time of an edit may also be absent: a comment always has its text, pin and state)
+  for (const k of unset ?? []) {
+    if (k !== "editedAt" || (out ?? cur)[k] === undefined) continue;
+    out ??= { ...cur };
+    delete out[k];
+  }
+  return (out ?? obj) as T;
 }
 
 /** Operations applied one after the other; the same design when none of them changes anything. */

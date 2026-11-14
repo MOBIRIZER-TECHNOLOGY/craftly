@@ -28,9 +28,9 @@ async function openPalette() {
 }
 
 describe("<ToolsPalette>", () => {
-  it("lists the six tools with the current one pressed", async () => {
+  it("lists the seven tools with the current one pressed (Comment, the newest, last)", async () => {
     await openPalette();
-    const names = ["Select", "Draw", "Pen", "Shape", "Line", "Text"];
+    const names = ["Select", "Draw", "Pen", "Shape", "Line", "Text", "Comment"];
     expect(
       within(screen.getByRole("toolbar", { name: "Tools" }))
         .getAllByRole("button")
@@ -73,8 +73,8 @@ describe("<ToolsPalette>", () => {
       fireEvent.keyDown(tool("Draw"), { key: "ArrowUp" });
       expect(document.activeElement).toBe(tool("Select"));
       fireEvent.keyDown(tool("Select"), { key: "ArrowUp" });
-      expect(document.activeElement).toBe(tool("Text"));
-      fireEvent.keyDown(tool("Text"), { key: "ArrowDown" });
+      expect(document.activeElement).toBe(tool("Comment"));
+      fireEvent.keyDown(tool("Comment"), { key: "ArrowDown" });
       expect(document.activeElement).toBe(tool("Select"));
     });
 

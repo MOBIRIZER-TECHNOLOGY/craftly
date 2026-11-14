@@ -10,6 +10,7 @@ import { pageDuration } from "@/core/animation";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
 import { createMigrator, MigrationError, type MigrationStep } from "@/core/schema/migrator";
 import { isUsableElement } from "@/core/usableElement";
+import { usableComments } from "@/core/comments";
 import { MAX_TRANSITION_DURATION } from "@/core/transition";
 import type { AnimDirection, Design, DesignElement, Fill, Page, PageTransition } from "@/core/types";
 
@@ -152,6 +153,8 @@ export interface ImportReport {
   skipped: number;
   /** pictures that pointed to the web and were taken out: a photo is an empty frame now, a fill or background plain (src/core/imageSources.ts) */
   remote?: number;
+  /** comments that could not be used (damaged, on a page that is not there, an id twice, too many: src/core/comments.ts) */
+  comments?: number;
 }
 
 /**
@@ -249,8 +252,12 @@ function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false
     };
   });
   const now = Date.now();
+  // the comments, checked as strictly as on the wire (src/core/comments.ts): what is not usable is left out and counted
+  const { comments: rawComments, ...rest } = raw;
+  const comments = usableComments(rawComments, new Set(pages.map((p) => p.id)), report);
   return {
-    ...portableDesign(raw as unknown as Design),
+    ...portableDesign(rest as unknown as Design),
+    ...(comments.length ? { comments } : {}),
     id: typeof raw.id === "string" && raw.id ? raw.id : `d_${now.toString(36)}`,
     title: typeof raw.title === "string" && raw.title.trim() ? raw.title.slice(0, MAX_TITLE_LENGTH) : "Untitled design",
     typeId: typeof raw.typeId === "string" ? raw.typeId : "custom",

@@ -28,6 +28,7 @@ import {
 } from "@/ui";
 import { FileMenu } from "./FileMenu";
 import { LivePeople } from "../live/LivePeople";
+import { CommentsButton } from "../comments/CommentsButton";
 import { LiveBadge } from "../live/LiveSection";
 import { SharePopover } from "./SharePopover";
 import { requestSave } from "./designActions";
@@ -306,6 +307,7 @@ export function TopBar() {
       <div className="cf-topbar__group cf-topbar__group--end">
         <LiveBadge />
         <LivePeople />
+        <CommentsButton />
         <PresentButton />
         <SharePopover />
       </div>
