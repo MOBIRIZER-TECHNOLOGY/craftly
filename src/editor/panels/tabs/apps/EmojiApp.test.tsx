@@ -188,7 +188,11 @@ describe("Emoji app", () => {
     it("adds a found emoji like any other", async () => {
       const user = await openEmoji();
       await user.type(screen.getByRole("searchbox", { name: "Search emoji" }), "heart");
-      await waitFor(() => expect(screen.queryByRole("heading", { name: "Smileys" })).toBeNull());
+      // The search waits a moment after the last key. On a busy machine the keys come slower than that, so the list is first
+      // shown for "h" and built again for each longer word: a click on a cell of one of those lists can land on a cell that is
+      // gone by the time it arrives, and nothing is added. So the wait is for the list of the whole word, not for any list.
+      const found = ALL_EMOJI.filter((e) => e.name.toLowerCase().includes("heart"));
+      await waitFor(() => expect(screen.getByRole("heading", { name: `${found.length} results` })).toBeTruthy());
       const before = pageElements().length;
       await user.click(within(screen.getByRole("heading", { level: 3 }).closest("section") as HTMLElement).getAllByRole("button")[0]);
       expect(pageElements()).toHaveLength(before + 1);

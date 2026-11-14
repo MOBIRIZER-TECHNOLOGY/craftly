@@ -76,7 +76,9 @@ describe("painting the page", () => {
     const canvas = canvasOf(rig);
     expect([canvas.width, canvas.height]).toEqual([2000, 1400]);
     expect([canvas.style.width, canvas.style.height]).toEqual(["1000px", "700px"]);
-    expect(ctx.callsTo("setTransform")).toContainEqual([2, 0, 0, 2, 144, 96]);
+    // `painted` is over with the first call to the canvas, which is the one that clears it; the page is placed a moment later
+    // (on a busy machine a noticeable moment), so the placing is waited for, as the text is in the first test
+    await waitFor(() => expect(ctx.callsTo("setTransform")).toContainEqual([2, 0, 0, 2, 144, 96]));
   });
 
   it("assumes one device pixel per pixel when the browser reports no ratio", async () => {

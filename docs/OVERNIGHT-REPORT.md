@@ -30,6 +30,40 @@ the day before: the geometry library loads on first use, and with every worker b
 seconds one test may take. Both files now load it before their tests, and the third run passed whole. The journeys ran before
 that last change, which touches two test files only.
 
+## Checked again on the morning of 2026-11-14
+
+After the branch was merged into `main`, everything was run again on `main`, with a freshly started dev server.
+
+| Check | Result |
+| --- | --- |
+| Types, lint, format | pass |
+| Build, `npm run server:smoke` | pass |
+| Browser journeys, dev server, Chrome | 234 of 234 |
+| Editing together, by hand as four people (below) | 22 of 22 steps |
+| Unit tests | **no clean full run this morning** (see below) |
+
+**The unit suite.** The first run of the morning passed 9,186 of 9,187. Every run after it failed in other places, and of those failures all but one were tests that ran out of their 30 seconds: the last run had 6 timeouts and no failed assertion. The laptop was running at about a quarter of its speed while the tests ran (Windows reported "% Processor Performance" of 24 to 27, with its own limit at 100, so the slowing came from the hardware; heat after a night of load is the likely cause, and the temperature could not be read without administrator rights). A suite that took 12 minutes in the night took 13, then 24, then longer. Two tests were found that could fail on a slow machine for a reason of their own, and were corrected:
+
+- `EmojiApp.test.tsx`, "adds a found emoji like any other": the search waits 100 ms after the last key, and when the keys came slower than that the test clicked a cell of the list for a half-typed word, which was replaced before the click arrived. It waits for the list of the whole word now. This test had failed once on each of the two days before.
+- `PageView.test.tsx`, "paints at the device pixel ratio": it waited for the first call to the canvas and then asked about the placing of the page, which comes a moment later. It waits for the placing now. Two agents had seen it fail once in the night.
+
+The last clean full run is the one of the night (9,187 of 9,187), on the same code but for these two tests. A full run on a machine at its normal speed is still owed.
+
+**Editing together, tried by hand as four people.** Four separate browser profiles against the real server: Ann and Bob with the edit link, Cat with the view link, Dev joining late. After every action the whole design of each person was compared with the others', and the screenshots of each window were looked at. All 22 steps passed, with no error in any console:
+
+- joining by the edit link and by the view link; adding boxes and a text; typing with the keyboard
+- two people changing different properties of one element at the same moment (both kept), and the same property (everybody ends with one value, the later one)
+- resizing while the other turns; deleting, undo of one's own change only
+- a second page, its background, and edits to two pages at once; grouping by one and moving the group by the other; the title
+- the viewer trying to change something (nothing changes for anybody)
+- pointers, names, selection outlines and the list of who is here
+- a text box that one person is typing in refused to the other, with a message, and opened once the first is done
+- 40 quick changes each from two people at once
+- the server stopped and started again in the middle, with edits made meanwhile
+- a reload, a fourth person joining late, and stopping to share
+
+Not shown by it: one person offline while the others stay connected (the tool that was to cut one person's network left the connection open, so that step proved nothing; reconnecting is shown by the restart of the server); more than four people; a slow network; a server on the internet. The loser of two changes to the same property at the same moment is not told.
+
 ## Part A: production readiness
 
 | # | Item | State | Commit |
