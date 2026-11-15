@@ -126,12 +126,13 @@ export class Room {
   /**
    * What the room remembers once the batch `seq` of `client` is applied: that number, and without the clients that have stayed
    * away for too long or are too many. Nothing of the room is changed here: the result is saved first and taken over after.
+   * `base` is what the room would remember before it: the room as it is, or as the batches before this one in a group leave it.
    */
-  private remember(client: string, seq: number): { seqs: Map<string, number>; seen: Map<string, number>; floor: number } {
+  private remember(client: string, seq: number, base: Memory): Memory {
     const at = this.now();
-    const seqs = new Map(this.lastSeq).set(client, seq);
-    const seen = new Map(this.seen).set(client, at);
-    let floor = this.floor;
+    const seqs = new Map(base.seqs).set(client, seq);
+    const seen = new Map(base.seen).set(client, at);
+    let floor = base.floor;
     const here = new Set<string>();
     for (const member of this.members.values()) here.add(member.client);
     const forget = (name: string) => {
@@ -241,47 +242,124 @@ export class Room {
     const member = this.members.get(peer);
     if (!member) return;
     if (msg.t === "ping") peer.send({ t: "pong" });
-    else if (msg.t === "ops") return this.batch(peer, member, msg.seq, msg.ops);
+    else if (msg.t === "ops") return this.receiveOps([{ peer, msg }]);
     else if (msg.t === "presence") this.present(peer, member, msg);
     else if (msg.t === "join") this.join(peer, member.client, member.role); // a client that wants the design again (what it understands is kept)
   }
 
-  private batch(peer: Peer, member: Member, seq: number, raw: unknown): void | Promise<void> {
-    if (!Number.isInteger(seq) || seq < 1) return void peer.send({ t: "rejected", seq: Number(seq) || 0, reason: "a batch needs a number" });
-    if (!canEdit(member.role)) return void peer.send({ t: "rejected", seq, reason: "this link is read-only" });
-    if (seq <= this.lastOf(member.client)) return void peer.send({ t: "ack", seq, rev: this.rev });
-    const ops = checkOps(raw);
-    if (typeof ops === "string") return void peer.send({ t: "rejected", seq, reason: ops });
-    const next = applyOps(this.design, ops);
-    // what the operations look like is fine; what they leave of the elements they changed is asked now that it is known
-    const spoiled = checkSets(this.design, next, ops);
-    if (spoiled) return void peer.send({ t: "rejected", seq, reason: spoiled });
-    const kept = this.remember(member.client, seq);
-    const publish = () => {
-      this.design = next;
-      this.rev++;
-      // A client that joined while the save ran was welcomed with the number the room had for it then. If this batch forgot it,
-      // it is kept after all: it is in the room now, and its numbers must go on meaning what its welcome said.
-      for (const { client } of this.members.values()) {
-        const last = this.lastSeq.get(client);
-        if (last === undefined || kept.seqs.has(client)) continue;
-        kept.seqs.set(client, last);
-        kept.seen.set(client, this.seen.get(client) as number);
+  /**
+   * GROUP COMMIT. Several batches, from one person or several, applied in the order given and saved with ONE write: the host hands
+   * over whatever arrived while the last write ran, so that a room under many edits writes once per write's time, not once per edit.
+   *
+   * Nothing changes about what anybody is told, or when. Each batch is applied on top of the ones before it in the group, the way it
+   * would have been on its own, and is checked against what they leave. The design they make together is saved, and only then is
+   * anything taken over or said: every batch's answer and its operations to the others go out after that save, in the order of the
+   * group, each with the revision it would have had alone. So nothing is acknowledged or passed on that is not on the disk.
+   *
+   * When the save fails, the room is as it was before the group, and every batch of the group that was to be applied is refused,
+   * and so is the repeat of one of them in the same group (its first copy was never kept). An answer that did not depend on the
+   * save (a refusal of a batch that was wrong, or the repeat of a batch saved before) is given either way. The error is thrown on.
+   */
+  receiveOps(items: readonly { peer: Peer; msg: Extract<ClientMsg, { t: "ops" }> }[]): void | Promise<void> {
+    let design = this.design;
+    let kept: Memory = { seqs: this.lastSeq, seen: this.seen, floor: this.floor };
+    // what each item is answered, in order: `saved` once the group is on the disk, `failed` if the save fails
+    const answers: { saved: () => void; failed: () => void }[] = [];
+    const applied: { peer: Peer; ops: Op[] }[] = [];
+    const either = (send: () => void) => answers.push({ saved: send, failed: send });
+    for (const { peer, msg } of items) {
+      const member = this.members.get(peer);
+      if (!member) continue; // went away before its turn: what it sent is not applied, as it would not have been alone
+      const seq = msg.seq;
+      const refuse = (reason: string) => either(() => peer.send({ t: "rejected", seq, reason }));
+      if (!Number.isInteger(seq) || seq < 1) {
+        either(() => peer.send({ t: "rejected", seq: Number(seq) || 0, reason: "a batch needs a number" }));
+        continue;
       }
-      this.lastSeq = kept.seqs;
-      this.seen = kept.seen;
-      this.floor = kept.floor;
-      peer.send({ t: "ack", seq, rev: this.rev });
-      // A browser from before comments takes a kind of operation it does not know for a server that cannot be trusted, and ends its
-      // session: it is sent the batch without them. It is still sent the batch, empty if need be, so that its revision moves on.
-      let withoutTheirs: Op[] | null = null;
-      for (const [other, them] of this.members) {
-        if (other === peer) continue;
-        other.send({ t: "ops", rev: this.rev, ops: them.comments ? ops : (withoutTheirs ??= ops.filter((op) => !isCommentOp(op))) });
+      if (!canEdit(member.role)) {
+        refuse("this link is read-only");
+        continue;
       }
-      this.onChange?.(this);
+      if (seq <= (kept.seqs.get(member.client) ?? kept.floor)) {
+        // a repeat: of a batch saved before (always so), or of one earlier in this group (only so if the group is saved)
+        const before = seq <= this.lastOf(member.client);
+        const rev = this.rev + applied.length;
+        answers.push({
+          saved: () => peer.send({ t: "ack", seq, rev }),
+          failed: () => peer.send(before ? { t: "ack", seq, rev: this.rev } : { t: "rejected", seq, reason: SAVE_FAILED }),
+        });
+        continue;
+      }
+      const ops = checkOps(msg.ops);
+      if (typeof ops === "string") {
+        refuse(ops);
+        continue;
+      }
+      const next = applyOps(design, ops);
+      // what the operations look like is fine; what they leave of the elements they changed is asked now that it is known
+      const spoiled = checkSets(design, next, ops);
+      if (spoiled) {
+        refuse(spoiled);
+        continue;
+      }
+      design = next;
+      kept = this.remember(member.client, seq, kept);
+      applied.push({ peer, ops });
+      const rev = this.rev + applied.length;
+      answers.push({ saved: () => this.publish(peer, seq, rev, ops), failed: () => peer.send({ t: "rejected", seq, reason: SAVE_FAILED }) });
+    }
+    const settle = (how: "saved" | "failed") => {
+      if (how === "saved" && applied.length) this.takeOver(design, kept);
+      for (const answer of answers) answer[how]();
     };
-    if (this.commit) return this.commit(next, this.rev + 1, Object.fromEntries(kept.seqs), { seen: Object.fromEntries(kept.seen), floor: kept.floor }).then(publish);
-    publish();
+    if (!applied.length || !this.commit) return settle("saved");
+    const memory = { seen: Object.fromEntries(kept.seen), floor: kept.floor };
+    return this.commit(design, this.rev + applied.length, Object.fromEntries(kept.seqs), memory).then(
+      () => settle("saved"),
+      (error: unknown) => {
+        settle("failed");
+        throw error;
+      },
+    );
   }
+
+  /** Takes over what a saved group made of the room: the design and what is remembered of the clients (the revision moves in `publish`). */
+  private takeOver(design: Design, kept: Memory): void {
+    this.design = design;
+    // A client that joined while the save ran was welcomed with the number the room had for it then. If this group forgot it,
+    // it is kept after all: it is in the room now, and its numbers must go on meaning what its welcome said.
+    for (const { client } of this.members.values()) {
+      const last = this.lastSeq.get(client);
+      if (last === undefined || kept.seqs.has(client)) continue;
+      kept.seqs.set(client, last);
+      kept.seen.set(client, this.seen.get(client) as number);
+    }
+    this.lastSeq = kept.seqs;
+    this.seen = kept.seen;
+    this.floor = kept.floor;
+  }
+
+  /** Tells the sender that its batch is in, at `rev`, and passes the batch on to everybody else. */
+  private publish(peer: Peer, seq: number, rev: number, ops: Op[]): void {
+    this.rev = rev;
+    peer.send({ t: "ack", seq, rev });
+    // A browser from before comments takes a kind of operation it does not know for a server that cannot be trusted, and ends its
+    // session: it is sent the batch without them. It is still sent the batch, empty if need be, so that its revision moves on.
+    let withoutTheirs: Op[] | null = null;
+    for (const [other, them] of this.members) {
+      if (other === peer) continue;
+      other.send({ t: "ops", rev, ops: them.comments ? ops : (withoutTheirs ??= ops.filter((op) => !isCommentOp(op))) });
+    }
+    this.onChange?.(this);
+  }
+}
+
+/** What a browser is told of a batch that was to be applied when the write that should have kept it failed. */
+export const SAVE_FAILED = "The server could not save this edit.";
+
+/** What the room remembers of its clients, as `remember` works it out. */
+interface Memory {
+  seqs: Map<string, number>;
+  seen: Map<string, number>;
+  floor: number;
 }

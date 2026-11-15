@@ -8,7 +8,7 @@ import { createDesign, createLine, createPage, createShape, createText } from "@
 import type { Design } from "@/core/types";
 import type { Op } from "./ops";
 import type { ClientMsg, ServerMsg } from "./protocol";
-import { CLIENTS_KEPT, CLIENTS_KEPT_MS, Room, type ClientMemory, type Peer } from "./room";
+import { CLIENTS_KEPT, CLIENTS_KEPT_MS, Room, SAVE_FAILED, type ClientMemory, type Peer } from "./room";
 import { Session, type Outbox } from "./session";
 
 const start = (): Design =>
@@ -499,5 +499,161 @@ describe("a browser in a room that has forgotten clients", () => {
     me.connect();
     expect(me.sent.filter((m) => m.t === "ops").map((m) => (m as { seq: number }).seq)).toEqual([1, 2]);
     expect(xOf(room)).toBe(2);
+  });
+});
+
+describe("several batches saved with one write (group commit)", () => {
+  type OpsMsg = Extract<ClientMsg, { t: "ops" }>;
+  const ops = (seq: number, x: number): OpsMsg => ({ t: "ops", seq, ops: move(x) });
+
+  it("applies them in order, writes once, and then answers each with the revision it would have had alone", async () => {
+    const room = new Room(start());
+    const saves: { x: unknown; rev: number; seqs: Record<string, number> }[] = [];
+    room.commit = async (design, rev, seqs) => void saves.push({ x: design.pages[0].elements[0].x, rev, seqs });
+    const [ann, bob, cat] = [client(room, "ann"), client(room, "bob"), client(room, "cat")];
+    await room.receiveOps([
+      { peer: ann.peer, msg: ops(1, 10) },
+      { peer: bob.peer, msg: ops(1, 20) },
+      { peer: ann.peer, msg: ops(2, 30) },
+    ]);
+    expect(saves).toEqual([{ x: 30, rev: 3, seqs: { ann: 2, bob: 1 } }]);
+    expect(room.rev).toBe(3);
+    expect(xOf(room)).toBe(30);
+    expect(ann.heard.filter((m) => m.t !== "welcome")).toEqual([
+      { t: "ack", seq: 1, rev: 1 },
+      { t: "ops", rev: 2, ops: move(20) },
+      { t: "ack", seq: 2, rev: 3 },
+    ]);
+    expect(bob.heard.filter((m) => m.t !== "welcome")).toEqual([
+      { t: "ops", rev: 1, ops: move(10) },
+      { t: "ack", seq: 1, rev: 2 },
+      { t: "ops", rev: 3, ops: move(30) },
+    ]);
+    // somebody who only listens hears the three in order, as three revisions
+    expect(cat.heard.filter((m) => m.t === "ops").map((m) => (m as { rev: number }).rev)).toEqual([1, 2, 3]);
+  });
+
+  it("says nothing and takes nothing over until the write is done", async () => {
+    const room = new Room(start());
+    let saved!: () => void;
+    room.commit = () => new Promise<void>((resolve) => (saved = resolve));
+    const [ann, bob] = [client(room, "ann"), client(room, "bob")];
+    const saving = room.receiveOps([
+      { peer: ann.peer, msg: ops(1, 10) },
+      { peer: ann.peer, msg: ops(2, 20) },
+    ]);
+    expect(ann.heard.filter((m) => m.t !== "welcome")).toEqual([]);
+    expect(bob.heard.filter((m) => m.t !== "welcome")).toEqual([]);
+    expect(room.rev).toBe(0);
+    expect(xOf(room)).toBe(0);
+    // somebody who comes in meanwhile is welcomed with the room as it is on the disk, and then hears the group
+    const dev = client(room, "dev");
+    expect(dev.welcome.rev).toBe(0);
+    saved();
+    await saving;
+    expect(dev.heard.filter((m) => m.t === "ops").map((m) => (m as { rev: number }).rev)).toEqual([1, 2]);
+  });
+
+  it("checks each batch against what the ones before it in the group leave, and refuses only the one that is wrong", async () => {
+    const room = new Room(start());
+    let writes = 0;
+    room.commit = async () => void writes++;
+    const ann = client(room, "ann");
+    await room.receiveOps([
+      { peer: ann.peer, msg: ops(1, 10) },
+      { peer: ann.peer, msg: { t: "ops", seq: 2, ops: [{ k: "el.set", page: "p", id: "a", set: { x: "a" } }] } },
+      { peer: ann.peer, msg: ops(3, 30) },
+    ]);
+    expect(writes).toBe(1);
+    expect(ann.heard.filter((m) => m.t !== "welcome")).toMatchObject([
+      { t: "ack", seq: 1, rev: 1 },
+      { t: "rejected", seq: 2 },
+      { t: "ack", seq: 3, rev: 2 },
+    ]);
+    expect(xOf(room)).toBe(30);
+  });
+
+  it("answers a batch sent twice in one group once applied, and does not apply it twice", async () => {
+    const room = new Room(start());
+    const revs: number[] = [];
+    room.commit = async (_design, rev) => void revs.push(rev);
+    const ann = client(room, "ann");
+    await room.receiveOps([
+      { peer: ann.peer, msg: ops(1, 10) },
+      { peer: ann.peer, msg: ops(1, 99) },
+    ]);
+    expect(revs).toEqual([1]);
+    expect(xOf(room)).toBe(10);
+    expect(ann.heard.filter((m) => m.t !== "welcome")).toEqual([
+      { t: "ack", seq: 1, rev: 1 },
+      { t: "ack", seq: 1, rev: 1 },
+    ]);
+  });
+
+  it("writes nothing for a group in which nothing is to be applied", async () => {
+    const room = new Room(start());
+    let writes = 0;
+    room.commit = async () => void writes++;
+    const [ann, viewer] = [client(room, "ann"), client(room, "viewer", "view")];
+    await room.receiveOps([{ peer: ann.peer, msg: ops(1, 10) }]);
+    await room.receiveOps([
+      { peer: ann.peer, msg: ops(1, 10) },
+      { peer: viewer.peer, msg: ops(1, 5) },
+    ]);
+    expect(writes).toBe(1);
+    expect(ann.last()).toEqual({ t: "ack", seq: 1, rev: 1 });
+    expect(viewer.last()).toMatchObject({ t: "rejected", seq: 1, reason: "this link is read-only" });
+  });
+
+  it("when the write fails, leaves the room as it was and refuses every batch that depended on it", async () => {
+    const room = new Room(start());
+    room.commit = async () => void 0;
+    const [ann, bob] = [client(room, "ann"), client(room, "bob")];
+    await room.receiveOps([{ peer: ann.peer, msg: ops(1, 10) }]);
+    room.commit = async () => {
+      throw new Error("the disk is full");
+    };
+    const heardBefore = bob.heard.length;
+    await expect(
+      room.receiveOps([
+        { peer: ann.peer, msg: ops(1, 10) }, // a repeat of a batch saved before: still answered as in
+        { peer: ann.peer, msg: ops(2, 20) },
+        { peer: bob.peer, msg: ops(1, 30) },
+        { peer: bob.peer, msg: ops(1, 30) }, // a repeat of one in this group: its first copy was never kept
+        { peer: bob.peer, msg: { t: "ops", seq: 2, ops: "nonsense" as never } },
+      ]),
+    ).rejects.toThrow("the disk is full");
+    expect(room.rev).toBe(1);
+    expect(xOf(room)).toBe(10);
+    expect(room.seqs()).toEqual({ ann: 1 });
+    expect(ann.heard.slice(-2)).toEqual([
+      { t: "ack", seq: 1, rev: 1 },
+      { t: "rejected", seq: 2, reason: SAVE_FAILED },
+    ]);
+    expect(bob.heard.slice(heardBefore)).toMatchObject([
+      { t: "rejected", seq: 1, reason: SAVE_FAILED },
+      { t: "rejected", seq: 1, reason: SAVE_FAILED },
+      { t: "rejected", seq: 2 },
+    ]);
+    // and nothing of the group reached anybody as operations
+    expect(bob.heard.slice(heardBefore).some((m) => m.t === "ops")).toBe(false);
+    // the numbers were not used up
+    room.commit = async () => void 0;
+    await room.receiveOps([{ peer: bob.peer, msg: ops(1, 40) }]);
+    expect(bob.last()).toEqual({ t: "ack", seq: 1, rev: 2 });
+  });
+
+  it("skips a batch of somebody who left before the group's turn", async () => {
+    const room = new Room(start());
+    const writes: number[] = [];
+    room.commit = async (_design, rev) => void writes.push(rev);
+    const [ann, bob] = [client(room, "ann"), client(room, "bob")];
+    bob.leave();
+    await room.receiveOps([
+      { peer: bob.peer, msg: ops(1, 99) },
+      { peer: ann.peer, msg: ops(1, 10) },
+    ]);
+    expect(writes).toEqual([1]);
+    expect(xOf(room)).toBe(10);
   });
 });

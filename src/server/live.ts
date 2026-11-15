@@ -111,6 +111,15 @@ export interface LiveServerOptions {
   maxConnections?: number;
   /** The most connections to one room that have not shown their key yet. */
   maxWaitingPerRoom?: number;
+  /**
+   * The most batches of edits that may wait in one room for their turn to be saved, and the most bytes of them together. A
+   * connection that sends one more is closed with "try again later" (1013): its browser comes back by itself and sends again what
+   * it had not heard about, so nothing is lost, and a room that cannot keep up does not hold more and more in memory.
+   */
+  maxQueuedBatches?: number;
+  maxQueuedBytes?: number;
+  /** The most batches saved with one write (group commit): what waits beyond them goes in the next write. */
+  maxGroup?: number;
   /** How long an answer about the health of the storage is kept, so that not every `GET /api/health` writes to the disk. */
   healthCacheMs?: number;
 }
@@ -139,6 +148,9 @@ const DEFAULTS = {
   maxUnjoinedMessageBytes: 8 * 1024,
   maxConnections: 5000,
   maxWaitingPerRoom: 20,
+  maxQueuedBatches: 1000,
+  maxQueuedBytes: 64 * 1024 * 1024,
+  maxGroup: 100,
   healthCacheMs: 5000,
   roomCreatePerHour: 10,
   wrongKeysPerHour: 10,
@@ -193,6 +205,13 @@ interface Loaded {
   /** When the storage was last told that the room is in use: by a save, or by a note of a join (which is not written for every join). */
   usedAt: number;
   work: Promise<void>;
+  /**
+   * The batches of edits that arrived and wait for the next write (group commit), with their size in bytes. One job in `work`
+   * takes them all while `draining`, so the edits are still saved in their turn among everything else the room does.
+   */
+  inbox: { peer: Peer; msg: Extract<ClientMsg, { t: "ops" }>; bytes: number }[];
+  inboxBytes: number;
+  draining: boolean;
   removed: boolean;
   idleTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -215,6 +234,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     maxBufferedBytes: options.maxBufferedBytes ?? 2 * (options.maxDesignBytes ?? DEFAULTS.maxDesignBytes),
     maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
     maxWaitingPerRoom: options.maxWaitingPerRoom ?? DEFAULTS.maxWaitingPerRoom,
+    maxQueuedBatches: options.maxQueuedBatches ?? DEFAULTS.maxQueuedBatches,
+    maxQueuedBytes: options.maxQueuedBytes ?? DEFAULTS.maxQueuedBytes,
+    maxGroup: Math.max(1, options.maxGroup ?? DEFAULTS.maxGroup),
     healthCacheMs: options.healthCacheMs ?? DEFAULTS.healthCacheMs,
     roomCreatePerHour: options.roomCreatePerHour ?? DEFAULTS.roomCreatePerHour,
     wrongKeysPerHour: options.wrongKeysPerHour ?? DEFAULTS.wrongKeysPerHour,
@@ -244,6 +266,45 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     const next = l.work.then(work);
     l.work = next.catch(() => undefined);
     return next;
+  };
+
+  /**
+   * Takes a batch of edits for the room's next write. When no job for the inbox is in the room's queue, one is put there; it takes
+   * what has arrived by its turn, at most `maxGroup`, applies it and saves it with one write (Room.receiveOps), and if more came
+   * meanwhile it puts itself in the queue again. False when the room has as much waiting as it may: the caller closes the sender.
+   */
+  const accept = (l: Loaded, peer: Peer, msg: Extract<ClientMsg, { t: "ops" }>, bytes: number): boolean => {
+    if (l.inbox.length >= o.maxQueuedBatches || l.inboxBytes + bytes > o.maxQueuedBytes) return false;
+    l.inbox.push({ peer, msg, bytes });
+    l.inboxBytes += bytes;
+    if (!l.draining) drain(l);
+    return true;
+  };
+
+  const drain = (l: Loaded) => {
+    l.draining = true;
+    void enqueue(l, async () => {
+      const group = l.inbox.splice(0, o.maxGroup);
+      for (const { bytes } of group) l.inboxBytes -= bytes;
+      try {
+        if (!l.removed && group.length) {
+          metrics.count("edit_groups_total");
+          await l.room.receiveOps(group);
+        }
+      } catch (error) {
+        // the room has told every sender whose batch depended on this write that it was refused (Room.receiveOps)
+        console.error("Craftly could not persist a shared edit", error);
+      } finally {
+        if (l.inbox.length && !l.removed) drain(l);
+        else {
+          l.draining = false;
+          if (l.removed) {
+            l.inbox.length = 0;
+            l.inboxBytes = 0;
+          }
+        }
+      }
+    });
   };
 
   /**
@@ -283,6 +344,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       pins: 0,
       usedAt: Number(record.updatedAt) || 0,
       work: Promise.resolve(),
+      inbox: [],
+      inboxBytes: 0,
+      draining: false,
       removed: false,
       idleTimer: null,
     };
@@ -979,15 +1043,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         }
         peerSockets.set(peer, ws);
       } else if (msg.t === "ops" && l.members.has(ws)) {
-        void enqueue(l, async () => {
-          if (l.removed) return;
-          try {
-            await l.room.receive(peer, msg);
-          } catch (error) {
-            console.error("Craftly could not persist a shared edit", error);
-            peer.send({ t: "rejected", seq: msg.seq, reason: "The server could not save this edit." });
-          }
-        });
+        // saved with whatever else arrives meanwhile, in one write (`accept`); a room that cannot keep up sends the sender away for a moment
+        if (!accept(l, peer, msg, sizeOf(data))) {
+          metrics.countBy("connections_closed_total", "queue");
+          return void ws.close(1013, "try again later");
+        }
       } else if (msg.t === "presence" && l.members.has(ws)) {
         // Where a person is (src/collab/presence.ts) is said many times a second by a pointer that moves, and none of it
         // matters for long. It has an allowance of its own. Within it a presence message does not count as a message at all
@@ -1034,7 +1094,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       clearInterval(sweeper);
       await sweeping;
       for (const l of loaded.values()) if (l.idleTimer) clearTimeout(l.idleTimer);
-      await Promise.all([roomCreation, ...[...loaded.values()].map((l) => l.work)]);
+      // a room's inbox job puts itself in the queue again while edits wait (`drain`); nothing new arrives now, so this ends
+      do await Promise.all([roomCreation, ...[...loaded.values()].map((l) => l.work)]);
+      while ([...loaded.values()].some((l) => l.draining));
       for (const ws of sockets) ws.close(1001, "the server is going away");
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve) => http.close(() => resolve()));

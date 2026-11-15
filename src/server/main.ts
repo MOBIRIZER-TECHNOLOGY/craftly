@@ -2,7 +2,7 @@
  * Starts the server for shared designs: `npm run server` (it builds `dist-server/live.mjs` first), or `node dist-server/live.mjs`.
  * Settings come from the environment: PORT (8787), HOST (127.0.0.1; 0.0.0.0 to be reachable from other machines), DATA_DIR
  * (live-data), ALLOW_ORIGIN (the origin of the editor, a comma separated list, or *; none by default), MAX_ROOMS, MAX_PEERS_PER_ROOM,
- * and what one visitor may cost: MAX_CONNECTIONS, MAX_WAITING_PER_ROOM, MAX_BUFFERED_BYTES, MAX_UNJOINED_MESSAGE_BYTES, BYTE_BURST,
+ * and what one visitor may cost: MAX_CONNECTIONS, MAX_WAITING_PER_ROOM, MAX_QUEUED_BATCHES, MAX_QUEUED_BYTES, MAX_GROUP, MAX_BUFFERED_BYTES, MAX_UNJOINED_MESSAGE_BYTES, BYTE_BURST,
  * BYTES_PER_SECOND, JOIN_BURST, JOIN_EVERY_MS, PRESENCE_BURST, PRESENCE_PER_SECOND (how often a connection may say where its (rooms one address may make in an hour; 0 for no limit) and
  * TRUST_PROXY (1 when exactly one reverse proxy stands in front: the address of a visitor is then read from X-Forwarded-For), and
  * ROOM_TTL_DAYS (a room that nobody has used for so many days is removed; not set or 0: never), and ROOM_CREATE_KEY (a secret that
@@ -60,6 +60,10 @@ const server = createLiveServer({
   maxPeersPerRoom: number("MAX_PEERS_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),
   maxConnections: number("MAX_CONNECTIONS", 1, Number.MAX_SAFE_INTEGER),
   maxWaitingPerRoom: number("MAX_WAITING_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),
+  // edits that may wait in one room to be saved, and how many one write saves (group commit)
+  maxQueuedBatches: number("MAX_QUEUED_BATCHES", 1, Number.MAX_SAFE_INTEGER),
+  maxQueuedBytes: number("MAX_QUEUED_BYTES", 1024, Number.MAX_SAFE_INTEGER),
+  maxGroup: number("MAX_GROUP", 1, 100_000),
   maxBufferedBytes: number("MAX_BUFFERED_BYTES", 1024, Number.MAX_SAFE_INTEGER),
   maxUnjoinedMessageBytes: number("MAX_UNJOINED_MESSAGE_BYTES", 256, Number.MAX_SAFE_INTEGER),
   byteRate: { burst: number("BYTE_BURST", 1024, Number.MAX_SAFE_INTEGER), perSecond: number("BYTES_PER_SECOND", 1, Number.MAX_SAFE_INTEGER) },

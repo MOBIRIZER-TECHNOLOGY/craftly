@@ -18,6 +18,7 @@ const COUNTERS = {
   batches_applied_total: "Batches of edits that were applied, saved and acknowledged.",
   batches_rejected_total: "Batches of edits that were refused: not well formed, not allowed, or not saved.",
   saves_total: "Room records written to the storage.",
+  edit_groups_total: "Groups of edit batches taken from a room's inbox to be saved with one write (group commit); batches applied per group is batches_applied_total over this.",
   save_failures_total: "Room records that could not be written to the storage.",
   rooms_created_total: "Rooms made (POST /api/rooms answered 201).",
   rooms_removed_total: "Rooms removed by their owner (stop sharing) or by the operator.",
@@ -28,9 +29,9 @@ const COUNTERS = {
 /** Counters with one label, and every value that label can have. */
 const LABELLED = {
   connections_closed_total: {
-    help: "WebSocket connections the server closed for a limit: a reader that was too slow, too many messages or bytes, too many joins, a message that was too big, no answer to pings, too many waiting at a room.",
+    help: "WebSocket connections the server closed for a limit: a reader that was too slow, too many messages or bytes, too many joins, a message that was too big, no answer to pings, too many waiting at a room, too many edits waiting to be saved in a room.",
     label: "reason",
-    values: ["slow_reader", "rate", "join_rate", "size", "silent", "waiting"],
+    values: ["slow_reader", "rate", "join_rate", "size", "silent", "waiting", "queue"],
   },
   upgrades_refused_total: {
     help: "WebSocket connections refused before they were made: too many connections, or a page of an origin that is not allowed.",

@@ -1842,6 +1842,134 @@ describe("saving an edit", () => {
     }
   });
 
+  /** A storage whose writes of rooms wait until they are let go, one at a time, and that counts them. */
+  class HeldStorage extends MemoryStorage {
+    writes = 0;
+    held: (() => void)[] = [];
+    holding = true;
+    override async save(id: string, record: RoomRecord, designJson?: string) {
+      if (this.holding && record.rev > 0) await new Promise<void>((resolve) => this.held.push(resolve));
+      this.writes++;
+      return super.save(id, record, designJson);
+    }
+    release() {
+      this.holding = false;
+      for (const go of this.held.splice(0)) go();
+    }
+  }
+
+  it("saves the edits that arrive while a write runs with one write, and answers each in order (group commit)", async () => {
+    const storage = new HeldStorage();
+    const b = await boot({}, storage);
+    const made = await makeRoom(b);
+    const [ann, bob] = [raw(b, made.room, made.editKey), raw(b, made.room, made.editKey)];
+    await Promise.all([ann.opened, bob.opened]);
+    ann.join("ann");
+    bob.join("bob");
+    await until("both welcomes", () => ann.heard.some((m) => m.t === "welcome") && bob.heard.some((m) => m.t === "welcome"));
+    const before = storage.writes;
+    ann.say({ t: "ops", seq: 1, ops: [{ k: "el.set", page: "p", id: "a", set: { x: 1 } }] });
+    await until("the first write to start", () => storage.held.length === 1);
+    // while it runs, ten more edits from both
+    for (let i = 2; i <= 6; i++) ann.say({ t: "ops", seq: i, ops: [{ k: "el.set", page: "p", id: "a", set: { x: i } }] });
+    for (let i = 1; i <= 5; i++) bob.say({ t: "ops", seq: i, ops: [{ k: "el.set", page: "p", id: "b", set: { x: 300 + i } }] });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(ann.heard.some((m) => m.t === "ack")).toBe(false);
+    storage.release();
+    await until("every answer", () => ann.heard.filter((m) => m.t === "ack").length === 6 && bob.heard.filter((m) => m.t === "ack").length === 5);
+    // the first edit alone, then the ten that waited together
+    expect(storage.writes - before).toBe(2);
+    const acks = [...ann.heard, ...bob.heard].filter((m) => m.t === "ack").map((m) => (m as { rev: number }).rev);
+    expect(acks.sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    // each heard the other's edits in order, as revisions that follow one another
+    const revsHeard = (s: typeof ann) => s.heard.filter((m) => m.t === "ops" || m.t === "ack").map((m) => (m as { rev: number }).rev);
+    expect(revsHeard(ann)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(revsHeard(bob)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    const saved = (await storage.load(made.room))!;
+    expect(saved.rev).toBe(11);
+    expect(saved.seqs).toEqual({ ann: 6, bob: 5 });
+    expect(saved.design.pages[0].elements.map((e) => e.x)).toEqual([6, 305]);
+  });
+
+  it("saves at most maxGroup edits with one write", async () => {
+    const storage = new HeldStorage();
+    const b = await boot({ maxGroup: 3 }, storage);
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join("ann");
+    await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
+    const before = storage.writes;
+    s.say({ t: "ops", seq: 1, ops: [{ k: "el.set", page: "p", id: "a", set: { x: 1 } }] });
+    await until("the first write to start", () => storage.held.length === 1);
+    for (let i = 2; i <= 8; i++) s.say({ t: "ops", seq: i, ops: [{ k: "el.set", page: "p", id: "a", set: { x: i } }] });
+    await new Promise((r) => setTimeout(r, 100));
+    storage.release();
+    await until("every answer", () => s.heard.filter((m) => m.t === "ack").length === 8);
+    // 1, then 2-4, 5-7, 8
+    expect(storage.writes - before).toBe(4);
+  });
+
+  it("sends away for a moment a browser whose room has too many edits waiting, and loses none of what it took", async () => {
+    const storage = new HeldStorage();
+    const b = await boot({ maxQueuedBatches: 3 }, storage);
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join("ann");
+    await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
+    s.say({ t: "ops", seq: 1, ops: [{ k: "el.set", page: "p", id: "a", set: { x: 1 } }] });
+    await until("the first write to start", () => storage.held.length === 1);
+    for (let i = 2; i <= 5; i++) s.say({ t: "ops", seq: i, ops: [{ k: "el.set", page: "p", id: "a", set: { x: i } }] });
+    await until("the close", () => s.closed() !== null);
+    expect(s.closed()).toBe(1013);
+    storage.release();
+    // The edit whose write had begun is saved. What waited behind it was sent by a connection that is gone, and is not applied,
+    // as before group commit: none of it was acknowledged, and the browser sends it all again when it comes back (session.ts).
+    await until("the save", async () => (await storage.load(made.room))?.rev === 1);
+    await new Promise((r) => setTimeout(r, 100));
+    expect((await storage.load(made.room))!).toMatchObject({ rev: 1, seqs: { ann: 1 } });
+  });
+
+  it("gets every edit of a real browser to the disk while writes are slow and the room's inbox is small", async () => {
+    const storage = new HeldStorage();
+    const b = await boot({ maxQueuedBatches: 3 }, storage);
+    const made = await makeRoom(b);
+    const live = join(b, made.room, made.editKey, "ann");
+    await until("the welcome", () => live.design !== null);
+    let x = 0;
+    const edit = () => {
+      const before = live.design!;
+      const after = { ...before, pages: before.pages.map((p) => ({ ...p, elements: p.elements.map((e) => (e.id === "a" ? { ...e, x: ++x } : e)) })) };
+      live.edit(before, after);
+    };
+    edit();
+    await until("the first write to start", () => storage.held.length === 1);
+    for (let i = 0; i < 6; i++) edit();
+    await new Promise((r) => setTimeout(r, 200));
+    storage.release();
+    await until("everything saved", async () => (await storage.load(made.room))?.design.pages[0].elements[0].x === 7, 15_000);
+  }, 20_000);
+
+  it("finishes the edits that wait before it stops", async () => {
+    const storage = new HeldStorage();
+    const b = await boot({}, storage);
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    s.join("ann");
+    await until("the welcome", () => s.heard.some((m) => m.t === "welcome"));
+    s.say({ t: "ops", seq: 1, ops: [{ k: "el.set", page: "p", id: "a", set: { x: 1 } }] });
+    await until("the first write to start", () => storage.held.length === 1);
+    for (let i = 2; i <= 4; i++) s.say({ t: "ops", seq: i, ops: [{ k: "el.set", page: "p", id: "a", set: { x: i } }] });
+    await new Promise((r) => setTimeout(r, 100));
+    const closing = b.server.close();
+    storage.release();
+    await closing;
+    servers.splice(servers.indexOf(b.server), 1);
+    expect((await storage.load(made.room))!.rev).toBe(4);
+  });
+
   it("still refuses an edit that makes the design bigger than a room may be", async () => {
     const b = await boot({ maxDesignBytes: 3000 });
     const made = await makeRoom(b);

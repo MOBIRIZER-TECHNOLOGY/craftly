@@ -70,7 +70,7 @@ Not shown by it: one person offline while the others stay connected (the tool th
 | --- | --- | --- | --- |
 | A1 | Admission control: slow reader, join bucket, byte bucket, limit before the key, connection caps, one id set per batch | done | `263438f` |
 | A2 | Storage: design stringified once, images out of the room record (old records are moved on their first save) | done | `e3bcc94` |
-| A2 | Storage: group commit and a bounded queue | **not done** | |
+| A2 | Storage: group commit and a bounded queue | done on 2026-11-15, after the night | (see the log) |
 | A3 | A slow upload cannot undo edits or bring back a deleted room | done | `581da9a` |
 | A4 | Origin checks; room creation limited per address; `TRUST_PROXY` | done | `5c88dfd` |
 | A5 | Expiry with `ROOM_TTL_DAYS` (off by default) | done | `10ac4dc` |
