@@ -8,7 +8,7 @@ import { createDesign, createLine, createPage, createShape, createText } from "@
 import type { Design } from "@/core/types";
 import type { Op } from "./ops";
 import type { ClientMsg, ServerMsg } from "./protocol";
-import { CLIENTS_KEPT, CLIENTS_KEPT_MS, Room, SAVE_FAILED, type ClientMemory, type Peer } from "./room";
+import { CLIENTS_KEPT, CLIENTS_KEPT_MS, DesignTooLarge, Room, SAVE_FAILED, type ClientMemory, type Peer } from "./room";
 import { Session, type Outbox } from "./session";
 
 const start = (): Design =>
@@ -641,6 +641,46 @@ describe("several batches saved with one write (group commit)", () => {
     room.commit = async () => void 0;
     await room.receiveOps([{ peer: bob.peer, msg: ops(1, 40) }]);
     expect(bob.last()).toEqual({ t: "ack", seq: 1, rev: 2 });
+  });
+
+  it("when the group is too large to save at once, saves its batches one at a time and refuses only the one that does not fit", async () => {
+    const room = new Room(start());
+    // the room may hold a design whose element is at most 25 to the right: the group as a whole (ending at 30) is too large
+    const writes: number[] = [];
+    room.commit = async (design, rev) => {
+      if ((design.pages[0].elements[0].x as number) > 25) throw new DesignTooLarge();
+      writes.push(rev);
+    };
+    const [ann, bob] = [client(room, "ann"), client(room, "bob")];
+    const heardBefore = bob.heard.length;
+    await expect(
+      room.receiveOps([
+        { peer: ann.peer, msg: ops(1, 10) },
+        { peer: ann.peer, msg: ops(1, 10) }, // a repeat in the group: answered as the first copy is
+        { peer: ann.peer, msg: ops(2, 20) },
+        { peer: bob.peer, msg: ops(1, 30) }, // the one that does not fit
+      ]),
+    ).rejects.toThrow(DesignTooLarge);
+    expect(writes).toEqual([1, 2]);
+    expect(room.rev).toBe(2);
+    expect(xOf(room)).toBe(20);
+    expect(room.seqs()).toEqual({ ann: 2 });
+    expect(ann.heard.filter((m) => m.t === "ack" || m.t === "rejected")).toEqual([
+      { t: "ack", seq: 1, rev: 1 },
+      { t: "ack", seq: 1, rev: 1 },
+      { t: "ack", seq: 2, rev: 2 },
+    ]);
+    expect(bob.heard.slice(heardBefore)).toEqual([
+      { t: "ops", rev: 1, ops: move(10) },
+      { t: "ops", rev: 2, ops: move(20) },
+      { t: "rejected", seq: 1, reason: SAVE_FAILED },
+    ]);
+    // a single batch too large is refused as before, with nothing taken again
+    room.commit = async () => {
+      throw new DesignTooLarge();
+    };
+    await expect(room.receiveOps([{ peer: bob.peer, msg: ops(1, 30) }])).rejects.toThrow(DesignTooLarge);
+    expect(bob.last()).toEqual({ t: "rejected", seq: 1, reason: SAVE_FAILED });
   });
 
   it("skips a batch of somebody who left before the group's turn", async () => {

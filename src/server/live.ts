@@ -28,7 +28,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { checkDesign, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
-import { Room, type Peer } from "@/collab/room";
+import { DesignTooLarge, Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
 import { clientAddress, hourlyLimit } from "./address";
 import { createMetrics, METRICS_CONTENT_TYPE, type LabelOf } from "./metrics";
@@ -353,7 +353,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     l.room.commit = async (design, rev, seqs, memory) => {
       // the design is turned into text once: to be measured here, and the same text is what the storage writes
       const designJson = JSON.stringify(design);
-      if (Buffer.byteLength(designJson) > o.maxDesignBytes) throw new Error("This shared design exceeds the room size limit.");
+      // (a group of edits too large to save at once is then saved one edit at a time, so that only an edit too large is refused)
+      if (Buffer.byteLength(designJson) > o.maxDesignBytes) throw new DesignTooLarge();
       // (with the numbers of the clients goes what lets the room forget those that stayed away: src/collab/room.ts)
       const next = { ...l.record, design, rev, seqs, seqSeen: memory.seen, seqFloor: memory.floor, updatedAt: now() };
       await persist(l, next, designJson);

@@ -259,6 +259,11 @@ export class Room {
    * When the save fails, the room is as it was before the group, and every batch of the group that was to be applied is refused,
    * and so is the repeat of one of them in the same group (its first copy was never kept). An answer that did not depend on the
    * save (a refusal of a batch that was wrong, or the repeat of a batch saved before) is given either way. The error is thrown on.
+   *
+   * Except when the save refused the design only for its size (`DesignTooLarge`) and the group applied more than one batch: that
+   * says nothing of each batch alone, and one that fits must not be refused because another came with it. Nothing has been
+   * answered yet, so the batches are then taken again one at a time, each saved alone, as they were before group commit: those
+   * that fit are kept, in order, and the one that would take the room past its limit is refused.
    */
   receiveOps(items: readonly { peer: Peer; msg: Extract<ClientMsg, { t: "ops" }> }[]): void | Promise<void> {
     let design = this.design;
@@ -317,10 +322,25 @@ export class Room {
     return this.commit(design, this.rev + applied.length, Object.fromEntries(kept.seqs), memory).then(
       () => settle("saved"),
       (error: unknown) => {
+        if (error instanceof DesignTooLarge && applied.length > 1) return this.oneByOne(items);
         settle("failed");
         throw error;
       },
     );
+  }
+
+  /** The batches of a group that was too large to save at once, each applied and saved alone, in order (see `receiveOps`). */
+  private async oneByOne(items: readonly { peer: Peer; msg: Extract<ClientMsg, { t: "ops" }> }[]): Promise<void> {
+    let failure: unknown = null;
+    for (const item of items) {
+      try {
+        await this.receiveOps([item]);
+      } catch (error) {
+        // that batch was refused (by its own `settle`); the ones after it go on, as separate writes would have
+        failure ??= error;
+      }
+    }
+    if (failure !== null) throw failure;
   }
 
   /** Takes over what a saved group made of the room: the design and what is remembered of the clients (the revision moves in `publish`). */
@@ -356,6 +376,17 @@ export class Room {
 
 /** What a browser is told of a batch that was to be applied when the write that should have kept it failed. */
 export const SAVE_FAILED = "The server could not save this edit.";
+
+/**
+ * What `Room.commit` throws when it does not save a design only because the design is larger than a room may be. A group of
+ * batches refused for this is taken again one batch at a time (`Room.receiveOps`), so that only a batch too large is refused.
+ */
+export class DesignTooLarge extends Error {
+  constructor(message = "This shared design exceeds the room size limit.") {
+    super(message);
+    this.name = "DesignTooLarge";
+  }
+}
 
 /** What the room remembers of its clients, as `remember` works it out. */
 interface Memory {
