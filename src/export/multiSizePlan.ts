@@ -5,6 +5,8 @@
  */
 import type { Design } from "@/core/types";
 import { DESIGN_TYPES, getDesignType, type DesignCategory, type DesignType } from "@/data/designTypes";
+import { englishName } from "@/data/names";
+import { m } from "@/i18n";
 import type { ExportOptions } from "./exporters";
 import { DEFAULT_QUALITY, normalizePages, planRaster, safeFileName } from "./options";
 
@@ -13,7 +15,10 @@ export type MultiSizeFormat = "png" | "jpg" | "pdf";
 export interface SizeChoice {
   /** the id of the format, or CURRENT_SIZE_ID for the size the design has */
   id: string;
+  /** the name as the panel shows it, in the language of the page */
   name: string;
+  /** the name the files are given: English in every language, so a file is called the same whoever downloads it */
+  fileName?: string;
   /** design pixels */
   width: number;
   height: number;
@@ -21,6 +26,11 @@ export interface SizeChoice {
 }
 
 export const CURRENT_SIZE_ID = "current";
+/**
+ * The name of the size a design has when it is no format of its own. It is part of the names of the files, which stay in
+ * English; the panel shows it in the language of the page (`m.exporting.panel.originalSize`).
+ */
+export const ORIGINAL_SIZE_NAME = "Original size";
 /** Sizes in one download. Every size is a whole export of the chosen pages. */
 export const MAX_SIZES = 10;
 /** Pixels painted in one download, over all sizes and pages. */
@@ -53,13 +63,23 @@ function familyOf(design: Sized): DesignCategory {
  */
 export function sizeChoices(design: Sized): SizeChoice[] {
   const family = familyOf(design);
-  const choices: SizeChoice[] = [{ id: CURRENT_SIZE_ID, name: formatOf(design)?.name ?? "Original size", width: design.width, height: design.height, current: true }];
+  const own = formatOf(design);
+  const choices: SizeChoice[] = [
+    {
+      id: CURRENT_SIZE_ID,
+      name: own?.name ?? ORIGINAL_SIZE_NAME,
+      fileName: own ? englishName("designTypes", own.id) || own.name : ORIGINAL_SIZE_NAME,
+      width: design.width,
+      height: design.height,
+      current: true,
+    },
+  ];
   const seen = new Set([`${design.width}x${design.height}`]);
   for (const type of [...DESIGN_TYPES.filter((t) => t.category === family), ...DESIGN_TYPES.filter((t) => t.category !== family)]) {
     const key = `${type.width}x${type.height}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    choices.push({ id: type.id, name: type.name, width: type.width, height: type.height, current: false });
+    choices.push({ id: type.id, name: type.name, fileName: englishName("designTypes", type.id) || type.name, width: type.width, height: type.height, current: false });
   }
   return choices;
 }
@@ -85,7 +105,7 @@ export function sizeLabel(size: Pick<SizeChoice, "width" | "height">): string {
  */
 export function multiSizeFileName(title: string, size: SizeChoice, pageNumber: number | null, extension: string): string {
   const page = pageNumber === null ? "" : ` - ${pageNumber}`;
-  return `${safeFileName(title)} - ${safeFileName(size.name, "Size")} ${size.width}x${size.height}${page}.${extension}`;
+  return `${safeFileName(title)} - ${safeFileName(size.fileName ?? size.name, "Size")} ${size.width}x${size.height}${page}.${extension}`;
 }
 
 export function multiSizeZipName(title: string, sizes: number): string {
@@ -120,10 +140,9 @@ export function planMultiSize(design: Sized & { pages: readonly unknown[] }, sel
     totalPixels += raster.width * raster.height * pageCount;
   }
   let problem: string | null = null;
-  if (!sizes.length) problem = "Tick at least one size.";
-  else if (!pageCount) problem = "Select at least one page to download.";
-  else if (sizes.length > MAX_SIZES) problem = `${sizes.length} sizes are ticked; one download holds ${MAX_SIZES} at most.`;
-  else if (totalPixels > MAX_TOTAL_PIXELS)
-    problem = `That is ${millions(totalPixels)} million pixels in all; one download holds ${millions(MAX_TOTAL_PIXELS)} million. Choose fewer sizes or fewer pages.`;
+  if (!sizes.length) problem = m.exporting.sizes.tickOne;
+  else if (!pageCount) problem = m.exporting.errors.noPages;
+  else if (sizes.length > MAX_SIZES) problem = m.exporting.sizes.tooMany(sizes.length, MAX_SIZES);
+  else if (totalPixels > MAX_TOTAL_PIXELS) problem = m.exporting.sizes.tooManyPixels(millions(totalPixels), millions(MAX_TOTAL_PIXELS));
   return { sizes, files: sizes.length * (format === "pdf" ? 1 : pageCount), totalPixels, problem };
 }

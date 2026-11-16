@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type ComponentType } from "react";
 import { useEditor, type LeftTab } from "@/core/store";
+import { m } from "@/i18n";
 import { IconButton, IconChevronLeft, IconChevronRight, Skeleton, cx, usePresence } from "@/ui";
 import { ContextPanel } from "./context";
 import { PanelBoundary } from "./shared/PanelBoundary";
@@ -27,16 +28,7 @@ export function preloadTab(tab: LeftTab): void {
   if (tab !== "tools") warm(loaders[tab]);
 }
 
-const TAB_TITLES: Record<LeftTab, string> = {
-  templates: "Templates",
-  elements: "Elements",
-  text: "Text",
-  brand: "Brand",
-  uploads: "Uploads",
-  tools: "Tools",
-  projects: "Projects",
-  apps: "Apps",
-};
+const TAB_TITLES: Record<LeftTab, string> = m.panelsTabs.tabs;
 
 /** Placeholder shown while a tab's chunk loads: search field and a few tiles. */
 function TabSkeleton() {
@@ -84,10 +76,10 @@ export function SidePanel() {
   }, []);
 
   const Tab = leftTab !== "tools" ? lazyTabs[leftTab] : null;
-  const label = context ? "Options" : TAB_TITLES[leftTab];
+  const label = context ? m.panelsTabs.sidePanel.options : TAB_TITLES[leftTab];
 
   return (
-    <aside id="cf-sidepanel" className={cx("cf-sidepanel", open && "is-open")} aria-label={`${label} panel`} data-collapsed={!open || undefined}>
+    <aside id="cf-sidepanel" className={cx("cf-sidepanel", open && "is-open")} aria-label={m.panelsTabs.sidePanel.label(label)} data-collapsed={!open || undefined}>
       <div className="cf-sidepanel__clip">
         <div className="cf-sidepanel__inner">
           {mounted && (context || Tab) ? (
@@ -123,7 +115,7 @@ export function SidePanel() {
       </div>
       {hasContent ? (
         <IconButton
-          label={open ? "Hide panel" : "Show panel"}
+          label={open ? m.panelsTabs.sidePanel.hide : m.panelsTabs.sidePanel.show}
           icon={open ? <IconChevronLeft /> : <IconChevronRight />}
           size="sm"
           className="cf-sidepanel__handle"

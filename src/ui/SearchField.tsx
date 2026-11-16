@@ -1,4 +1,5 @@
 import { forwardRef, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { m } from "@/i18n";
 import "./SearchField.css";
 import { cx } from "./cx";
 import { useMergedRefs } from "./hooks";
@@ -24,7 +25,7 @@ export interface SearchFieldProps {
 }
 
 export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField(
-  { value, onChange, placeholder = "Search", onClear, onSubmit, trailing, autoFocus, size = "md", className, id, disabled, "aria-label": ariaLabel },
+  { value, onChange, placeholder = m.common.search, onClear, onSubmit, trailing, autoFocus, size = "md", className, id, disabled, "aria-label": ariaLabel },
   ref,
 ) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -70,7 +71,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
         onKeyDown={onKeyDown}
       />
       {value && !disabled ? (
-        <button type="button" className="cf-search__clear" aria-label="Clear search" onClick={clear}>
+        <button type="button" className="cf-search__clear" aria-label={m.ui.searchField.clear} onClick={clear}>
           <IconClose aria-hidden="true" />
         </button>
       ) : null}

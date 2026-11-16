@@ -254,7 +254,6 @@ const outlook = slide(
 export const CORPORATE: Template = template(
   {
     slug: "corporate-annual-report-blue",
-    name: "Corporate Annual Report",
     category: "presentation",
     size: "presentation",
     tags: ["corporate", "annual report", "business", "finance", "blue", "navy", "investor", "kpi", "report", "company", "quarterly results"],

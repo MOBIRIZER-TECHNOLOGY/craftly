@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createText } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { Button, IconPlus, NumberField, Segmented, Switch } from "@/ui";
 import { IconDice } from "../../shared/icons";
 import { AppField, AppPage } from "./appKit";
@@ -33,25 +34,25 @@ export function LoremApp() {
 
   return (
     <AppPage
-      title="Lorem ipsum"
-      subtitle="Placeholder text for your layouts"
+      title={m.panelsTabs.lorem.title}
+      subtitle={m.panelsTabs.lorem.subtitle}
       footer={
         <Button variant="primary" size="lg" block icon={<IconPlus />} onClick={add}>
-          Add to design
+          {m.panelsTabs.shared.addToDesign}
         </Button>
       }
     >
-      <AppField label="How much?">
+      <AppField label={m.panelsTabs.lorem.howMuch}>
         <Segmented<Unit>
           value={unit}
           onChange={changeUnit}
           fullWidth
           size="sm"
-          aria-label="Unit"
+          aria-label={m.panelsTabs.lorem.unit}
           options={[
-            { value: "paragraphs", label: "Paragraphs" },
-            { value: "sentences", label: "Sentences" },
-            { value: "words", label: "Words" },
+            { value: "paragraphs", label: m.panelsTabs.lorem.units.paragraphs },
+            { value: "sentences", label: m.panelsTabs.lorem.units.sentences },
+            { value: "words", label: m.panelsTabs.lorem.units.words },
           ]}
         />
         <div className="cf-lorem__count">
@@ -63,24 +64,24 @@ export function LoremApp() {
             step={1}
             precision={0}
             stepper
-            label={`Number of ${unit}`}
+            label={m.panelsTabs.lorem.numberOf[unit]}
             width={150}
           />
           <Button variant="ghost" size="sm" icon={<IconDice />} onClick={() => setSeed((s) => s + 1)}>
-            Shuffle
+            {m.panelsTabs.lorem.shuffle}
           </Button>
         </div>
       </AppField>
 
-      <Switch checked={classic} onChange={setClassic} label='Start with "Lorem ipsum dolor sit amet"' />
+      <Switch checked={classic} onChange={setClassic} label={m.panelsTabs.lorem.classic} />
 
-      <AppField label="Preview" className="cf-lorem__preview-field">
-        <div className="cf-lorem__preview" role="region" aria-label="Preview of the text" tabIndex={0}>
+      <AppField label={m.panelsTabs.lorem.preview} className="cf-lorem__preview-field">
+        <div className="cf-lorem__preview" role="region" aria-label={m.panelsTabs.lorem.previewLabel} tabIndex={0}>
           {text.split("\n\n").map((p, i) => (
             <p key={i}>{p}</p>
           ))}
         </div>
-        <p className="cf-app__hint">{text.split(/\s+/).filter(Boolean).length} words</p>
+        <p className="cf-app__hint">{m.panelsTabs.lorem.wordCount(text.split(/\s+/).filter(Boolean).length)}</p>
       </AppField>
     </AppPage>
   );

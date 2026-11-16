@@ -87,7 +87,8 @@ export function createMlClient(options: MlClientOptions = {}): MlClient {
     else if (message.type === "tile-done") waiting.resolve(message.pixels);
     else if (message.type === "ready") waiting.resolve(undefined);
     else {
-      waiting.reject(new MlError(message.code, message.message, { cause: message.detail }));
+      // the worker sends a code, not words (it cannot read the catalog): the page says it in its own language
+      waiting.reject(new MlError(message.code, undefined, { cause: message.detail }));
       // The runtime remembers a failed start (a file that did not arrive, a lost graphics device) and repeats it for
       // every later request. A fresh worker is the only way to try again.
       if (RESTART_AFTER.has(message.code)) {

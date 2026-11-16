@@ -5,7 +5,8 @@ import { deleteForeverAction, emptyTrashAction, restoreDesignAction } from "./ac
 import { useDesigns, useNow } from "./data";
 import { DesignCardSkeleton } from "./DesignCard";
 import { DesignMock, mockForDesign } from "./DesignMock";
-import { formatDeleted, plural } from "./format";
+import { m } from "@/i18n";
+import { formatDeleted } from "./format";
 import { shortTypeName } from "./labels";
 import { trashMenuItems } from "./menus";
 import { Page, PageHeader } from "./Page";
@@ -19,34 +20,29 @@ export function TrashPage() {
   return (
     <Page className="cf-trash">
       <PageHeader
-        title="Trash"
-        subtitle="Designs in the trash are kept on this device until you delete them."
+        title={m.dashboard.shell.nav.trash}
+        subtitle={m.dashboard.trash.subtitle}
         actions={
           trashed.length > 0 ? (
             <Button variant="secondary" className="cf-trash__empty-btn" icon={<IconTrash aria-hidden="true" />} onClick={() => void emptyTrashAction(trashed.length)}>
-              Empty trash
+              {m.dashboard.actions.emptyTrash}
             </Button>
           ) : null
         }
       />
 
       {!ready ? (
-        <div className="cf-trash__grid" aria-busy="true" aria-label="Loading the trash">
+        <div className="cf-trash__grid" aria-busy="true" aria-label={m.dashboard.trash.loading}>
           {Array.from({ length: 4 }, (_unused, index) => (
             <DesignCardSkeleton key={index} />
           ))}
         </div>
       ) : trashed.length === 0 ? (
-        <EmptyState
-          headingLevel={2}
-          icon={<IconTrash />}
-          title="The trash is empty"
-          text="Designs you move to the trash show up here, and you can restore them whenever you like."
-        />
+        <EmptyState headingLevel={2} icon={<IconTrash />} title={m.dashboard.trash.emptyTitle} text={m.dashboard.trash.emptyText} />
       ) : (
         <>
           <p className="cf-trash__count" aria-live="polite">
-            {plural(trashed.length, "design")} in the trash
+            {m.dashboard.trash.count(trashed.length)}
           </p>
           <div className="cf-trash__grid">
             {trashed.map((design) => (
@@ -87,10 +83,10 @@ const TrashCard = memo(function TrashCard({ design, now }: { design: DesignSumma
       </div>
       <div className="cf-trash__actions">
         <Button size="sm" variant="soft" icon={<IconUndo aria-hidden="true" />} onClick={() => void restoreDesignAction(design)}>
-          Restore
+          {m.dashboard.shared.restore}
         </Button>
         <Button size="sm" variant="ghost" className="cf-trash__delete" onClick={() => void deleteForeverAction(design)}>
-          Delete forever
+          {m.dashboard.shared.deleteForever}
         </Button>
       </div>
     </article>

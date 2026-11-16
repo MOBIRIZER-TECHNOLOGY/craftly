@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { addAssetFromFile, isAcceptedImage } from "@/core/assets";
 import { getBrandKit, setBrandKit } from "@/core/library";
 import type { Asset } from "@/core/types";
+import { m } from "@/i18n";
 import { Button, ColorSwatch, IconBrand, IconImage, IconUpload, Skeleton, cx, toast } from "@/ui";
 import { EmptyHint } from "../../shared/EmptyHint";
 import { useAssetUrl, useAssets } from "../../shared/hooks";
@@ -61,14 +62,14 @@ export function PaletteApp() {
       const added = await addAssetFromFile(list[0]);
       setChosen(added.id);
     } catch {
-      toast.error("That image could not be read. Try a different file.");
+      toast.error(m.panelsTabs.palette.imageFailed);
     } finally {
       setUploading(false);
     }
   };
 
   const apply = (color: string) => {
-    if (applyColorToSelection(color) === "none") toast.info("Select some text, a shape or a line first, or click an empty part of the page to colour its background.");
+    if (applyColorToSelection(color) === "none") toast.info(m.panelsTabs.shared.nothingToColour);
   };
 
   const saveToKit = async () => {
@@ -77,25 +78,25 @@ export function PaletteApp() {
     const have = new Set(kit.colors.map((c) => c.toLowerCase()));
     const fresh = palette.filter((c) => !have.has(c.toLowerCase()));
     if (!fresh.length) {
-      toast.info("Those colours are already in your brand kit.");
+      toast.info(m.panelsTabs.palette.alreadyInKit);
       return;
     }
     await setBrandKit({ ...kit, colors: [...kit.colors, ...fresh].slice(0, MAX_BRAND_COLORS) });
-    toast.success(`${fresh.length} colour${fresh.length === 1 ? "" : "s"} added to your brand kit`);
+    toast.success(m.panelsTabs.palette.added(fresh.length));
   };
 
   const picker = <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void upload(e.target.files)} />;
 
   if (assets !== null && images.length === 0) {
     return (
-      <AppPage title="Colour palette from image" subtitle="Find the colours of a picture">
+      <AppPage title={m.panelsTabs.palette.title} subtitle={m.panelsTabs.palette.subtitle}>
         <EmptyHint
           icon={<IconImage />}
-          title="Upload an image first"
-          text="Choose a photo or logo and Craftly pulls its six main colours out of it."
+          title={m.panelsTabs.palette.uploadFirst}
+          text={m.panelsTabs.palette.uploadFirstText}
           action={
             <Button variant="primary" icon={<IconUpload />} loading={uploading} onClick={() => fileRef.current?.click()}>
-              Upload an image
+              {m.panelsTabs.palette.uploadImage}
             </Button>
           }
         />
@@ -106,23 +107,23 @@ export function PaletteApp() {
 
   return (
     <AppPage
-      title="Colour palette from image"
-      subtitle="Find the colours of a picture"
+      title={m.panelsTabs.palette.title}
+      subtitle={m.panelsTabs.palette.subtitle}
       footer={
         <Button variant="primary" size="lg" block icon={<IconBrand />} disabled={!palette} onClick={() => void saveToKit()}>
-          Save to brand kit
+          {m.panelsTabs.palette.saveToKit}
         </Button>
       }
     >
-      <AppField label="Pick an image" hint="Your uploads appear here. Add another one any time.">
+      <AppField label={m.panelsTabs.palette.pickImage} hint={m.panelsTabs.palette.pickImageHint}>
         {assets === null ? (
           <Skeleton height={64} radius={12} />
         ) : (
-          <div className="cf-pal__images" role="listbox" aria-label="Your uploads">
+          <div className="cf-pal__images" role="listbox" aria-label={m.panelsTabs.palette.yourUploads}>
             {images.slice(0, 11).map((a) => (
               <UploadChoice key={a.id} asset={a} selected={a.id === chosen} onChoose={() => setChosen(a.id)} />
             ))}
-            <button type="button" className="cf-pal__add" aria-label="Upload another image" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            <button type="button" className="cf-pal__add" aria-label={m.panelsTabs.palette.uploadAnother} onClick={() => fileRef.current?.click()} disabled={uploading}>
               <IconUpload aria-hidden="true" />
             </button>
           </div>
@@ -130,14 +131,14 @@ export function PaletteApp() {
         {picker}
       </AppField>
 
-      <AppField label="Colours" hint="Click a colour to use it on the selected text or shape, or on the page background.">
+      <AppField label={m.panelsTabs.palette.colours} hint={m.panelsTabs.palette.coloursHint}>
         {failed ? (
-          <p className="cf-app__error">We could not read colours from that image. Try a different one.</p>
+          <p className="cf-app__error">{m.panelsTabs.palette.readFailed}</p>
         ) : palette ? (
-          <div className="cf-pal__swatches" role="group" aria-label="Palette colours">
+          <div className="cf-pal__swatches" role="group" aria-label={m.panelsTabs.palette.paletteColours}>
             {palette.map((c) => (
               <div key={c} className="cf-pal__swatch">
-                <ColorSwatch color={c} size={40} shape="square" title={`${c.toUpperCase()} - click to apply`} onClick={() => apply(c)} />
+                <ColorSwatch color={c} size={40} shape="square" title={m.panelsTabs.palette.swatchTitle(c.toUpperCase())} onClick={() => apply(c)} />
                 <span>{c.slice(1).toUpperCase()}</span>
               </div>
             ))}

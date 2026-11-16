@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouse
 import { hitTestElement, toLocalPoint } from "@/core/geometry";
 import { useEditor } from "@/core/store";
 import type { DesignElement, Point } from "@/core/types";
+import { m } from "@/i18n";
 import {
   IconButton,
   IconChevronLeft,
@@ -323,7 +324,7 @@ export function PresentMode() {
       className={cx("cf-present", idle && "is-idle", overLink && "is-link")}
       role="dialog"
       aria-modal="true"
-      aria-label="Presentation"
+      aria-label={m.editorChrome.present.label}
       tabIndex={-1}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -331,43 +332,49 @@ export function PresentMode() {
     >
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a click on the stage turns the page; the keys of the presenter (Right, Space ...) do it for the keyboard */}
       <div ref={stageRef} className="cf-present__stage" onClick={onStageClick}>
-        <canvas ref={canvasRef} className="cf-present__page" aria-label={`Page ${current + 1} of ${count}`} role="img" hidden={failedId === page.id} />
+        <canvas ref={canvasRef} className="cf-present__page" aria-label={m.editorChrome.pages.pageOf(current + 1, count)} role="img" hidden={failedId === page.id} />
         {failedId === page.id ? (
           <p className="cf-present__error" role="alert">
-            This page couldn't be drawn. Use the arrows to carry on, or press Esc to go back and fix it.
+            {m.editorChrome.present.drawFailed}
           </p>
         ) : null}
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- keeps a click on the controls from turning the page */}
         <div className={cx("cf-present__controls", idle && "is-idle")} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-          <IconButton label="Previous page" shortcut="Left" icon={<IconChevronLeft aria-hidden="true" />} disabled={current === 0} onClick={prev} />
+          <IconButton label={m.editorChrome.present.previousPage} shortcut="Left" icon={<IconChevronLeft aria-hidden="true" />} disabled={current === 0} onClick={prev} />
           <span className="cf-present__count" aria-hidden="true">
             {current + 1} / {count}
           </span>
-          <IconButton label="Next page" shortcut="Right" icon={<IconChevronRight aria-hidden="true" />} disabled={current >= count - 1} onClick={next} />
+          <IconButton label={m.editorChrome.present.nextPage} shortcut="Right" icon={<IconChevronRight aria-hidden="true" />} disabled={current >= count - 1} onClick={next} />
           <span className="cf-present__sep" aria-hidden="true" />
           <IconButton
-            label="Auto-play"
+            label={m.editorChrome.present.autoplay}
             shortcut="P"
             icon={autoplay ? <IconPause aria-hidden="true" /> : <IconPlay aria-hidden="true" />}
             active={autoplay}
             onClick={toggleAutoplay}
           />
-          <IconButton label={notesOn ? "Hide notes" : "Show notes"} shortcut="N" icon={<IconNotes aria-hidden="true" />} active={notesOn} onClick={() => setNotesOn((v) => !v)} />
           <IconButton
-            label={fullscreen ? "Exit full screen" : "Enter full screen"}
+            label={notesOn ? m.editorChrome.present.hideNotes : m.editorChrome.present.showNotes}
+            shortcut="N"
+            icon={<IconNotes aria-hidden="true" />}
+            active={notesOn}
+            onClick={() => setNotesOn((v) => !v)}
+          />
+          <IconButton
+            label={fullscreen ? m.editorChrome.present.exitFullScreen : m.editorChrome.present.enterFullScreen}
             shortcut="F"
             icon={fullscreen ? <IconExitFullscreen aria-hidden="true" /> : <IconFullscreen aria-hidden="true" />}
             onClick={toggleFullscreen}
           />
-          <IconButton label="Exit presentation" shortcut="Esc" icon={<IconClose aria-hidden="true" />} onClick={exit} />
+          <IconButton label={m.editorChrome.present.exit} shortcut="Esc" icon={<IconClose aria-hidden="true" />} onClick={exit} />
         </div>
       </div>
 
       {notesOn ? (
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- the notes scroll, so the keyboard has to reach them
-        <aside className="cf-present__notes" aria-label="Speaker notes" tabIndex={0}>
-          <h2 className="cf-present__notes-title">Notes - page {current + 1}</h2>
-          <p className={cx("cf-present__notes-text", !page.notes?.trim() && "is-empty")}>{page.notes?.trim() ? page.notes : "No notes for this page."}</p>
+        <aside className="cf-present__notes" aria-label={m.editorChrome.present.speakerNotes} tabIndex={0}>
+          <h2 className="cf-present__notes-title">{m.editorChrome.present.notesTitle(current + 1)}</h2>
+          <p className={cx("cf-present__notes-text", !page.notes?.trim() && "is-empty")}>{page.notes?.trim() ? page.notes : m.editorChrome.present.noNotes}</p>
         </aside>
       ) : null}
 
@@ -377,7 +384,9 @@ export function PresentMode() {
         </div>
       ) : null}
 
-      <div className="cf-sr-only" aria-live="polite">{`Page ${current + 1} of ${count}`}</div>
+      <div className="cf-sr-only" aria-live="polite">
+        {m.editorChrome.pages.pageOf(current + 1, count)}
+      </div>
     </div>
   );
 }

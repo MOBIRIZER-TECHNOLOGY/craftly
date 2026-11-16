@@ -2,7 +2,8 @@ import { memo, useId, useState, type DragEvent } from "react";
 import { IconButton, IconFolder, IconMore, MenuPopover, cx, openContextMenu, type MenuEntry } from "@/ui";
 import type { Folder } from "@/core/types";
 import { DESIGN_DRAG_TYPE } from "./DesignCard";
-import { formatRelative, plural } from "./format";
+import { m } from "@/i18n";
+import { formatRelative } from "./format";
 import { folderMenuItems } from "./menus";
 import "./FolderCard.css";
 
@@ -69,11 +70,11 @@ export const FolderCard = memo(function FolderCard({ folder, count, now, layout 
           {folder.name}
         </a>
         <p className="cf-fcard__sub" id={subId}>
-          {plural(count, "design")}
+          {m.dashboard.counts.designs(count)}
         </p>
       </div>
       <span className="cf-fcard__cell cf-fcard__type" aria-hidden="true">
-        Folder
+        {m.dashboard.cards.folder}
       </span>
       <span className="cf-fcard__cell cf-fcard__time" aria-hidden="true">
         {formatRelative(folder.createdAt, now)}
@@ -82,7 +83,7 @@ export const FolderCard = memo(function FolderCard({ folder, count, now, layout 
         <IconButton
           className="cf-fcard__more"
           size="sm"
-          label="More actions"
+          label={m.dashboard.shared.moreActions}
           icon={<IconMore aria-hidden="true" />}
           aria-haspopup="menu"
           aria-expanded={menuAnchor !== null}
@@ -95,7 +96,7 @@ export const FolderCard = memo(function FolderCard({ folder, count, now, layout 
         onClose={() => setMenuAnchor(null)}
         items={menuAnchor ? items() : NO_ITEMS}
         placement="bottom-end"
-        aria-label={`Actions for folder ${folder.name}`}
+        aria-label={m.dashboard.cards.actionsForFolder(folder.name)}
       />
     </article>
   );

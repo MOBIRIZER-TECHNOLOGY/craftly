@@ -8,6 +8,7 @@
  */
 import { useState } from "react";
 import { PRESENCE_NAME_MAX } from "@/collab/presence";
+import { m } from "@/i18n";
 import { TextField } from "@/ui";
 import { colorOf, saveName, shownName, usePresence } from "./presence";
 import "./live.css";
@@ -29,14 +30,14 @@ export function LivePeople() {
   const myName = usePresence((s) => s.name);
   const others = usePresence((s) => s.people);
   if (me === null) return null;
-  const all = [{ peer: me, name: `${shownName(myName, me)} (you)`, short: initials(shownName(myName, me)), color: colorOf(me) }].concat(
+  const all = [{ peer: me, name: m.editor.live.me(shownName(myName, me)), short: initials(shownName(myName, me)), color: colorOf(me) }].concat(
     others.map((p) => ({ peer: p.peer, name: p.name, short: initials(p.name), color: p.color })),
   );
   const shown = all.length > SHOWN + 1 ? all.slice(0, SHOWN) : all;
   const rest = all.slice(shown.length);
   const restNames = rest.map((p) => p.name).join(", ");
   return (
-    <ul className="cf-live-people" aria-label={`${all.length} ${all.length === 1 ? "person" : "people"} here`}>
+    <ul className="cf-live-people" aria-label={m.editor.live.people(all.length)}>
       {shown.map((person) => (
         <li key={person.peer} className="cf-live-people__one" style={{ backgroundColor: person.color }} title={person.name}>
           <span className="cf-live-people__initials" aria-hidden="true">
@@ -48,7 +49,7 @@ export function LivePeople() {
       {rest.length ? (
         <li className="cf-live-people__one cf-live-people__one--more" title={restNames}>
           <span aria-hidden="true">+{rest.length}</span>
-          <span className="cf-sr-only">and {restNames}</span>
+          <span className="cf-sr-only">{m.editor.live.andRest(restNames)}</span>
         </li>
       ) : null}
       <li className="cf-live-people__count" aria-hidden="true">
@@ -64,14 +65,14 @@ export function NameField() {
   const [typed, setTyped] = useState(() => usePresence.getState().name);
   return (
     <TextField
-      label="Your name"
+      label={m.editor.live.nameLabel}
       value={typed}
       onChange={(e) => {
         setTyped(e.target.value);
         saveName(e.target.value);
       }}
-      placeholder={me === null ? "Guest" : shownName("", me)}
-      hint="The others see this name beside your pointer. It is kept on this device."
+      placeholder={me === null ? m.editor.live.guestPlaceholder : shownName("", me)}
+      hint={m.editor.live.nameHint}
       maxLength={PRESENCE_NAME_MAX}
       autoComplete="nickname"
       spellCheck={false}

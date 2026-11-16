@@ -194,7 +194,6 @@ const contactSlide = slide(
 export const STUDIO: Template = template(
   {
     slug: "minimal-studio-portfolio",
-    name: "Minimal Studio Portfolio",
     category: "presentation",
     size: "presentation",
     tags: ["minimal", "studio", "portfolio", "architecture", "interior", "serif", "elegant", "off-white", "neutral", "design", "whitespace"],

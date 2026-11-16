@@ -4,6 +4,8 @@ import type { DesignSummary, Template } from "@/core/types";
 import { TemplateThumb } from "@/components/PageThumb";
 import { DESIGN_CATEGORY_LABELS, DESIGN_TYPES, describeSize, type DesignType } from "@/data/designTypes";
 import { TEMPLATE_CATEGORY_LABELS, searchTemplates } from "@/data/templates";
+import { englishName } from "@/data/names";
+import { m } from "@/i18n";
 import { createBlankAndOpen, createCustomAndOpen, openDesign } from "./actions";
 import { openCreateDialog } from "./createDialogState";
 import { useDesigns, useNow } from "./data";
@@ -50,13 +52,19 @@ function compute(query: string, designs: DesignSummary[]): Groups {
   if (size) types.push({ kind: "custom", width: size.width, height: size.height });
   for (const type of DESIGN_TYPES) {
     if (types.length >= MAX_TYPES) break;
-    if (matchesWords(`${type.name} ${type.id.replace(/-/g, " ")} ${DESIGN_CATEGORY_LABELS[type.category]}`, words)) types.push({ kind: "type", type });
+    if (
+      matchesWords(
+        `${type.name} ${englishName("designTypes", type.id)} ${type.id.replace(/-/g, " ")} ${DESIGN_CATEGORY_LABELS[type.category]} ${englishName("designCategories", type.category)}`,
+        words,
+      )
+    )
+      types.push({ kind: "type", type });
   }
   return { designs: matchedDesigns, templates, types };
 }
 
 /** The big search field of the Home / Templates heroes with a results panel (designs, templates, design types). */
-export function HomeSearch({ placeholder = "Search designs and templates" }: { placeholder?: string }) {
+export function HomeSearch({ placeholder = m.dashboard.search.placeholder }: { placeholder?: string }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
@@ -176,12 +184,12 @@ export function HomeSearch({ placeholder = "Search designs and templates" }: { p
 
       {showPanel ? (
         // eslint-disable-next-line jsx-a11y/interactive-supports-focus -- the focus stays in the search field; the options are chosen with aria-activedescendant
-        <div className="cf-hsearch__panel" id={listId} role="listbox" aria-label="Search results" onMouseDown={(event) => event.preventDefault()}>
+        <div className="cf-hsearch__panel" id={listId} role="listbox" aria-label={m.dashboard.shared.searchResults} onMouseDown={(event) => event.preventDefault()}>
           {items.length === 0 ? (
             <div className="cf-hsearch__empty">
               <IconSearch aria-hidden="true" />
-              <p className="cf-hsearch__empty-title">Nothing found for “{query.trim()}”</p>
-              <p className="cf-hsearch__empty-text">Try a shorter word, or start from any design type.</p>
+              <p className="cf-hsearch__empty-title">{m.dashboard.search.nothingFound(query.trim())}</p>
+              <p className="cf-hsearch__empty-text">{m.dashboard.search.nothingText}</p>
               <Button
                 size="sm"
                 variant="soft"
@@ -190,15 +198,15 @@ export function HomeSearch({ placeholder = "Search designs and templates" }: { p
                   openCreateDialog({ query: query.trim() });
                 }}
               >
-                Browse design types
+                {m.dashboard.shared.browseDesignTypes}
               </Button>
             </div>
           ) : (
             <>
               {groups.designs.length > 0 ? (
-                <div className="cf-hsearch__group" role="group" aria-label="Your designs">
+                <div className="cf-hsearch__group" role="group" aria-label={m.dashboard.search.yourDesigns}>
                   <p className="cf-hsearch__heading" aria-hidden="true">
-                    Your designs
+                    {m.dashboard.search.yourDesigns}
                   </p>
                   {groups.designs.map((item) =>
                     item.kind === "design"
@@ -222,9 +230,9 @@ export function HomeSearch({ placeholder = "Search designs and templates" }: { p
               ) : null}
 
               {groups.templates.length > 0 ? (
-                <div className="cf-hsearch__group" role="group" aria-label="Templates">
+                <div className="cf-hsearch__group" role="group" aria-label={m.dashboard.shell.nav.templates}>
                   <p className="cf-hsearch__heading" aria-hidden="true">
-                    Templates
+                    {m.dashboard.shell.nav.templates}
                   </p>
                   {groups.templates.map((item) => {
                     if (item.kind === "template") {
@@ -251,8 +259,8 @@ export function HomeSearch({ placeholder = "Search designs and templates" }: { p
                             <IconArrowRight />
                           </span>
                           <span className="cf-hsearch__text">
-                            <span className="cf-hsearch__name">See all {item.count} templates</span>
-                            <span className="cf-hsearch__meta">Open the Templates page</span>
+                            <span className="cf-hsearch__name">{m.dashboard.search.seeAllTemplates(item.count)}</span>
+                            <span className="cf-hsearch__meta">{m.dashboard.search.openTemplatesPage}</span>
                           </span>
                         </>,
                       );
@@ -263,9 +271,9 @@ export function HomeSearch({ placeholder = "Search designs and templates" }: { p
               ) : null}
 
               {groups.types.length > 0 ? (
-                <div className="cf-hsearch__group" role="group" aria-label="Design types">
+                <div className="cf-hsearch__group" role="group" aria-label={m.dashboard.search.designTypes}>
                   <p className="cf-hsearch__heading" aria-hidden="true">
-                    Design types
+                    {m.dashboard.search.designTypes}
                   </p>
                   {groups.types.map((item) => {
                     if (item.kind === "type") {
@@ -278,7 +286,7 @@ export function HomeSearch({ placeholder = "Search designs and templates" }: { p
                           </span>
                           <span className="cf-hsearch__text">
                             <span className="cf-hsearch__name">{item.type.name}</span>
-                            <span className="cf-hsearch__meta">Create blank · {describeSize(item.type.width, item.type.height, item.type.unit)}</span>
+                            <span className="cf-hsearch__meta">{m.dashboard.search.createBlank(describeSize(item.type.width, item.type.height, item.type.unit))}</span>
                           </span>
                         </>,
                       );
@@ -291,10 +299,8 @@ export function HomeSearch({ placeholder = "Search designs and templates" }: { p
                             <IconCustomSize />
                           </span>
                           <span className="cf-hsearch__text">
-                            <span className="cf-hsearch__name">Custom size</span>
-                            <span className="cf-hsearch__meta">
-                              Create blank · {item.width} × {item.height} px
-                            </span>
+                            <span className="cf-hsearch__name">{m.dashboard.shared.customSize}</span>
+                            <span className="cf-hsearch__meta">{m.dashboard.search.createBlank(m.dashboard.shared.pxSize(item.width, item.height))}</span>
                           </span>
                         </>,
                       );

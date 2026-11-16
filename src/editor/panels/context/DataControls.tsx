@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { m } from "@/i18n";
 import { cx } from "@/ui";
 import { ColorField } from "./ColorField";
 import { parseNumber } from "./dataEdit";
@@ -30,7 +31,7 @@ export function NumberCell({ value, onValid, label, dim }: { value: number; onVa
       spellCheck={false}
       aria-label={label}
       aria-invalid={invalid || undefined}
-      title={invalid ? "Enter a number, for example 12 or 3.5" : undefined}
+      title={invalid ? m.panelsContext.dataCell.invalidNumber : undefined}
       value={draft ?? String(value)}
       onChange={(e) => {
         const text = e.target.value;

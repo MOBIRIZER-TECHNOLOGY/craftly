@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { getActions, useEditor } from "@/core/store";
 import { FRAME_PRESETS, GRID_PRESETS, createFrameFromPreset, createGridFrames, type FramePreset, type GridPreset } from "@/data/shapes";
+import { englishName } from "@/data/names";
+import { m } from "@/i18n";
 import { shapePathData } from "@/render/shapePaths";
 import { IconFrame, IconGrid } from "@/ui";
 import { DraggableItem } from "../../shared/DraggableItem";
@@ -40,10 +42,10 @@ function FramePreview({ preset }: { preset: FramePreset }) {
 export function FramesPage() {
   const query = useElementsNav((s) => s.query);
   const q = query.trim().toLowerCase();
-  const presets = useMemo(() => FRAME_PRESETS.filter((p) => !q || `${p.name} ${p.mask} frame mask`.toLowerCase().includes(q)), [q]);
+  const presets = useMemo(() => FRAME_PRESETS.filter((p) => !q || `${p.name} ${englishName("frames", p.id)} ${p.mask} frame mask`.toLowerCase().includes(q)), [q]);
   return (
     <Panel>
-      <SubPageTop title="Frames" placeholder="Search frames" subtitle="Drop a photo onto a frame to fill it" />
+      <SubPageTop title={m.panelsTabs.elements.categories.frames} placeholder={m.panelsTabs.elements.frames.search} subtitle={m.panelsTabs.elements.frames.subtitle} />
       <PanelScroll>
         {presets.length ? (
           <ItemGrid columns={3} minCell={84} gap={8}>
@@ -63,7 +65,7 @@ export function FramesPage() {
             })}
           </ItemGrid>
         ) : (
-          <EmptyHint icon={<IconFrame />} title="No frames found" text={`Nothing matches "${query.trim()}". Try "circle", "heart" or "arch".`} />
+          <EmptyHint icon={<IconFrame />} title={m.panelsTabs.elements.frames.noneTitle} text={m.panelsTabs.elements.frames.noneText(query.trim())} />
         )}
       </PanelScroll>
     </Panel>
@@ -93,19 +95,19 @@ function buildGridFrames(preset: GridPreset) {
   const width = design?.width ?? 1920;
   const height = design?.height ?? 1080;
   const min = Math.min(width, height);
-  const m = Math.round(min * 0.06);
+  const margin = Math.round(min * 0.06);
   const gap = Math.max(6, Math.round(min * 0.012));
-  return createGridFrames(preset, { x: m, y: m, w: width - m * 2, h: height - m * 2 }, gap);
+  return createGridFrames(preset, { x: margin, y: margin, w: width - margin * 2, h: height - margin * 2 }, gap);
 }
 
 export function GridsPage() {
   const query = useElementsNav((s) => s.query);
   const q = query.trim().toLowerCase();
-  const presets = useMemo(() => GRID_PRESETS.filter((p) => !q || `${p.name} grid collage photos`.toLowerCase().includes(q)), [q]);
+  const presets = useMemo(() => GRID_PRESETS.filter((p) => !q || `${p.name} ${englishName("grids", p.id)} grid collage photos`.toLowerCase().includes(q)), [q]);
 
   return (
     <Panel>
-      <SubPageTop title="Grids" placeholder="Search grids" subtitle="Photo layouts that fill the page" />
+      <SubPageTop title={m.panelsTabs.elements.categories.grids} placeholder={m.panelsTabs.elements.grids.search} subtitle={m.panelsTabs.elements.grids.subtitle} />
       <PanelScroll>
         {presets.length ? (
           <ItemGrid columns={2} minCell={130} gap={10}>
@@ -123,7 +125,7 @@ export function GridsPage() {
             ))}
           </ItemGrid>
         ) : (
-          <EmptyHint icon={<IconGrid />} title="No grids found" text={`Nothing matches "${query.trim()}". Try "mosaic" or "columns".`} />
+          <EmptyHint icon={<IconGrid />} title={m.panelsTabs.elements.grids.noneTitle} text={m.panelsTabs.elements.grids.noneText(query.trim())} />
         )}
       </PanelScroll>
     </Panel>

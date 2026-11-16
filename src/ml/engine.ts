@@ -4,7 +4,8 @@
  * `workerHost.ts` wires in the real one.
  */
 import type * as Ort from "onnxruntime-web/webgpu";
-import { MlError, type MlErrorCode } from "./errors";
+// a type only: errors.ts reads the catalog of words, which a worker has no use for (and no localStorage to choose it by)
+import type { MlErrorCode } from "./errors";
 import { fromHalfArray, maskFromOutput, toHalfArray, toInputTensor } from "./pixels";
 import type { ImageToImageIo, ImageToMaskIo, MlStage, ModelIo } from "./types";
 
@@ -34,7 +35,8 @@ export type WorkerResponse =
   | { id: number; type: "done"; mask: Uint8ClampedArray }
   | { id: number; type: "tile-done"; /** planar RGB, io.scale times larger on each side: 3 x (width x scale) x (height x scale) numbers */ pixels: Float32Array }
   | { id: number; type: "ready" }
-  | { id: number; type: "error"; code: MlErrorCode; message: string; /** the technical text, for a bug report: never shown as the message */ detail?: string };
+  /** a failure: the code says what went wrong, and the page puts it in words; `detail` is the technical text, for a bug report, never shown */
+  | { id: number; type: "error"; code: MlErrorCode; detail?: string };
 
 export type Post = (message: WorkerResponse, transfer?: Transferable[]) => void;
 
@@ -42,17 +44,28 @@ export type Post = (message: WorkerResponse, transfer?: Transferable[]) => void;
 
 const GPU_MEMORY = /out of memory|allocate|\boom\b|device (was )?lost|memory access/i;
 
-/** What a developer needs to see: the runtime's own words, or the cause an MlError carries. */
+/** A failure inside the worker: a code for the page to put in words, and the technical cause. */
+class EngineFailure extends Error {
+  readonly code: MlErrorCode;
+
+  constructor(code: MlErrorCode, options?: { cause?: unknown }) {
+    super(code, options);
+    this.name = "EngineFailure";
+    this.code = code;
+  }
+}
+
+/** What a developer needs to see: the runtime's own words, or the cause an EngineFailure carries. */
 function technicalText(error: unknown): string {
-  const raw = error instanceof MlError && error.cause !== undefined ? error.cause : error;
+  const raw = error instanceof EngineFailure && error.cause !== undefined ? error.cause : error;
   const text = raw instanceof Error ? `${raw.name}: ${raw.message}` : String(raw);
   return text.slice(0, 600);
 }
 
-function failure(error: unknown): MlError {
-  if (error instanceof MlError) return error;
+function failure(error: unknown): EngineFailure {
+  if (error instanceof EngineFailure) return error;
   const text = error instanceof Error ? error.message : String(error);
-  return new MlError(GPU_MEMORY.test(text) ? "out-of-memory" : "runtime", undefined, { cause: error });
+  return new EngineFailure(GPU_MEMORY.test(text) ? "out-of-memory" : "runtime", { cause: error });
 }
 
 export interface EngineDeps {
@@ -95,14 +108,14 @@ export function createEngine(deps: EngineDeps) {
 
   /** Runs the model on `floats` (planar RGB) in the precision its file wants. The caller owns the answer and has to dispose it. */
   async function runModel(ort: OrtLike, session: OrtSession, io: ModelIo, floats: Float32Array, dims: number[]): Promise<Ort.Tensor> {
-    const meta = session.inputMetadata.find((m) => m.name === io.input);
+    const meta = session.inputMetadata.find((input) => input.name === io.input);
     const wantsHalf = !!meta && meta.isTensor && meta.type === "float16";
     const input = wantsHalf ? new ort.Tensor("float16", toHalfArray(floats), dims) : new ort.Tensor("float32", floats, dims);
     const outputs = await session.run({ [io.input]: input });
     const output = outputs[io.output];
     if (!output) {
       const names = Object.keys(outputs).join(", ") || "nothing";
-      throw new MlError("runtime", undefined, { cause: `the model returned no output named "${io.output}" (it returned: ${names})` });
+      throw new EngineFailure("runtime", { cause: `the model returned no output named "${io.output}" (it returned: ${names})` });
     }
     return output;
   }
@@ -115,26 +128,26 @@ export function createEngine(deps: EngineDeps) {
 
   /** A request for the wrong kind of model is a bug of the caller: say so before a session is made for it. */
   function ioOf<K extends ModelIo["kind"]>(model: WorkerModel, kind: K): Extract<ModelIo, { kind: K }> {
-    if (model.io.kind !== kind) throw new MlError("runtime", undefined, { cause: `${model.id} is a ${model.io.kind} model, not a ${kind} model` });
+    if (model.io.kind !== kind) throw new EngineFailure("runtime", { cause: `${model.id} is a ${model.io.kind} model, not a ${kind} model` });
     return model.io as Extract<ModelIo, { kind: K }>;
   }
 
   /** One tile through a model that makes pictures larger. The answer is a copy: the runtime's own memory is released here. */
   async function inferTile(ort: OrtLike, session: OrtSession, io: ImageToImageIo, pixels: Float32Array, width: number, height: number): Promise<Float32Array> {
     if (pixels.length !== 3 * width * height) {
-      throw new MlError("runtime", undefined, { cause: `the tile has ${pixels.length} numbers, expected ${3 * width * height} for ${width} x ${height} pixels` });
+      throw new EngineFailure("runtime", { cause: `the tile has ${pixels.length} numbers, expected ${3 * width * height} for ${width} x ${height} pixels` });
     }
     const output = await runModel(ort, session, io, pixels, [1, 3, height, width]);
     try {
       const values = numbersOf(output);
       const expected = 3 * width * io.scale * height * io.scale;
       if (values.length !== expected) {
-        throw new MlError("runtime", undefined, { cause: `the output has ${values.length} numbers, expected ${expected} (dims ${output.dims.join(" x ")})` });
+        throw new EngineFailure("runtime", { cause: `the output has ${values.length} numbers, expected ${expected} (dims ${output.dims.join(" x ")})` });
       }
       // one bad number is a black dot in somebody's photograph: the graphics card is not to be trusted with this picture
       let invalid = 0;
       for (let i = 0; i < values.length; i++) if (Number.isNaN(values[i])) invalid++;
-      if (invalid > 0) throw new MlError("runtime", undefined, { cause: `the output is not a number (NaN) in ${invalid} of ${values.length} places` });
+      if (invalid > 0) throw new EngineFailure("runtime", { cause: `the output is not a number (NaN) in ${invalid} of ${values.length} places` });
       return values instanceof Float32Array ? values.slice() : Float32Array.from(values);
     } finally {
       output.dispose();
@@ -146,13 +159,13 @@ export function createEngine(deps: EngineDeps) {
     try {
       const values = numbersOf(output);
       if (values.length !== io.size * io.size) {
-        throw new MlError("runtime", undefined, { cause: `the output has ${values.length} values, expected ${io.size * io.size} (dims ${output.dims.join(" x ")})` });
+        throw new EngineFailure("runtime", { cause: `the output has ${values.length} values, expected ${io.size * io.size} (dims ${output.dims.join(" x ")})` });
       }
       // a graphics card whose half precision overflows returns NaN: that is a failure, not "nothing found"
       let invalid = 0;
       for (let i = 0; i < values.length; i++) if (Number.isNaN(values[i])) invalid++;
       if (invalid > values.length / 100) {
-        throw new MlError("runtime", undefined, {
+        throw new EngineFailure("runtime", {
           cause: `the output is not a number (NaN) in ${invalid} of ${values.length} places; half precision may overflow on this graphics card`,
         });
       }
@@ -187,9 +200,9 @@ export function createEngine(deps: EngineDeps) {
       }
     } catch (error) {
       // a runtime that would not load is not the model's fault: say "engine", not "this device cannot run it"
-      const known = loadingRuntime ? new MlError("engine", undefined, { cause: error }) : failure(error);
+      const known = loadingRuntime ? new EngineFailure("engine", { cause: error }) : failure(error);
       // the answer goes first: if the graphics card hangs while the session is released, the person still hears why
-      post({ id: request.id, type: "error", code: known.code, message: known.message, detail: technicalText(error) });
+      post({ id: request.id, type: "error", code: known.code, detail: technicalText(error) });
       await drop(); // after a failure the GPU state is not trusted: the next request builds a fresh session
     }
   }

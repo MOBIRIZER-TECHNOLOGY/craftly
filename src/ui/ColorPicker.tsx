@@ -1,5 +1,6 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { hsvToRgb, parseColor, rgbToHsv, toHex, type RGBA } from "@/core/color";
+import { m } from "@/i18n";
 import "./ColorPicker.css";
 import { ColorSwatch } from "./ColorSwatch";
 import { cx } from "./cx";
@@ -218,11 +219,11 @@ export function ColorPicker({ value, onChange, onChangeEnd, showAlpha = false, c
         style={svStyle}
         role="slider"
         tabIndex={0}
-        aria-label="Saturation and brightness"
+        aria-label={m.ui.colorPicker.saturationBrightness}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(hsva.s * 100)}
-        aria-valuetext={`Saturation ${Math.round(hsva.s * 100)}%, brightness ${Math.round(hsva.v * 100)}%`}
+        aria-valuetext={m.ui.colorPicker.saturationBrightnessValue(Math.round(hsva.s * 100), Math.round(hsva.v * 100))}
         onKeyDown={onSvKeyDown}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
@@ -249,7 +250,7 @@ export function ColorPicker({ value, onChange, onChangeEnd, showAlpha = false, c
       </div>
 
       <div className="cf-cp__row">
-        {EyeDropper ? <IconButton label="Pick colour from screen" icon={<IconEyedropper />} onClick={pickFromScreen} /> : null}
+        {EyeDropper ? <IconButton label={m.ui.colorPicker.pickFromScreen} icon={<IconEyedropper />} onClick={pickFromScreen} /> : null}
         <div className="cf-cp__bars">
           <div ref={hueRef} className="cf-cp__bar cf-cp__bar--hue" {...barHandlers("h", hueRef)}>
             <div
@@ -257,7 +258,7 @@ export function ColorPicker({ value, onChange, onChangeEnd, showAlpha = false, c
               style={{ left: `${(hsva.h / 360) * 100}%`, "--cf-thumb": hueColor } as CSSProperties}
               role="slider"
               tabIndex={0}
-              aria-label="Hue"
+              aria-label={m.ui.colorPicker.hue}
               aria-valuemin={0}
               aria-valuemax={360}
               aria-valuenow={Math.round(hsva.h)}
@@ -271,7 +272,7 @@ export function ColorPicker({ value, onChange, onChangeEnd, showAlpha = false, c
                 style={{ left: `${hsva.a * 100}%`, "--cf-thumb": current } as CSSProperties}
                 role="slider"
                 tabIndex={0}
-                aria-label="Opacity"
+                aria-label={m.ui.colorPicker.opacity}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(hsva.a * 100)}
@@ -281,7 +282,7 @@ export function ColorPicker({ value, onChange, onChangeEnd, showAlpha = false, c
             </div>
           ) : null}
         </div>
-        <ColorSwatch color={current} size={36} title="Current colour" />
+        <ColorSwatch color={current} size={36} title={m.ui.colorPicker.current} />
       </div>
 
       <div className="cf-cp__inputs">
@@ -295,7 +296,7 @@ export function ColorPicker({ value, onChange, onChangeEnd, showAlpha = false, c
             spellCheck={false}
             autoComplete="off"
             maxLength={9}
-            aria-label="Hex colour"
+            aria-label={m.ui.colorPicker.hex}
             value={hexDraft ?? hex.slice(1).toUpperCase()}
             onChange={(e) => {
               const text = e.target.value;
@@ -340,7 +341,7 @@ export function ColorPicker({ value, onChange, onChangeEnd, showAlpha = false, c
             precision={0}
             prefix={<span>A</span>}
             suffix="%"
-            label="Opacity"
+            label={m.ui.colorPicker.opacity}
             width={96}
           />
         ) : null}

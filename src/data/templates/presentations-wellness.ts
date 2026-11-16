@@ -211,7 +211,6 @@ const closing = slide(
 export const WELLNESS: Template = template(
   {
     slug: "earthy-wellness-retreat",
-    name: "Earthy Wellness Retreat",
     category: "presentation",
     size: "presentation",
     tags: ["wellness", "yoga", "retreat", "spa", "earthy", "terracotta", "sage", "calm", "boho", "natural", "mindfulness", "arches"],

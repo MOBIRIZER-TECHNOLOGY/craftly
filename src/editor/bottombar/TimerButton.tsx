@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { m } from "@/i18n";
 import { Button, IconPause, IconPlay, IconRefresh, IconTimer, Popover, cx } from "@/ui";
 import { formatClock } from "./clock";
 
@@ -39,22 +40,22 @@ export function TimerButton() {
         icon={<IconTimer aria-hidden="true" />}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={showTime ? `Timer, ${formatClock(elapsed)}` : "Timer"}
+        aria-label={showTime ? m.editorChrome.timer.timerAt(formatClock(elapsed)) : m.editorChrome.timer.timer}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className={cx("cf-bottombar__lbl", showTime && "cf-bottombar__lbl--keep")}>{showTime ? formatClock(elapsed) : "Timer"}</span>
+        <span className={cx("cf-bottombar__lbl", showTime && "cf-bottombar__lbl--keep")}>{showTime ? formatClock(elapsed) : m.editorChrome.timer.timer}</span>
       </Button>
-      <Popover open={open} anchor={anchor} onClose={() => setOpen(false)} placement="top-start" offset={8} className="cf-timerpop" aria-label="Timer">
+      <Popover open={open} anchor={anchor} onClose={() => setOpen(false)} placement="top-start" offset={8} className="cf-timerpop" aria-label={m.editorChrome.timer.timer}>
         <div className="cf-timerpop__body">
           <div className="cf-timerpop__time" role="timer" aria-live="off">
             {formatClock(elapsed)}
           </div>
           <div className="cf-timerpop__actions">
             <Button variant="primary" icon={running ? <IconPause aria-hidden="true" /> : <IconPlay aria-hidden="true" />} onClick={running ? pause : start}>
-              {running ? "Pause" : elapsed > 0 ? "Resume" : "Start"}
+              {running ? m.editorChrome.timer.pause : elapsed > 0 ? m.editorChrome.timer.resume : m.editorChrome.timer.start}
             </Button>
             <Button variant="secondary" icon={<IconRefresh aria-hidden="true" />} disabled={elapsed === 0 && !running} onClick={reset}>
-              Reset
+              {m.common.reset}
             </Button>
           </div>
         </div>

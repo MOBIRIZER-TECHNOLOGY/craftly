@@ -10,6 +10,7 @@
  */
 import { cleanName, PRESENCE_ID_MAX, PRESENCE_SELECTION_MAX, PRESENCE_STALE_MS, type PresenceHeard, type PresenceState } from "@/collab/presence";
 import { useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { create } from "zustand";
 
 /**
@@ -61,7 +62,7 @@ interface PresenceStore {
 export const colorOf = (peer: number): string => PRESENCE_COLORS[Math.abs(Math.trunc(peer)) % PRESENCE_COLORS.length];
 
 /** The name a person is shown under: the one they gave, or a word and their number. */
-export const shownName = (name: string, peer: number): string => name || `Guest ${peer}`;
+export const shownName = (name: string, peer: number): string => name || m.editor.live.guest(peer);
 
 /** The name this person gave on this device, as one that may be said (what is in the storage is not taken for granted either). */
 export function savedName(): string {

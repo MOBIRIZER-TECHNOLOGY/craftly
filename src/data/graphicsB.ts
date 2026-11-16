@@ -7,7 +7,7 @@
  * Style: flat shapes, no outlines, soft depth from translucent ink / cream overlays
  * (so a recolour keeps the shading), 3-6 distinct colours per piece.
  */
-import type { GraphicCategory, GraphicDef } from "./graphicTypes";
+import type { GraphicCategory, GraphicDef, GraphicDraft } from "./graphicTypes";
 
 /* ------------------------------------------------------------------ palette */
 
@@ -220,7 +220,8 @@ const NUDGE: Record<string, [N, N, N?]> = {
   "travel-tent": [0, -2.8, 0.93],
 };
 
-function art(category: GraphicCategory, slug: string, name: string, tags: string, markup: string, kind: GraphicDef["kind"] = "illustration"): GraphicDef {
+/** (the name comes from the catalog by id, see graphics.ts) */
+function art(category: GraphicCategory, slug: string, tags: string, markup: string, kind: GraphicDef["kind"] = "illustration"): GraphicDraft {
   let out = markup;
   const id = `${category}-${slug}`;
   const at = NUDGE[id];
@@ -232,7 +233,7 @@ function art(category: GraphicCategory, slug: string, name: string, tags: string
     const tf = s === 1 ? `translate(${dx} ${dy})` : `translate(${r2(cx + dx)} ${r2(cy + dy)}) scale(${s}) translate(${-cx} ${-cy})`;
     out = `${m[1]}<g transform="${tf}">${m[6]}</g></svg>`;
   }
-  return { id, name, category, tags: tags.split(" "), svg: out, kind };
+  return { id, category, tags: tags.split(" "), svg: out, kind };
 }
 
 /* ------------------------------------------------------------------ objects */
@@ -266,11 +267,10 @@ const balloon = (cx: N, cy: N, rx: N, ry: N, fill: string, angle = 0) =>
     ellipse(cx - rx * 0.42, cy - ry * 0.38, rx * 0.17, ry * 0.3, CREAM, op(0.6)),
   );
 
-const objects: GraphicDef[] = [
+const objects: GraphicDraft[] = [
   art(
     "objects",
     "coffee-cup",
-    "Coffee cup",
     "coffee cup mug cafe drink",
     svg(
       V,
@@ -293,7 +293,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "books-stack",
-    "Stack of books",
     "books stack reading library study",
     svg(
       V,
@@ -307,7 +306,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "camera",
-    "Camera",
     "camera photo photography snapshot picture",
     svg(
       V,
@@ -332,7 +330,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "headphones",
-    "Headphones",
     "headphones audio music listen podcast",
     svg(
       V,
@@ -349,7 +346,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "backpack",
-    "Backpack",
     "backpack bag school travel hiking",
     svg(
       V,
@@ -373,7 +369,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "plant-pot",
-    "Potted plant",
     "plant pot leaves houseplant green garden",
     svg(
       V,
@@ -394,7 +389,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "lamp",
-    "Table lamp",
     "lamp light lighting desk home decor",
     svg(
       V,
@@ -413,7 +407,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "clock",
-    "Alarm clock",
     "clock alarm time watch hours schedule",
     (() => {
       const ticks: string[] = [];
@@ -444,7 +437,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "key",
-    "Golden key",
     "key lock access security password",
     svg(
       V,
@@ -466,7 +458,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "gift-box",
-    "Gift box",
     "gift box present ribbon bow surprise",
     svg(
       V,
@@ -490,7 +481,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "umbrella",
-    "Umbrella",
     "umbrella rain weather season protection",
     svg(
       V,
@@ -510,7 +500,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "bicycle",
-    "Bicycle",
     "bicycle bike cycling ride transport",
     (() => {
       const wheel = (cx: N) => {
@@ -556,7 +545,6 @@ const objects: GraphicDef[] = [
   art(
     "objects",
     "balloon-bunch",
-    "Balloon bunch",
     "balloons party birthday float string",
     svg(
       V,
@@ -586,11 +574,10 @@ const coinStack = (cx: N, base: N, count: number) => {
   return out;
 };
 
-const business: GraphicDef[] = [
+const business: GraphicDraft[] = [
   art(
     "business",
     "laptop-chart",
-    "Laptop with chart",
     "laptop chart analytics growth report",
     svg(
       V,
@@ -610,7 +597,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "briefcase",
-    "Briefcase",
     "briefcase work job career office",
     svg(
       V,
@@ -628,7 +614,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "target-arrow",
-    "Target and arrow",
     "target arrow goal bullseye aim success",
     svg(
       V,
@@ -650,7 +635,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "idea-bulb",
-    "Idea light bulb",
     "idea bulb light innovation creative thinking",
     (() => {
       const rays: string[] = [];
@@ -678,7 +662,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "rocket",
-    "Rocket launch",
     "rocket launch startup space growth boost",
     svg(
       V,
@@ -706,7 +689,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "trophy",
-    "Trophy",
     "trophy winner award champion prize success",
     svg(
       V,
@@ -727,7 +709,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "pie-chart",
-    "Pie chart",
     "pie chart statistics data share report",
     (() => {
       const cut = ` stroke="${CREAM}" stroke-width="3" stroke-linejoin="round"`;
@@ -745,7 +726,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "bar-chart",
-    "Bar chart",
     "bar chart graph growth analytics statistics",
     svg(
       V,
@@ -766,7 +746,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "calendar",
-    "Calendar",
     "calendar date schedule plan planner event",
     (() => {
       const cells: string[] = [];
@@ -795,7 +774,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "megaphone",
-    "Megaphone",
     "megaphone announcement marketing promotion loudspeaker",
     svg(
       V,
@@ -819,7 +797,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "shopping-bags",
-    "Shopping bags",
     "shopping bag retail store sale buy",
     svg(
       V,
@@ -839,7 +816,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "wallet",
-    "Wallet with cash",
     "wallet money cash savings finance payment",
     svg(
       V,
@@ -861,7 +837,6 @@ const business: GraphicDef[] = [
   art(
     "business",
     "coin-stacks",
-    "Stacks of coins",
     "coins money savings finance cash investment",
     svg(
       V,
@@ -930,11 +905,10 @@ const BERRY =
 const LEMON =
   "M0 -46C34 -46 56 -32 62 -14C66 -10 70 -4 80 0C70 4 66 10 62 14C56 32 34 46 0 46C-34 46 -56 32 -62 14C-66 10 -70 4 -80 0C-70 -4 -66 -10 -62 -14C-56 -32 -34 -46 0 -46Z";
 
-const food: GraphicDef[] = [
+const food: GraphicDraft[] = [
   art(
     "food",
     "coffee-beans",
-    "Coffee beans",
     "coffee beans cafe roast espresso cherry",
     svg(
       V,
@@ -955,7 +929,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "croissant",
-    "Croissant",
     "croissant bakery pastry breakfast french",
     svg(
       V,
@@ -971,7 +944,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "burger",
-    "Burger",
     "burger hamburger fast food lunch sandwich",
     (() => {
       const seeds: Array<[N, N, N]> = [
@@ -1004,7 +976,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "pizza-slice",
-    "Pizza slice",
     "pizza slice cheese pepperoni italian",
     svg(
       V,
@@ -1031,7 +1002,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "avocado",
-    "Avocado half",
     "avocado half fruit guacamole healthy vegan",
     svg(
       V,
@@ -1049,7 +1019,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "cupcake",
-    "Cupcake",
     "cupcake dessert sweet bakery birthday muffin",
     (() => {
       const pleats: string[] = [];
@@ -1087,7 +1056,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "ice-cream",
-    "Ice cream cone",
     "ice cream cone dessert summer scoop",
     svg(
       V,
@@ -1127,7 +1095,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "apple",
-    "Apple",
     "apple fruit red healthy fresh snack",
     svg(
       V,
@@ -1142,7 +1109,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "orange",
-    "Orange",
     "orange citrus fruit juice vitamin slice",
     (() => {
       const dots: Array<[N, N]> = [
@@ -1173,7 +1139,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "lemon",
-    "Lemon",
     "lemon citrus fruit sour yellow juice",
     svg(
       V,
@@ -1187,7 +1152,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "strawberry",
-    "Strawberry",
     "strawberry berry fruit sweet summer red",
     (() => {
       const seeds: Array<[N, N]> = [
@@ -1218,7 +1182,6 @@ const food: GraphicDef[] = [
   art(
     "food",
     "cake-slice",
-    "Slice of cake",
     "cake slice dessert sweet bakery chocolate",
     (() => {
       const tip: [N, N] = [28, 94];
@@ -1262,11 +1225,10 @@ const gore = (k0: N, k1: N, fill: string, x_ = "") => {
 const frond = (x: N, y: N, deg: N, len: N, fill: string) =>
   group(`translate(${x} ${y}) rotate(${deg}) scale(${len / 62})`, path("M0 0C12 -16 42 -20 64 -2C46 -6 20 2 0 0Z", fill));
 
-const travel: GraphicDef[] = [
+const travel: GraphicDraft[] = [
   art(
     "travel",
     "airplane",
-    "Airplane",
     "airplane flight travel plane fly trip",
     svg(
       V,
@@ -1292,7 +1254,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "hot-air-balloon",
-    "Hot air balloon",
     "balloon travel adventure sky flight fly",
     svg(
       V,
@@ -1316,7 +1277,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "suitcase",
-    "Suitcase",
     "suitcase luggage travel baggage trip vacation",
     svg(
       V,
@@ -1339,7 +1299,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "compass",
-    "Compass",
     "compass navigation direction explore adventure",
     (() => {
       const ticks: string[] = [];
@@ -1368,7 +1327,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "map-pin",
-    "Map pin",
     "map pin location place destination gps",
     svg(
       V,
@@ -1385,7 +1343,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "tent",
-    "Camping tent",
     "tent camping outdoor nature adventure hiking",
     svg(
       V,
@@ -1406,7 +1363,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "palm-island",
-    "Palm island",
     "palm island beach tropical summer sea",
     svg(
       V,
@@ -1428,7 +1384,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "camper-van",
-    "Camper van",
     "camper van road trip travel vanlife",
     svg(
       V,
@@ -1453,7 +1408,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "sailboat",
-    "Sailboat",
     "sailboat boat sailing sea ocean yacht",
     svg(
       V,
@@ -1470,7 +1424,6 @@ const travel: GraphicDef[] = [
   art(
     "travel",
     "globe",
-    "World globe",
     "globe world earth planet global map",
     svg(
       V,
@@ -1492,11 +1445,10 @@ const travel: GraphicDef[] = [
 
 /* ------------------------------------------------------------------ education */
 
-const education: GraphicDef[] = [
+const education: GraphicDraft[] = [
   art(
     "education",
     "graduation-cap",
-    "Graduation cap",
     "graduation cap education school degree university",
     svg(
       V,
@@ -1518,7 +1470,6 @@ const education: GraphicDef[] = [
   art(
     "education",
     "open-book",
-    "Open book",
     "book open reading study learn library",
     (() => {
       const left: string[] = [];
@@ -1548,7 +1499,6 @@ const education: GraphicDef[] = [
   art(
     "education",
     "pencil-ruler",
-    "Pencil and ruler",
     "pencil ruler drawing measure school stationery",
     (() => {
       const ticks: string[] = [];
@@ -1574,7 +1524,6 @@ const education: GraphicDef[] = [
   art(
     "education",
     "atom",
-    "Atom",
     "atom science physics chemistry molecule research",
     (() => {
       const orbit = (deg: N, color: string, t: N) => {
@@ -1595,7 +1544,6 @@ const education: GraphicDef[] = [
   art(
     "education",
     "flask",
-    "Science flask",
     "flask science chemistry lab experiment liquid",
     svg(
       V,
@@ -1619,7 +1567,6 @@ const education: GraphicDef[] = [
   art(
     "education",
     "notebook",
-    "Spiral notebook",
     "notebook notes journal diary study planner",
     (() => {
       const rings: string[] = [];
@@ -1662,11 +1609,10 @@ const burst = (cx: N, cy: N, R: N, n: N, colors: string[], w: N) => {
   return out;
 };
 
-const celebration: GraphicDef[] = [
+const celebration: GraphicDraft[] = [
   art(
     "celebration",
     "party-popper",
-    "Party popper",
     "party popper celebration confetti birthday cone",
     svg(
       V,
@@ -1695,7 +1641,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "balloons",
-    "Heart and star balloons",
     "balloons party celebration heart star love",
     (() => {
       const star_ = starPts(138, 88, 46, 21);
@@ -1724,7 +1669,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "birthday-cake",
-    "Birthday cake",
     "birthday cake candles party dessert celebration",
     (() => {
       const candles: string[] = [];
@@ -1757,7 +1701,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "fireworks",
-    "Fireworks",
     "fireworks celebration new year festival party",
     svg(
       V,
@@ -1775,7 +1718,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "gifts",
-    "Stacked gifts",
     "gifts presents boxes holiday surprise celebration",
     svg(
       V,
@@ -1802,7 +1744,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "confetti-burst",
-    "Confetti burst",
     "confetti burst party celebration sparkle festive",
     (() => {
       let seed = 11;
@@ -1841,7 +1782,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "crown",
-    "Crown",
     "crown king queen royal winner luxury",
     svg(
       V,
@@ -1865,7 +1805,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "heart-bouquet",
-    "Heart bouquet",
     "bouquet hearts flowers love valentine romantic",
     svg(
       V,
@@ -1891,7 +1830,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "ribbons",
-    "Gift ribbon bow",
     "ribbon bow gift curly present decoration",
     svg(
       V,
@@ -1913,7 +1851,6 @@ const celebration: GraphicDef[] = [
   art(
     "celebration",
     "bunting",
-    "Bunting flags",
     "bunting flags banner party garland decoration",
     (() => {
       const cols = [RED.m, YELLOW.m, TEAL.m, PINK.m, INDIGO.m];
@@ -1960,11 +1897,10 @@ const wifiArc = (r0: N, r1: N, color: string, x_ = "") => {
 
 const SHIELD = "M100 18L164 40V98C164 138 136 166 100 184C64 166 36 138 36 98V40Z";
 
-const tech: GraphicDef[] = [
+const tech: GraphicDraft[] = [
   art(
     "tech",
     "smartphone",
-    "Smartphone",
     "smartphone phone mobile app device screen",
     (() => {
       const cols = [PINK.m, YELLOW.m, TEAL.m, CREAM, TEAL.m, PINK.m, YELLOW.m, CREAM, PINK.m];
@@ -1987,7 +1923,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "laptop",
-    "Laptop",
     "laptop computer code programming developer work",
     (() => {
       const code: Array<[N, N, N, string, string]> = [
@@ -2021,7 +1956,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "monitor",
-    "Desktop monitor",
     "monitor screen desktop display computer pc",
     svg(
       V,
@@ -2042,7 +1976,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "cloud",
-    "Cloud upload",
     "cloud upload storage sync backup server",
     svg(
       V,
@@ -2067,7 +2000,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "wifi",
-    "Wi-Fi signal",
     "wifi wireless internet signal network connection",
     svg(V, wifiArc(96, 108, INDIGO.m, op(0.22)), wifiArc(60, 84, INDIGO.m), wifiArc(32, 52, INDIGO.m), wifiArc(0, 22, INDIGO.m), circle(100, 150, 11, INDIGO.m)),
     "sticker",
@@ -2075,7 +2007,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "chat-bubbles",
-    "Chat bubbles",
     "chat message bubbles conversation talk communication",
     svg(
       V,
@@ -2094,7 +2025,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "code-brackets",
-    "Code window",
     "code programming developer window html software",
     svg(
       V,
@@ -2112,7 +2042,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "shield",
-    "Security shield",
     "shield security protection safe privacy check",
     svg(
       V,
@@ -2127,7 +2056,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "gears",
-    "Gears",
     "gears settings cog engineering mechanism configuration",
     svg(
       V,
@@ -2140,7 +2068,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "battery",
-    "Charged battery",
     "battery charge power energy electric full",
     svg(
       V,
@@ -2158,7 +2085,6 @@ const tech: GraphicDef[] = [
   art(
     "tech",
     "chip",
-    "Microchip",
     "chip processor cpu hardware circuit electronics",
     (() => {
       const pins: string[] = [];
@@ -2189,4 +2115,4 @@ const tech: GraphicDef[] = [
 
 /* ------------------------------------------------------------------ export */
 
-export const GRAPHICS_B: GraphicDef[] = [...objects, ...business, ...food, ...travel, ...education, ...celebration, ...tech];
+export const GRAPHICS_B: GraphicDraft[] = [...objects, ...business, ...food, ...travel, ...education, ...celebration, ...tech];

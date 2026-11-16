@@ -203,7 +203,6 @@ const subscribe = slide(
 export const EDITORIAL: Template = template(
   {
     slug: "editorial-magazine-feature",
-    name: "Editorial Magazine Feature",
     category: "presentation",
     size: "presentation",
     tags: ["editorial", "magazine", "feature", "serif", "cream", "red", "photo", "article", "publishing", "quarterly", "cover story"],

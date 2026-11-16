@@ -12,6 +12,7 @@
  * and transitions (see `animated/`), and progress counts frames instead of pages.
  */
 import type { Design } from "@/core/types";
+import { m } from "@/i18n";
 import { requireExportImages } from "./resources";
 import { ExportError, cancelledError, isCancelled, throwIfAborted } from "./errors";
 import { nextMacrotask } from "./yield";
@@ -201,7 +202,7 @@ async function exportPdf(design: Design, resolved: ResolvedExport, onProgress: E
  */
 export async function exportDesign(design: Design, opts: ExportOptions, onProgress?: ExportProgress, signal?: AbortSignal): Promise<ExportFile> {
   const resolved = resolveExportOptions(design, opts);
-  if (!resolved.pages.length) throw new ExportError("no-pages", "Select at least one page to download.");
+  if (!resolved.pages.length) throw new ExportError("no-pages", m.exporting.errors.noPages);
   throwIfAborted(signal);
   try {
     await requireExportImages(
@@ -232,7 +233,7 @@ export async function exportDesign(design: Design, opts: ExportOptions, onProgre
 /** A PNG of one page at `scale` x the design size (clamped to 8192 px on the longest side). */
 export async function pagePngBlob(design: Design, pageIndex: number, scale = 1): Promise<Blob> {
   const page = design.pages[pageIndex];
-  if (!page) throw new ExportError("no-pages", "That page does not exist.");
+  if (!page) throw new ExportError("no-pages", m.exporting.errors.noSuchPage);
   await requireExportImages([{ page, index: pageIndex }]);
   const plan = planRaster(design.width, design.height, { format: "png", scale, pdfMode: "standard" });
   return renderPageBlob(design, page, { scale: plan.scale, type: "image/png" });
@@ -241,14 +242,14 @@ export async function pagePngBlob(design: Design, pageIndex: number, scale = 1):
 /** Puts a PNG of the page on the clipboard (call it from a click handler: browsers require a user gesture). */
 export async function copyPageAsImage(design: Design, pageIndex: number): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.clipboard || typeof ClipboardItem === "undefined") {
-    throw new ExportError("unsupported", "Your browser cannot copy images. Download the page instead.");
+    throw new ExportError("unsupported", m.exporting.errors.cannotCopy);
   }
   try {
     // handing over the promise (not the finished blob) keeps Safari happy: the write stays inside the user gesture
     await navigator.clipboard.write([new ClipboardItem({ "image/png": pagePngBlob(design, pageIndex, 1) })]);
   } catch (error) {
     if (error instanceof ExportError) throw error;
-    throw new ExportError("unsupported", "Could not copy the page. Allow clipboard access for this site, or download it instead.", { cause: error });
+    throw new ExportError("unsupported", m.exporting.errors.copyFailed, { cause: error });
   }
 }
 

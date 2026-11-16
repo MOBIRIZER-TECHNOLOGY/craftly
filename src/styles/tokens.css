@@ -32,7 +32,8 @@
   --sh-float: 0 2px 14px rgba(14,19,24,.18);
   --sh-pop: 0 10px 36px rgba(14,19,24,.22), 0 0 0 1px rgba(14,19,24,.05);
 
-  --font-ui: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Plus Jakarta Sans has no Devanagari: Hindi text falls through to the system's Devanagari face (B17) */
+  --font-ui: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", "Nirmala UI", "Noto Sans Devanagari", "Kohinoor Devanagari", sans-serif;
   --fs-xs: 11px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 28px; --fs-3xl: 40px;
 
   --topbar-h: 56px;  --rail-w: 72px;  --panel-w: 340px;  --bottombar-h: 52px;  --strip-h: 96px;

@@ -5,6 +5,7 @@ import { useEditor } from "@/core/store";
 import type { Asset, BrandKit } from "@/core/types";
 import { insertImage } from "@/editor/insert";
 import { CustomFonts, useCustomFamilies } from "@/components/CustomFonts";
+import { m } from "@/i18n";
 import { FONT_CATALOG, cssFontFamily, customFontDefs, ensureFont, getFontDef } from "@/render/fonts";
 import {
   Button,
@@ -55,7 +56,7 @@ export default function BrandTab() {
   return (
     <Panel>
       <PanelTop>
-        <PanelHeader title="Brand kit" subtitle="Logos, colours and fonts you use again and again" />
+        <PanelHeader title={m.panelsTabs.brand.title} subtitle={m.panelsTabs.brand.subtitle} />
       </PanelTop>
       <PanelScroll>
         {kit === null ? (
@@ -98,7 +99,7 @@ function Logos({ kit, save }: SectionProps) {
     const list = Array.from(files ?? []).filter(isAcceptedImage);
     if (fileRef.current) fileRef.current.value = "";
     if (!list.length) {
-      if (files?.length) toast.error("Logos must be images: PNG, JPG, WebP, GIF or SVG.");
+      if (files?.length) toast.error(m.panelsTabs.brand.logos.notImages);
       return;
     }
     setBusy(true);
@@ -106,9 +107,9 @@ function Logos({ kit, save }: SectionProps) {
       const added: string[] = [];
       for (const file of list) added.push((await addAssetFromFile(file)).id);
       await save({ ...kit, logos: [...kit.logos, ...added] });
-      toast.success(added.length === 1 ? "Logo added to your brand kit" : `${added.length} logos added to your brand kit`);
+      toast.success(m.panelsTabs.brand.logos.added(added.length));
     } catch {
-      toast.error("The logo could not be saved. Try a smaller file.");
+      toast.error(m.panelsTabs.brand.logos.saveFailed);
     } finally {
       setBusy(false);
     }
@@ -116,11 +117,11 @@ function Logos({ kit, save }: SectionProps) {
 
   return (
     <PanelSection
-      title="Logos"
+      title={m.panelsTabs.brand.logos.title}
       action={
         logos.length ? (
           <Button variant="soft" size="sm" icon={<IconUpload />} loading={busy} onClick={() => fileRef.current?.click()}>
-            Upload
+            {m.panelsTabs.brand.logos.upload}
           </Button>
         ) : undefined
       }
@@ -136,8 +137,8 @@ function Logos({ kit, save }: SectionProps) {
           <span className="cf-brandtab__drop-icon">
             <IconImage aria-hidden="true" />
           </span>
-          <strong>{busy ? "Saving your logo..." : "Upload your logo"}</strong>
-          <span>PNG, JPG or SVG. Click it to place it on any design.</span>
+          <strong>{busy ? m.panelsTabs.brand.logos.saving : m.panelsTabs.brand.logos.uploadYours}</strong>
+          <span>{m.panelsTabs.brand.logos.formats}</span>
         </button>
       )}
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => void upload(e.target.files)} />
@@ -150,7 +151,7 @@ function LogoCard({ asset, onRemove }: { asset: Asset; onRemove: () => void }) {
   return (
     <div className="cf-brandtab__logo">
       <DraggableItem
-        label={`Add logo ${asset.name}`}
+        label={m.panelsTabs.brand.logos.add(asset.name)}
         onInsert={() => void insertImage(assetSrc(asset.id), asset.width, asset.height)}
         getPayload={() => ({ type: "image", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, name: asset.name })}
         className="cf-brandtab__logo-card"
@@ -158,7 +159,7 @@ function LogoCard({ asset, onRemove }: { asset: Asset; onRemove: () => void }) {
       >
         {url ? <img src={url} alt="" draggable={false} /> : <Skeleton width="100%" height="100%" radius={0} />}
       </DraggableItem>
-      <IconButton label={`Remove ${asset.name} from the brand kit`} icon={<IconClose />} size="sm" className="cf-brandtab__remove" onClick={onRemove} />
+      <IconButton label={m.panelsTabs.shared.removeFromKit(asset.name)} icon={<IconClose />} size="sm" className="cf-brandtab__remove" onClick={onRemove} />
     </div>
   );
 }
@@ -174,7 +175,7 @@ function Colors({ kit, save }: SectionProps) {
 
   const apply = (color: string) => {
     const result = applyColorToSelection(color);
-    if (result === "none") toast.info("Select some text, a shape or a line first, or click an empty part of the page to colour its background.");
+    if (result === "none") toast.info(m.panelsTabs.shared.nothingToColour);
   };
 
   const remove = (color: string) => void save({ ...kit, colors: kit.colors.filter((c) => !sameColor(c, color)) });
@@ -185,15 +186,15 @@ function Colors({ kit, save }: SectionProps) {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { id: "apply", label: "Apply colour", onSelect: () => apply(color) },
+        { id: "apply", label: m.panelsTabs.brand.colours.apply, onSelect: () => apply(color) },
         {
           id: "copy",
-          label: `Copy ${color.toUpperCase()}`,
+          label: m.panelsTabs.brand.colours.copy(color.toUpperCase()),
           icon: <IconCopy />,
-          onSelect: () => void navigator.clipboard?.writeText(color).then(() => toast.success(`Copied ${color.toUpperCase()}`)),
+          onSelect: () => void navigator.clipboard?.writeText(color).then(() => toast.success(m.panelsTabs.brand.colours.copied(color.toUpperCase()))),
         },
         { type: "divider" },
-        { id: "remove", label: "Remove from brand kit", icon: <IconTrash />, danger: true, onSelect: () => remove(color) },
+        { id: "remove", label: m.panelsTabs.brand.colours.remove, icon: <IconTrash />, danger: true, onSelect: () => remove(color) },
       ],
     });
   };
@@ -202,15 +203,15 @@ function Colors({ kit, save }: SectionProps) {
     const color = draft.trim();
     setAdding(false);
     if (!color || kit.colors.some((c) => sameColor(c, color))) {
-      if (color) toast.info("That colour is already in your brand kit.");
+      if (color) toast.info(m.panelsTabs.brand.colours.already);
       return;
     }
     void save({ ...kit, colors: [...kit.colors, color].slice(0, MAX_COLORS) });
   };
 
   return (
-    <PanelSection title={`Brand colours${kit.colors.length ? ` (${kit.colors.length})` : ""}`}>
-      <div className="cf-brandtab__colors" role="group" aria-label="Brand colours">
+    <PanelSection title={m.panelsTabs.brand.colours.title(kit.colors.length)}>
+      <div className="cf-brandtab__colors" role="group" aria-label={m.panelsTabs.brand.colours.label}>
         {kit.colors.map((c) => (
           <span
             key={c}
@@ -223,24 +224,31 @@ function Colors({ kit, save }: SectionProps) {
               }
             }}
           >
-            <ColorSwatch color={c} size={42} shape="square" title={`${c.toUpperCase()} - click to apply, right-click for more`} onClick={() => apply(c)} />
+            <ColorSwatch color={c} size={42} shape="square" title={m.panelsTabs.brand.colours.swatchTitle(c.toUpperCase())} onClick={() => apply(c)} />
           </span>
         ))}
         {kit.colors.length < MAX_COLORS ? (
-          <button ref={addRef} type="button" className="cf-brandtab__add" aria-label="Add a brand colour" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>
+          <button ref={addRef} type="button" className="cf-brandtab__add" aria-label={m.panelsTabs.brand.colours.add} aria-expanded={adding} onClick={() => setAdding((v) => !v)}>
             <IconPlus aria-hidden="true" />
           </button>
         ) : null}
       </div>
-      <p className="cf-brandtab__hint">Click a colour to use it on the selected text or shape, or on the page background. Right-click one to remove it.</p>
-      <Popover open={adding} anchor={addRef.current} onClose={() => setAdding(false)} placement="bottom-start" className="cf-brandtab__picker" aria-label="Add a brand colour">
+      <p className="cf-brandtab__hint">{m.panelsTabs.brand.colours.hint}</p>
+      <Popover
+        open={adding}
+        anchor={addRef.current}
+        onClose={() => setAdding(false)}
+        placement="bottom-start"
+        className="cf-brandtab__picker"
+        aria-label={m.panelsTabs.brand.colours.add}
+      >
         <ColorPicker value={draft} onChange={setDraft} />
         <div className="cf-brandtab__picker-actions">
           <Button variant="secondary" size="sm" onClick={() => setAdding(false)}>
-            Cancel
+            {m.common.cancel}
           </Button>
           <Button variant="primary" size="sm" onClick={add}>
-            Add colour
+            {m.panelsTabs.brand.colours.addColour}
           </Button>
         </div>
       </Popover>
@@ -276,18 +284,18 @@ function Fonts({ kit, save }: SectionProps) {
   };
 
   return (
-    <PanelSection title={`Brand fonts${kit.fonts.length ? ` (${kit.fonts.length})` : ""}`}>
+    <PanelSection title={m.panelsTabs.brand.fonts.title(kit.fonts.length)}>
       {kit.fonts.length ? (
         <div className="cf-brandtab__fonts">
           {kit.fonts.map((family) => (
             <FontRow
               key={family}
               family={family}
-              label={`Use ${family}`}
+              label={m.panelsTabs.brand.fonts.use(family)}
               onPick={() => use(family)}
               trailing={
                 <IconButton
-                  label={`Remove ${family} from the brand kit`}
+                  label={m.panelsTabs.shared.removeFromKit(family)}
                   icon={<IconClose />}
                   size="sm"
                   onClick={() => void save({ ...kit, fonts: kit.fonts.filter((f) => f !== family) })}
@@ -297,18 +305,18 @@ function Fonts({ kit, save }: SectionProps) {
           ))}
         </div>
       ) : (
-        <EmptyHint compact icon={<IconImage />} title="No brand fonts yet" text="Pick the fonts you use for headings and body text." />
+        <EmptyHint compact icon={<IconImage />} title={m.panelsTabs.brand.fonts.noneTitle} text={m.panelsTabs.brand.fonts.noneText} />
       )}
       <div className="cf-brandtab__addfont" onPointerEnter={warmFonts} onFocusCapture={warmFonts}>
         <Select<string>
           value={null}
-          placeholder="Add a font to your kit"
-          aria-label="Add a font to your brand kit"
+          placeholder={m.panelsTabs.brand.fonts.addPlaceholder}
+          aria-label={m.panelsTabs.brand.fonts.addLabel}
           options={options}
           onChange={(family) => void save({ ...kit, fonts: [...kit.fonts, family] })}
         />
       </div>
-      <p className="cf-brandtab__hint">Click a font to apply it to the selected text, or to add a heading in that font.</p>
+      <p className="cf-brandtab__hint">{m.panelsTabs.brand.fonts.hint}</p>
     </PanelSection>
   );
 }
@@ -326,7 +334,7 @@ function YourFonts() {
   };
 
   return (
-    <PanelSection title="Your fonts">
+    <PanelSection title={m.panelsTabs.brand.yourFonts}>
       <CustomFonts onUse={use} />
     </PanelSection>
   );

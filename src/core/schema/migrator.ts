@@ -10,6 +10,7 @@
  *   - the version is written by the runner, not by the steps, so a step can neither forget nor lie about it
  *   - a format with version n has exactly n - 1 steps, checked when it is created: a version cannot be raised without one
  */
+import { m } from "@/i18n";
 
 export type Doc = Record<string, unknown>;
 
@@ -78,7 +79,7 @@ export interface Migrator {
 
 /** The refusal for a document that a newer Craftly wrote (also used where only the version is known, not the document). */
 export function newerError(kind: string, found: number, current: number): MigrationError {
-  return new MigrationError("newer", kind, `This ${kind} was saved by a newer version of Craftly. Reload the page to get the newest version, then try again.`, { found, current });
+  return new MigrationError("newer", kind, m.core.migration.newer(kind), { found, current });
 }
 
 const isDoc = (value: unknown): value is Doc => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -94,7 +95,7 @@ export function createMigrator(options: MigratorOptions): Migrator {
     if (step.from !== index + 1) throw new Error(`${kind}: migration step ${index + 1} starts from ${step.from}, expected ${index + 1}`);
   });
 
-  const unreadable = () => new MigrationError("unreadable", kind, `This ${kind} is not in a format Craftly can read.`);
+  const unreadable = () => new MigrationError("unreadable", kind, m.core.migration.unreadable(kind));
 
   function migrate(raw: unknown): Migrated {
     if (!isDoc(raw)) throw unreadable();
@@ -117,7 +118,7 @@ export function createMigrator(options: MigratorOptions): Migrator {
         if (!isDoc(next)) throw new TypeError(`migration step ${version} did not return a document`);
         doc = { ...next, [field]: version + 1 };
       } catch (cause) {
-        throw new MigrationError("failed", kind, `Craftly could not bring this ${kind} up to date (format ${version} to ${version + 1}).`, {
+        throw new MigrationError("failed", kind, m.core.migration.failed(kind, version, version + 1), {
           found,
           current,
           step: version,

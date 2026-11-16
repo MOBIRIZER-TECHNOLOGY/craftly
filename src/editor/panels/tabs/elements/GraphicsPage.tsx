@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { GRAPHIC_CATEGORIES, searchGraphics } from "@/data/graphics";
 import type { GraphicCategory } from "@/data/graphicTypes";
 import { ICON_SUGGESTIONS, ICON_SYNONYMS, loadIconIndex, searchIcons, type IconDef } from "@/data/icons";
+import { m } from "@/i18n";
 import { IconGraphics, IconSearch, Skeleton, Tabs } from "@/ui";
 import { ChipRow } from "../../shared/ChipRow";
 import { EmptyHint } from "../../shared/EmptyHint";
@@ -14,8 +15,8 @@ import { SubPageTop } from "./SubPageTop";
 import "./GraphicsPage.css";
 
 const PANES = [
-  { id: "illustrations", label: "Illustrations" },
-  { id: "icons", label: "Icons" },
+  { id: "illustrations", label: m.panelsTabs.elements.graphics.illustrations },
+  { id: "icons", label: m.panelsTabs.elements.graphics.icons },
 ];
 
 /** Library order for the empty query: the curated "popular" ids first, then everything else alphabetically. */
@@ -39,21 +40,24 @@ export function GraphicsPage() {
   const setQuery = useElementsNav((s) => s.setQuery);
   const [category, setCategory] = useState<string>("all");
 
-  const chips = useMemo(() => [{ id: "all", label: "All" }, ...GRAPHIC_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))], []);
+  const chips = useMemo(() => [{ id: "all", label: m.panelsTabs.shared.all }, ...GRAPHIC_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))], []);
   const suggestionChips = useMemo(() => ICON_SUGGESTIONS.map((s) => ({ id: s, label: s.charAt(0).toUpperCase() + s.slice(1) })), []);
 
   return (
     <Panel>
-      <SubPageTop title="Graphics" placeholder={pane === "icons" ? "Search icons" : "Search graphics"}>
-        <Tabs tabs={PANES} value={pane} onChange={(id) => setPane(id as GraphicsPane)} fullWidth aria-label="Graphics type" idBase="cf-graphics" />
+      <SubPageTop
+        title={m.panelsTabs.elements.categories.graphics}
+        placeholder={pane === "icons" ? m.panelsTabs.elements.graphics.searchIcons : m.panelsTabs.elements.graphics.searchGraphics}
+      >
+        <Tabs tabs={PANES} value={pane} onChange={(id) => setPane(id as GraphicsPane)} fullWidth aria-label={m.panelsTabs.elements.graphics.type} idBase="cf-graphics" />
         {pane === "illustrations" ? (
-          <ChipRow chips={chips} value={category} onChange={setCategory} aria-label="Illustration categories" />
+          <ChipRow chips={chips} value={category} onChange={setCategory} aria-label={m.panelsTabs.elements.graphics.illustrationCategories} />
         ) : (
           <ChipRow
             chips={suggestionChips}
             value={suggestionChips.some((c) => c.id === query.trim().toLowerCase()) ? query.trim().toLowerCase() : null}
             onChange={(id) => setQuery(id === query.trim().toLowerCase() ? "" : id)}
-            aria-label="Popular icon searches"
+            aria-label={m.panelsTabs.elements.graphics.popularSearches}
           />
         )}
       </SubPageTop>
@@ -72,8 +76,8 @@ function IllustrationsPane({ query, category }: { query: string; category: Graph
     return (
       <EmptyHint
         icon={<IconGraphics />}
-        title="No graphics found"
-        text={query.trim() ? `Nothing matches "${query.trim()}". Try another word or pick a different category.` : "This category is empty."}
+        title={m.panelsTabs.elements.graphics.noneTitle}
+        text={query.trim() ? m.panelsTabs.elements.graphics.noneText(query.trim()) : m.panelsTabs.elements.graphics.emptyCategory}
       />
     );
   }
@@ -103,7 +107,7 @@ function IconsPane({ query }: { query: string }) {
   }, [index, query]);
 
   let body;
-  if (failed) body = <EmptyHint icon={<IconSearch />} title="Icons could not load" text="Check your connection and reopen this panel." />;
+  if (failed) body = <EmptyHint icon={<IconSearch />} title={m.panelsTabs.elements.graphics.iconsFailed} text={m.panelsTabs.elements.graphics.iconsFailedText} />;
   else if (!index) {
     body = (
       <ItemGrid columns={columns} gap={8}>
@@ -112,12 +116,20 @@ function IconsPane({ query }: { query: string }) {
         ))}
       </ItemGrid>
     );
-  } else if (!results.length) body = <EmptyHint icon={<IconSearch />} title="No icons found" text={`Nothing matches "${query.trim()}". Try "arrow", "heart" or "chart".`} />;
+  } else if (!results.length)
+    body = <EmptyHint icon={<IconSearch />} title={m.panelsTabs.elements.graphics.noIcons} text={m.panelsTabs.elements.graphics.noIconsText(query.trim())} />;
   else {
     body = (
       <>
-        <p className="cf-iconcount">{query.trim() ? `${results.length} icons` : `${results.length} icons - popular ones first`}</p>
-        <VirtualGrid count={results.length} columns={columns} rowHeight={64} gap={8} aria-label="Icons" renderItem={(i) => <IconCell key={results[i].id} def={results[i]} />} />
+        <p className="cf-iconcount">{query.trim() ? m.panelsTabs.elements.graphics.iconCount(results.length) : m.panelsTabs.elements.graphics.iconCountPopular(results.length)}</p>
+        <VirtualGrid
+          count={results.length}
+          columns={columns}
+          rowHeight={64}
+          gap={8}
+          aria-label={m.panelsTabs.elements.graphics.icons}
+          renderItem={(i) => <IconCell key={results[i].id} def={results[i]} />}
+        />
       </>
     );
   }

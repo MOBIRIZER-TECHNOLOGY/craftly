@@ -193,7 +193,6 @@ const closing = slide(
 export const RETRO: Template = template(
   {
     slug: "retro-70s-sunset-club",
-    name: "Retro 70s Brand Playbook",
     category: "presentation",
     size: "presentation",
     tags: ["retro", "70s", "vintage", "groovy", "brand", "playbook", "warm", "orange", "mustard", "vinyl", "rainbow", "seventies"],

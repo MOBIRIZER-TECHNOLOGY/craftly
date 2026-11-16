@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { createShape, createText, solid } from "@/core/factory";
 import { getActions, getSelectedElements, useEditor, useSelectedElements } from "@/core/store";
 import type { DesignElement, Page, TextEffect, TextElement } from "@/core/types";
+import { m } from "@/i18n";
 import { drawTextElement } from "@/render/drawText";
 import { ensureFont, isFontReady } from "@/render/fonts";
 import { renderPage } from "@/render/renderPage";
@@ -42,7 +43,7 @@ export function EffectsPanel() {
   const shadowTargets = els.filter(supportsShadow);
 
   return (
-    <PanelShell title="Effects">
+    <PanelShell title={m.panelsContext.effects.title}>
       {textMode ? (
         <TextEffects texts={texts} />
       ) : shadowTargets.length > 0 ? (
@@ -50,12 +51,8 @@ export function EffectsPanel() {
       ) : (
         <PanelEmpty
           icon={<IconEffects />}
-          title={els.length ? "No effects for this element" : "Nothing selected"}
-          text={
-            els.length
-              ? "Effects are available for text, shapes, lines, images and graphics."
-              : "Select text to add effects like shadow, neon or curve, or a shape, image or graphic to add a shadow."
-          }
+          title={els.length ? m.panelsContext.effects.noEffects : m.panelsContext.shared.nothingSelected}
+          text={els.length ? m.panelsContext.effects.availableFor : m.panelsContext.effects.selectText}
         />
       )}
     </PanelShell>
@@ -79,7 +76,13 @@ function ColorRow({ label, color, target }: { label: string; color: string; targ
   return (
     <div className="cf-fx__colorrow">
       <span className="cf-fx__colorlabel">{label}</span>
-      <ColorSwatch color={color} size={36} shape="square" title={`${label} (opens the colour panel)`} onClick={() => getActions().openContext({ kind: "color", target })} />
+      <ColorSwatch
+        color={color}
+        size={36}
+        shape="square"
+        title={m.panelsContext.effects.opensColorPanel(label)}
+        onClick={() => getActions().openContext({ kind: "color", target })}
+      />
     </div>
   );
 }
@@ -99,10 +102,10 @@ function TextPreview({ effect, curve = 0, text = "Ag", size = 44 }: { effect: Te
     // everything is laid out on a 96px tile and scaled to the tile's real size
     const k = w / TILE;
     const el = createText({ text, fontSize: size, fontFamily: PREVIEW_FONT, fontWeight: PREVIEW_WEIGHT, color: PREVIEW_INK, effect, curve, lineHeight: 1.2 });
-    const m = measureTextElement(el);
+    const box = measureTextElement(el);
     ctx.save();
     ctx.scale(k, k);
-    ctx.translate((TILE - m.width) / 2, (TILE - m.height) / 2);
+    ctx.translate((TILE - box.width) / 2, (TILE - box.height) / 2);
     drawTextElement(ctx, el, { scale: dpr * k });
     ctx.restore();
   };
@@ -147,8 +150,8 @@ function TextEffects({ texts }: { texts: TextElement[] }) {
 
   return (
     <>
-      <Section title="Style">
-        <div className="cf-fx__grid" role="group" aria-label="Text effect styles">
+      <Section title={m.panelsContext.effects.style}>
+        <div className="cf-fx__grid" role="group" aria-label={m.panelsContext.effects.textStyles}>
           {TEXT_EFFECTS.map((d) => {
             const selected = d.kind === activeKind;
             // the active tile mirrors the current settings (colour, thickness ...), the others show their defaults
@@ -159,11 +162,11 @@ function TextEffects({ texts }: { texts: TextElement[] }) {
             );
           })}
         </div>
-        {!sameKind ? <p className="cf-ctx__hint">The selected text boxes use different effects. Pick a style to apply it to all of them.</p> : null}
+        {!sameKind ? <p className="cf-ctx__hint">{m.panelsContext.effects.mixed}</p> : null}
       </Section>
 
       {def && def.controls.length > 0 ? (
-        <Section ref={settingsRef} title={`${def.label} settings`}>
+        <Section ref={settingsRef} title={m.panelsContext.effects.settings(def.label)}>
           <div className="cf-ctx__rows">
             {def.controls.map((c) => {
               const info = CONTROL_INFO[c];
@@ -181,23 +184,23 @@ function TextEffects({ texts }: { texts: TextElement[] }) {
                 />
               );
             })}
-            {def.color ? <ColorRow label="Color" color={first.effect.color ?? first.color} target="effect" /> : null}
+            {def.color ? <ColorRow label={m.panelsContext.shared.color} color={first.effect.color ?? first.color} target="effect" /> : null}
           </div>
         </Section>
       ) : null}
 
-      <Section title="Shape">
-        <div className="cf-fx__grid" role="group" aria-label="Text shape">
-          <Tile label="None" selected={!curved} onClick={() => actions.setTextProps(null, { curve: 0 })}>
+      <Section title={m.panelsContext.effects.shape}>
+        <div className="cf-fx__grid" role="group" aria-label={m.panelsContext.effects.textShape}>
+          <Tile label={m.common.none} selected={!curved} onClick={() => actions.setTextProps(null, { curve: 0 })}>
             <TextPreview effect={{ kind: "none" }} text="ABCD" size={26} />
           </Tile>
-          <Tile label="Curve" selected={curved} onClick={() => actions.setTextProps(null, { curve: curved ? 0 : DEFAULT_CURVE })}>
+          <Tile label={m.panelsContext.effects.curve} selected={curved} onClick={() => actions.setTextProps(null, { curve: curved ? 0 : DEFAULT_CURVE })}>
             <TextPreview effect={{ kind: "none" }} text="ABCD" size={26} curve={curved ? first.curve : 55} />
           </Tile>
         </div>
         {curved ? (
           <div className="cf-ctx__rows cf-fx__after">
-            <Slider label="Curve" showValue min={-100} max={100} step={1} value={first.curve} onChange={setCurve} onChangeEnd={() => batch.end()} />
+            <Slider label={m.panelsContext.effects.curve} showValue min={-100} max={100} step={1} value={first.curve} onChange={setCurve} onChangeEnd={() => batch.end()} />
           </div>
         ) : null}
       </Section>
@@ -281,17 +284,17 @@ function ShadowEffects({ targets, skipped }: { targets: DesignElement[]; skipped
     );
 
   const sliders: Array<{ key: keyof ShadowParts; label: string; min: number; max: number }> = [
-    { key: "blur", label: "Blur", min: 0, max: 100 },
-    { key: "offset", label: "Offset", min: 0, max: 100 },
-    { key: "direction", label: "Direction", min: -180, max: 180 },
-    { key: "transparency", label: "Transparency", min: 0, max: 100 },
+    { key: "blur", label: m.panelsContext.effects.controls.blur, min: 0, max: 100 },
+    { key: "offset", label: m.panelsContext.effects.controls.offset, min: 0, max: 100 },
+    { key: "direction", label: m.panelsContext.effects.controls.direction, min: -180, max: 180 },
+    { key: "transparency", label: m.panelsContext.effects.controls.transparency, min: 0, max: 100 },
   ];
 
   return (
     <>
-      <Section title="Shadow">
-        <div className="cf-fx__grid" role="group" aria-label="Shadow styles">
-          <Tile label="None" selected={!first.shadow} onClick={() => pick("none")}>
+      <Section title={m.panelsContext.effects.shadow}>
+        <div className="cf-fx__grid" role="group" aria-label={m.panelsContext.effects.shadowStyles}>
+          <Tile label={m.common.none} selected={!first.shadow} onClick={() => pick("none")}>
             <ShadowPreview parts={null} />
           </Tile>
           {SHADOW_PRESETS.map((p) => (
@@ -300,15 +303,11 @@ function ShadowEffects({ targets, skipped }: { targets: DesignElement[]; skipped
             </Tile>
           ))}
         </div>
-        {skipped > 0 ? (
-          <p className="cf-ctx__hint">
-            {skipped === 1 ? "One selected element does not support shadows and is left unchanged." : `${skipped} selected elements do not support shadows and are left unchanged.`}
-          </p>
-        ) : null}
+        {skipped > 0 ? <p className="cf-ctx__hint">{m.panelsContext.effects.skipped(skipped)}</p> : null}
       </Section>
 
       {parts ? (
-        <Section ref={settingsRef} title="Shadow settings">
+        <Section ref={settingsRef} title={m.panelsContext.effects.shadowSettings}>
           <div className="cf-ctx__rows">
             {sliders.map((s) => (
               <Slider
@@ -325,14 +324,23 @@ function ShadowEffects({ targets, skipped }: { targets: DesignElement[]; skipped
                 onChangeEnd={() => batch.end()}
               />
             ))}
-            <ColorRow label="Color" color={parts.color} target="shadow" />
+            <ColorRow label={m.panelsContext.shared.color} color={parts.color} target="shadow" />
           </div>
         </Section>
       ) : null}
 
       {image ? (
-        <Section title="Image blur">
-          <Slider label="Blur" showValue min={0} max={100} step={1} value={blurFromPx(image.blur ?? 0, scale)} onChange={setBlur} onChangeEnd={() => batch.end()} />
+        <Section title={m.panelsContext.effects.imageBlur}>
+          <Slider
+            label={m.panelsContext.effects.controls.blur}
+            showValue
+            min={0}
+            max={100}
+            step={1}
+            value={blurFromPx(image.blur ?? 0, scale)}
+            onChange={setBlur}
+            onChangeEnd={() => batch.end()}
+          />
         </Section>
       ) : null}
     </>

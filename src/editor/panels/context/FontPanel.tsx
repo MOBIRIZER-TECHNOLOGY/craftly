@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { getActions, getSelectedElements, useEditor, useSelectedElements } from "@/core/store";
 import { textEditing, useTextSelectionStyle } from "@/editor/canvas/textEditing";
 import { useCustomFamilies } from "@/components/CustomFonts";
+import { m } from "@/i18n";
 import { cssFontFamily, customFontDefs, ensureFont, FONT_CATALOG, getFontDef, type FontCategory } from "@/render/fonts";
 import { Button, cx, IconBrand, IconCheck, IconFile, IconPlus, IconText, IconUpload, SearchField } from "@/ui";
 import { collectDocumentFonts, filterFonts } from "./docFonts";
@@ -11,12 +12,12 @@ import { useBrandKit } from "./useLibrary";
 import "./FontPanel.css";
 
 const CATEGORIES: Array<{ id: FontCategory; label: string; sample: string }> = [
-  { id: "sans", label: "Sans serif", sample: "Inter" },
-  { id: "serif", label: "Serif", sample: "Playfair Display" },
-  { id: "display", label: "Display", sample: "Bebas Neue" },
-  { id: "script", label: "Script", sample: "Pacifico" },
-  { id: "handwriting", label: "Handwriting", sample: "Caveat" },
-  { id: "mono", label: "Monospace", sample: "JetBrains Mono" },
+  { id: "sans", label: m.panelsContext.font.categories.sans, sample: "Inter" },
+  { id: "serif", label: m.panelsContext.font.categories.serif, sample: "Playfair Display" },
+  { id: "display", label: m.panelsContext.font.categories.display, sample: "Bebas Neue" },
+  { id: "script", label: m.panelsContext.font.categories.script, sample: "Pacifico" },
+  { id: "handwriting", label: m.panelsContext.font.categories.handwriting, sample: "Caveat" },
+  { id: "mono", label: m.panelsContext.font.categories.mono, sample: "JetBrains Mono" },
 ];
 
 type Filter = FontCategory | "all";
@@ -71,8 +72,8 @@ export function FontPanel() {
 
   if (!texts.length && !boxes.length) {
     return (
-      <PanelShell title="Font">
-        <PanelEmpty icon={<IconText />} title="No text selected" text="Select a text box, table or chart to change its font." />
+      <PanelShell title={m.panelsContext.font.title}>
+        <PanelEmpty icon={<IconText />} title={m.panelsContext.shared.noTextSelected} text={m.panelsContext.font.noTextText} />
       </PanelShell>
     );
   }
@@ -90,12 +91,12 @@ export function FontPanel() {
   const showShortcuts = !searching && filter === "all";
 
   return (
-    <PanelShell title="Font">
+    <PanelShell title={m.panelsContext.font.title}>
       <div className="cf-font" ref={listRef} onKeyDown={onKeyDown}>
-        <SearchField value={query} onChange={setQuery} placeholder={"Try “Calligraphy” or “Open Sans”"} aria-label="Search fonts" />
-        <div className="cf-font__chips" role="group" aria-label="Font categories">
+        <SearchField value={query} onChange={setQuery} placeholder={m.panelsContext.font.searchPlaceholder} aria-label={m.panelsContext.font.searchLabel} />
+        <div className="cf-font__chips" role="group" aria-label={m.panelsContext.font.categoriesLabel}>
           <button type="button" className={cx("cf-font__chip", filter === "all" && "is-active")} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
-            All
+            {m.panelsContext.font.all}
           </button>
           {CATEGORIES.map((c) => (
             <button
@@ -112,7 +113,7 @@ export function FontPanel() {
         </div>
 
         {filter === "all" && ownFonts.length ? (
-          <Section title="Your fonts" icon={<IconUpload />}>
+          <Section title={m.panelsContext.font.yourFonts} icon={<IconUpload />}>
             <div className="cf-font__list">
               {ownFonts.map((f) => (
                 <FontRow key={f.family} family={f.family} current={f.family === current} onPick={pick} />
@@ -122,7 +123,7 @@ export function FontPanel() {
         ) : null}
 
         {showShortcuts && docFonts.length ? (
-          <Section title="Document fonts" icon={<IconFile />}>
+          <Section title={m.panelsContext.font.documentFonts} icon={<IconFile />}>
             <div className="cf-font__list">
               {docFonts.map((f) => (
                 <FontRow key={f} family={f} current={f === current} onPick={pick} missing={missing(f)} />
@@ -133,11 +134,11 @@ export function FontPanel() {
 
         {showShortcuts ? (
           <Section
-            title="Brand fonts"
+            title={m.panelsContext.font.brandFonts}
             icon={<IconBrand />}
             aside={
               <button type="button" className="cf-ctx__link" onClick={() => getActions().setLeftTab("brand")}>
-                Edit
+                {m.panelsContext.shared.edit}
               </button>
             }
           >
@@ -149,7 +150,7 @@ export function FontPanel() {
               </div>
             ) : (
               <Button block variant="secondary" icon={<IconPlus />} onClick={() => getActions().setLeftTab("brand")}>
-                Add your brand fonts
+                {m.panelsContext.font.addBrandFonts}
               </Button>
             )}
           </Section>
@@ -165,9 +166,7 @@ export function FontPanel() {
           </Section>
         ))}
 
-        {groups.length === 0 && ownFonts.length === 0 ? (
-          <p className="cf-ctx__hint">No fonts match “{query.trim()}”. Try a family name like “Lora” or a style like “script”.</p>
-        ) : null}
+        {groups.length === 0 && ownFonts.length === 0 ? <p className="cf-ctx__hint">{m.panelsContext.font.noMatch(query.trim())}</p> : null}
       </div>
     </PanelShell>
   );
@@ -202,13 +201,13 @@ function FontRow({ family, current, onPick, missing = false }: { family: string;
       type="button"
       className={cx("cf-font__row", current && "is-current")}
       aria-current={current ? "true" : undefined}
-      aria-label={missing ? `${family}, not on this device` : family}
+      aria-label={missing ? m.panelsContext.font.missingLabel(family) : family}
       onClick={() => onPick(family)}
     >
       <span className="cf-font__name" style={{ fontFamily: cssFontFamily(family) }}>
         {family}
       </span>
-      {missing ? <span className="cf-font__missing">Not on this device</span> : null}
+      {missing ? <span className="cf-font__missing">{m.panelsContext.font.missing}</span> : null}
       {current ? <IconCheck className="cf-font__check" aria-hidden="true" /> : null}
     </button>
   );

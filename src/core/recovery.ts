@@ -6,6 +6,7 @@
  * design that has stopped Craftly is written over, what was stored (the last autosave, which was on the screen for at least
  * a moment without a crash) is kept as a version, and the screen that says what happened can offer to go back to it.
  */
+import { m } from "@/i18n";
 import { getStoredDesign, getSummary, getVersion, listVersions, saveDesign, saveVersion } from "./library";
 
 const STORAGE_KEY = "craftly.crashes.v1";
@@ -68,12 +69,24 @@ export interface EarlierVersion {
   label: string;
 }
 
-/** The labels that the app gives versions; a version with none is one that the autosave made. */
-const LABELS = ["Before the problem", "Before going back", "Before restoring", "Before the update", "Saved by you"];
+/**
+ * The labels that the app gives versions, as they are stored (they are keys, the same in every language), and the words a
+ * person reads for each; a version with none is one that the autosave made.
+ */
+const LABELS: Readonly<Record<string, keyof typeof m.core.versions>> = {
+  "Before the problem": "beforeProblem",
+  "Before going back": "beforeGoingBack",
+  "Before restoring": "beforeRestoring",
+  "Before the update": "beforeUpdate",
+  "Saved by you": "savedByYou",
+};
 
 /** The newest versions of a design, to choose from after a crash. */
 export async function earlierVersions(designId: string, limit = 5): Promise<EarlierVersion[]> {
-  return (await listVersions(designId)).slice(0, limit).map((v) => ({ id: v.id, at: v.createdAt, label: v.label && LABELS.includes(v.label) ? v.label : "Saved automatically" }));
+  return (await listVersions(designId)).slice(0, limit).map((v) => {
+    const known = v.label && Object.hasOwn(LABELS, v.label) ? LABELS[v.label] : "savedAutomatically";
+    return { id: v.id, at: v.createdAt, label: m.core.versions[known] };
+  });
 }
 
 /**

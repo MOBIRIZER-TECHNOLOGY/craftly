@@ -54,7 +54,7 @@ function achievement(): Template {
     cin("CHAIR OF THE BOARD", 703, 698, 290, 11.5, { align: "center", letterSpacing: 300, color: GOLD, fontWeight: 700 }),
   ];
   return template(
-    { slug: "achievement", name: "Gold and Navy Achievement Certificate", category: "certificate", size: "certificate", tags: ["certificate", "achievement", "award", "gold", "navy", "formal", "seal", "classic"], accent: GOLD },
+    { slug: "achievement", category: "certificate", size: "certificate", tags: ["certificate", "achievement", "award", "gold", "navy", "formal", "seal", "classic"], accent: GOLD },
     [pg(CREAM, els)],
   );
 }
@@ -110,7 +110,7 @@ function completion(): Template {
     sans("Certificate No. ALA-2026-04817", 130, 694, 400, 11.5, { color: "#6b8590", letterSpacing: 120 }),
   );
   return template(
-    { slug: "completion", name: "Teal Course Completion Certificate", category: "certificate", size: "certificate", tags: ["certificate", "completion", "course", "training", "teal", "modern", "rosette", "diploma"], accent: TEAL },
+    { slug: "completion", category: "certificate", size: "certificate", tags: ["certificate", "completion", "course", "training", "teal", "modern", "rosette", "diploma"], accent: TEAL },
     [pg(BG, els)],
   );
 }
@@ -158,7 +158,7 @@ function appreciation(): Template {
     hr(575, 683, 56, GOLD, 1.5),
   );
   return template(
-    { slug: "appreciation", name: "Burgundy Appreciation Certificate", category: "certificate", size: "certificate", tags: ["certificate", "appreciation", "thank you", "volunteer", "burgundy", "ornate", "laurel", "warm"], accent: BURG },
+    { slug: "appreciation", category: "certificate", size: "certificate", tags: ["certificate", "appreciation", "thank you", "volunteer", "burgundy", "ornate", "laurel", "warm"], accent: BURG },
     [pg(photoBg("paper-cream"), els)],
   );
 }

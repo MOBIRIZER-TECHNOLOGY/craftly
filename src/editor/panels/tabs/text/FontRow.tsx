@@ -1,22 +1,16 @@
 import { useEffect, type ReactNode } from "react";
+import { m } from "@/i18n";
 import { cssFontFamily, ensureFont, getFontDef, isCustomFamily, type FontDef } from "@/render/fonts";
 import { cx } from "@/ui";
 import { useVisible } from "../../shared/hooks";
 import "./FontRow.css";
 
-const CATEGORY_LABELS: Record<FontDef["category"], string> = {
-  sans: "Sans serif",
-  serif: "Serif",
-  display: "Display",
-  script: "Script",
-  handwriting: "Handwriting",
-  mono: "Monospace",
-};
+const CATEGORY_LABELS: Record<FontDef["category"], string> = m.panelsTabs.fontRow.categories;
 
 export const fontCategoryLabel = (family: string): string => {
-  if (isCustomFamily(family)) return "Uploaded font";
+  if (isCustomFamily(family)) return m.panelsTabs.fontRow.uploaded;
   const def = getFontDef(family);
-  return def ? CATEGORY_LABELS[def.category] : "Custom font";
+  return def ? CATEGORY_LABELS[def.category] : m.panelsTabs.fontRow.custom;
 };
 
 export interface FontRowProps {
@@ -43,7 +37,7 @@ export function FontRow({ family, onPick, trailing, label, className, sample }: 
 
   return (
     <div ref={ref} className={cx("cf-fontrow", className)}>
-      <button type="button" className="cf-fontrow__main" aria-label={label ?? `Add text in ${family}`} onClick={onPick}>
+      <button type="button" className="cf-fontrow__main" aria-label={label ?? m.panelsTabs.fontRow.addTextIn(family)} onClick={onPick}>
         <span className="cf-fontrow__sample" style={{ fontFamily: cssFontFamily(family) }}>
           {sample ?? family}
         </span>

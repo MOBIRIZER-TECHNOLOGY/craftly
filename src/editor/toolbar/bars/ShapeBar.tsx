@@ -4,6 +4,7 @@ import { getActivePage, useEditor } from "@/core/store";
 import { startPathEdit } from "@/editor/canvas/pathEditStore";
 import { getShape } from "@/render/shapePaths";
 import type { ArrowKind, LineElement, ShapeElement, StrokeStyle } from "@/core/types";
+import { m } from "@/i18n";
 import { Divider, IconChevronDown, IconCombine, IconCurve, type MenuEntry } from "@/ui";
 import {
   BorderPopover,
@@ -42,19 +43,19 @@ export function ShapeBar({ els, ids, copyEnabled }: BarProps<ShapeElement> & Ext
       <AnimateButton />
       <PositionButton />
       {els.length === 1 && elementPath(els[0]) && (
-        <TBText icon={<IconCurve />} tip="Move, add and delete the points of this path" shortcut="Enter" onClick={() => startPathEdit(els[0].id)}>
-          Edit points
+        <TBText icon={<IconCurve />} tip={m.editor.shapeBar.editPointsTip} shortcut="Enter" onClick={() => startPathEdit(els[0].id)}>
+          {m.editor.shapeBar.editPoints}
         </TBText>
       )}
       {ids.length > 1 && (
         <>
           <MultiActions ids={ids} />
           <MenuButton
-            label="Combine"
-            tip="Join the selected shapes into one, or cut one out of another"
+            label={m.editor.shapeBar.combine}
+            tip={m.editor.shapeBar.combineTip}
             icon={<IconCombine />}
             iconRight={<IconChevronDown />}
-            text="Combine"
+            text={m.editor.shapeBar.combine}
             items={() => combineMenuItems(getActivePage(useEditor.getState()), ids)}
           />
         </>
@@ -70,22 +71,9 @@ export function ShapeBar({ els, ids, copyEnabled }: BarProps<ShapeElement> & Ext
 /* lines                                                               */
 /* ------------------------------------------------------------------ */
 
-const LINE_STYLES: Array<{ value: StrokeStyle; label: string }> = [
-  { value: "solid", label: "Solid" },
-  { value: "dashed", label: "Dashed" },
-  { value: "dotted", label: "Dotted" },
-];
+const LINE_STYLES: StrokeStyle[] = ["solid", "dashed", "dotted"];
 
-const ARROWS: Array<{ value: ArrowKind; label: string }> = [
-  { value: "none", label: "None" },
-  { value: "arrow", label: "Arrow" },
-  { value: "triangle", label: "Triangle" },
-  { value: "open-arrow", label: "Open arrow" },
-  { value: "circle", label: "Circle" },
-  { value: "square", label: "Square" },
-  { value: "diamond", label: "Diamond" },
-  { value: "bar", label: "Bar" },
-];
+const ARROWS: ArrowKind[] = ["none", "arrow", "triangle", "open-arrow", "circle", "square", "diamond", "bar"];
 
 export function LineBar({ els, ids, copyEnabled }: BarProps<LineElement> & Extra) {
   const color = uniform(els, (e) => e.stroke.color);
@@ -96,16 +84,16 @@ export function LineBar({ els, ids, copyEnabled }: BarProps<LineElement> & Extra
   const colorOpen = useContextActive({ kind: "color", target: "stroke" });
 
   const styleItems: MenuEntry[] = LINE_STYLES.map((s) => ({
-    id: `style-${s.value}`,
-    label: s.label,
-    icon: <IconStrokeStyle kind={s.value} />,
-    checked: !style.mixed && style.value === s.value,
+    id: `style-${s}`,
+    label: m.editor.toolbar.strokeStyles[s],
+    icon: <IconStrokeStyle kind={s} />,
+    checked: !style.mixed && style.value === s,
     onSelect: () =>
       editElements(
         ids,
         only("line", (l) => {
-          const cap = capFor(s.value, true);
-          l.stroke = { ...l.stroke, style: s.value };
+          const cap = capFor(s, true);
+          l.stroke = { ...l.stroke, style: s };
           if (cap) l.stroke.cap = cap;
           else delete l.stroke.cap;
         }),
@@ -115,16 +103,16 @@ export function LineBar({ els, ids, copyEnabled }: BarProps<LineElement> & Extra
   const arrowItems = (which: "start" | "end"): MenuEntry[] => {
     const current = which === "start" ? start : end;
     return ARROWS.map((a) => ({
-      id: `${which}-${a.value}`,
-      label: a.label,
-      icon: <ArrowheadPreview kind={a.value} end={which} />,
-      checked: !current.mixed && current.value === a.value,
+      id: `${which}-${a}`,
+      label: m.editor.shapeBar.arrows[a],
+      icon: <ArrowheadPreview kind={a} end={which} />,
+      checked: !current.mixed && current.value === a,
       onSelect: () =>
         editElements(
           ids,
           only("line", (l) => {
-            if (which === "start") l.startArrow = a.value;
-            else l.endArrow = a.value;
+            if (which === "start") l.startArrow = a;
+            else l.endArrow = a;
           }),
         ),
     }));
@@ -133,16 +121,16 @@ export function LineBar({ els, ids, copyEnabled }: BarProps<LineElement> & Extra
   return (
     <>
       <TBIcon
-        label="Line color"
+        label={m.editor.shapeBar.lineColor}
         icon={<Swatch large css={color.mixed ? MIXED_SWATCH_CSS : (color.value ?? "var(--c-ink)")} />}
         active={colorOpen}
         onClick={() => toggleContext({ kind: "color", target: "stroke" })}
       />
 
-      <PopoverButton label="Line weight" tip="Weight" icon={<IconStrokeWeight />} panelClass="cf-tbpop--narrow">
+      <PopoverButton label={m.editor.shapeBar.lineWeight} tip={m.editor.shapeBar.weight} icon={<IconStrokeWeight />} panelClass="cf-tbpop--narrow">
         {() => (
           <SliderField
-            label="Weight"
+            label={m.editor.shapeBar.weight}
             value={weight.value ?? 1}
             mixed={weight.mixed}
             min={1}
@@ -161,22 +149,27 @@ export function LineBar({ els, ids, copyEnabled }: BarProps<LineElement> & Extra
         )}
       </PopoverButton>
 
-      <MenuButton label="Line style" tip="Line style" icon={<IconStrokeStyle kind={style.mixed ? "solid" : (style.value ?? "solid")} />} items={styleItems} />
+      <MenuButton
+        label={m.editor.shapeBar.lineStyle}
+        tip={m.editor.shapeBar.lineStyle}
+        icon={<IconStrokeStyle kind={style.mixed ? "solid" : (style.value ?? "solid")} />}
+        items={styleItems}
+      />
 
       <MenuButton
-        label="Start arrowhead"
-        tip="Start arrowhead"
+        label={m.editor.shapeBar.startArrowhead}
+        tip={m.editor.shapeBar.startArrowhead}
         icon={<ArrowheadPreview kind={start.mixed ? "none" : (start.value ?? "none")} end="start" />}
         iconRight={<IconChevronDown />}
-        text="Start"
+        text={m.editor.shapeBar.start}
         items={() => arrowItems("start")}
       />
       <MenuButton
-        label="End arrowhead"
-        tip="End arrowhead"
+        label={m.editor.shapeBar.endArrowhead}
+        tip={m.editor.shapeBar.endArrowhead}
         icon={<ArrowheadPreview kind={end.mixed ? "none" : (end.value ?? "none")} end="end" />}
         iconRight={<IconChevronDown />}
-        text="End"
+        text={m.editor.shapeBar.end}
         items={() => arrowItems("end")}
       />
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MAX_INPUT_CHARS } from "@/core/delimited";
+import { m } from "@/i18n";
 import { Button, IconUpload, cx } from "@/ui";
 import { MAX_FILE_BYTES, tellImport, type ImportReport } from "./dataImport";
 import { Section } from "./PanelShell";
@@ -13,16 +14,16 @@ const refused = (message: string): ImportReport => ({ ok: false, clean: false, m
 
 /** The text of a chosen file, or why it is not read. Only text files, and none over the size cap, are opened at all. */
 async function readDataFile(file: File): Promise<string | ImportReport> {
-  if (!TEXT_NAME.test(file.name) && !TEXT_TYPES.includes(file.type)) return refused("Choose a text file: .csv, .tsv or .txt.");
-  if (file.size > MAX_FILE_BYTES) return refused("This file is larger than 2 MB. Import a smaller part of it.");
+  if (!TEXT_NAME.test(file.name) && !TEXT_TYPES.includes(file.type)) return refused(m.panelsContext.importData.notText);
+  if (file.size > MAX_FILE_BYTES) return refused(m.panelsContext.importData.tooLarge);
   let text: string;
   try {
     text = await file.text();
   } catch {
-    return refused("The file could not be read.");
+    return refused(m.panelsContext.importData.unreadable);
   }
   // text has no zero bytes; a picture or a workbook under a text name has plenty
-  return text.includes("\u0000") ? refused("This file is not plain text.") : text;
+  return text.includes("\u0000") ? refused(m.panelsContext.importData.notPlain) : text;
 }
 
 /**
@@ -60,11 +61,11 @@ export function ImportData({ hint, onImport }: { hint: string; onImport: (text: 
   };
 
   return (
-    <Section title="Import data">
+    <Section title={m.panelsContext.importData.title}>
       <textarea
         className="cf-data__paste"
-        aria-label="Data to import"
-        placeholder="Paste cells copied from a spreadsheet, or CSV text"
+        aria-label={m.panelsContext.importData.fieldLabel}
+        placeholder={m.panelsContext.importData.placeholder}
         rows={3}
         autoComplete="off"
         spellCheck={false}
@@ -80,10 +81,10 @@ export function ImportData({ hint, onImport }: { hint: string; onImport: (text: 
       />
       <div className="cf-data__actions">
         <Button block variant="secondary" disabled={!text.trim()} onClick={importText}>
-          Import
+          {m.panelsContext.importData.import}
         </Button>
         <Button block variant="secondary" icon={<IconUpload />} onClick={() => fileRef.current?.click()}>
-          Choose a file
+          {m.panelsContext.importData.chooseFile}
         </Button>
       </div>
       <input

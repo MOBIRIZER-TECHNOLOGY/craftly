@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { m } from "@/i18n";
 import { IconBackground, IconChart, IconFrame, IconGrid, IconImage, IconShapes, IconSticker, IconTable } from "@/ui";
 import { IconSlash } from "../shared/icons";
 import { CategoryTile } from "../shared/CategoryTile";
@@ -28,15 +29,15 @@ interface Category {
 
 /** Glossy "Browse categories" tiles. Colours are data: each tile is a soft two-stop gradient. */
 const CATEGORIES: Category[] = [
-  { page: "shapes", label: "Shapes", icon: <IconShapes />, from: "#34e0cf", to: "#0891b2" },
-  { page: "graphics", label: "Graphics", icon: <IconSticker />, from: "#fcd34d", to: "#f97316" },
-  { page: "photos", label: "Photos", icon: <IconImage />, from: "#7dd3fc", to: "#2563eb" },
-  { page: "frames", label: "Frames", icon: <IconFrame />, from: "#86efac", to: "#16a34a" },
-  { page: "grids", label: "Grids", icon: <IconGrid />, from: "#f0abfc", to: "#a21caf" },
-  { page: "charts", label: "Charts", icon: <IconChart />, from: "#c4b5fd", to: "#6d28d9" },
-  { page: "tables", label: "Tables", icon: <IconTable />, from: "#fdba74", to: "#e11d48" },
-  { page: "lines", label: "Lines", icon: <IconSlash />, from: "#a5b4fc", to: "#4338ca" },
-  { page: "backgrounds", label: "Backgrounds", icon: <IconBackground />, from: "#f9a8d4", to: "#be185d" },
+  { page: "shapes", label: m.panelsTabs.elements.categories.shapes, icon: <IconShapes />, from: "#34e0cf", to: "#0891b2" },
+  { page: "graphics", label: m.panelsTabs.elements.categories.graphics, icon: <IconSticker />, from: "#fcd34d", to: "#f97316" },
+  { page: "photos", label: m.panelsTabs.elements.categories.photos, icon: <IconImage />, from: "#7dd3fc", to: "#2563eb" },
+  { page: "frames", label: m.panelsTabs.elements.categories.frames, icon: <IconFrame />, from: "#86efac", to: "#16a34a" },
+  { page: "grids", label: m.panelsTabs.elements.categories.grids, icon: <IconGrid />, from: "#f0abfc", to: "#a21caf" },
+  { page: "charts", label: m.panelsTabs.elements.categories.charts, icon: <IconChart />, from: "#c4b5fd", to: "#6d28d9" },
+  { page: "tables", label: m.panelsTabs.elements.categories.tables, icon: <IconTable />, from: "#fdba74", to: "#e11d48" },
+  { page: "lines", label: m.panelsTabs.elements.categories.lines, icon: <IconSlash />, from: "#a5b4fc", to: "#4338ca" },
+  { page: "backgrounds", label: m.panelsTabs.elements.categories.backgrounds, icon: <IconBackground />, from: "#f9a8d4", to: "#be185d" },
 ];
 
 /**
@@ -80,16 +81,24 @@ function ElementsOverview() {
   return (
     <Panel>
       <PanelTop>
-        <PanelSearch value={query} onChange={setQuery} placeholder="Search elements" />
+        <PanelSearch value={query} onChange={setQuery} placeholder={m.panelsTabs.elements.search} />
       </PanelTop>
       <PanelScroll>
         {searching ? (
           <ElementsSearchResults query={debounced} />
         ) : (
-          <PanelSection title="Browse categories">
+          <PanelSection title={m.panelsTabs.elements.browse}>
             <ItemGrid columns={3} minCell={92} gap={4} className="cf-elements__tiles">
               {CATEGORIES.map((c) => (
-                <CategoryTile key={c.page} label={c.label} icon={c.icon} from={c.from} to={c.to} description={`Browse ${c.label.toLowerCase()}`} onClick={() => open(c.page)} />
+                <CategoryTile
+                  key={c.page}
+                  label={c.label}
+                  icon={c.icon}
+                  from={c.from}
+                  to={c.to}
+                  description={m.panelsTabs.elements.browseOne(c.label)}
+                  onClick={() => open(c.page)}
+                />
               ))}
             </ItemGrid>
           </PanelSection>

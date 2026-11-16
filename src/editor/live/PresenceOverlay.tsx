@@ -11,6 +11,7 @@
 import { useEffect, useRef, type CSSProperties } from "react";
 import { getActivePage, useEditor } from "@/core/store";
 import type { Page } from "@/core/types";
+import { m } from "@/i18n";
 import { worldBox } from "../canvas/frame";
 import { setPointer, usePresence, type Person } from "./presence";
 import "./live.css";
@@ -85,7 +86,7 @@ function PersonLayer({ person, page, zoom }: { person: Person; page: Page; zoom:
       {typing ? (
         // One person at a time types in a text box (docs/COLLABORATION.md): this is how the others see that it is taken.
         <div className="cf-presence__outline cf-presence__outline--typing" style={outlineStyle(typing, zoom, person.color)}>
-          <span className="cf-presence__tag cf-presence__tag--outline">{person.name} is typing…</span>
+          <span className="cf-presence__tag cf-presence__tag--outline">{m.editor.live.typing(person.name)}</span>
         </div>
       ) : null}
       {person.pointer ? (

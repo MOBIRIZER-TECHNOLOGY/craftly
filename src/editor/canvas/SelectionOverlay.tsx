@@ -2,6 +2,7 @@ import { Move, RotateCw } from "lucide-react";
 import type { CSSProperties } from "react";
 import { getActivePage, useEditor, useSelectedElements } from "@/core/store";
 import type { DesignElement } from "@/core/types";
+import { m } from "@/i18n";
 import { handlesFor, selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
 import { usePathEdit } from "./pathEditStore";
@@ -75,10 +76,10 @@ export function SelectionOverlay() {
           })}
           {!locked && !editing && tool === "select" && (
             <>
-              <div className="cf-handle cf-handle--rotate" data-cf-handle="rotate" title="Rotate" style={{ left: "50%", top: `calc(100% + 30px)` }}>
+              <div className="cf-handle cf-handle--rotate" data-cf-handle="rotate" title={m.editor.canvas.rotate} style={{ left: "50%", top: `calc(100% + 30px)` }}>
                 <RotateCw size={14} strokeWidth={2.4} />
               </div>
-              <div className="cf-handle cf-handle--move" data-cf-handle="move" title="Move" style={{ left: "50%", top: `calc(100% + 30px)`, marginLeft: 38 }}>
+              <div className="cf-handle cf-handle--move" data-cf-handle="move" title={m.editor.canvas.move} style={{ left: "50%", top: `calc(100% + 30px)`, marginLeft: 38 }}>
                 <Move size={13} strokeWidth={2.4} />
               </div>
             </>

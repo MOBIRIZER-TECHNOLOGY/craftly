@@ -1,4 +1,5 @@
 import { DATABASE_NEWER_MESSAGE } from "@/core/schema/database";
+import { m } from "@/i18n";
 import { Button, IconWarning } from "@/ui";
 import { designsStore } from "./data";
 import "./StorageNotice.css";
@@ -13,10 +14,10 @@ export function StorageNotice({ detail }: { detail: string }) {
       <div className="cf-dstorage" role="alert">
         <IconWarning className="cf-dstorage__icon" aria-hidden="true" />
         <p className="cf-dstorage__text">
-          <strong>This tab is older than your designs.</strong> {detail}
+          <strong>{m.dashboard.storage.olderTab}</strong> {detail}
         </p>
         <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
-          Reload
+          {m.common.reload}
         </Button>
       </div>
     );
@@ -25,11 +26,10 @@ export function StorageNotice({ detail }: { detail: string }) {
     <div className="cf-dstorage" role="alert">
       <IconWarning className="cf-dstorage__icon" aria-hidden="true" />
       <p className="cf-dstorage__text">
-        <strong>Craftly can't reach this browser's local storage.</strong> Designs can't be saved or listed right now. If this is a private window, open a normal one, and check
-        that site data is allowed. ({detail})
+        <strong>{m.dashboard.storage.unreachable}</strong> {m.dashboard.storage.unreachableText(detail)}
       </p>
       <Button size="sm" variant="secondary" onClick={() => designsStore.reload()}>
-        Try again
+        {m.common.retry}
       </Button>
     </div>
   );

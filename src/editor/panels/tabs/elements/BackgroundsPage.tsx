@@ -5,6 +5,7 @@ import { getActions, useActivePage } from "@/core/store";
 import type { Fill } from "@/core/types";
 import { BACKGROUND_GROUPS, type BackgroundPreset } from "@/data/backgrounds";
 import { getPhotoDef } from "@/data/photos";
+import { m } from "@/i18n";
 import { IconBackground, cx } from "@/ui";
 import { DraggableItem } from "../../shared/DraggableItem";
 import { EmptyHint } from "../../shared/EmptyHint";
@@ -63,13 +64,20 @@ export function BackgroundsPage() {
   const q = query.trim().toLowerCase();
 
   const groups = useMemo(
-    () => BACKGROUND_GROUPS.map((g) => ({ ...g, presets: g.presets.filter((p) => !q || `${p.name} ${g.label}`.toLowerCase().includes(q)) })).filter((g) => g.presets.length),
+    () =>
+      BACKGROUND_GROUPS.map((g) => ({ ...g, presets: g.presets.filter((p) => !q || `${p.name} ${p.englishName} ${g.label} ${g.id}`.toLowerCase().includes(q)) })).filter(
+        (g) => g.presets.length,
+      ),
     [q],
   );
 
   return (
     <Panel>
-      <SubPageTop title="Backgrounds" placeholder="Search backgrounds" subtitle="Click one to colour the page" />
+      <SubPageTop
+        title={m.panelsTabs.elements.categories.backgrounds}
+        placeholder={m.panelsTabs.elements.backgrounds.search}
+        subtitle={m.panelsTabs.elements.backgrounds.subtitle}
+      />
       <PanelScroll>
         {groups.map((g) => (
           <PanelSection key={g.id} title={g.label}>
@@ -80,7 +88,9 @@ export function BackgroundsPage() {
             </ItemGrid>
           </PanelSection>
         ))}
-        {!groups.length ? <EmptyHint icon={<IconBackground />} title="No backgrounds found" text={`Nothing matches "${query.trim()}". Try "sunset", "dots" or "blue".`} /> : null}
+        {!groups.length ? (
+          <EmptyHint icon={<IconBackground />} title={m.panelsTabs.elements.backgrounds.noneTitle} text={m.panelsTabs.elements.backgrounds.noneText(query.trim())} />
+        ) : null}
       </PanelScroll>
     </Panel>
   );

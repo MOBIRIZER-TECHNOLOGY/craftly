@@ -14,6 +14,7 @@
  * constant; a test recomputes it.
  */
 import type { DesignElement, Page } from "@/core/types";
+import { m } from "@/i18n";
 import { ExportError } from "./errors";
 
 export interface WebPageSlide {
@@ -208,7 +209,7 @@ const LANGUAGE_TAG = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 const icon = (path: string) => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
 
 /** The error for a file beyond MAX_WEB_PAGE_BYTES (also thrown by the exporter, as soon as the pictures alone are too many). */
-export const webPageTooLarge = () => new ExportError("too-large", `These pages make a web page of more than ${MAX_WEB_PAGE_BYTES / (1024 * 1024)} MB. Choose fewer pages.`);
+export const webPageTooLarge = () => new ExportError("too-large", m.exporting.errors.webPageTooLarge(MAX_WEB_PAGE_BYTES / (1024 * 1024)));
 
 /**
  * The text of the .html file. Throws an `ExportError`: "no-pages" without a page, "invalid-design" for a picture that
@@ -216,7 +217,7 @@ export const webPageTooLarge = () => new ExportError("too-large", `These pages m
  */
 export function buildWebPage(input: WebPageInput): string {
   const { slides } = input;
-  if (!slides.length) throw new ExportError("no-pages", "Select at least one page to download.");
+  if (!slides.length) throw new ExportError("no-pages", m.exporting.errors.noPages);
   // weighed before anything is put together: the pictures are all but the whole file
   if (slides.reduce((sum, s) => sum + s.src.length, 0) > MAX_WEB_PAGE_BYTES) throw webPageTooLarge();
   for (const slide of slides) {

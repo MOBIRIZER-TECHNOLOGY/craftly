@@ -57,7 +57,7 @@ function peachQuoteCard(): Template {
   ]);
 
   return template(
-    { slug: "peach-quote-card", name: "Peach Quote Card", category: "social", size: "instagram", accent: "#ffc6a4", tags: ["quote", "instagram", "peach", "soft", "serif", "boho", "carousel", "inspiration", "aesthetic"] },
+    { slug: "peach-quote-card", category: "social", size: "instagram", accent: "#ffc6a4", tags: ["quote", "instagram", "peach", "soft", "serif", "boho", "carousel", "inspiration", "aesthetic"] },
     [page1, page2],
   );
 }
@@ -102,7 +102,7 @@ function fernwoodSpotlight(): Template {
   ]);
 
   return template(
-    { slug: "fernwood-plant-spotlight", name: "Fernwood Plant Spotlight", category: "social", size: "instagram", accent: "#c9d8bc", tags: ["product", "spotlight", "plant", "shop", "price tag", "new arrival", "instagram", "sage", "ecommerce"] },
+    { slug: "fernwood-plant-spotlight", category: "social", size: "instagram", accent: "#c9d8bc", tags: ["product", "spotlight", "plant", "shop", "price tag", "new arrival", "instagram", "sage", "ecommerce"] },
     [page],
   );
 }
@@ -174,7 +174,7 @@ function citrusRecipe(): Template {
   const page2 = pg(PAPER, p2);
 
   return template(
-    { slug: "citrus-recipe-card", name: "Citrus Cake Recipe Card", category: "social", size: "instagram", accent: "#f3d9a4", tags: ["recipe", "food", "cooking", "carousel", "cake", "baking", "cream", "instagram", "editorial"] },
+    { slug: "citrus-recipe-card", category: "social", size: "instagram", accent: "#f3d9a4", tags: ["recipe", "food", "cooking", "carousel", "cake", "baking", "cream", "instagram", "editorial"] },
     [page1, page2],
   );
 }
@@ -209,7 +209,7 @@ function cobaltMonday(): Template {
     T("@hustleandharbor  ·  Mondays at 8 AM", 140, 1236, 800, 34, { fontFamily: "Inter", fontWeight: 700, color: NAVY, align: "center", name: "Handle" }),
   ]);
   return template(
-    { slug: "cobalt-monday", name: "Cobalt Monday Motivation", category: "social", size: "instagram", accent: "#2335f5", tags: ["monday", "motivation", "quote", "bold", "blue", "yellow", "sunrise", "instagram", "workweek"] },
+    { slug: "cobalt-monday", category: "social", size: "instagram", accent: "#2335f5", tags: ["monday", "motivation", "quote", "bold", "blue", "yellow", "sunrise", "instagram", "workweek"] },
     [page],
   );
 }
@@ -234,7 +234,7 @@ function violetTestimonial(): Template {
     T("4.9 average rating from 2,300 reviews", 72, 1226, 936, 34, { fontFamily: "Plus Jakarta Sans", fontWeight: 700, color: "#ffffff", align: "center", name: "Rating note" }),
   ]);
   return template(
-    { slug: "violet-review-bubble", name: "Violet Review Bubble", category: "social", size: "instagram", accent: "#5b3df5", tags: ["testimonial", "review", "stars", "customer", "feedback", "social proof", "violet", "speech bubble", "instagram"] },
+    { slug: "violet-review-bubble", category: "social", size: "instagram", accent: "#5b3df5", tags: ["testimonial", "review", "stars", "customer", "feedback", "social proof", "violet", "speech bubble", "instagram"] },
     [page],
   );
 }
@@ -290,7 +290,7 @@ function mintChecklist(): Template {
   const page2 = pg(MINT, p2);
 
   return template(
-    { slug: "mint-tip-checklist", name: "Mint Tip Checklist", category: "social", size: "instagram", accent: "#c7f4da", tags: ["tip", "checklist", "habits", "carousel", "brutalist", "mint", "sleep", "wellness", "instagram"] },
+    { slug: "mint-tip-checklist", category: "social", size: "instagram", accent: "#c7f4da", tags: ["tip", "checklist", "habits", "carousel", "brutalist", "mint", "sleep", "wellness", "instagram"] },
     [page1, page2],
   );
 }

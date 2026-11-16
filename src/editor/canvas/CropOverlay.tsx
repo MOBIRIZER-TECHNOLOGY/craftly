@@ -3,6 +3,7 @@ import { clamp, DEG, fromLocalPoint } from "@/core/geometry";
 import { findElement } from "@/core/ops";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { ImageCrop, ImageElement } from "@/core/types";
+import { m } from "@/i18n";
 import { imageUrl } from "@/render/images";
 import { HANDLE_VEC, type Handle } from "./resize";
 
@@ -170,7 +171,7 @@ function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
         <div key={h} className={`cf-crop__handle cf-crop__handle--${h}`} onPointerDown={(e) => startFrame(e, h)} />
       ))}
       <button type="button" className="cf-crop__done" onPointerDown={(e) => e.stopPropagation()} onClick={() => actions.endCrop()}>
-        Done
+        {m.common.done}
       </button>
     </div>
   );

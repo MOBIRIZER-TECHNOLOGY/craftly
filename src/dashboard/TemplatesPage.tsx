@@ -5,7 +5,7 @@ import { TEMPLATES, TEMPLATE_CATEGORY_LABELS, searchTemplates } from "@/data/tem
 import { navigate } from "@/router";
 import { openCreateDialog } from "./createDialogState";
 import { useFavouriteTemplates } from "./data";
-import { plural } from "./format";
+import { m } from "@/i18n";
 import { Hero } from "./Hero";
 import { Page } from "./Page";
 import { TemplateCard } from "./TemplateCard";
@@ -62,15 +62,15 @@ export function TemplatesPage({ category }: { category?: string }) {
 
   return (
     <div className="cf-tplpage">
-      <Hero title="Start with a great template" active="templates" compact>
-        <SearchField size="lg" value={query} onChange={setQuery} placeholder="Search templates, e.g. birthday, resume or pitch" aria-label="Search templates" />
+      <Hero title={m.dashboard.templates.title} active="templates" compact>
+        <SearchField size="lg" value={query} onChange={setQuery} placeholder={m.dashboard.templates.searchPlaceholder} aria-label={m.dashboard.templates.searchLabel} />
       </Hero>
 
       <Page className="cf-tplpage__page">
         <div className="cf-tplpage__chips">
           <Tabs
             variant="pill"
-            aria-label="Template categories"
+            aria-label={m.dashboard.home.categories}
             value={chipValue}
             onChange={(id) => {
               if (id === "favourites") setOnlyFavourites(true);
@@ -80,9 +80,9 @@ export function TemplatesPage({ category }: { category?: string }) {
               }
             }}
             tabs={[
-              { id: "all", label: "All" },
+              { id: "all", label: m.dashboard.shared.all },
               ...chipIds.map((id) => ({ id, label: TEMPLATE_CATEGORY_LABELS[id] })),
-              { id: "favourites", label: "Favourites", icon: <IconStar aria-hidden="true" /> },
+              { id: "favourites", label: m.dashboard.templates.favourites, icon: <IconStar aria-hidden="true" /> },
             ]}
           />
         </div>
@@ -91,11 +91,11 @@ export function TemplatesPage({ category }: { category?: string }) {
           <EmptyState
             headingLevel={2}
             icon={<IconTemplate />}
-            title="Templates are on their way"
-            text="There are no templates to show yet. You can still start from a blank design of any size."
+            title={m.dashboard.templates.comingTitle}
+            text={m.dashboard.templates.comingText}
             action={
               <Button variant="primary" onClick={() => openCreateDialog()}>
-                Browse design types
+                {m.dashboard.shared.browseDesignTypes}
               </Button>
             }
           />
@@ -103,14 +103,10 @@ export function TemplatesPage({ category }: { category?: string }) {
           <EmptyState
             headingLevel={2}
             icon={onlyFavourites ? <IconStar /> : <IconTemplate />}
-            title={onlyFavourites && !searching ? "No favourite templates yet" : searching ? `No templates match “${query.trim()}”` : "No templates in this category"}
-            text={
-              onlyFavourites && !searching
-                ? "Tap the star on a template to keep it here."
-                : searching
-                  ? "Check the spelling, try a more general word, or pick another category."
-                  : "Try another category, or look at all templates."
+            title={
+              onlyFavourites && !searching ? m.dashboard.templates.noFavourites : searching ? m.dashboard.templates.noMatch(query.trim()) : m.dashboard.templates.noneInCategory
             }
+            text={onlyFavourites && !searching ? m.dashboard.templates.noFavouritesText : searching ? m.dashboard.templates.noMatchText : m.dashboard.templates.noneInCategoryText}
             action={
               <Button
                 variant="primary"
@@ -123,20 +119,20 @@ export function TemplatesPage({ category }: { category?: string }) {
                   if (activeCategory) navigate("/templates");
                 }}
               >
-                {searching ? "Clear search" : "Show all templates"}
+                {searching ? m.dashboard.templates.clearSearch : m.dashboard.templates.showAll}
               </Button>
             }
           />
         ) : (
           <>
             <p className="cf-tplpage__count" aria-live="polite">
-              {results.length > shown.length ? `Showing ${shown.length} of ${plural(results.length, "template")}` : plural(results.length, "template")}
+              {results.length > shown.length ? m.dashboard.templates.showing(shown.length, results.length) : m.dashboard.counts.templates(results.length)}
             </p>
             <Masonry templates={shown} />
             {results.length > shown.length ? (
               <div className="cf-tplpage__more">
                 <Button variant="secondary" size="lg" onClick={() => setLimit((value) => value + PAGE_SIZE)}>
-                  Show more
+                  {m.common.showMore}
                 </Button>
               </div>
             ) : null}

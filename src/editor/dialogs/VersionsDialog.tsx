@@ -3,19 +3,20 @@ import { PageThumb } from "@/components/PageThumb";
 import { getVersion, listVersions, saveVersion, type VersionRecord } from "@/core/library";
 import { useEditor } from "@/core/store";
 import { describeSize } from "@/data/designTypes";
+import { date, locale, m, num } from "@/i18n";
 import { Button, IconHistory, IconSave, Modal, Skeleton, cx, confirm, toast } from "@/ui";
 import "./versionsDialog.css";
 
 type VersionRow = Omit<VersionRecord, "design">;
 
-const full = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+const full = (at: number) => date(at, { dateStyle: "medium", timeStyle: "short" });
+const relative = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
 
 /** "5 minutes ago", "yesterday" */
 function ago(at: number): string {
   const seconds = Math.round((at - Date.now()) / 1000);
   const abs = Math.abs(seconds);
-  if (abs < 45) return "just now";
+  if (abs < 45) return m.editorChrome.versions.justNow;
   if (abs < 3600) return relative.format(Math.round(seconds / 60), "minute");
   if (abs < 86400) return relative.format(Math.round(seconds / 3600), "hour");
   return relative.format(Math.round(seconds / 86400), "day");
@@ -66,9 +67,9 @@ export function VersionsDialog({ open, onClose }: { open: boolean; onClose: () =
     try {
       await saveVersion(design, "Saved by you");
       await refresh();
-      toast.success("Version saved");
+      toast.success(m.editorChrome.versions.savedToast);
     } catch {
-      toast.error("Couldn't save a version. Check that your browser has free storage and try again.");
+      toast.error(m.editorChrome.versions.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -77,9 +78,9 @@ export function VersionsDialog({ open, onClose }: { open: boolean; onClose: () =
   const restore = async () => {
     if (!preview || readOnly) return;
     const ok = await confirm({
-      title: "Restore this version?",
-      message: `Your design will go back to how it was on ${full.format(preview.createdAt)}. Your current design is saved as a version first, and you can also undo with Ctrl+Z.`,
-      confirmLabel: "Restore",
+      title: m.editorChrome.versions.restoreTitle,
+      message: m.editorChrome.versions.restoreMessage(full(preview.createdAt)),
+      confirmLabel: m.editorChrome.versions.restore,
     });
     if (!ok) return;
     const state = useEditor.getState();
@@ -87,10 +88,10 @@ export function VersionsDialog({ open, onClose }: { open: boolean; onClose: () =
     try {
       if (state.design) await saveVersion(state.design, "Before restoring");
       state.actions.replaceDesign(preview.design);
-      toast.success("Version restored");
+      toast.success(m.editorChrome.versions.restored);
       onClose();
     } catch {
-      toast.error("Couldn't restore that version. Try again.");
+      toast.error(m.editorChrome.versions.restoreFailed);
     } finally {
       setRestoring(false);
     }
@@ -103,14 +104,14 @@ export function VersionsDialog({ open, onClose }: { open: boolean; onClose: () =
       open={open}
       onClose={onClose}
       size="lg"
-      title="Version history"
+      title={m.editorChrome.versions.title}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Close
+            {m.common.close}
           </Button>
           <Button variant="primary" disabled={!preview || readOnly} loading={restoring} onClick={() => void restore()}>
-            Restore this version
+            {m.editorChrome.versions.restoreThis}
           </Button>
         </>
       }
@@ -118,7 +119,7 @@ export function VersionsDialog({ open, onClose }: { open: boolean; onClose: () =
       <div className="cf-versions">
         <div className="cf-versions__list-wrap">
           <Button variant="soft" icon={<IconSave aria-hidden="true" />} block disabled={saving || readOnly} loading={saving} onClick={() => void saveNow()}>
-            Save version now
+            {m.editorChrome.versions.saveNow}
           </Button>
           {rows === null ? (
             <div className="cf-versions__skeleton" aria-hidden="true">
@@ -129,11 +130,11 @@ export function VersionsDialog({ open, onClose }: { open: boolean; onClose: () =
           ) : rows.length === 0 ? (
             <div className="cf-versions__empty">
               <IconHistory aria-hidden="true" />
-              <p>No saved versions yet.</p>
-              <p className="cf-versions__empty-hint">Craftly saves a version about every five minutes while you edit. You can also save one right now.</p>
+              <p>{m.editorChrome.versions.empty}</p>
+              <p className="cf-versions__empty-hint">{m.editorChrome.versions.emptyHint}</p>
             </div>
           ) : (
-            <ul className="cf-versions__list" role="listbox" aria-label="Versions">
+            <ul className="cf-versions__list" role="listbox" aria-label={m.editorChrome.versions.list}>
               {rows.map((v) => (
                 <li key={v.id} role="presentation">
                   <button
@@ -143,8 +144,10 @@ export function VersionsDialog({ open, onClose }: { open: boolean; onClose: () =
                     className={cx("cf-versions__item", selected === v.id && "is-selected")}
                     onClick={() => setSelected(v.id)}
                   >
-                    <span className="cf-versions__when">{full.format(v.createdAt)}</span>
-                    <span className="cf-versions__meta">{v.label ? `${v.label} - ${ago(v.createdAt)}` : `Autosave - ${ago(v.createdAt)}`}</span>
+                    <span className="cf-versions__when">{full(v.createdAt)}</span>
+                    <span className="cf-versions__meta">
+                      {v.label ? m.editorChrome.versions.meta(m.editorChrome.versions.label(v.label), ago(v.createdAt)) : m.editorChrome.versions.autosave(ago(v.createdAt))}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -165,25 +168,25 @@ export function VersionsDialog({ open, onClose }: { open: boolean; onClose: () =
               </div>
               <dl className="cf-versions__facts">
                 <div>
-                  <dt>Saved</dt>
-                  <dd>{full.format(preview.createdAt)}</dd>
+                  <dt>{m.editorChrome.versions.saved}</dt>
+                  <dd>{full(preview.createdAt)}</dd>
                 </div>
                 <div>
-                  <dt>Title</dt>
+                  <dt>{m.editorChrome.versions.titleFact}</dt>
                   <dd>{preview.design.title}</dd>
                 </div>
                 <div>
-                  <dt>Size</dt>
+                  <dt>{m.editorChrome.versions.size}</dt>
                   <dd>{describeSize(preview.design.width, preview.design.height, preview.design.unit)}</dd>
                 </div>
                 <div>
-                  <dt>Pages</dt>
-                  <dd>{preview.design.pages.length}</dd>
+                  <dt>{m.editorChrome.versions.pages}</dt>
+                  <dd>{num(preview.design.pages.length)}</dd>
                 </div>
               </dl>
             </>
           ) : (
-            <p className="cf-versions__hint">{rows && rows.length ? "Select a version to preview it." : "Versions you save show up here."}</p>
+            <p className="cf-versions__hint">{rows && rows.length ? m.editorChrome.versions.selectHint : m.editorChrome.versions.emptyPreview}</p>
           )}
         </div>
       </div>

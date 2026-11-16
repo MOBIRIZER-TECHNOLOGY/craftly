@@ -22,6 +22,7 @@ import {
 } from "@/ui";
 import { CustomFonts, useCustomFamilies } from "@/components/CustomFonts";
 import { getAssetUrl } from "@/core/assets";
+import { m } from "@/i18n";
 import { fadedInk, readableOn } from "@/core/color";
 import type { Asset, BrandKit } from "@/core/types";
 import { FONT_CATALOG, cssFontFamily, customFontDefs, ensureFont, getFontDef, isCustomFamily, preloadFonts, type FontCategory, type FontDef } from "@/render/fonts";
@@ -33,17 +34,10 @@ import "./BrandPage.css";
 
 const MAX_COLORS = 24;
 
-const CATEGORY_LABEL: Record<FontCategory, string> = {
-  sans: "Sans serif",
-  serif: "Serif",
-  display: "Display",
-  script: "Script",
-  handwriting: "Handwriting",
-  mono: "Monospace",
-};
+const CATEGORY_LABEL: Record<FontCategory, string> = m.dashboard.brand.fontCategories;
 
 /** What kind of font a known family is: a font the person uploaded says so, a bundled one names its category. */
-const kindOf = (def: FontDef): string => (isCustomFamily(def.family) ? "Uploaded font" : CATEGORY_LABEL[def.category]);
+const kindOf = (def: FontDef): string => (isCustomFamily(def.family) ? m.dashboard.brand.uploadedFont : CATEGORY_LABEL[def.category]);
 
 /** Brand kit editor: logos, colours, fonts and a live preview card. */
 export function BrandPage() {
@@ -61,9 +55,9 @@ export function BrandPage() {
 
   return (
     <Page className="cf-brand">
-      <PageHeader title="Brand kit" subtitle="Keep your logos, colours and fonts in one place so every design looks like you." />
+      <PageHeader title={m.dashboard.brand.title} subtitle={m.dashboard.brand.subtitle} />
       {!ready ? (
-        <div className="cf-brand__layout" aria-busy="true" aria-label="Loading your brand kit">
+        <div className="cf-brand__layout" aria-busy="true" aria-label={m.dashboard.brand.loading}>
           <div className="cf-brand__editor">
             <Skeleton height={150} radius={16} />
             <Skeleton height={170} radius={16} />
@@ -77,11 +71,11 @@ export function BrandPage() {
             <LogosCard kit={kit} logos={logos} />
             <ColorsCard colors={kit.colors} />
             <FontsCard fonts={kit.fonts} />
-            <Card title="Your fonts" hint="Fonts you uploaded. Use them in every design, like the ones Craftly comes with.">
+            <Card title={m.dashboard.brand.yourFonts} hint={m.dashboard.brand.yourFontsHint}>
               <CustomFonts />
             </Card>
           </div>
-          <aside className="cf-brand__aside" aria-label="Brand kit preview">
+          <aside className="cf-brand__aside" aria-label={m.dashboard.brand.preview}>
             <BrandPreview kit={kit} logo={logos[0]} />
           </aside>
         </div>
@@ -116,15 +110,15 @@ function LogosCard({ kit, logos }: { kit: BrandKit; logos: Asset[] }) {
       const stored = await uploadImageFiles(files, { quiet: true });
       if (stored.length === 0) return;
       await updateBrandKit((current) => ({ ...current, logos: [...current.logos, ...stored.map((asset) => asset.id).filter((id) => !current.logos.includes(id))] }));
-      toast.success(stored.length === 1 ? "Logo added to your brand kit" : `${stored.length} logos added to your brand kit`, { duration: 2600 });
+      toast.success(m.dashboard.brand.logosAdded(stored.length), { duration: 2600 });
     });
   };
 
   const remove = (asset: Asset) => {
     const index = kit.logos.indexOf(asset.id);
     void updateBrandKit((current) => ({ ...current, logos: current.logos.filter((id) => id !== asset.id) }));
-    toast.info("Logo removed from your brand kit", {
-      actionLabel: "Undo",
+    toast.info(m.dashboard.brand.logoRemoved, {
+      actionLabel: m.common.undo,
       duration: 6000,
       onAction: () =>
         void updateBrandKit((current) => {
@@ -138,16 +132,16 @@ function LogosCard({ kit, logos }: { kit: BrandKit; logos: Asset[] }) {
 
   return (
     <Card
-      title="Logos"
-      hint="Upload your logo files. The first one is used in the preview."
+      title={m.dashboard.brand.logos}
+      hint={m.dashboard.brand.logosHint}
       action={
         <Button variant="secondary" icon={<IconUpload aria-hidden="true" />} onClick={upload}>
-          Upload logo
+          {m.dashboard.brand.uploadLogo}
         </Button>
       }
     >
       {logos.length === 0 ? (
-        <EmptyState icon={<IconImage />} title="No logos yet" text="PNG, JPG, WebP or SVG files work best on a transparent background." />
+        <EmptyState icon={<IconImage />} title={m.dashboard.brand.noLogos} text={m.dashboard.brand.noLogosText} />
       ) : (
         <ul className="cf-brand__logos">
           {logos.map((asset) => (
@@ -176,7 +170,7 @@ function LogoTile({ asset, onRemove }: { asset: Asset; onRemove: () => void }) {
       <figcaption className="cf-brand__logo-name" title={asset.name}>
         {asset.name}
       </figcaption>
-      <IconButton className="cf-brand__remove" size="sm" label={`Remove ${asset.name} from the brand kit`} icon={<IconClose aria-hidden="true" />} onClick={onRemove} />
+      <IconButton className="cf-brand__remove" size="sm" label={m.dashboard.brand.removeFromKit(asset.name)} icon={<IconClose aria-hidden="true" />} onClick={onRemove} />
     </figure>
   );
 }
@@ -211,7 +205,7 @@ function ColorsCard({ colors }: { colors: string[] }) {
   };
 
   return (
-    <Card title="Brand colours" hint="Click a colour to edit it. Drag to reorder, or use the arrows in the editor.">
+    <Card title={m.dashboard.brand.colours} hint={m.dashboard.brand.coloursHint}>
       <ul className="cf-brand__colors">
         {colors.map((color, index) => (
           <li
@@ -242,7 +236,7 @@ function ColorsCard({ colors }: { colors: string[] }) {
         <li>
           <IconButton
             className="cf-brand__add"
-            label={full ? `You can keep up to ${MAX_COLORS} colours` : "Add a colour"}
+            label={full ? m.dashboard.brand.coloursFull(MAX_COLORS) : m.dashboard.brand.addAColour}
             icon={<IconPlus aria-hidden="true" />}
             disabled={full}
             aria-haspopup="dialog"
@@ -251,7 +245,7 @@ function ColorsCard({ colors }: { colors: string[] }) {
           />
         </li>
       </ul>
-      {colors.length === 0 ? <p className="cf-brand__empty-line">No colours yet. Add the colours your brand uses.</p> : null}
+      {colors.length === 0 ? <p className="cf-brand__empty-line">{m.dashboard.brand.noColours}</p> : null}
       <AddColorPopover anchor={adding} onClose={() => setAdding(null)} existing={colors} />
     </Card>
   );
@@ -272,14 +266,21 @@ function ColorChip({ color, index, count }: { color: string; index: number; coun
 
   return (
     <div className="cf-brand__chip">
-      <ColorSwatch color={color} size={56} shape="square" title={`Edit colour ${color.toUpperCase()}`} onClick={(event) => setAnchor(event.currentTarget)} />
+      <ColorSwatch color={color} size={56} shape="square" title={m.dashboard.brand.editColour(color.toUpperCase())} onClick={(event) => setAnchor(event.currentTarget)} />
       <span className="cf-brand__hex">{color.toUpperCase()}</span>
-      <Popover open={anchor !== null} anchor={anchor} onClose={close} placement="bottom-start" className="cf-brand__popover" aria-label={`Edit colour ${color.toUpperCase()}`}>
+      <Popover
+        open={anchor !== null}
+        anchor={anchor}
+        onClose={close}
+        placement="bottom-start"
+        className="cf-brand__popover"
+        aria-label={m.dashboard.brand.editColour(color.toUpperCase())}
+      >
         <div className="cf-brand__editcolor">
           <ColorPicker value={draft} onChange={setDraft} onChangeEnd={save} />
           <div className="cf-brand__editcolor-actions">
             <IconButton
-              label="Move earlier"
+              label={m.dashboard.brand.moveEarlier}
               icon={<IconArrowLeft aria-hidden="true" />}
               disabled={index === 0}
               onClick={() => {
@@ -288,7 +289,7 @@ function ColorChip({ color, index, count }: { color: string; index: number; coun
               }}
             />
             <IconButton
-              label="Move later"
+              label={m.dashboard.brand.moveLater}
               icon={<IconArrowRight aria-hidden="true" />}
               disabled={index === count - 1}
               onClick={() => {
@@ -305,7 +306,7 @@ function ColorChip({ color, index, count }: { color: string; index: number; coun
                 void updateBrandKit((kit) => ({ ...kit, colors: kit.colors.filter((_item, i) => i !== index) }));
               }}
             >
-              Remove
+              {m.common.remove}
             </Button>
           </div>
         </div>
@@ -316,7 +317,7 @@ function ColorChip({ color, index, count }: { color: string; index: number; coun
 
 function AddColorPopover({ anchor, onClose, existing }: { anchor: HTMLElement | null; onClose: () => void; existing: string[] }) {
   return (
-    <Popover open={anchor !== null} anchor={anchor} onClose={onClose} placement="bottom-start" className="cf-brand__popover" aria-label="Add a brand colour">
+    <Popover open={anchor !== null} anchor={anchor} onClose={onClose} placement="bottom-start" className="cf-brand__popover" aria-label={m.dashboard.brand.addBrandColour}>
       <AddColorBody onClose={onClose} existing={existing} />
     </Popover>
   );
@@ -328,11 +329,11 @@ function AddColorBody({ onClose, existing }: { onClose: () => void; existing: st
   return (
     <div className="cf-brand__editcolor">
       <ColorPicker value={value} onChange={setValue} />
-      {duplicate ? <p className="cf-brand__note">That colour is already in your kit.</p> : null}
+      {duplicate ? <p className="cf-brand__note">{m.dashboard.brand.duplicateColour}</p> : null}
       <div className="cf-brand__editcolor-actions">
         <span className="cf-brand__spacer" />
         <Button variant="secondary" onClick={onClose}>
-          Cancel
+          {m.common.cancel}
         </Button>
         <Button
           variant="primary"
@@ -342,7 +343,7 @@ function AddColorBody({ onClose, existing }: { onClose: () => void; existing: st
             onClose();
           }}
         >
-          Add colour
+          {m.dashboard.brand.addColour}
         </Button>
       </div>
     </div>
@@ -360,8 +361,8 @@ function FontsCard({ fonts }: { fonts: string[] }) {
 
   return (
     <Card
-      title="Brand fonts"
-      hint="The first font is your heading font, the second your body font."
+      title={m.dashboard.brand.fonts}
+      hint={m.dashboard.brand.fontsHint}
       action={
         <Button
           variant="secondary"
@@ -370,17 +371,17 @@ function FontsCard({ fonts }: { fonts: string[] }) {
           aria-expanded={picker !== null}
           onClick={(event) => setPicker(event.currentTarget)}
         >
-          Add font
+          {m.dashboard.brand.addFont}
         </Button>
       }
     >
       {fonts.length === 0 ? (
-        <EmptyState icon={<IconSearch />} title="No brand fonts yet" text="Add the typefaces your brand uses and they will be one click away in the editor." />
+        <EmptyState icon={<IconSearch />} title={m.dashboard.brand.noFonts} text={m.dashboard.brand.noFontsText} />
       ) : (
         <ul className="cf-brand__fonts">
           {fonts.map((family, index) => {
             const def = getFontDef(family);
-            const role = index === 0 ? "Heading" : index === 1 ? "Body" : null;
+            const role = index === 0 ? m.dashboard.brand.heading : index === 1 ? m.dashboard.brand.body : null;
             return (
               <li key={family} className="cf-brand__font">
                 <span className="cf-brand__font-sample" style={{ fontFamily: cssFontFamily(family) }} aria-hidden="true">
@@ -391,13 +392,13 @@ function FontsCard({ fonts }: { fonts: string[] }) {
                     {family}
                   </span>
                   <span className="cf-brand__font-meta">
-                    {def ? kindOf(def) : "Custom font"}
+                    {def ? kindOf(def) : m.dashboard.brand.customFont}
                     {role ? ` · ${role}` : ""}
                   </span>
                 </span>
                 <IconButton
                   size="sm"
-                  label={`Remove ${family} from the brand kit`}
+                  label={m.dashboard.brand.removeFromKit(family)}
                   icon={<IconClose aria-hidden="true" />}
                   onClick={() => void updateBrandKit((kit) => ({ ...kit, fonts: kit.fonts.filter((item) => item !== family) }))}
                 />
@@ -412,7 +413,7 @@ function FontsCard({ fonts }: { fonts: string[] }) {
         onClose={() => setPicker(null)}
         placement="bottom-end"
         className="cf-brand__popover cf-brand__popover--fonts"
-        aria-label="Add a brand font"
+        aria-label={m.dashboard.brand.addBrandFont}
       >
         <FontPicker chosen={fonts} />
       </Popover>
@@ -428,10 +429,10 @@ function FontPicker({ chosen }: { chosen: string[] }) {
   const list = [...(uploaded ? customFontDefs() : []), ...FONT_CATALOG].filter((def) => words.every((word) => `${def.family} ${kindOf(def)}`.toLowerCase().includes(word)));
   return (
     <div className="cf-brand__fontpicker">
-      <SearchField value={query} onChange={setQuery} placeholder="Search fonts" aria-label="Search fonts" autoFocus />
-      <div className="cf-brand__fontlist" role="listbox" aria-label="Fonts" aria-multiselectable="true">
+      <SearchField value={query} onChange={setQuery} placeholder={m.dashboard.brand.searchFonts} aria-label={m.dashboard.brand.searchFonts} autoFocus />
+      <div className="cf-brand__fontlist" role="listbox" aria-label={m.dashboard.brand.fontList} aria-multiselectable="true">
         {list.length === 0 ? (
-          <p className="cf-brand__note">No font matches “{query.trim()}”.</p>
+          <p className="cf-brand__note">{m.dashboard.brand.noFontMatches(query.trim())}</p>
         ) : (
           list.map((def) => <FontOption key={def.family} def={def} added={chosen.includes(def.family)} />)
         )}
@@ -535,29 +536,29 @@ function BrandPreview({ kit, logo }: { kit: BrandKit; logo: Asset | undefined })
 
   return (
     <div className="cf-brand__preview" style={style}>
-      <p className="cf-brand__preview-label">Brand kit preview</p>
+      <p className="cf-brand__preview-label">{m.dashboard.brand.preview}</p>
       <div className="cf-brand__preview-card">
         <div className="cf-brand__preview-logo">
           {logoUrl ? (
-            <img src={logoUrl} alt={logo?.name ?? "Logo"} draggable={false} />
+            <img src={logoUrl} alt={logo?.name ?? m.dashboard.brand.previewLogo} draggable={false} />
           ) : (
             <span className="cf-brand__preview-placeholder">
               <IconImage aria-hidden="true" />
-              Your logo
+              {m.dashboard.brand.previewYourLogo}
             </span>
           )}
         </div>
         <h3 className="cf-brand__preview-title" style={{ fontFamily: cssFontFamily(heading) }}>
-          Your brand, beautifully consistent
+          {m.dashboard.brand.previewTitle}
         </h3>
         <p className="cf-brand__preview-body" style={{ fontFamily: cssFontFamily(body) }}>
-          Colours, fonts and logos from your kit show up here as you change them, and are ready in every design.
+          {m.dashboard.brand.previewBody}
         </p>
         <span className="cf-brand__preview-button" style={{ fontFamily: cssFontFamily(heading) }}>
-          Get started
+          {m.dashboard.brand.previewButton}
         </span>
         {kit.colors.length > 0 ? (
-          <div className="cf-brand__preview-swatches" role="img" aria-label={`Brand colours: ${kit.colors.map((color) => color.toUpperCase()).join(", ")}`}>
+          <div className="cf-brand__preview-swatches" role="img" aria-label={m.dashboard.brand.swatches(kit.colors.map((color) => color.toUpperCase()).join(", "))}>
             {kit.colors.map((color, index) => (
               <span key={index} className="cf-brand__preview-swatch" style={{ background: color }} title={color.toUpperCase()} />
             ))}

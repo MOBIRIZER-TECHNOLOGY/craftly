@@ -1,4 +1,5 @@
 /** Shared by the illustration data files (graphicsA.ts, graphicsB.ts) and the Graphics panel. */
+import { m } from "@/i18n";
 
 export type GraphicCategory =
   | "abstract"
@@ -30,20 +31,8 @@ export interface GraphicDef {
   kind?: "illustration" | "sticker";
 }
 
-export const GRAPHIC_CATEGORY_LABELS: Record<GraphicCategory, string> = {
-  abstract: "Abstract",
-  nature: "Nature",
-  objects: "Objects",
-  business: "Business",
-  food: "Food & drink",
-  travel: "Travel",
-  education: "Education",
-  celebration: "Celebration",
-  decor: "Decor",
-  arrows: "Arrows",
-  frames: "Frames & borders",
-  badges: "Badges & labels",
-  doodles: "Doodles",
-  dividers: "Dividers",
-  tech: "Tech",
-};
+/** A graphic as the data files write it: its name is the catalog's, by id (graphics.ts). */
+export type GraphicDraft = Omit<GraphicDef, "name">;
+
+/** In the order of the panel. */
+export const GRAPHIC_CATEGORY_LABELS: Record<GraphicCategory, string> = m.data.graphicCategories;

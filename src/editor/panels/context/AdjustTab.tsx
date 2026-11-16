@@ -2,6 +2,7 @@ import { defaultFilter } from "@/core/factory";
 import { getActions } from "@/core/store";
 import type { ImageElement, ImageFilter } from "@/core/types";
 import { ADJUSTMENTS, getFilterPreset, type AdjustmentDef } from "@/data/filters";
+import { m } from "@/i18n";
 import { effectiveFilter } from "@/render/imageFilters";
 import { Button, IconButton, IconRotateLeft, Slider, Switch } from "@/ui";
 import { ColorField } from "./ColorField";
@@ -43,7 +44,7 @@ export function AdjustTab({ photos }: { photos: ImageElement[] }) {
       <Section>
         <div className="cf-adj__top">
           <Button size="sm" variant="secondary" icon={<IconRotateLeft />} disabled={!changed} onClick={resetAll}>
-            Reset all
+            {m.panelsContext.adjust.resetAll}
           </Button>
         </div>
         <div className="cf-adj__rows">
@@ -53,14 +54,14 @@ export function AdjustTab({ photos }: { photos: ImageElement[] }) {
         </div>
       </Section>
 
-      <Section title="Duotone">
-        <Switch label="Duotone" checked={!!effective} onChange={(on) => setDuotone(on ? { ...DEFAULT_DUOTONE } : null)} />
+      <Section title={m.panelsContext.adjust.duotone}>
+        <Switch label={m.panelsContext.adjust.duotone} checked={!!effective} onChange={(on) => setDuotone(on ? { ...DEFAULT_DUOTONE } : null)} />
         {effective ? (
           <div className="cf-adj__duo">
             <div className="cf-adj__duo-item">
-              <FieldLabel>Shadows</FieldLabel>
+              <FieldLabel>{m.panelsContext.adjust.shadows}</FieldLabel>
               <ColorField
-                label="Duotone shadows"
+                label={m.panelsContext.adjust.duotoneShadows}
                 value={effective.dark}
                 size={40}
                 onChange={(c) => batch.run(() => setDuotone({ ...effective, dark: c }))}
@@ -68,9 +69,9 @@ export function AdjustTab({ photos }: { photos: ImageElement[] }) {
               />
             </div>
             <div className="cf-adj__duo-item">
-              <FieldLabel>Highlights</FieldLabel>
+              <FieldLabel>{m.panelsContext.adjust.highlights}</FieldLabel>
               <ColorField
-                label="Duotone highlights"
+                label={m.panelsContext.adjust.duotoneHighlights}
                 value={effective.light}
                 size={40}
                 onChange={(c) => batch.run(() => setDuotone({ ...effective, light: c }))}
@@ -79,7 +80,7 @@ export function AdjustTab({ photos }: { photos: ImageElement[] }) {
             </div>
           </div>
         ) : (
-          <p className="cf-ctx__hint">Turn it on to repaint the photo with two colors, one for the shadows and one for the highlights.</p>
+          <p className="cf-ctx__hint">{m.panelsContext.adjust.duotoneHint}</p>
         )}
       </Section>
     </>
@@ -98,7 +99,7 @@ function AdjustRow({ adj, value, batch }: { adj: AdjustmentDef; value: number; b
             <IconButton
               size="sm"
               className="cf-adj__reset"
-              label={`Reset ${adj.label.toLowerCase()}`}
+              label={m.panelsContext.adjust.resetOne(adj.label)}
               icon={<IconRotateLeft />}
               onClick={() => patchFilters((filter) => ({ ...filter, [adj.key]: adj.default }))}
             />

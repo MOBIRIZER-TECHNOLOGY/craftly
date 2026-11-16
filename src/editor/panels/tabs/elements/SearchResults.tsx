@@ -3,6 +3,7 @@ import { LINE_PRESETS } from "@/data/shapes";
 import { searchGraphics } from "@/data/graphics";
 import { loadIconIndex, searchIcons, type IconDef } from "@/data/icons";
 import { PHOTOS } from "@/data/photos";
+import { m } from "@/i18n";
 import { IconSearch } from "@/ui";
 import { EmptyHint } from "../../shared/EmptyHint";
 import { ItemGrid, Masonry } from "../../shared/ItemGrid";
@@ -39,13 +40,16 @@ export function ElementsSearchResults({ query }: { query: string }) {
 
   const nothing = !shapes.length && !hasLines && !graphics.length && !photos.length && icons !== null && !iconHits.length;
   if (nothing) {
-    return <EmptyHint icon={<IconSearch />} title="No elements found" text={`Nothing matches "${query.trim()}". Try a simpler word like "heart", "arrow" or "sunset".`} />;
+    return <EmptyHint icon={<IconSearch />} title={m.panelsTabs.elements.results.noneTitle} text={m.panelsTabs.elements.results.noneText(query.trim())} />;
   }
 
   return (
     <>
       {shapes.length ? (
-        <PanelSection title="Shapes" action={shapes.length > 8 ? <PanelLink onClick={() => open("shapes", query)}>See all</PanelLink> : undefined}>
+        <PanelSection
+          title={m.panelsTabs.elements.categories.shapes}
+          action={shapes.length > 8 ? <PanelLink onClick={() => open("shapes", query)}>{m.panelsTabs.shared.seeAll}</PanelLink> : undefined}
+        >
           <ItemGrid columns={4} gap={8}>
             {shapes.slice(0, 8).map((p) => (
               <ShapeCell key={p.id} preset={p} />
@@ -54,22 +58,31 @@ export function ElementsSearchResults({ query }: { query: string }) {
         </PanelSection>
       ) : null}
       {hasLines ? (
-        <PanelSection title="Lines" action={<PanelLink onClick={() => open("lines", query)}>See all</PanelLink>}>
+        <PanelSection title={m.panelsTabs.elements.categories.lines} action={<PanelLink onClick={() => open("lines", query)}>{m.panelsTabs.shared.seeAll}</PanelLink>}>
           <LinesSection query={q} limit={4} />
         </PanelSection>
       ) : null}
       {graphics.length ? (
-        <PanelSection title="Graphics" action={graphics.length > 6 ? <PanelLink onClick={() => open("graphics", query, "illustrations")}>See all</PanelLink> : undefined}>
+        <PanelSection
+          title={m.panelsTabs.elements.categories.graphics}
+          action={graphics.length > 6 ? <PanelLink onClick={() => open("graphics", query, "illustrations")}>{m.panelsTabs.shared.seeAll}</PanelLink> : undefined}
+        >
           <Masonry items={graphics.slice(0, 6)} columns={2} gap={8} aspectOf={graphicAspect} keyOf={(d) => d.id} renderItem={(d) => <GraphicCell def={d} />} />
         </PanelSection>
       ) : null}
       {photos.length ? (
-        <PanelSection title="Photos" action={photos.length > 4 ? <PanelLink onClick={() => open("photos", query)}>See all</PanelLink> : undefined}>
+        <PanelSection
+          title={m.panelsTabs.elements.categories.photos}
+          action={photos.length > 4 ? <PanelLink onClick={() => open("photos", query)}>{m.panelsTabs.shared.seeAll}</PanelLink> : undefined}
+        >
           <Masonry items={photos.slice(0, 4)} columns={2} gap={8} aspectOf={(p) => p.height / p.width} keyOf={(p) => p.id} renderItem={(p) => <PhotoCell def={p} />} />
         </PanelSection>
       ) : null}
       {iconHits.length ? (
-        <PanelSection title="Icons" action={iconHits.length > 8 ? <PanelLink onClick={() => open("graphics", query, "icons")}>See all</PanelLink> : undefined}>
+        <PanelSection
+          title={m.panelsTabs.elements.results.icons}
+          action={iconHits.length > 8 ? <PanelLink onClick={() => open("graphics", query, "icons")}>{m.panelsTabs.shared.seeAll}</PanelLink> : undefined}
+        >
           <ItemGrid columns={4} gap={8}>
             {iconHits.slice(0, 8).map((d) => (
               <div key={d.id} className="cf-searchicon">

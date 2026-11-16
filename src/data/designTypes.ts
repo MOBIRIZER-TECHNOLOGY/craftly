@@ -1,4 +1,6 @@
 import type { SizeUnit, TemplateCategory } from "@/core/types";
+import { m } from "@/i18n";
+import { nameIn } from "./names";
 
 export type DesignCategory = "presentation" | "social" | "print" | "document" | "marketing" | "branding";
 
@@ -22,50 +24,45 @@ export interface DesignType {
 
 const inch = (n: number) => Math.round(n * 96);
 
-export const DESIGN_TYPES: DesignType[] = [
-  { id: "presentation", name: "Presentation (16:9)", category: "presentation", width: 1920, height: 1080, unit: "px", icon: "Presentation", color: "#f97316", templates: "presentation", popular: true },
-  { id: "presentation-4-3", name: "Presentation (4:3)", category: "presentation", width: 1024, height: 768, unit: "px", icon: "MonitorPlay", color: "#fb923c", templates: "presentation" },
-  { id: "instagram-post", name: "Instagram Post (4:5)", category: "social", width: 1080, height: 1350, unit: "px", icon: "Instagram", color: "#ec4899", templates: "social", popular: true },
-  { id: "instagram-square", name: "Instagram Post (Square)", category: "social", width: 1080, height: 1080, unit: "px", icon: "Square", color: "#f43f5e", templates: "social" },
-  { id: "instagram-story", name: "Instagram Story", category: "social", width: 1080, height: 1920, unit: "px", icon: "Smartphone", color: "#d946ef", templates: "social" },
-  { id: "facebook-post", name: "Facebook Post", category: "social", width: 940, height: 788, unit: "px", icon: "Facebook", color: "#3b82f6", templates: "social", popular: true },
-  { id: "youtube-thumbnail", name: "YouTube Thumbnail", category: "social", width: 1280, height: 720, unit: "px", icon: "Youtube", color: "#ef4444", templates: "social", popular: true },
-  { id: "linkedin-post", name: "LinkedIn Post", category: "social", width: 1200, height: 627, unit: "px", icon: "Linkedin", color: "#0ea5e9", templates: "social" },
-  { id: "twitter-post", name: "X / Twitter Post", category: "social", width: 1600, height: 900, unit: "px", icon: "Twitter", color: "#0f172a", templates: "social" },
-  { id: "pinterest-pin", name: "Pinterest Pin", category: "social", width: 1000, height: 1500, unit: "px", icon: "Pin", color: "#dc2626", templates: "social" },
-  { id: "facebook-cover", name: "Facebook Cover", category: "social", width: 1640, height: 624, unit: "px", icon: "PanelTop", color: "#2563eb", templates: "banner" },
-  { id: "youtube-banner", name: "YouTube Banner", category: "social", width: 2560, height: 1440, unit: "px", icon: "Tv", color: "#b91c1c", templates: "banner" },
-  { id: "poster", name: "Poster (18 × 24 in)", category: "print", width: inch(18), height: inch(24), unit: "in", icon: "Image", color: "#8b5cf6", templates: "poster", popular: true },
-  { id: "poster-a3", name: "Poster (A3)", category: "print", width: 1123, height: 1587, unit: "mm", icon: "ImagePlus", color: "#a78bfa", templates: "poster" },
-  { id: "flyer", name: "Flyer (US Letter)", category: "print", width: inch(8.5), height: inch(11), unit: "in", icon: "FileText", color: "#7c3aed", templates: "flyer", popular: true },
-  { id: "flyer-a4", name: "Flyer (A4)", category: "print", width: 794, height: 1123, unit: "mm", icon: "FileText", color: "#6d28d9", templates: "flyer" },
-  { id: "business-card", name: "Business Card", category: "print", width: inch(3.5), height: inch(2), unit: "in", icon: "CreditCard", color: "#0d9488", templates: "card" },
-  { id: "invitation", name: "Invitation (5 × 7 in)", category: "print", width: inch(5), height: inch(7), unit: "in", icon: "MailOpen", color: "#db2777", templates: "invitation" },
-  { id: "postcard", name: "Postcard (6 × 4 in)", category: "print", width: inch(6), height: inch(4), unit: "in", icon: "Mail", color: "#ea580c", templates: "card" },
-  { id: "certificate", name: "Certificate (A4 landscape)", category: "print", width: 1123, height: 794, unit: "mm", icon: "Award", color: "#ca8a04", templates: "certificate" },
-  { id: "menu", name: "Menu (US Letter)", category: "print", width: inch(8.5), height: inch(11), unit: "in", icon: "UtensilsCrossed", color: "#16a34a", templates: "menu" },
-  { id: "doc-a4", name: "Document (A4, Portrait)", category: "document", width: 794, height: 1123, unit: "mm", icon: "FileText", color: "#0891b2", templates: "document", popular: true },
-  { id: "doc-letter", name: "Document (US Letter)", category: "document", width: inch(8.5), height: inch(11), unit: "in", icon: "FileText", color: "#0e7490", templates: "document" },
-  { id: "resume", name: "Resume (US Letter)", category: "document", width: inch(8.5), height: inch(11), unit: "in", icon: "UserSquare", color: "#475569", templates: "resume", popular: true },
-  { id: "logo", name: "Logo", category: "branding", width: 500, height: 500, unit: "px", icon: "Hexagon", color: "#4f46e5", templates: "logo", popular: true },
-  { id: "banner", name: "Web Banner", category: "marketing", width: 1920, height: 480, unit: "px", icon: "RectangleHorizontal", color: "#2dd4bf", templates: "banner" },
-  { id: "infographic", name: "Infographic", category: "marketing", width: 800, height: 2000, unit: "px", icon: "BarChart3", color: "#059669", templates: "document" },
-  { id: "wallpaper", name: "Desktop Wallpaper", category: "marketing", width: 1920, height: 1080, unit: "px", icon: "Monitor", color: "#6366f1", templates: "banner" },
-  { id: "photo-collage", name: "Photo Collage", category: "marketing", width: 1080, height: 1080, unit: "px", icon: "LayoutGrid", color: "#e11d48", templates: "social" },
+const SIZES: Array<Omit<DesignType, "name">> = [
+  { id: "presentation", category: "presentation", width: 1920, height: 1080, unit: "px", icon: "Presentation", color: "#f97316", templates: "presentation", popular: true },
+  { id: "presentation-4-3", category: "presentation", width: 1024, height: 768, unit: "px", icon: "MonitorPlay", color: "#fb923c", templates: "presentation" },
+  { id: "instagram-post", category: "social", width: 1080, height: 1350, unit: "px", icon: "Instagram", color: "#ec4899", templates: "social", popular: true },
+  { id: "instagram-square", category: "social", width: 1080, height: 1080, unit: "px", icon: "Square", color: "#f43f5e", templates: "social" },
+  { id: "instagram-story", category: "social", width: 1080, height: 1920, unit: "px", icon: "Smartphone", color: "#d946ef", templates: "social" },
+  { id: "facebook-post", category: "social", width: 940, height: 788, unit: "px", icon: "Facebook", color: "#3b82f6", templates: "social", popular: true },
+  { id: "youtube-thumbnail", category: "social", width: 1280, height: 720, unit: "px", icon: "Youtube", color: "#ef4444", templates: "social", popular: true },
+  { id: "linkedin-post", category: "social", width: 1200, height: 627, unit: "px", icon: "Linkedin", color: "#0ea5e9", templates: "social" },
+  { id: "twitter-post", category: "social", width: 1600, height: 900, unit: "px", icon: "Twitter", color: "#0f172a", templates: "social" },
+  { id: "pinterest-pin", category: "social", width: 1000, height: 1500, unit: "px", icon: "Pin", color: "#dc2626", templates: "social" },
+  { id: "facebook-cover", category: "social", width: 1640, height: 624, unit: "px", icon: "PanelTop", color: "#2563eb", templates: "banner" },
+  { id: "youtube-banner", category: "social", width: 2560, height: 1440, unit: "px", icon: "Tv", color: "#b91c1c", templates: "banner" },
+  { id: "poster", category: "print", width: inch(18), height: inch(24), unit: "in", icon: "Image", color: "#8b5cf6", templates: "poster", popular: true },
+  { id: "poster-a3", category: "print", width: 1123, height: 1587, unit: "mm", icon: "ImagePlus", color: "#a78bfa", templates: "poster" },
+  { id: "flyer", category: "print", width: inch(8.5), height: inch(11), unit: "in", icon: "FileText", color: "#7c3aed", templates: "flyer", popular: true },
+  { id: "flyer-a4", category: "print", width: 794, height: 1123, unit: "mm", icon: "FileText", color: "#6d28d9", templates: "flyer" },
+  { id: "business-card", category: "print", width: inch(3.5), height: inch(2), unit: "in", icon: "CreditCard", color: "#0d9488", templates: "card" },
+  { id: "invitation", category: "print", width: inch(5), height: inch(7), unit: "in", icon: "MailOpen", color: "#db2777", templates: "invitation" },
+  { id: "postcard", category: "print", width: inch(6), height: inch(4), unit: "in", icon: "Mail", color: "#ea580c", templates: "card" },
+  { id: "certificate", category: "print", width: 1123, height: 794, unit: "mm", icon: "Award", color: "#ca8a04", templates: "certificate" },
+  { id: "menu", category: "print", width: inch(8.5), height: inch(11), unit: "in", icon: "UtensilsCrossed", color: "#16a34a", templates: "menu" },
+  { id: "doc-a4", category: "document", width: 794, height: 1123, unit: "mm", icon: "FileText", color: "#0891b2", templates: "document", popular: true },
+  { id: "doc-letter", category: "document", width: inch(8.5), height: inch(11), unit: "in", icon: "FileText", color: "#0e7490", templates: "document" },
+  { id: "resume", category: "document", width: inch(8.5), height: inch(11), unit: "in", icon: "UserSquare", color: "#475569", templates: "resume", popular: true },
+  { id: "logo", category: "branding", width: 500, height: 500, unit: "px", icon: "Hexagon", color: "#4f46e5", templates: "logo", popular: true },
+  { id: "banner", category: "marketing", width: 1920, height: 480, unit: "px", icon: "RectangleHorizontal", color: "#2dd4bf", templates: "banner" },
+  { id: "infographic", category: "marketing", width: 800, height: 2000, unit: "px", icon: "BarChart3", color: "#059669", templates: "document" },
+  { id: "wallpaper", category: "marketing", width: 1920, height: 1080, unit: "px", icon: "Monitor", color: "#6366f1", templates: "banner" },
+  { id: "photo-collage", category: "marketing", width: 1080, height: 1080, unit: "px", icon: "LayoutGrid", color: "#e11d48", templates: "social" },
 ];
+
+export const DESIGN_TYPES: DesignType[] = SIZES.map(({ id, ...type }) => ({ id, name: nameIn(m.data.designTypes, id), ...type }));
 
 export const getDesignType = (id: string): DesignType | undefined => DESIGN_TYPES.find((t) => t.id === id);
 
 export const POPULAR_DESIGN_TYPES = DESIGN_TYPES.filter((t) => t.popular);
 
-export const DESIGN_CATEGORY_LABELS: Record<DesignCategory, string> = {
-  presentation: "Presentations",
-  social: "Social media",
-  print: "Printables",
-  document: "Docs",
-  marketing: "Marketing",
-  branding: "Branding",
-};
+export const DESIGN_CATEGORY_LABELS: Record<DesignCategory, string> = m.data.designCategories;
 
 /**
  * "1920 × 1080 px", "8.5 × 11 in", "210 × 297 mm".

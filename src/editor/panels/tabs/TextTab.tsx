@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { createText, textPresetSizes } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
 import { useCustomFamilies } from "@/components/CustomFonts";
+import { englishName } from "@/data/names";
+import { m } from "@/i18n";
 import { FONT_CATALOG, cssFontFamily, customFontDefs, type FontDef } from "@/render/fonts";
 import { TEXT_COMBOS, type TextCombo } from "@/data/textCombos";
 import { TEXT_STYLE_PRESETS, type TextStylePreset } from "@/data/textStyles";
@@ -51,7 +53,10 @@ export default function TextTab() {
         : [],
     [q, uploaded],
   );
-  const combos = useMemo(() => (q ? TEXT_COMBOS.filter((c) => matchesWords(`${c.name} ${c.fonts.join(" ")}`.toLowerCase(), q)) : TEXT_COMBOS), [q]);
+  const combos = useMemo(
+    () => (q ? TEXT_COMBOS.filter((c) => matchesWords(`${c.name} ${englishName("textCombos", c.id)} ${c.fonts.join(" ")}`.toLowerCase(), q)) : TEXT_COMBOS),
+    [q],
+  );
 
   if (!design) return null;
 
@@ -63,15 +68,15 @@ export default function TextTab() {
   return (
     <Panel>
       <PanelTop>
-        <PanelSearch value={query} onChange={setQuery} placeholder="Search fonts and combinations" />
+        <PanelSearch value={query} onChange={setQuery} placeholder={m.panelsTabs.text.search} />
         <Button variant="primary" size="lg" block icon={<IconText />} onClick={addTextBox}>
-          Add a text box
+          {m.panelsTabs.text.addTextBox}
         </Button>
       </PanelTop>
       <PanelScroll>
         {searching ? (
           <>
-            <PanelSection title={fonts.length ? `Fonts (${fonts.length})` : "Fonts"}>
+            <PanelSection title={m.panelsTabs.text.fonts(fonts.length)}>
               {fonts.length ? (
                 <div className="cf-text__fonts">
                   {fonts.map((f) => (
@@ -88,11 +93,11 @@ export default function TextTab() {
                   ))}
                 </div>
               ) : (
-                <EmptyHint icon={<IconSearch />} title="No fonts found" text={`No font matches "${debounced.trim()}". Try "serif", "script" or "mono".`} compact />
+                <EmptyHint icon={<IconSearch />} title={m.panelsTabs.text.noFonts} text={m.panelsTabs.text.noFontsText(debounced.trim())} compact />
               )}
             </PanelSection>
             {combos.length ? (
-              <PanelSection title="Font combinations">
+              <PanelSection title={m.panelsTabs.text.combinations}>
                 <Combos combos={combos} />
               </PanelSection>
             ) : null}
@@ -104,17 +109,17 @@ export default function TextTab() {
               onEdit={() => setLeftTab("brand")}
               onPick={(family) => void addTextInFont("Add a heading", family, { fontSize: textPresetSizes(design.width, design.height).heading, fontWeight: 700 })}
             />
-            <PanelSection title="Default text styles">
+            <PanelSection title={m.panelsTabs.text.defaultStyles}>
               <div className="cf-text__styles">
                 {TEXT_STYLE_PRESETS.map((p) => (
                   <StyleButton key={p.id} preset={p} />
                 ))}
               </div>
             </PanelSection>
-            <PanelSection title="Dynamic text">
+            <PanelSection title={m.panelsTabs.text.dynamic}>
               <PageNumbers />
             </PanelSection>
-            <PanelSection title="Font combinations">
+            <PanelSection title={m.panelsTabs.text.combinations}>
               <Combos combos={combos} />
             </PanelSection>
           </>
@@ -134,22 +139,22 @@ function BrandFonts({ kit, onEdit, onPick }: { kit: ReturnType<typeof useBrandKi
       title={
         <span className="cf-text__brandtitle">
           <IconBrand aria-hidden="true" />
-          Brand kit
+          {m.panelsTabs.text.brandKit}
         </span>
       }
-      action={<PanelLink onClick={onEdit}>Edit</PanelLink>}
+      action={<PanelLink onClick={onEdit}>{m.panelsTabs.text.edit}</PanelLink>}
     >
       {kit === null ? (
         <Skeleton height={44} radius={12} />
       ) : kit.fonts.length ? (
         <div className="cf-text__fonts">
           {kit.fonts.slice(0, 4).map((family) => (
-            <FontRow key={family} family={family} sample={family} onPick={() => onPick(family)} label={`Add a heading in ${family}`} />
+            <FontRow key={family} family={family} sample={family} onPick={() => onPick(family)} label={m.panelsTabs.text.headingIn(family)} />
           ))}
         </div>
       ) : (
         <Button variant="secondary" block onClick={onEdit}>
-          Add your brand fonts
+          {m.panelsTabs.text.addBrandFonts}
         </Button>
       )}
     </PanelSection>
@@ -204,7 +209,7 @@ function PageNumbers() {
   };
   return (
     <DraggableItem
-      label="Add page numbers"
+      label={m.panelsTabs.text.addPageNumbers}
       onInsert={() => void getActions().addElement(make())}
       getPayload={() => ({ type: "elements", elements: [make()] })}
       className="cf-text__dynamic"
@@ -215,8 +220,8 @@ function PageNumbers() {
         <b>{index + 1}</b>
       </span>
       <span className="cf-text__dynamic-text">
-        <strong>Page numbers</strong>
-        <span>Adds this page's number (page {index + 1}) as text</span>
+        <strong>{m.panelsTabs.text.pageNumbers}</strong>
+        <span>{m.panelsTabs.text.pageNumbersText(index + 1)}</span>
       </span>
     </DraggableItem>
   );
@@ -235,7 +240,7 @@ function Combos({ combos }: { combos: TextCombo[] }) {
         ? combos.map((c) => (
             <DraggableItem
               key={c.id}
-              label={`${c.name} font combination (${c.fonts.join(", ")})`}
+              label={m.panelsTabs.text.combination(c.name, c.fonts.join(", "))}
               onInsert={() => {
                 const d = useEditor.getState().design;
                 if (d) void getActions().addElements(c.build({ width: d.width, height: d.height }));

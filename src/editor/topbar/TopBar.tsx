@@ -3,6 +3,7 @@ import { useEditor, type EditorState } from "@/core/store";
 import { useGesture } from "@/editor/canvas/gestureStore";
 import { penHistory } from "@/editor/canvas/penTool";
 import { insertImageFiles } from "@/editor/insert";
+import { m } from "@/i18n";
 import { navigate } from "@/router";
 import {
   Button,
@@ -35,10 +36,10 @@ import { requestSave } from "./designActions";
 import "./topbar.css";
 
 const SAVE_LABEL: Record<EditorState["saveState"], string> = {
-  saved: "All changes saved",
-  saving: "Saving...",
-  unsaved: "Unsaved changes",
-  error: "Couldn't save - storage is full or blocked",
+  saved: m.editorChrome.save.saved,
+  saving: m.editorChrome.save.saving,
+  unsaved: m.editorChrome.save.unsaved,
+  error: m.editorChrome.save.error,
 };
 
 /** Cloud icon with the autosave state. Clicking it saves right away. */
@@ -113,8 +114,8 @@ const TitleField = forwardRef<HTMLInputElement>(function TitleField(_props, ref)
         maxLength={120}
         spellCheck={false}
         autoComplete="off"
-        aria-label="Design title"
-        placeholder="Untitled design"
+        aria-label={m.editorChrome.topBar.titleLabel}
+        placeholder={m.editorChrome.topBar.untitled}
         onChange={(e) => setDraft(e.target.value)}
         onFocus={(e) => e.currentTarget.select()}
         onBlur={commit}
@@ -131,8 +132,22 @@ function ModeMenu() {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const setMode = useEditor.getState().actions.setMode;
   const items: MenuEntry[] = [
-    { id: "edit", label: "Editing", icon: <IconPen aria-hidden="true" />, hint: "Make changes", checked: mode === "edit", onSelect: () => setMode("edit") },
-    { id: "view", label: "Viewing", icon: <IconEye aria-hidden="true" />, hint: "Read only", checked: mode === "view", onSelect: () => setMode("view") },
+    {
+      id: "edit",
+      label: m.editorChrome.topBar.editing,
+      icon: <IconPen aria-hidden="true" />,
+      hint: m.editorChrome.topBar.makeChanges,
+      checked: mode === "edit",
+      onSelect: () => setMode("edit"),
+    },
+    {
+      id: "view",
+      label: m.editorChrome.topBar.viewing,
+      icon: <IconEye aria-hidden="true" />,
+      hint: m.editorChrome.topBar.readOnly,
+      checked: mode === "view",
+      onSelect: () => setMode("view"),
+    },
   ];
   return (
     <>
@@ -144,12 +159,12 @@ function ModeMenu() {
         iconRight={<IconChevronDown aria-hidden="true" />}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={mode === "edit" ? "Editing mode" : "Viewing mode"}
+        aria-label={mode === "edit" ? m.editorChrome.topBar.editingMode : m.editorChrome.topBar.viewingMode}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="cf-topbar__lbl">{mode === "edit" ? "Editing" : "Viewing"}</span>
+        <span className="cf-topbar__lbl">{mode === "edit" ? m.editorChrome.topBar.editing : m.editorChrome.topBar.viewing}</span>
       </Button>
-      <MenuPopover open={open} anchor={anchor} onClose={() => setOpen(false)} items={items} aria-label="Mode" />
+      <MenuPopover open={open} anchor={anchor} onClose={() => setOpen(false)} items={items} aria-label={m.editorChrome.topBar.mode} />
     </>
   );
 }
@@ -169,13 +184,13 @@ function ResizeMenu() {
         icon={<IconCustomSize aria-hidden="true" />}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label="Resize"
+        aria-label={m.editorChrome.topBar.resize}
         disabled={readOnly}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="cf-topbar__lbl cf-topbar__lbl--keep">Resize</span>
+        <span className="cf-topbar__lbl cf-topbar__lbl--keep">{m.editorChrome.topBar.resize}</span>
       </Button>
-      <Popover open={open} anchor={anchor} onClose={close} placement="bottom-start" offset={6} className="cf-resizepop" aria-label="Resize options">
+      <Popover open={open} anchor={anchor} onClose={close} placement="bottom-start" offset={6} className="cf-resizepop" aria-label={m.editorChrome.topBar.resizeOptions}>
         <button
           type="button"
           className="cf-resizepop__item"
@@ -190,8 +205,8 @@ function ResizeMenu() {
             <IconCustomSize aria-hidden="true" />
           </span>
           <span className="cf-resizepop__text">
-            <span className="cf-resizepop__title">Resize</span>
-            <span className="cf-resizepop__desc">Change the size of your design or pick a preset format</span>
+            <span className="cf-resizepop__title">{m.editorChrome.topBar.resize}</span>
+            <span className="cf-resizepop__desc">{m.editorChrome.topBar.resizeDesc}</span>
           </span>
           <IconChevronRight className="cf-resizepop__chev" aria-hidden="true" />
         </button>
@@ -215,25 +230,32 @@ function PresentButton() {
   };
 
   const items: MenuEntry[] = [
-    { id: "present", label: "Present", icon: <IconPlay aria-hidden="true" />, hint: pageCount > 1 ? `Page ${activeIndex + 1}` : undefined, onSelect: () => present() },
+    {
+      id: "present",
+      label: m.editorChrome.topBar.present,
+      icon: <IconPlay aria-hidden="true" />,
+      hint: pageCount > 1 ? m.editorChrome.pages.page(activeIndex + 1) : undefined,
+      onSelect: () => present(),
+    },
   ];
-  if (pageCount > 1 && activeIndex > 0) items.push({ id: "present-first", label: "Present from first page", icon: <IconPlay aria-hidden="true" />, onSelect: () => present(true) });
+  if (pageCount > 1 && activeIndex > 0)
+    items.push({ id: "present-first", label: m.editorChrome.topBar.presentFromFirst, icon: <IconPlay aria-hidden="true" />, onSelect: () => present(true) });
 
   return (
     <div ref={setAnchor} className="cf-topbar__split">
-      <Button variant="ghost" className="cf-topbar__split-main" icon={<IconPlay aria-hidden="true" />} aria-label="Present" onClick={() => present()}>
-        <span className="cf-topbar__lbl cf-topbar__lbl--share">Present</span>
+      <Button variant="ghost" className="cf-topbar__split-main" icon={<IconPlay aria-hidden="true" />} aria-label={m.editorChrome.topBar.present} onClick={() => present()}>
+        <span className="cf-topbar__lbl cf-topbar__lbl--share">{m.editorChrome.topBar.present}</span>
       </Button>
       <Button
         variant="ghost"
         className="cf-topbar__split-caret"
         icon={<IconChevronDown aria-hidden="true" />}
-        aria-label="Present options"
+        aria-label={m.editorChrome.topBar.presentOptions}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       />
-      <MenuPopover open={open} anchor={anchor} onClose={() => setOpen(false)} items={items} placement="bottom-end" aria-label="Present" />
+      <MenuPopover open={open} anchor={anchor} onClose={() => setOpen(false)} items={items} placement="bottom-end" aria-label={m.editorChrome.topBar.present} />
     </div>
   );
 }
@@ -254,19 +276,19 @@ export function TopBar() {
     if (!files.length) return;
     insertImageFiles(files)
       .then((ids) => {
-        if (!ids.length) toast.error("Craftly can't add those files. Try a PNG, JPG, GIF, WebP or SVG image.");
+        if (!ids.length) toast.error(m.editorChrome.topBar.cantAdd);
       })
-      .catch(() => toast.error("Couldn't add the files. Check that your browser has free storage and try again."));
+      .catch(() => toast.error(m.editorChrome.topBar.addFailed));
   };
 
   const actions = useEditor.getState().actions;
 
   return (
-    <header className="cf-topbar" aria-label="Design toolbar">
+    <header className="cf-topbar" aria-label={m.editorChrome.topBar.toolbar}>
       {/* the page's one top-level heading, for people who move by headings: it names the design. First in the page, and inside a landmark */}
-      <h1 className="cf-sr-only">{designTitle || "Untitled design"}</h1>
+      <h1 className="cf-sr-only">{designTitle || m.editorChrome.topBar.untitled}</h1>
       <div className="cf-topbar__group">
-        <IconButton label="Home" className="cf-topbar__home" icon={<IconHome aria-hidden="true" />} onClick={() => navigate("/")} />
+        <IconButton label={m.editorChrome.topBar.home} className="cf-topbar__home" icon={<IconHome aria-hidden="true" />} onClick={() => navigate("/")} />
         <FileMenu
           onRename={() => {
             const input = titleRef.current;
@@ -282,7 +304,7 @@ export function TopBar() {
         <ModeMenu />
         <span className="cf-topbar__sep cf-topbar__sep--hide-sm" aria-hidden="true" />
         <IconButton
-          label="Undo"
+          label={m.common.undo}
           shortcut="Ctrl+Z"
           icon={<IconUndo aria-hidden="true" />}
           disabled={(!canUndo && !placing) || readOnly}
@@ -291,7 +313,7 @@ export function TopBar() {
           }}
         />
         <IconButton
-          label="Redo"
+          label={m.common.redo}
           shortcut="Ctrl+Shift+Z"
           className="cf-topbar__redo"
           icon={<IconRedo aria-hidden="true" />}

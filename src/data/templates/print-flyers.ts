@@ -61,7 +61,7 @@ function emeraldOpenHouse(): Template {
     serif("$785,000", 468, 936, 300, 54, { align: "right", fontWeight: 700 }),
   );
   return template(
-    { slug: "emerald-open-house", name: "Emerald Open House Flyer", category: "flyer", size: "flyer", tags: ["open house", "real estate", "flyer", "property", "listing", "home", "emerald", "realtor"], accent: EM },
+    { slug: "emerald-open-house", category: "flyer", size: "flyer", tags: ["open house", "real estate", "flyer", "property", "listing", "home", "emerald", "realtor"], accent: EM },
     [pg(EM, els)],
   );
 }
@@ -111,7 +111,7 @@ function ceramicsWorkshop(): Template {
     sans("Reserve your seat: fieldstoneclay.com/workshops", 48, 965, 720, 22, { align: "center", color: CREAM, fontWeight: 700 }),
   );
   return template(
-    { slug: "ceramics-workshop", name: "Hand-Built Ceramics Workshop Flyer", category: "flyer", size: "flyer", tags: ["workshop", "class", "ceramics", "pottery", "flyer", "craft", "studio", "terracotta"], accent: CLAY },
+    { slug: "ceramics-workshop", category: "flyer", size: "flyer", tags: ["workshop", "class", "ceramics", "pottery", "flyer", "craft", "studio", "terracotta"], accent: CLAY },
     [pg(CREAM, els)],
   );
 }
@@ -176,7 +176,7 @@ function bakeSale(): Template {
     body("Cash, cards and Venmo welcome  |  Questions? Call Dana at (503) 555-0187", 48, 992, 720, 20, { align: "center", fontWeight: 700, color: BERRY }),
   );
   return template(
-    { slug: "sweet-saturdays-bake-sale", name: "Sweet Saturdays Bake Sale Flyer", category: "flyer", size: "flyer", tags: ["bake sale", "fundraiser", "community", "flyer", "cupcakes", "pastry", "charity", "pink"], accent: BERRY },
+    { slug: "sweet-saturdays-bake-sale", category: "flyer", size: "flyer", tags: ["bake sale", "fundraiser", "community", "flyer", "cupcakes", "pastry", "charity", "pink"], accent: BERRY },
     [pg(PEACH, els)],
   );
 }
@@ -226,7 +226,7 @@ function nowHiring(): Template {
     G(stripes, 0, H - 46, W, 46),
   );
   return template(
-    { slug: "now-hiring-brightside", name: "Brightside Now Hiring Flyer", category: "flyer", size: "flyer", tags: ["hiring", "jobs", "recruitment", "flyer", "careers", "cafe", "yellow", "bold"], accent: YELLOW },
+    { slug: "now-hiring-brightside", category: "flyer", size: "flyer", tags: ["hiring", "jobs", "recruitment", "flyer", "careers", "cafe", "yellow", "bold"], accent: YELLOW },
     [pg(YELLOW, els)],
   );
 }

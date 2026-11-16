@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { attachController } from "./controller";
 import { CropOverlay } from "./CropOverlay";
 import { PathEditOverlay } from "./PathEditOverlay";
@@ -96,13 +97,12 @@ export function Workspace({ children }: { children?: ReactNode }) {
       className={`cf-workspace${tool !== "select" ? ` cf-workspace--tool-${tool}` : ""}${previewing ? " is-previewing" : ""}`}
       tabIndex={0}
       role="group"
-      aria-label="Design canvas"
+      aria-label={m.editor.canvas.label}
       aria-describedby="cf-workspace-hint"
       data-cf-workspace
     >
       <span id="cf-workspace-hint" className="cf-sr-only">
-        Tab moves between the elements of the page and then on to the next control. The arrow keys move the selected element. With the Pen, the arrow keys move its point and Enter
-        places a point there.
+        {m.editor.canvas.hint}
       </span>
       <div ref={scrollRef} className="cf-workspace__scroll">
         <div ref={contentRef} className="cf-workspace__content">

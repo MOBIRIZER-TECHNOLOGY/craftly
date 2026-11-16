@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { m } from "@/i18n";
 import type { Support } from "@/ml/device";
 import { asMlError } from "@/ml/errors";
 import { INSTALL_TEXT } from "@/ml/labels";
@@ -11,11 +12,11 @@ import { Badge, Button, confirm, IconAlert, IconDownload, IconTrash, IconUpload,
 import "./modelsDialog.css";
 
 const BADGES: Record<ModelStatus, { tone: BadgeTone; text: string }> = {
-  unknown: { tone: "neutral", text: "Checking…" },
-  missing: { tone: "neutral", text: "Not downloaded" },
-  installing: { tone: "info", text: "Downloading" },
-  ready: { tone: "success", text: "Installed" },
-  outdated: { tone: "warning", text: "Needs update" },
+  unknown: { tone: "neutral", text: m.editorChrome.models.badge.unknown },
+  missing: { tone: "neutral", text: m.editorChrome.models.badge.missing },
+  installing: { tone: "info", text: m.editorChrome.models.badge.installing },
+  ready: { tone: "success", text: m.editorChrome.models.badge.ready },
+  outdated: { tone: "warning", text: m.editorChrome.models.badge.outdated },
 };
 
 /** What is installed, what it is, who made it under which licence, and how to add or remove it. */
@@ -34,15 +35,15 @@ export function ModelsDialog({ open, onClose }: { open: boolean; onClose: () => 
       open={open}
       onClose={onClose}
       size="md"
-      title="On-device models"
+      title={m.editorChrome.models.title}
       footer={
         <Button variant="primary" onClick={onClose}>
-          Done
+          {m.common.done}
         </Button>
       }
     >
       <div className="cf-models">
-        <p className="cf-models__lede">Some photo tools use AI models that run on this device. A model downloads once and then works offline. Your photos are never uploaded.</p>
+        <p className="cf-models__lede">{m.editorChrome.models.lede}</p>
         {unsupported ? (
           <p className="cf-models__warn">
             <IconAlert aria-hidden="true" />
@@ -56,12 +57,8 @@ export function ModelsDialog({ open, onClose }: { open: boolean; onClose: () => 
         </ul>
         {storage.usage !== undefined && storage.quota !== undefined ? (
           <p className="cf-models__storage">
-            {formatBytes(storage.usage)} of {formatBytes(storage.quota)} used by Craftly in this browser.{" "}
-            {storage.persisted === true
-              ? "Downloaded models are kept until you remove them."
-              : storage.persisted === false
-                ? "The browser may remove downloaded models when space runs low."
-                : null}
+            {m.editorChrome.models.storageUsed(formatBytes(storage.usage), formatBytes(storage.quota))}{" "}
+            {storage.persisted === true ? m.editorChrome.models.kept : storage.persisted === false ? m.editorChrome.models.mayRemove : null}
           </p>
         ) : null}
       </div>
@@ -84,8 +81,8 @@ function ModelRow({ spec, browser }: { spec: ModelSpec; browser: Support | null 
   const download = async () => {
     try {
       const { warmError } = await installModel(spec.id);
-      if (warmError) toast.error(`${spec.name} was downloaded, but it could not run on this device. ${warmError.message}`);
-      else toast.success(`${spec.name} is ready.`);
+      if (warmError) toast.error(m.editorChrome.models.downloadedButFailed(spec.name, warmError.message));
+      else toast.success(m.editorChrome.models.ready(spec.name));
     } catch (error) {
       const known = asMlError(error, "network");
       if (known.code !== "aborted") toast.error(known.message);
@@ -94,16 +91,16 @@ function ModelRow({ spec, browser }: { spec: ModelSpec; browser: Support | null 
 
   const remove = async () => {
     const agreed = await confirm({
-      title: "Remove the model?",
-      message: `${spec.name} (${size}) will be deleted from this device. You can download it again later.`,
-      confirmLabel: "Remove",
-      cancelLabel: "Keep it",
+      title: m.editorChrome.models.removeTitle,
+      message: m.editorChrome.models.removeMessage(spec.name, size),
+      confirmLabel: m.common.remove,
+      cancelLabel: m.editorChrome.models.keep,
       danger: true,
     });
     if (!agreed) return;
     try {
       await removeModel(spec.id);
-      toast.success(`${spec.name} was removed.`);
+      toast.success(m.editorChrome.models.removed(spec.name));
     } catch (error) {
       toast.error(asMlError(error, "storage").message);
     }
@@ -114,8 +111,8 @@ function ModelRow({ spec, browser }: { spec: ModelSpec; browser: Support | null 
     setImporting(true);
     try {
       const { warmError } = await importModelFile(spec.id, file);
-      if (warmError) toast.error(`${spec.name} was added from the file, but it could not be tried out. ${warmError.message}`);
-      else toast.success(`${spec.name} was added from the file.`);
+      if (warmError) toast.error(m.editorChrome.models.addedButFailed(spec.name, warmError.message));
+      else toast.success(m.editorChrome.models.added(spec.name));
     } catch (error) {
       toast.error(asMlError(error, "storage").message);
     } finally {
@@ -130,15 +127,15 @@ function ModelRow({ spec, browser }: { spec: ModelSpec; browser: Support | null 
         <Badge tone={badge.tone}>{badge.text}</Badge>
       </div>
       <p className="cf-models__text">
-        {spec.summary} Used by the {spec.tool}.
+        {spec.summary} {m.editorChrome.models.usedBy(spec.tool)}
       </p>
       <p className="cf-models__meta">
-        {size}, {spec.licence.name} licence. {spec.licence.notice}.{" "}
+        {m.editorChrome.models.licenceLine(size, spec.licence.name, spec.licence.notice)}{" "}
         <a href={spec.licence.url} target="_blank" rel="noopener noreferrer">
-          Licence
+          {m.editorChrome.models.licence}
         </a>{" "}
         <a href={spec.credit.url} target="_blank" rel="noopener noreferrer">
-          Source
+          {m.editorChrome.models.source}
         </a>
       </p>
       <p className="cf-models__meta">{spec.credit.text}.</p>
@@ -156,32 +153,30 @@ function ModelRow({ spec, browser }: { spec: ModelSpec; browser: Support | null 
           <div className="cf-models__work-row">
             <span role="status">{INSTALL_TEXT[install.phase]}</span>
             {install.phase === "downloading" ? (
-              <span className="cf-models__sizes">
-                {formatBytes(install.received)} of {formatBytes(install.total)}
-              </span>
+              <span className="cf-models__sizes">{m.editorChrome.models.sizeOf(formatBytes(install.received), formatBytes(install.total))}</span>
             ) : null}
             {install.phase !== "saving" ? (
               <Button size="sm" variant="secondary" autoFocus onClick={() => install.cancel()}>
-                Cancel
+                {m.common.cancel}
               </Button>
             ) : null}
           </div>
-          <Progress label={`Downloading ${spec.name}`} value={install.phase === "downloading" ? install.received / install.total : undefined} />
+          <Progress label={m.editorChrome.models.downloading(spec.name)} value={install.phase === "downloading" ? install.received / install.total : undefined} />
         </div>
       ) : (
         <div className="cf-models__actions">
           {status === "ready" ? (
-            <Button size="sm" variant="secondary" icon={<IconTrash />} aria-label={`Remove ${spec.name}`} onClick={() => void remove()}>
-              Remove
+            <Button size="sm" variant="secondary" icon={<IconTrash />} aria-label={m.editorChrome.models.removeName(spec.name)} onClick={() => void remove()}>
+              {m.common.remove}
             </Button>
           ) : (
             <Button size="sm" variant="primary" icon={<IconDownload />} disabled={blocked} onClick={() => void download()}>
-              {`Download ${size}`}
+              {m.editorChrome.models.downloadSize(size)}
             </Button>
           )}
           {status !== "ready" ? (
             <Button size="sm" variant="ghost" icon={<IconUpload />} disabled={blocked} loading={importing} onClick={() => fileInput.current?.click()}>
-              {importing ? "Adding…" : "Add from a file"}
+              {importing ? m.editorChrome.models.adding : m.editorChrome.models.addFromFile}
             </Button>
           ) : null}
           <input
@@ -190,7 +185,7 @@ function ModelRow({ spec, browser }: { spec: ModelSpec; browser: Support | null 
             type="file"
             accept=".onnx"
             tabIndex={-1}
-            aria-label={`Choose a model file for ${spec.name}`}
+            aria-label={m.editorChrome.models.chooseFile(spec.name)}
             disabled={blocked || importing}
             onChange={(e) => {
               void addFromFile(e.currentTarget.files?.[0]);

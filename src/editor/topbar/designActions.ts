@@ -10,6 +10,7 @@ import { downloadBlob } from "@/export/exporters";
 import { ExportError } from "@/export/errors";
 import { exportProjectFile } from "@/export/projectFile";
 import { requireExportImages } from "@/export/resources";
+import { m } from "@/i18n";
 import { renderPageToCanvas } from "@/render/renderPage";
 import { designPath, navigate } from "@/router";
 import { confirm as askConfirm, toast } from "@/ui";
@@ -21,8 +22,8 @@ export { requestSave, waitForSaved };
 export async function saveNow(): Promise<void> {
   requestSave();
   const result = await waitForSaved();
-  if (result === "saved") toast.success("All changes saved");
-  else if (result === "error") toast.error("Couldn't save - storage is full or blocked. Free some space or download your design.");
+  if (result === "saved") toast.success(m.editorChrome.save.saved);
+  else if (result === "error") toast.error(m.editorChrome.save.errorToast);
 }
 
 /** File > Create new design: the home page opens its "Create a design" dialog when it sees this flag. */
@@ -48,9 +49,9 @@ export async function makeCopy(): Promise<void> {
     const copy = await duplicateDesign(design.id);
     if (!copy) throw new Error("missing");
     navigate(designPath(copy.id));
-    toast.success("Copy created");
+    toast.success(m.editorChrome.designActions.copyCreated);
   } catch {
-    toast.error("Couldn't make a copy. Check that your browser has free storage and try again.");
+    toast.error(m.editorChrome.designActions.copyFailed);
   } finally {
     copying = false;
   }
@@ -61,9 +62,9 @@ export async function moveToTrash(): Promise<void> {
   const design = useEditor.getState().design;
   if (!design) return;
   const ok = await askConfirm({
-    title: "Move to trash?",
-    message: `"${design.title}" will move to the trash. You can restore it from there at any time.`,
-    confirmLabel: "Move to trash",
+    title: m.editorChrome.designActions.trashTitle,
+    message: m.editorChrome.designActions.trashMessage(design.title),
+    confirmLabel: m.editorChrome.designActions.trashConfirm,
     danger: true,
   });
   if (!ok || useEditor.getState().design?.id !== design.id) return;
@@ -72,11 +73,11 @@ export async function moveToTrash(): Promise<void> {
   requestSave();
   if ((await waitForSaved()) !== "saved") {
     if (useEditor.getState().design?.id === id) useEditor.getState().actions.updateMeta({ trashedAt: design.trashedAt });
-    toast.error("Could not move this design to the trash because its changes could not be saved.");
+    toast.error(m.editorChrome.designActions.trashFailed);
     return;
   }
   navigate("/");
-  toast.success("Moved to trash", { actionLabel: "Undo", onAction: () => void restoreFromTrash(id) });
+  toast.success(m.editorChrome.designActions.trashed, { actionLabel: m.common.undo, onAction: () => void restoreFromTrash(id) });
 }
 
 export function safeFileName(title: string, fallback = "design"): string {
@@ -95,13 +96,13 @@ export async function saveProjectFile(): Promise<void> {
   try {
     const blob = await exportProjectFile(design);
     downloadBlob(blob, `${safeFileName(design.title)}.craftly`);
-    toast.success("Project file saved to your downloads");
+    toast.success(m.editorChrome.designActions.projectSaved);
   } catch (error) {
     if (error instanceof ExportError) {
       toast.error(error.message);
       return;
     }
-    toast.error("Couldn't create the project file. Try again, or download the design as an image or PDF instead.");
+    toast.error(m.editorChrome.designActions.projectFailed);
   }
 }
 
@@ -113,7 +114,7 @@ export async function copyPageAsImage(): Promise<void> {
   if (!design || !page) return;
   const number = design.pages.indexOf(page) + 1;
   if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
-    toast.error("This browser can't copy images to the clipboard. Use Download instead.");
+    toast.error(m.editorChrome.designActions.noClipboard);
     return;
   }
   try {
@@ -127,13 +128,13 @@ export async function copyPageAsImage(): Promise<void> {
           }),
       );
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-    toast.success(`Page ${number} copied as an image`);
+    toast.success(m.editorChrome.designActions.pageCopied(number));
   } catch (error) {
     if (error instanceof ExportError) {
       toast.error(error.message);
       return;
     }
-    toast.error("Couldn't copy the image. Your browser may have blocked clipboard access - try Download instead.");
+    toast.error(m.editorChrome.designActions.copyImageFailed);
   }
 }
 
@@ -182,7 +183,7 @@ export async function printDesign(): Promise<void> {
   const design = useEditor.getState().design;
   if (!design || printing) return;
   printing = true;
-  const preparing = toast.info("Preparing pages for printing...", { duration: 0 });
+  const preparing = toast.info(m.editorChrome.designActions.preparingPrint, { duration: 0 });
   const urls: string[] = [];
   try {
     await requireExportImages(design.pages.map((page, index) => ({ page, index })));
@@ -197,7 +198,7 @@ export async function printDesign(): Promise<void> {
     await printImages(urls, design.width >= design.height, design.title);
   } catch (error) {
     toast.dismiss(preparing);
-    toast.error(error instanceof ExportError ? error.message : "Couldn't prepare the pages for printing. Try downloading a PDF and printing that.");
+    toast.error(error instanceof ExportError ? error.message : m.editorChrome.designActions.printFailed);
   } finally {
     urls.forEach((u) => URL.revokeObjectURL(u));
     printing = false;

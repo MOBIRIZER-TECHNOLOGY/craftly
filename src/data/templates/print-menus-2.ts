@@ -69,7 +69,7 @@ function tacoTruck(): Template {
     sans("Everything can be made without meat or dairy. Just ask at the window.", M, 1008, W - M * 2, 13.5, { align: "center", color: CREAM }),
   );
   return template(
-    { slug: "taco-truck", name: "Comal Street Tacos Truck Menu", category: "menu", size: "menu", tags: ["menu", "tacos", "food truck", "street food", "mexican", "bold", "colorful", "takeaway", "casual"], accent: YELLOW },
+    { slug: "taco-truck", category: "menu", size: "menu", tags: ["menu", "tacos", "food truck", "street food", "mexican", "bold", "colorful", "takeaway", "casual"], accent: YELLOW },
     [pg(YELLOW, els)],
   );
 }
@@ -119,7 +119,7 @@ function tastingMenu(): Template {
     sans("6 MILL ROW, WRENFIELD  ·  555-0190", 0, 1004, W, 11, { fontWeight: 600, letterSpacing: 280, color: OLIVE }),
   );
   return template(
-    { slug: "tasting-menu", name: "Juniper Table Tasting Menu", category: "menu", size: "menu", tags: ["menu", "tasting", "fine dining", "restaurant", "set menu", "minimal", "elegant", "courses", "seasonal"], accent: OLIVE },
+    { slug: "tasting-menu", category: "menu", size: "menu", tags: ["menu", "tasting", "fine dining", "restaurant", "set menu", "minimal", "elegant", "courses", "seasonal"], accent: OLIVE },
     [pg(PAPER, els)],
   );
 }

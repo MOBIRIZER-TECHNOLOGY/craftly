@@ -178,7 +178,6 @@ const closing = slide(
 export const TRAVEL: Template = template(
   {
     slug: "travel-story-northern-light",
-    name: "Travel Story Photo Deck",
     category: "presentation",
     size: "presentation",
     tags: ["travel", "photo", "story", "adventure", "norway", "aurora", "journal", "full-bleed", "cinematic", "blog", "destination"],

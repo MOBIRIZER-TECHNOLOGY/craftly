@@ -38,7 +38,7 @@ function architectCard(): Template {
   ];
   rows.forEach(([k, v], i) => back.push(sans(k, 36, 102 + i * 18, 14, 7.5, { color: GOLD_D, fontWeight: 700 }), sans(v, 52, 101 + i * 18, 270, 9.5, { fontWeight: 500 })));
   return template(
-    { slug: "architect-card", name: "Hale and Orr Architect Business Card", category: "card", size: "businessCard", tags: ["business card", "architect", "minimal", "gold", "dark", "elegant", "front and back", "professional"], accent: GOLD },
+    { slug: "architect-card", category: "card", size: "businessCard", tags: ["business card", "architect", "minimal", "gold", "dark", "elegant", "front and back", "professional"], accent: GOLD },
     [pg(CHAR, front), pg(PAPER, back)],
   );
 }
@@ -75,7 +75,7 @@ function floralCard(): Template {
     y += r.includes("\n") ? 32 : 18;
   });
   return template(
-    { slug: "floral-card", name: "Verdant Floral Studio Business Card", category: "card", size: "businessCard", tags: ["business card", "florist", "botanical", "green", "nature", "wedding", "front and back", "organic"], accent: GREEN },
+    { slug: "floral-card", category: "card", size: "businessCard", tags: ["business card", "florist", "botanical", "green", "nature", "wedding", "front and back", "organic"], accent: GREEN },
     [pg(CREAM, front), pg(GREEN, back)],
   );
 }
@@ -110,7 +110,7 @@ function tidalCard(): Template {
   const rows = ["+1 (415) 555-0194", "jordan@tidal.studio", "tidal.studio", "Pier 9, Suite 4, San Francisco"];
   rows.forEach((r, i) => back.push(mono(r, 36, 98 + i * 19, 280, 9.5, { color: NAVY })));
   return template(
-    { slug: "tidal-card", name: "Tidal Creative Studio Business Card", category: "card", size: "businessCard", tags: ["business card", "creative", "agency", "geometric", "bold", "blue", "orange", "front and back"], accent: ORANGE },
+    { slug: "tidal-card", category: "card", size: "businessCard", tags: ["business card", "creative", "agency", "geometric", "bold", "blue", "orange", "front and back"], accent: ORANGE },
     [pg(NAVY, front), pg(SAND, back)],
   );
 }
@@ -154,7 +154,7 @@ function bayPostcard(): Template {
     block("MARLOW BAY", 332, 346, 208, 8, { align: "right", color: CORAL, letterSpacing: 200 }),
   );
   return template(
-    { slug: "bay-postcard", name: "Greetings from Marlow Bay Postcard", category: "card", size: "postcard", tags: ["postcard", "travel", "beach", "greetings", "holiday", "vacation", "summer", "front and back"], accent: CORAL },
+    { slug: "bay-postcard", category: "card", size: "postcard", tags: ["postcard", "travel", "beach", "greetings", "holiday", "vacation", "summer", "front and back"], accent: CORAL },
     [pg(CREAM, front), pg("#f8efdc", back)],
   );
 }

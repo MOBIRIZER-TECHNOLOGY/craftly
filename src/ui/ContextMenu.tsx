@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { m } from "@/i18n";
 import { MenuPopover, type MenuEntry } from "./Menu";
 
 export interface ContextMenuRequest {
@@ -83,7 +84,7 @@ export function ContextMenuHost() {
       items={menu?.items ?? []}
       placement="bottom-start"
       offset={2}
-      aria-label="Context menu"
+      aria-label={m.ui.contextMenu.label}
     />
   );
 }

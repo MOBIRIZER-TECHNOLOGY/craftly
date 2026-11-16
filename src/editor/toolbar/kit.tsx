@@ -7,6 +7,7 @@
  */
 import { forwardRef, useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useEditor, type ContextPanelState } from "@/core/store";
+import { m } from "@/i18n";
 import { Button, IconButton, MenuPopover, NumberField, Popover, Slider, Tooltip, cx, type ButtonProps, type IconButtonProps, type MenuEntry, type PopoverPlacement } from "@/ui";
 import { captureEditorSelection, restoreEditorSelection, type EditorSelectionSnapshot } from "./editorSelection";
 import { clampNumber } from "./selection";
@@ -232,7 +233,7 @@ export function SliderField({ label, value, mixed, min, max, step = 1, numberSte
           min={min}
           max={max}
           step={numberStep ?? step}
-          aria-label={`${label} value`}
+          aria-label={m.editor.toolbar.sliderValue(label)}
           disabled={disabled}
           onChange={(v) => {
             if (Number.isFinite(v)) onChange(v);

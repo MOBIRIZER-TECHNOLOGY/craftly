@@ -18,7 +18,6 @@ function saleBanner(): Template {
   return template(
     {
       slug: "summer-sale-hero",
-      name: "Summer Sale Hero Banner",
       category: "banner",
       size: "banner",
       tags: ["sale", "banner", "hero", "discount", "shop", "retail", "summer", "promotion", "ecommerce", "offer", "navy", "yellow"],
@@ -63,7 +62,6 @@ function eventBanner(): Template {
   return template(
     {
       slug: "design-summit-event",
-      name: "Summit Event Banner",
       category: "banner",
       size: "banner",
       tags: ["event", "conference", "summit", "banner", "speakers", "tickets", "festival", "webinar", "violet", "orange", "save the date"],
@@ -107,7 +105,6 @@ function quoteWallpaper(): Template {
   return template(
     {
       slug: "minimal-quote-wallpaper",
-      name: "Minimal Quote Wallpaper",
       category: "banner",
       size: "wallpaper",
       tags: ["wallpaper", "quote", "minimal", "desktop", "background", "calm", "motivation", "beige", "serif", "mindful", "aesthetic"],
@@ -140,7 +137,6 @@ function auroraWallpaper(): Template {
   return template(
     {
       slug: "aurora-gradient-wallpaper",
-      name: "Aurora Gradient Wallpaper",
       category: "banner",
       size: "wallpaper",
       tags: ["wallpaper", "gradient", "abstract", "aurora", "background", "desktop", "purple", "pink", "mesh", "glow", "modern"],

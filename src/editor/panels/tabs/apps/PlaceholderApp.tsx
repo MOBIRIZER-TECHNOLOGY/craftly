@@ -3,12 +3,13 @@ import { darken, isLight, lighten } from "@/core/color";
 import { createImage } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
 import { svgToDataUrl } from "@/core/svg";
+import { m } from "@/i18n";
 import { Button, ColorSwatch, IconPlus, NumberField, cx } from "@/ui";
 import { AppField, AppPage, ColorButton } from "./appKit";
 import "./PlaceholderApp.css";
 
 const SIZES = [
-  { id: "square", label: "Square", w: 1000, h: 1000 },
+  { id: "square", label: m.panelsTabs.placeholder.square, w: 1000, h: 1000 },
   { id: "landscape", label: "4 : 3", w: 1200, h: 900 },
   { id: "wide", label: "16 : 9", w: 1280, h: 720 },
   { id: "portrait", label: "4 : 5", w: 960, h: 1200 },
@@ -74,20 +75,20 @@ export function PlaceholderApp() {
 
   return (
     <AppPage
-      title="Placeholder image"
-      subtitle="A stand-in picture you can swap later"
+      title={m.panelsTabs.placeholder.title}
+      subtitle={m.panelsTabs.placeholder.subtitle}
       footer={
         <Button variant="primary" size="lg" block icon={<IconPlus />} onClick={add}>
-          Add to design
+          {m.panelsTabs.shared.addToDesign}
         </Button>
       }
     >
       <div className="cf-app__stage cf-ph__stage">
-        <img className="cf-ph__img" src={svgToDataUrl(svg)} alt={`Placeholder image, ${w} by ${h}`} style={{ width: stage.width, height: Math.max(40, stage.height) }} />
+        <img className="cf-ph__img" src={svgToDataUrl(svg)} alt={m.panelsTabs.placeholder.alt(w, h)} style={{ width: stage.width, height: Math.max(40, stage.height) }} />
       </div>
 
-      <AppField label="Shape">
-        <div className="cf-ph__sizes" role="group" aria-label="Shape">
+      <AppField label={m.panelsTabs.placeholder.shape}>
+        <div className="cf-ph__sizes" role="group" aria-label={m.panelsTabs.placeholder.shape}>
           {SIZES.map((s) => {
             const selected = s.w === w && s.h === h;
             const r = s.w / s.h;
@@ -110,20 +111,20 @@ export function PlaceholderApp() {
         </div>
       </AppField>
 
-      <AppField label="Size in pixels">
+      <AppField label={m.panelsTabs.placeholder.sizeInPixels}>
         <div className="cf-app__row cf-ph__dims">
-          <NumberField label="W" value={w} onChange={(v) => setW(clamp(v))} min={MIN} max={MAX} step={10} precision={0} />
-          <NumberField label="H" value={h} onChange={(v) => setH(clamp(v))} min={MIN} max={MAX} step={10} precision={0} />
+          <NumberField label={m.panelsTabs.placeholder.width} value={w} onChange={(v) => setW(clamp(v))} min={MIN} max={MAX} step={10} precision={0} />
+          <NumberField label={m.panelsTabs.placeholder.height} value={h} onChange={(v) => setH(clamp(v))} min={MIN} max={MAX} step={10} precision={0} />
         </div>
       </AppField>
 
-      <AppField label="Colour">
-        <div className="cf-ph__colors" role="group" aria-label="Placeholder colour">
+      <AppField label={m.panelsTabs.placeholder.colour}>
+        <div className="cf-ph__colors" role="group" aria-label={m.panelsTabs.placeholder.placeholderColour}>
           {COLORS.map((c) => (
             <ColorSwatch key={c} color={c} size={28} selected={c === color} title={c} onClick={() => setColor(c)} />
           ))}
         </div>
-        <ColorButton label="Placeholder colour" value={color} onChange={setColor} />
+        <ColorButton label={m.panelsTabs.placeholder.placeholderColour} value={color} onChange={setColor} />
       </AppField>
     </AppPage>
   );

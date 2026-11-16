@@ -9,10 +9,11 @@
  * worker fetches pages from the network first) already runs the new build, and asking it to reload would be noise: the
  * build writes its id into a meta tag of index.html and into the worker, and the page asks the worker for its id.
  */
+import { m } from "@/i18n";
 import { toast } from "@/ui";
 import { settleSaves } from "./settleSaves";
 
-const PROMPT = "A new version of Craftly is ready. Reload to use it.";
+const PROMPT = m.app.update.ready;
 const PLACEHOLDER = "__BUILD_ID__";
 
 export interface RegisterOptions {
@@ -84,8 +85,8 @@ export async function registerServiceWorker(url: string, options: RegisterOption
     reloading = true;
     if ((await settleSaves(saveTimeoutMs)) !== "saved") {
       reloading = false;
-      toast.error("Craftly could not save your changes. Save or download a project file before updating.");
-      toast.info(PROMPT, { actionLabel: "Retry update", duration: 0, onAction: () => void takeOver(worker) });
+      toast.error(m.app.update.notSaved);
+      toast.info(PROMPT, { actionLabel: m.app.update.retry, duration: 0, onAction: () => void takeOver(worker) });
       return;
     }
     let reloaded = false;
@@ -116,7 +117,7 @@ export async function registerServiceWorker(url: string, options: RegisterOption
     if (offered.has(key)) return;
     offered.add(key);
     // no time limit: a notice that went away by itself would be missed, and nothing is lost by leaving it
-    toast.info(PROMPT, { actionLabel: "Reload", duration: 0, onAction: () => void takeOver(worker) });
+    toast.info(PROMPT, { actionLabel: m.common.reload, duration: 0, onAction: () => void takeOver(worker) });
   };
 
   const watch = (worker: ServiceWorker) => {

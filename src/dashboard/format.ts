@@ -1,7 +1,8 @@
 /** Small text formatting helpers for the dashboard (relative times, sizes, plurals). */
+import { date, m, num } from "@/i18n";
 
-const MONTH_DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
-const MONTH_DAY_YEAR = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+const MONTH_DAY: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+const MONTH_DAY_YEAR: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
 
 const DAY_MS = 86_400_000;
 
@@ -17,22 +18,23 @@ function startOfDay(ts: number): number {
  */
 export function formatRelative(timestamp: number, now: number = Date.now()): string {
   const diff = now - timestamp;
-  if (diff < 60_000) return "just now";
+  const words = m.dashboard.time;
+  if (diff < 60_000) return words.justNow;
   const minutes = Math.floor(diff / 60_000);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return words.minutesAgo(minutes);
   const days = Math.round((startOfDay(now) - startOfDay(timestamp)) / DAY_MS);
-  if (days <= 0) return `${Math.floor(minutes / 60)}h ago`;
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days} days ago`;
-  const date = new Date(timestamp);
-  const sameYear = date.getFullYear() === new Date(now).getFullYear();
-  return (sameYear ? MONTH_DAY : MONTH_DAY_YEAR).format(date);
+  if (days <= 0) return words.hoursAgo(Math.floor(minutes / 60));
+  if (days === 1) return words.yesterday;
+  if (days < 7) return words.daysAgo(days);
+  const when = new Date(timestamp);
+  const sameYear = when.getFullYear() === new Date(now).getFullYear();
+  return date(when, sameYear ? MONTH_DAY : MONTH_DAY_YEAR);
 }
 
-export const formatEdited = (timestamp: number, now?: number) => `Edited ${formatRelative(timestamp, now)}`;
-export const formatDeleted = (timestamp: number, now?: number) => `Deleted ${formatRelative(timestamp, now)}`;
+export const formatEdited = (timestamp: number, now?: number) => m.dashboard.time.edited(formatRelative(timestamp, now));
+export const formatDeleted = (timestamp: number, now?: number) => m.dashboard.time.deleted(formatRelative(timestamp, now));
 
-/** "1 design", "3 designs". */
+/** "1 design", "3 designs". English only: what a person reads takes its counts from the catalog (m.dashboard.counts). */
 export function plural(count: number, one: string, many: string = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
@@ -40,12 +42,15 @@ export function plural(count: number, one: string, many: string = `${one}s`): st
 /** "845 B", "12 KB", "3.4 MB". */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "";
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  // the units are written as they are in every language; the number as the language writes it
+  const whole = (n: number) => num(Math.round(n), { useGrouping: false });
+  const tenth = (n: number) => num(n, { useGrouping: false, minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  if (bytes < 1024) return `${whole(bytes)} B`;
   const kb = bytes / 1024;
-  if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
+  if (kb < 1024) return `${kb < 10 ? tenth(kb) : whole(kb)} KB`;
   const mb = kb / 1024;
-  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
-  return `${(mb / 1024).toFixed(1)} GB`;
+  if (mb < 1024) return `${mb < 10 ? tenth(mb) : whole(mb)} MB`;
+  return `${tenth(mb / 1024)} GB`;
 }
 
 /** Splits a search box value into lower-case words. */

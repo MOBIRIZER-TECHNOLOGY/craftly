@@ -59,7 +59,7 @@ function nightMarket(): Template {
     mono("120+ FOOD STALLS  /  LIVE MUSIC  /  LOCAL MAKERS  /  LANTERN PARADE AT 9", M, 2208 - 6, W - M * 2, 26, { fontWeight: 700, letterSpacing: 90, align: "center" }),
   );
   return template(
-    { slug: "night-market", name: "Golden Hour Night Market Poster", category: "poster", size: "poster", tags: ["event", "poster", "night market", "summer", "festival", "community", "outdoor", "food"], accent: TOMATO },
+    { slug: "night-market", category: "poster", size: "poster", tags: ["event", "poster", "night market", "summer", "festival", "community", "outdoor", "food"], accent: TOMATO },
     [pg(photoBg("paper-cream"), els)],
   );
 }
@@ -98,7 +98,7 @@ function neonHorizon(): Template {
     mono("NEONHORIZON.FM", 1128, 2194, 504, 26, { fontWeight: 700, letterSpacing: 120, color: CYAN, align: "right" }),
   ];
   return template(
-    { slug: "neon-horizon", name: "Neon Horizon Music Festival Poster", category: "poster", size: "poster", tags: ["music", "festival", "poster", "synthwave", "neon", "concert", "lineup", "night"], accent: PINK },
+    { slug: "neon-horizon", category: "poster", size: "poster", tags: ["music", "festival", "poster", "synthwave", "neon", "concert", "lineup", "night"], accent: PINK },
     [pg(gradientBg(180, "#0a0120", "#1c0646", "#2a0a5e", "#12032c"), els)],
   );
 }
@@ -149,7 +149,7 @@ function quietObjects(): Template {
     );
   });
   return template(
-    { slug: "quiet-objects", name: "Quiet Objects Exhibition Poster", category: "poster", size: "poster", tags: ["exhibition", "gallery", "art", "minimalist", "poster", "museum", "modern", "sculpture"], accent: CLAY },
+    { slug: "quiet-objects", category: "poster", size: "poster", tags: ["exhibition", "gallery", "art", "minimalist", "poster", "museum", "modern", "sculpture"], accent: CLAY },
     [pg(PAPER, els)],
   );
 }
@@ -197,7 +197,7 @@ function lastBeacon(): Template {
     ),
   ];
   return template(
-    { slug: "last-beacon", name: "The Last Beacon Movie Poster", category: "poster", size: "poster", tags: ["movie", "film", "poster", "cinematic", "one-sheet", "drama", "dark", "lighthouse"], accent: GOLD },
+    { slug: "last-beacon", category: "poster", size: "poster", tags: ["movie", "film", "poster", "cinematic", "one-sheet", "drama", "dark", "lighthouse"], accent: GOLD },
     [pg(BG, els)],
   );
 }
@@ -246,7 +246,7 @@ function startBefore(): Template {
     gxw("doodles-underline-marker", 896, noteY + 96.6 + 78.6 - 8, 252, { colors: { "#ff5a5f": PINK } }),
   ];
   return template(
-    { slug: "start-before", name: "Start Before You Feel Ready Type Poster", category: "poster", size: "poster", tags: ["motivational", "quote", "typography", "poster", "bold", "inspiration", "yellow", "office"], accent: YELLOW },
+    { slug: "start-before", category: "poster", size: "poster", tags: ["motivational", "quote", "typography", "poster", "bold", "inspiration", "yellow", "office"], accent: YELLOW },
     [pg(YELLOW, els)],
   );
 }

@@ -9,6 +9,7 @@
 import { animationWindow, pageDuration, pageHasAnimation } from "@/core/animation";
 import { buildTimeline, type Timeline } from "@/core/transition";
 import type { Design, DesignElement, ElementAnimations, Page } from "@/core/types";
+import { m } from "@/i18n";
 import type { PageWeight } from "../options";
 
 export type AnimatedFormat = "gif" | "webm";
@@ -218,12 +219,11 @@ export const VIDEO_MAX_SECONDS = 600;
 /** A sentence for the person when the plan is too big for its format, null when it is fine. */
 export function animationProblem(plan: AnimationPlan): string | null {
   if (plan.format === "gif") {
-    if (plan.frames > GIF_MAX_FRAMES) return "This animation is too long to save as a GIF. Choose fewer pages or a lower frame rate.";
-    if (plan.frames * plan.width * plan.height > GIF_MAX_PIXEL_FRAMES)
-      return "This animation is too large to save as a GIF at this size. Try a lower resolution or frame rate, or fewer pages.";
+    if (plan.frames > GIF_MAX_FRAMES) return m.exporting.animation.gifTooLong;
+    if (plan.frames * plan.width * plan.height > GIF_MAX_PIXEL_FRAMES) return m.exporting.animation.gifTooLarge;
     return null;
   }
-  if (plan.total > VIDEO_MAX_SECONDS) return `A video can be at most ${Math.round(VIDEO_MAX_SECONDS / 60)} minutes long because it is recorded in real time. Choose fewer pages.`;
+  if (plan.total > VIDEO_MAX_SECONDS) return m.exporting.animation.videoTooLong(Math.round(VIDEO_MAX_SECONDS / 60));
   return null;
 }
 
@@ -233,12 +233,13 @@ export function animationProblem(plan: AnimationPlan): string | null {
 
 /** "12 s", "5.3 s", "1 min 15 s". */
 export function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "0 s";
-  if (seconds < 60) return `${seconds < 10 ? Math.round(seconds * 10) / 10 : Math.round(seconds)} s`;
+  const { amounts } = m.exporting;
+  if (!Number.isFinite(seconds) || seconds <= 0) return amounts.seconds(0);
+  if (seconds < 60) return amounts.seconds(seconds < 10 ? Math.round(seconds * 10) / 10 : Math.round(seconds));
   const whole = Math.round(seconds);
   const minutes = Math.floor(whole / 60);
   const rest = whole % 60;
-  return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+  return rest ? amounts.minutesSeconds(minutes, rest) : amounts.minutes(minutes);
 }
 
 /* ------------------------------------------------------------------ */

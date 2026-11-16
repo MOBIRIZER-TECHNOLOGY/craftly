@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { m } from "@/i18n";
 import { IconHome, IconTemplate, Tabs, cx } from "@/ui";
 import { navigate } from "@/router";
 import "./Hero.css";
@@ -22,12 +23,12 @@ export function Hero({ title, active, children, compact = false }: HeroProps) {
         <Tabs
           variant="pill"
           className="cf-hero__tabs"
-          aria-label="Browse"
+          aria-label={m.dashboard.home.browse}
           value={active}
           onChange={(id) => navigate(id === "home" ? "/" : "/templates")}
           tabs={[
-            { id: "home", label: "Home", icon: <IconHome aria-hidden="true" /> },
-            { id: "templates", label: "Templates", icon: <IconTemplate aria-hidden="true" /> },
+            { id: "home", label: m.dashboard.shell.nav.home, icon: <IconHome aria-hidden="true" /> },
+            { id: "templates", label: m.dashboard.shell.nav.templates, icon: <IconTemplate aria-hidden="true" /> },
           ]}
         />
         <div className="cf-hero__search">{children}</div>

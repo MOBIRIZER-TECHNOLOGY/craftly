@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { m } from "@/i18n";
 import { ColorPicker, ColorSwatch, cx, Popover } from "@/ui";
 import "./ColorField.css";
 
@@ -52,7 +53,7 @@ export function ColorField({ value, onChange, onCommit, label, size = 36, shape 
         }}
         placement="bottom-start"
         className="cf-colorfield__pop"
-        aria-label={`${label} picker`}
+        aria-label={m.panelsContext.colorField.picker(label)}
       >
         <div className="cf-colorfield__body">
           <ColorPicker value={value} showAlpha={showAlpha} onChange={onChange} onChangeEnd={onCommit} />

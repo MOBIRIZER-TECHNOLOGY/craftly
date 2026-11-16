@@ -14,6 +14,7 @@
  * as they store the name of a bundled family, so a design that names a family this device does not have draws in the
  * fallback font and is not changed. A family can never have the name of a bundled one (`usableFamilyName`).
  */
+import { m } from "@/i18n";
 import { getFontDef, isBundledFamily, setCustomFaces, trackCustomFonts, type CustomFace } from "@/render/fonts";
 import { UNNAMED_FAMILY, cleanFamilyName, describeFontFile, fontProblem, type FontDescription, type FontFormat } from "./fontFile";
 import { uid } from "./ids";
@@ -73,12 +74,12 @@ export async function checkFontBytes(bytes: Uint8Array, fileName: string): Promi
   if (problem !== null) throw new FontUploadError(problem);
   // (bytes without a problem are one of the four kinds, so they can be described)
   const described = describeFontFile(bytes, fileName) as FontDescription;
-  if (typeof FontFace === "undefined") throw new FontUploadError("This browser cannot check font files, so the font was not added.");
+  if (typeof FontFace === "undefined") throw new FontUploadError(m.core.fontFile.cannotCheck);
   try {
     // a copy of exactly these bytes: the array may be a window into a larger file
     await new FontFace(CHECK_FAMILY, bytes.slice().buffer as ArrayBuffer).load();
   } catch {
-    throw new FontUploadError("This file could not be read as a font. It may be damaged.");
+    throw new FontUploadError(m.core.fontFile.damaged);
   }
   return described;
 }

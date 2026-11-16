@@ -240,7 +240,6 @@ const thanks = slide(
 export const PASTEL: Template = template(
   {
     slug: "pastel-classroom-science",
-    name: "Pastel Classroom Science",
     category: "presentation",
     size: "presentation",
     tags: ["education", "school", "classroom", "science", "teacher", "pastel", "kids", "lesson", "plants", "cute", "friendly"],

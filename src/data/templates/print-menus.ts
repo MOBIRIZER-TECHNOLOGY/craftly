@@ -73,7 +73,7 @@ function trattoria(): Template {
     head("412 Alder Street, Portland   *   (503) 555-0141", 76, 988, W - 152, 15.5, { align: "center", fontWeight: 600, color: RED, lineHeight: 1.2 }),
   );
   return template(
-    { slug: "trattoria", name: "Osteria Lucia Restaurant Menu", category: "menu", size: "menu", tags: ["menu", "restaurant", "italian", "trattoria", "dinner", "elegant", "olive", "pasta"], accent: GREEN },
+    { slug: "trattoria", category: "menu", size: "menu", tags: ["menu", "restaurant", "italian", "trattoria", "dinner", "elegant", "olive", "pasta"], accent: GREEN },
     [pg(photoBg("paper-cream"), els)],
   );
 }
@@ -160,7 +160,7 @@ function cafe(): Template {
     sans("OPEN DAILY 7 AM TO 5 PM   *   318 MAPLE AVENUE   *   @MAPLEMUGCAFE", 0, H - 40, W, 13, { align: "center", color: "#f0dfc2", letterSpacing: 260, fontWeight: 600 }),
   );
   return template(
-    { slug: "maple-mug-cafe", name: "Maple and Mug Cafe Menu", category: "menu", size: "menu", tags: ["menu", "cafe", "coffee", "bakery", "brunch", "breakfast", "warm", "coffee shop"], accent: MAPLE },
+    { slug: "maple-mug-cafe", category: "menu", size: "menu", tags: ["menu", "cafe", "coffee", "bakery", "brunch", "breakfast", "warm", "coffee shop"], accent: MAPLE },
     [pg(CREAM, els)],
   );
 }
@@ -227,7 +227,7 @@ function cocktailBar(): Template {
     sans("TUE TO SUN, 5 PM UNTIL LATE   *   77 GRAND AVENUE   *   (312) 555-0176", 0, 974, W, 11.5, { align: "center", letterSpacing: 220, color: MUTED, fontWeight: 600 }),
   );
   return template(
-    { slug: "gilded-fern-bar", name: "The Gilded Fern Cocktail Menu", category: "menu", size: "menu", tags: ["menu", "cocktail", "bar", "drinks", "art deco", "dark", "gold", "speakeasy"], accent: GOLD },
+    { slug: "gilded-fern-bar", category: "menu", size: "menu", tags: ["menu", "cocktail", "bar", "drinks", "art deco", "dark", "gold", "speakeasy"], accent: GOLD },
     [pg(BLACK, els)],
   );
 }

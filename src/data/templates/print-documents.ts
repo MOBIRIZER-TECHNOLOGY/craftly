@@ -110,7 +110,7 @@ function impactReport(): Template {
     sans("02", W - M - 60, 1074, 60, 11, { align: "right", fontWeight: 700 }),
   );
   return template(
-    { slug: "impact-report", name: "Greenway Annual Impact Report", category: "document", size: "document", tags: ["report", "annual report", "nonprofit", "document", "impact", "a4", "green", "summary"], accent: FOREST },
+    { slug: "impact-report", category: "document", size: "document", tags: ["report", "annual report", "nonprofit", "document", "impact", "a4", "green", "summary"], accent: FOREST },
     [pg(FOREST, cover), pg(CREAM, inner)],
   );
 }
@@ -217,7 +217,7 @@ function brandProposal(): Template {
     sans("Nadia Okonkwo, Northbound Studio  /  date", M + 340, 1056, 342, 11, { color: GREY }),
   );
   return template(
-    { slug: "brand-proposal", name: "Northbound Brand Proposal", category: "document", size: "document", tags: ["proposal", "business", "document", "agency", "quote", "pricing", "a4", "navy"], accent: TERRA },
+    { slug: "brand-proposal", category: "document", size: "document", tags: ["proposal", "business", "document", "agency", "quote", "pricing", "a4", "navy"], accent: TERRA },
     [pg(NAVY, cover), pg(CREAM, page)],
   );
 }
@@ -315,7 +315,7 @@ function courierNewsletter(): Template {
     body("Printed on recycled paper", 520, 1068, 226, 11, { align: "right", italic: true, color: GREY }),
   );
   return template(
-    { slug: "maple-street-newsletter", name: "Maple Street Courier Newsletter", category: "document", size: "document", tags: ["newsletter", "community", "document", "news", "newspaper", "a4", "neighborhood", "one page"], accent: RED },
+    { slug: "maple-street-newsletter", category: "document", size: "document", tags: ["newsletter", "community", "document", "news", "newspaper", "a4", "neighborhood", "one page"], accent: RED },
     [pg(PAPER, els)],
   );
 }

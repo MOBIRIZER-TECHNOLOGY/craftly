@@ -1,6 +1,7 @@
 import { memo, useId, useState, type DragEvent } from "react";
 import { IconButton, IconMore, IconStar, MenuPopover, Skeleton, cx, openContextMenu, type MenuEntry } from "@/ui";
 import type { DesignSummary, Folder } from "@/core/types";
+import { m } from "@/i18n";
 import { designPath } from "@/router";
 import { toggleStarAction } from "./actions";
 import { DesignMock, mockForDesign } from "./DesignMock";
@@ -86,7 +87,7 @@ export const DesignCard = memo(function DesignCard({ design, folders, now, layou
         <IconButton
           className="cf-dcard__star"
           size="sm"
-          label="Star"
+          label={m.dashboard.cards.star}
           active={design.starred}
           icon={<IconStar aria-hidden="true" />}
           onClick={() => void toggleStarAction(design)}
@@ -94,7 +95,7 @@ export const DesignCard = memo(function DesignCard({ design, folders, now, layou
         <IconButton
           className="cf-dcard__more"
           size="sm"
-          label="More actions"
+          label={m.dashboard.shared.moreActions}
           icon={<IconMore aria-hidden="true" />}
           aria-haspopup="menu"
           aria-expanded={menuAnchor !== null}
@@ -108,7 +109,7 @@ export const DesignCard = memo(function DesignCard({ design, folders, now, layou
         onClose={() => setMenuAnchor(null)}
         items={menuAnchor ? designMenuItems(design, folders) : NO_ITEMS}
         placement="bottom-end"
-        aria-label={`Actions for ${design.title}`}
+        aria-label={m.dashboard.shared.actionsFor(design.title)}
       />
     </article>
   );

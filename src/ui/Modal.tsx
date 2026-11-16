@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { m } from "@/i18n";
 import "./Modal.css";
 import { cx } from "./cx";
 import { focusElement, getTabbables, trapTab, useEscape, useLatest, usePresence, useScrollLock } from "./hooks";
@@ -212,7 +213,7 @@ function ModalLayer({
         {footer ? <footer className="cf-modal__footer">{footer}</footer> : null}
         {/* Last in DOM order so initial focus lands on the content; positioned top-right with CSS. */}
         {hideClose ? null : (
-          <button type="button" className="cf-modal__close" aria-label="Close" onClick={() => onClose()}>
+          <button type="button" className="cf-modal__close" aria-label={m.common.close} onClick={() => onClose()}>
             <IconClose aria-hidden="true" />
           </button>
         )}

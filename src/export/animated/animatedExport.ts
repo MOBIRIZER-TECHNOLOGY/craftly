@@ -11,6 +11,7 @@
  * see-through background would otherwise come out black in the video.
  */
 import type { Design } from "@/core/types";
+import { m } from "@/i18n";
 import { fontsEpoch } from "@/render/fonts";
 import { imagesEpoch } from "@/render/images";
 import { PlaybackRenderer } from "@/render/playback";
@@ -29,8 +30,8 @@ const PALETTE_FULL_PIXELS = 1_200_000;
 /** A GIF this large is not going to be shared or opened: stop before the tab runs out of memory. */
 const GIF_MAX_BYTES = 400 * 1024 * 1024;
 
-const TOO_BIG_TO_DRAW = "This animation is too large for your browser to draw. Try a lower resolution.";
-const STALLED_NOTE = "The tab was in the background while the video recorded, so part of it may stand still. Keep the tab visible while a video records.";
+const TOO_BIG_TO_DRAW = m.exporting.animation.tooBigToDraw;
+const STALLED_NOTE = m.exporting.animation.stalled;
 
 /* ------------------------------------------------------------------ */
 /* painting frames                                                     */
@@ -175,8 +176,7 @@ async function exportGif(design: Design, plan: AnimationPlan, onProgress: Export
       throwIfAborted(signal);
       encoder.addFrame(data, delays[i]);
       out.add(encoder.takeChunks());
-      if (out.size > GIF_MAX_BYTES)
-        throw new ExportError("too-large", `This GIF is getting too big (over ${GIF_MAX_BYTES / (1024 * 1024)} MB). Try a lower resolution or frame rate, or fewer pages.`);
+      if (out.size > GIF_MAX_BYTES) throw new ExportError("too-large", m.exporting.animation.gifTooBig(GIF_MAX_BYTES / (1024 * 1024)));
       onProgress?.(i + 1, frames.count);
       await nextMacrotask();
     }
@@ -193,7 +193,7 @@ async function exportGif(design: Design, plan: AnimationPlan, onProgress: Export
 
 async function exportWebm(design: Design, plan: AnimationPlan, onProgress: ExportProgress | undefined, signal: AbortSignal | undefined): Promise<ExportFile> {
   const support = detectVideoSupport();
-  if (!support.ok || !support.mimeType) throw new ExportError("unsupported", support.reason ?? "Your browser cannot record video.");
+  if (!support.ok || !support.mimeType) throw new ExportError("unsupported", support.reason ?? m.exporting.animation.cannotRecord);
   onProgress?.(0, plan.frames);
   await loadPlanResources(design, plan, signal);
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createText } from "@/core/factory";
 import { getActions } from "@/core/store";
+import { m } from "@/i18n";
 import { IconEmoji, IconSearch } from "@/ui";
 import { ChipRow } from "../../shared/ChipRow";
 import { DraggableItem } from "../../shared/DraggableItem";
@@ -48,7 +49,7 @@ export function EmojiApp() {
   const [recent, setRecent] = useState<string[]>(readRecent);
   const q = useDebounced(query, 100).trim().toLowerCase();
 
-  const chips = useMemo(() => [{ id: "all", label: "All" }, ...EMOJI_CATEGORIES.map((c) => ({ id: c.id, label: `${c.icon} ${c.label}` }))], []);
+  const chips = useMemo(() => [{ id: "all", label: m.panelsTabs.shared.all }, ...EMOJI_CATEGORIES.map((c) => ({ id: c.id, label: `${c.icon} ${c.label}` }))], []);
   const found = useMemo(() => (q ? ALL_EMOJI.filter((e) => q.split(/\s+/).every((w) => e.name.toLowerCase().includes(w))) : []), [q]);
 
   const insert = (char: string) => {
@@ -70,31 +71,31 @@ export function EmojiApp() {
   );
 
   const shown = category === "all" ? EMOJI_CATEGORIES : EMOJI_CATEGORIES.filter((c) => c.id === category);
-  const nameOf = (char: string) => ALL_EMOJI.find((e) => e.char === char)?.name ?? "emoji";
+  const nameOf = (char: string) => ALL_EMOJI.find((e) => e.char === char)?.name ?? m.panelsTabs.emoji.fallbackName;
 
   return (
     <AppPage
-      title="Emoji"
-      subtitle="Click one to add it as text"
+      title={m.panelsTabs.emoji.title}
+      subtitle={m.panelsTabs.emoji.subtitle}
       top={
         <>
-          <PanelSearch value={query} onChange={setQuery} placeholder="Search emoji" />
-          {q ? null : <ChipRow chips={chips} value={category} onChange={setCategory} aria-label="Emoji categories" />}
+          <PanelSearch value={query} onChange={setQuery} placeholder={m.panelsTabs.emoji.search} />
+          {q ? null : <ChipRow chips={chips} value={category} onChange={setCategory} aria-label={m.panelsTabs.emoji.categoriesLabel} />}
         </>
       }
     >
       {q ? (
         found.length ? (
-          <PanelSection title={`${found.length} result${found.length === 1 ? "" : "s"}`}>
+          <PanelSection title={m.panelsTabs.emoji.results(found.length)}>
             <div className="cf-emoji__grid">{found.map((e) => cell(e.char, e.name))}</div>
           </PanelSection>
         ) : (
-          <EmptyHint icon={<IconSearch />} title="No emoji found" text={`Nothing matches "${q}". Try "heart", "cat" or "party".`} />
+          <EmptyHint icon={<IconSearch />} title={m.panelsTabs.emoji.noneTitle} text={m.panelsTabs.emoji.noneText(q)} />
         )
       ) : (
         <>
           {category === "all" && recent.length ? (
-            <PanelSection title="Recently used">
+            <PanelSection title={m.panelsTabs.emoji.recent}>
               <div className="cf-emoji__grid">{recent.map((c) => cell(c, nameOf(c)))}</div>
             </PanelSection>
           ) : null}
@@ -103,7 +104,7 @@ export function EmojiApp() {
               <div className="cf-emoji__grid">{c.items.map((e) => cell(e.char, e.name))}</div>
             </PanelSection>
           ))}
-          {!shown.length ? <EmptyHint icon={<IconEmoji />} title="Nothing here" /> : null}
+          {!shown.length ? <EmptyHint icon={<IconEmoji />} title={m.panelsTabs.emoji.nothingHere} /> : null}
         </>
       )}
     </AppPage>

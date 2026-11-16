@@ -12,21 +12,18 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEv
 import { MAX_COMMENT_TEXT } from "@/core/comments";
 import { useEditor } from "@/core/store";
 import type { CommentAuthor, CommentReply, Design, DesignComment, ID } from "@/core/types";
+import { date, m } from "@/i18n";
 import { Button, IconButton, IconClose } from "@/ui";
 import { useLiveStatus } from "../live/connection";
 import { authorColor } from "./CommentsOverlay";
 import { isMine, myAuthor, numbered, rememberMine, useComments, type CommentFilter } from "./commentsStore";
 import "./comments.css";
 
-const FILTERS: Array<{ value: CommentFilter; label: string }> = [
-  { value: "open", label: "Open" },
-  { value: "resolved", label: "Resolved" },
-  { value: "all", label: "All" },
-];
+const FILTERS: CommentFilter[] = ["open", "resolved", "all"];
 
 const when = (ms: number): string => {
   try {
-    return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    return date(ms, { dateStyle: "medium", timeStyle: "short" });
   } catch {
     return new Date(ms).toISOString();
   }
@@ -36,7 +33,7 @@ const when = (ms: number): string => {
 const pageLabel = (design: Design, pageId: ID): string => {
   const i = design.pages.findIndex((p) => p.id === pageId);
   const name = design.pages[i]?.name;
-  return name ? `Page ${i + 1}: ${name}` : `Page ${i + 1}`;
+  return name ? m.editor.comments.pageNamed(i + 1, name) : m.editor.comments.pageNumber(i + 1);
 };
 
 /** Puts the keyboard back on the Comments button when the panel closes. */
@@ -74,45 +71,43 @@ function PanelBody() {
     e.preventDefault();
     close();
   };
-  const empty = filter === "open" ? "No open comments." : filter === "resolved" ? "No resolved comments." : "No comments yet.";
+  const empty = m.editor.comments.empty[filter];
   return (
     <aside className="cf-comments-panel" aria-labelledby={headingId} data-cf-ui onKeyDown={onKeyDown}>
       <div className="cf-comments-panel__head">
         <h2 id={headingId} className="cf-comments-panel__title">
-          Comments
+          {m.editor.comments.title}
         </h2>
-        <IconButton label="Close comments" icon={<IconClose aria-hidden="true" />} size="sm" onClick={close} />
+        <IconButton label={m.editor.comments.close} icon={<IconClose aria-hidden="true" />} size="sm" onClick={close} />
       </div>
       {sharing === "unsupported" ? (
         <p className="cf-comments-panel__note" role="note">
-          This server does not share comments. The comments you add stay in your copy of the design; the others do not see them.
+          {m.editor.comments.notShared}
         </p>
       ) : null}
       {!canWrite ? (
         <p className="cf-comments-panel__note" role="note">
-          {role === "view"
-            ? "This link only lets you look: you can read the comments, but not add or answer them."
-            : "You are viewing this design. Switch to Editing to add or answer comments."}
+          {role === "view" ? m.editor.comments.viewOnlyLink : m.editor.comments.viewing}
         </p>
       ) : (
-        <p className="cf-comments-panel__hint">Choose Comment in Tools (or press M), then click the page where the comment belongs.</p>
+        <p className="cf-comments-panel__hint">{m.editor.comments.hint}</p>
       )}
       <fieldset className="cf-comments-panel__filter">
-        <legend className="cf-sr-only">Show</legend>
+        <legend className="cf-sr-only">{m.editor.comments.filterLegend}</legend>
         {FILTERS.map((f) => (
-          <label key={f.value} className={`cf-comments-panel__chip${filter === f.value ? " is-on" : ""}`}>
-            <input type="radio" name="cf-comments-filter" value={f.value} checked={filter === f.value} onChange={() => useComments.setState({ filter: f.value })} />
-            {f.label}
+          <label key={f} className={`cf-comments-panel__chip${filter === f ? " is-on" : ""}`}>
+            <input type="radio" name="cf-comments-filter" value={f} checked={filter === f} onChange={() => useComments.setState({ filter: f })} />
+            {m.editor.comments.filters[f]}
           </label>
         ))}
       </fieldset>
       <label className="cf-comments-panel__check">
         <input type="checkbox" checked={showResolved} onChange={(e) => useComments.setState({ showResolved: e.target.checked })} />
-        Show resolved pins on the page
+        {m.editor.comments.showResolved}
       </label>
       <div className="cf-comments-panel__list">
-        <Section title="On this page" items={here} design={design} canWrite={canWrite} empty={empty} />
-        {elsewhere.length ? <Section title="On other pages" items={elsewhere} design={design} canWrite={canWrite} withPage /> : null}
+        <Section title={m.editor.comments.onThisPage} items={here} design={design} canWrite={canWrite} empty={empty} />
+        {elsewhere.length ? <Section title={m.editor.comments.onOtherPages} items={elsewhere} design={design} canWrite={canWrite} withPage /> : null}
       </div>
     </aside>
   );
@@ -159,7 +154,7 @@ function Byline({ author, at, edited }: { author: CommentAuthor; at: number; edi
       <time className="cf-comment__time" dateTime={new Date(at).toISOString()}>
         {when(at)}
       </time>
-      {edited !== undefined ? <span className="cf-comment__edited">(edited)</span> : null}
+      {edited !== undefined ? <span className="cf-comment__edited">{m.editor.comments.edited}</span> : null}
     </span>
   );
 }
@@ -188,9 +183,8 @@ function Thread({ comment, number, design, canWrite, page }: { comment: DesignCo
       aria-labelledby={titleId}
     >
       <h4 id={titleId} className="cf-comment__title">
-        Comment {number}
-        {page ? `, ${page}` : ""}
-        {comment.resolved ? <span className="cf-comment__state"> (resolved)</span> : null}
+        {m.editor.comments.thread(number, page)}
+        {comment.resolved ? <span className="cf-comment__state">{m.editor.comments.resolvedMark}</span> : null}
       </h4>
       <Message
         author={comment.author}
@@ -203,7 +197,7 @@ function Thread({ comment, number, design, canWrite, page }: { comment: DesignCo
         onDelete={() => actions.deleteComment(comment.id)}
       />
       {comment.replies.length ? (
-        <ol className="cf-comment__replies" aria-label={`Replies to comment ${number}`}>
+        <ol className="cf-comment__replies" aria-label={m.editor.comments.replies(number)}>
           {comment.replies.map((reply) => (
             <li key={reply.id}>
               <ReplyItem reply={reply} comment={comment} design={design} canWrite={canWrite} />
@@ -213,11 +207,11 @@ function Thread({ comment, number, design, canWrite, page }: { comment: DesignCo
       ) : null}
       <div className="cf-comment__actions">
         <Button size="sm" variant="ghost" onClick={show}>
-          Show on page
+          {m.editor.comments.showOnPage}
         </Button>
         {canWrite ? (
           <Button size="sm" variant="ghost" onClick={() => actions.setCommentResolved(comment.id, !comment.resolved)}>
-            {comment.resolved ? "Reopen" : "Resolve"}
+            {comment.resolved ? m.editor.comments.reopen : m.editor.comments.resolve}
           </Button>
         ) : null}
       </div>
@@ -275,9 +269,9 @@ function Message({
   if (editing)
     body = (
       <TextForm
-        label={`Edit your ${what}`}
+        label={m.editor.comments.editYour[what]}
         initial={text}
-        submit="Save"
+        submit={m.common.save}
         onSubmit={(value) => {
           onEdit(value);
           setEditing(false);
@@ -296,10 +290,10 @@ function Message({
       {body}
       {mine && !editing ? (
         asking ? (
-          <div className="cf-comment__confirm" role="group" aria-label={`Delete this ${what}`}>
-            <span>{what === "comment" ? "Delete this comment and its replies? This cannot be undone." : "Delete this reply? This cannot be undone."}</span>
+          <div className="cf-comment__confirm" role="group" aria-label={m.editor.comments.deleteThis[what]}>
+            <span>{m.editor.comments.deleteQuestion[what]}</span>
             <Button size="sm" variant="danger" onClick={onDelete}>
-              Delete
+              {m.common.delete}
             </Button>
             <Button
               ref={keepButton}
@@ -310,16 +304,16 @@ function Message({
                 requestAnimationFrame(() => deleteButton.current?.focus());
               }}
             >
-              Keep
+              {m.editor.comments.keep}
             </Button>
           </div>
         ) : (
           <div className="cf-comment__own">
-            <Button ref={editButton} size="sm" variant="ghost" aria-label={`Edit ${what}`} onClick={() => setEditing(true)}>
-              Edit
+            <Button ref={editButton} size="sm" variant="ghost" aria-label={m.editor.comments.editLabel[what]} onClick={() => setEditing(true)}>
+              {m.editor.comments.edit}
             </Button>
-            <Button ref={deleteButton} size="sm" variant="ghost" aria-label={`Delete ${what}`} onClick={() => setAsking(true)}>
-              Delete
+            <Button ref={deleteButton} size="sm" variant="ghost" aria-label={m.editor.comments.deleteLabel[what]} onClick={() => setAsking(true)}>
+              {m.common.delete}
             </Button>
           </div>
         )
@@ -331,10 +325,10 @@ function Message({
 function ReplyBox({ comment, number }: { comment: DesignComment; number: number }) {
   return (
     <TextForm
-      label={`Reply to comment ${number} by ${comment.author.name}`}
-      placeholder="Reply"
+      label={m.editor.comments.replyTo(number, comment.author.name)}
+      placeholder={m.editor.comments.reply}
       initial=""
-      submit="Reply"
+      submit={m.editor.comments.reply}
       onSubmit={(value) => {
         const id = useEditor.getState().actions.replyToComment(comment.id, value, myAuthor());
         if (id) rememberMine(id);
@@ -405,7 +399,7 @@ function TextForm({
       <div className="cf-comment__form-actions">
         {onCancel ? (
           <Button size="sm" variant="ghost" onClick={onCancel}>
-            Cancel
+            {m.common.cancel}
           </Button>
         ) : null}
         <Button size="sm" variant="primary" type="submit">

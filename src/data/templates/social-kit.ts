@@ -6,7 +6,7 @@
 import { createText } from "@/core/factory";
 import { parseViewBox } from "@/core/svg";
 import type { Color, DesignElement, Fill, GraphicElement, ShapeElement, TextElement, TextEffect, TextParagraph, TextRun } from "@/core/types";
-import { getGraphic } from "@/data/graphics";
+import { englishGraphicName, getGraphic } from "@/data/graphics";
 import { G, RR, S, T, patternBg, type ShapeOpts, type TextOpts } from "./dsl";
 
 /* ---------------- illustrations ---------------- */
@@ -22,8 +22,8 @@ export function gfx(id: string, x: number, y: number, w: number, opts: Partial<G
   const { h, ...rest } = opts;
   return G(def.svg, x, y, w, h ?? Math.round((w * vb.h) / vb.w), {
     source: { kind: def.kind === "sticker" ? "sticker" : "illustration", id },
-    name: def.name,
-    alt: def.name,
+    name: englishGraphicName(id),
+    alt: englishGraphicName(id),
     ...rest,
   });
 }

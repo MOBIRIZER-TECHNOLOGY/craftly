@@ -2,6 +2,7 @@ import { useEffect, useReducer } from "react";
 import { getActions, useSelectedElements } from "@/core/store";
 import type { ImageElement } from "@/core/types";
 import { FILTER_PRESETS } from "@/data/filters";
+import { m } from "@/i18n";
 import { renderFiltered } from "@/render/imageFilters";
 import { getImage, onImagesChange } from "@/render/images";
 import { cx, IconImage, Slider, Tabs } from "@/ui";
@@ -13,12 +14,12 @@ import { useBatch } from "./useBatch";
 import "./FiltersPanel.css";
 
 const TABS = [
-  { id: "filters", label: "Filters" },
-  { id: "adjust", label: "Adjust" },
-  { id: "tools", label: "Tools" },
+  { id: "filters", label: m.panelsContext.filters.tabs.filters },
+  { id: "adjust", label: m.panelsContext.filters.tabs.adjust },
+  { id: "tools", label: m.panelsContext.filters.tabs.tools },
 ];
 
-const TITLES = { filters: "Filters", adjust: "Adjust", tools: "Photo tools" } as const;
+const TITLES = m.panelsContext.filters.titles;
 
 /** Photos of the selection that have a picture (an empty frame has nothing to filter). */
 function useSelectedPhotos(): ImageElement[] {
@@ -36,7 +37,7 @@ export function FiltersPanel({ tab }: { tab: "filters" | "adjust" | "tools" }) {
           value={tab}
           tabs={TABS}
           fullWidth
-          aria-label="Photo editing sections"
+          aria-label={m.panelsContext.filters.sections}
           idBase="cf-filters"
           onChange={(id) => getActions().openContext({ kind: "filters", tab: id === "adjust" || id === "tools" ? id : "filters" })}
         />
@@ -44,11 +45,7 @@ export function FiltersPanel({ tab }: { tab: "filters" | "adjust" | "tools" }) {
     >
       <div id={`cf-filters-panel-${tab}`} role="tabpanel" aria-labelledby={`cf-filters-tab-${tab}`}>
         {photos.length === 0 ? (
-          <PanelEmpty
-            icon={<IconImage />}
-            title="No photo selected"
-            text="Select a photo on the page to apply filters, adjust its look or use the photo tools. Empty frames need a photo first."
-          />
+          <PanelEmpty icon={<IconImage />} title={m.panelsContext.filters.noPhoto} text={m.panelsContext.filters.noPhotoText} />
         ) : tab === "filters" ? (
           <FiltersTab photos={photos} />
         ) : tab === "adjust" ? (
@@ -91,7 +88,7 @@ function FiltersTab({ photos }: { photos: ImageElement[] }) {
         // pinned: the preset list is long, the slider must stay in reach
         <div className="cf-ctx__pinned">
           <Slider
-            label="Intensity"
+            label={m.panelsContext.filters.intensity}
             showValue
             min={0}
             max={100}
@@ -110,7 +107,7 @@ function FiltersTab({ photos }: { photos: ImageElement[] }) {
         </div>
       ) : null}
       <Section>
-        <div className="cf-flt__grid" role="group" aria-label="Filter presets">
+        <div className="cf-flt__grid" role="group" aria-label={m.panelsContext.filters.presets}>
           {FILTER_PRESETS.map((p) => (
             <button
               key={p.id}

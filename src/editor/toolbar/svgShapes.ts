@@ -11,6 +11,7 @@ import { getActions, getActivePage, pageOf, useEditor } from "@/core/store";
 import { MAX_POINTS, MAX_SHAPES, convertToShapes as shapesInPlaceOf, type ConvertedElement } from "@/core/svgImport";
 import type { DesignElement, GraphicElement, ID, ImageElement, TextElement } from "@/core/types";
 import type { TextShapes } from "@/render/textOutline";
+import { m } from "@/i18n";
 import { toast } from "@/ui";
 import { keepFocusInEditor } from "./combine";
 
@@ -36,21 +37,15 @@ async function markupOf(el: ImageElement | GraphicElement): Promise<string | und
   return asset?.kind === "svg" ? asset.blob.text() : null;
 }
 
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /** What the person is told after a conversion. */
-function summary(made: ConvertedElement): string {
-  const parts = [`Converted to ${count(made.count, "shape", "shapes")}.`];
-  if (made.skipped) parts.push(`${count(made.skipped, "part could not be converted and was", "parts could not be converted and were")} left out.`);
-  if (made.simplified) parts.push(`${count(made.simplified, "part was", "parts were")} made simpler: clipping, masks, effects and patterns are not kept.`);
-  return parts.join(" ");
-}
+const summary = (made: ConvertedElement): string => m.editor.convert.drawingDone(made.count, made.skipped, made.simplified);
 
-const REFUSED: Record<NonNullable<ConvertedElement["problem"]>, string> = {
-  "not-plain": "This drawing has parts that cannot become shapes (text, pictures or styles), so it stays as it is.",
-  unreadable: "The drawing could not be read, so nothing was changed.",
-  "too-large": `This drawing is too large to convert: it has more than ${MAX_SHAPES.toLocaleString("en-US")} shapes or ${MAX_POINTS.toLocaleString("en-US")} points. Nothing was changed.`,
-};
+/** What the person is told when a drawing was not converted. */
+function refusal(problem: NonNullable<ConvertedElement["problem"]>): string {
+  if (problem === "not-plain") return m.editor.convert.notPlain;
+  if (problem === "unreadable") return m.editor.convert.drawingUnreadable;
+  return m.editor.convert.drawingTooLarge(MAX_SHAPES, MAX_POINTS);
+}
 
 /**
  * Replaces the element `id` of the open page by the shapes of its drawing: a group of them, or the shape itself when there is
@@ -62,7 +57,7 @@ export async function convertToShapes(id: ID): Promise<boolean> {
   if (!page || !hit || !isConvertible(hit.el) || hit.el.locked) return false;
   const el = hit.el;
   if (hit.parent) {
-    toast.info("Take it out of its group first: inside a group it cannot be converted to shapes.");
+    toast.info(m.editor.convert.inGroup);
     return false;
   }
   if (el.type === "text") return convertText(el, page.id);
@@ -70,21 +65,21 @@ export async function convertToShapes(id: ID): Promise<boolean> {
   try {
     markup = await markupOf(el);
   } catch {
-    toast.error("The picture could not be read, so nothing was changed. Try again.");
+    toast.error(m.editor.convert.pictureUnreadable);
     return false;
   }
   if (markup === null) {
-    toast.info("Only a picture that is an SVG drawing can be converted to shapes. This one is made of pixels.");
+    toast.info(m.editor.convert.pixels);
     return false;
   }
   // an element that was edited since is another object
   if (pageOf(useEditor.getState().design, page.id)?.elements.includes(el) !== true) {
-    toast.info("The picture changed in the meantime, so nothing was changed.");
+    toast.info(m.editor.convert.pictureChanged);
     return false;
   }
   const made = shapesInPlaceOf(el, markup);
   if (!made.element) {
-    toast.info(made.problem ? REFUSED[made.problem] : "Nothing in this drawing could be converted to shapes, so it stays a picture.");
+    toast.info(made.problem ? refusal(made.problem) : m.editor.convert.nothingConverted);
     return false;
   }
   getActions().replaceElements([el.id], made.element, page.id);
@@ -93,28 +88,23 @@ export async function convertToShapes(id: ID): Promise<boolean> {
   return true;
 }
 
-const families = (names: readonly string[]) => names.map((name) => `"${name}"`).join(", ");
-
 /** What the person is told when a text was not converted. */
 function textRefusal(made: TextShapes): string {
   switch (made.problem) {
     case "curved":
-      return "Curved text cannot be converted to shapes yet. Set Curve to 0 first, then convert.";
+      return m.editor.convert.curved;
     case "no-font":
-      return `Craftly does not have the font file of ${families(made.noFont)}, so the letters cannot be converted. Choose a font from the list, or upload this one under Brand kit > Your fonts.`;
+      return m.editor.convert.noFont(made.noFont);
     case "too-large":
-      return `This text is too long to convert: it has more than ${MAX_SHAPES.toLocaleString("en-US")} letters or ${MAX_POINTS.toLocaleString("en-US")} points. Nothing was changed.`;
+      return m.editor.convert.textTooLarge(MAX_SHAPES, MAX_POINTS);
     default:
-      return "This text has no letters to convert, so it stays as it is.";
+      return m.editor.convert.noLetters;
   }
 }
 
 /** What the person is told after a text was converted. */
 function textSummary(made: TextShapes): string {
-  const parts = [`Converted to ${count(made.count, "shape", "shapes")}. The text can no longer be edited as text; Undo brings it back.`];
-  if (made.missing) parts.push(`${count(made.missing, "letter is", "letters are")} not in the font and ${made.missing === 1 ? "was" : "were"} left out.`);
-  if (made.effectDropped) parts.push("The text effect is not kept.");
-  return parts.join(" ");
+  return m.editor.convert.textDone(made.count, made.missing, made.effectDropped);
 }
 
 /** Replaces the text box by the outlines of its letters, in one step of undo. */
@@ -125,11 +115,11 @@ async function convertText(el: TextElement, pageId: ID): Promise<boolean> {
     made = await textToShapes(el);
   } catch (error) {
     console.error("Craftly could not convert a text to shapes", error);
-    toast.error("The font could not be read, so nothing was changed. Try again.");
+    toast.error(m.editor.convert.fontUnreadable);
     return false;
   }
   if (pageOf(useEditor.getState().design, pageId)?.elements.includes(el) !== true) {
-    toast.info("The text changed in the meantime, so nothing was changed.");
+    toast.info(m.editor.convert.textChanged);
     return false;
   }
   if (!made.element) {

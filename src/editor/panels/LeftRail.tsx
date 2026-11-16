@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { getActions, useEditor, type LeftTab } from "@/core/store";
+import { m } from "@/i18n";
 import { IconApps, IconBrand, IconCloudUpload, IconElements, IconFolder, IconTemplate, IconText, IconTools, cx, type LucideIcon } from "@/ui";
 import { preloadTab } from "./SidePanel";
 import { closeToolsPalette, toggleToolsPalette } from "./shared/railState";
@@ -14,14 +15,14 @@ interface RailTab {
 
 /** Top to bottom, exactly as in the editor this mirrors. */
 export const RAIL_TABS: RailTab[] = [
-  { id: "templates", label: "Templates", icon: IconTemplate },
-  { id: "elements", label: "Elements", icon: IconElements },
-  { id: "text", label: "Text", icon: IconText },
-  { id: "brand", label: "Brand", icon: IconBrand },
-  { id: "uploads", label: "Uploads", icon: IconCloudUpload },
-  { id: "tools", label: "Tools", icon: IconTools },
-  { id: "projects", label: "Projects", icon: IconFolder },
-  { id: "apps", label: "Apps", icon: IconApps },
+  { id: "templates", label: m.panelsTabs.tabs.templates, icon: IconTemplate },
+  { id: "elements", label: m.panelsTabs.tabs.elements, icon: IconElements },
+  { id: "text", label: m.panelsTabs.tabs.text, icon: IconText },
+  { id: "brand", label: m.panelsTabs.tabs.brand, icon: IconBrand },
+  { id: "uploads", label: m.panelsTabs.tabs.uploads, icon: IconCloudUpload },
+  { id: "tools", label: m.panelsTabs.tabs.tools, icon: IconTools },
+  { id: "projects", label: m.panelsTabs.tabs.projects, icon: IconFolder },
+  { id: "apps", label: m.panelsTabs.tabs.apps, icon: IconApps },
 ];
 
 /**
@@ -65,9 +66,9 @@ export function LeftRail() {
   const activeId = RAIL_TABS.find((t) => isActive(t.id))?.id ?? leftTab;
 
   return (
-    <nav className={cx("cf-leftrail", !panelOpen && "is-flush")} aria-label="Editor tools">
+    <nav className={cx("cf-leftrail", !panelOpen && "is-flush")} aria-label={m.panelsTabs.leftRail.label}>
       {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- the tabs are the focusable parts; the arrow keys move between them */}
-      <div ref={listRef} className="cf-leftrail__list" role="tablist" aria-orientation="vertical" aria-label="Editor tools" onKeyDown={onKeyDown}>
+      <div ref={listRef} className="cf-leftrail__list" role="tablist" aria-orientation="vertical" aria-label={m.panelsTabs.leftRail.label} onKeyDown={onKeyDown}>
         {RAIL_TABS.map(({ id, label, icon: Icon }) => {
           const active = isActive(id);
           return (

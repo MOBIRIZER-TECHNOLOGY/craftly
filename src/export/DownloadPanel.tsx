@@ -3,6 +3,7 @@ import "./DownloadPanel.css";
 import { PageThumb } from "@/components/PageThumb";
 import { useEditor } from "@/core/store";
 import type { Design } from "@/core/types";
+import { m } from "@/i18n";
 import {
   Badge,
   Button,
@@ -30,7 +31,7 @@ import { detectVideoSupport, type VideoSupport } from "./animated/video";
 import { describeExportError, isCancelled } from "./errors";
 import { downloadBlob, exportDesign, type ExportFormat } from "./exporters";
 import { exportSeveralSizes } from "./multiSize";
-import { CURRENT_SIZE_ID, MAX_SIZES, defaultSizeIds, multiSizeOptions, planMultiSize, sizeChoices, sizeLabel, type MultiSizeFormat } from "./multiSizePlan";
+import { CURRENT_SIZE_ID, MAX_SIZES, ORIGINAL_SIZE_NAME, defaultSizeIds, multiSizeOptions, planMultiSize, sizeChoices, sizeLabel, type MultiSizeFormat } from "./multiSizePlan";
 import { MAX_BLEED_MM, MAX_EXPORT_SIDE, estimateExportBytes, formatBytes, pagesLabel, planRaster, resolveExportOptions } from "./options";
 import {
   DEFAULT_DOWNLOAD_SETTINGS,
@@ -101,23 +102,27 @@ function Option({ name, hint, badge }: { name: string; hint: string; badge?: str
   );
 }
 
+const words = m.exporting.panel;
+const TYPES = words.types;
+
 const FILE_OPTIONS: SelectOption<FileKey>[] = [
-  { value: "png", icon: <IconFileImage aria-hidden="true" />, textValue: "PNG", label: <Option name="PNG" badge="Suggested" hint="Sharp images" /> },
-  { value: "jpg", icon: <IconImage aria-hidden="true" />, textValue: "JPG", label: <Option name="JPG" hint="Small photos" /> },
-  { value: "pdf-standard", icon: <IconDocument aria-hidden="true" />, textValue: "PDF Standard", label: <Option name="PDF Standard" hint="Screens and sharing" /> },
-  { value: "pdf-print", icon: <IconPrint aria-hidden="true" />, textValue: "PDF Print", label: <Option name="PDF Print" hint="300 dpi" /> },
-  { value: "svg", icon: <IconFileCode aria-hidden="true" />, textValue: "SVG", label: <Option name="SVG" hint="Editable vector" /> },
-  { value: "gif", icon: <IconImages aria-hidden="true" />, textValue: "Animated GIF", label: <Option name="Animated GIF" hint="Plays on any device" /> },
-  { value: "webm", icon: <IconVideo aria-hidden="true" />, textValue: "Video (WebM)", label: <Option name="Video (WebM)" hint="Smooth, small files" /> },
-  { value: "sizes", icon: <IconLayers aria-hidden="true" />, textValue: "Several sizes", label: <Option name="Several sizes" hint="One ZIP, a file per size" /> },
-  { value: "html", icon: <IconWebsite aria-hidden="true" />, textValue: "Web page (HTML)", label: <Option name="Web page (HTML)" hint="A slideshow in any browser" /> },
+  { value: "png", icon: <IconFileImage aria-hidden="true" />, textValue: "PNG", label: <Option name="PNG" badge={m.exporting.panel.suggested} hint={TYPES.pngHint} /> },
+  { value: "jpg", icon: <IconImage aria-hidden="true" />, textValue: "JPG", label: <Option name="JPG" hint={TYPES.jpgHint} /> },
+  { value: "pdf-standard", icon: <IconDocument aria-hidden="true" />, textValue: TYPES.pdfStandard, label: <Option name={TYPES.pdfStandard} hint={TYPES.pdfStandardHint} /> },
+  { value: "pdf-print", icon: <IconPrint aria-hidden="true" />, textValue: TYPES.pdfPrint, label: <Option name={TYPES.pdfPrint} hint={TYPES.pdfPrintHint} /> },
+  { value: "svg", icon: <IconFileCode aria-hidden="true" />, textValue: "SVG", label: <Option name="SVG" hint={TYPES.svgHint} /> },
+  { value: "gif", icon: <IconImages aria-hidden="true" />, textValue: TYPES.gif, label: <Option name={TYPES.gif} hint={TYPES.gifHint} /> },
+  { value: "webm", icon: <IconVideo aria-hidden="true" />, textValue: TYPES.video, label: <Option name={TYPES.video} hint={TYPES.videoHint} /> },
+  { value: "sizes", icon: <IconLayers aria-hidden="true" />, textValue: TYPES.sizes, label: <Option name={TYPES.sizes} hint={TYPES.sizesHint} /> },
+  { value: "html", icon: <IconWebsite aria-hidden="true" />, textValue: TYPES.html, label: <Option name={TYPES.html} hint={TYPES.htmlHint} /> },
 ];
 
 /** The list as this browser can use it: a video the browser cannot record stays visible but disabled, with the reason. */
 const optionsFor = (video: VideoSupport): SelectOption<FileKey>[] =>
-  video.ok
-    ? FILE_OPTIONS
-    : FILE_OPTIONS.map((o) => (o.value === "webm" ? { ...o, disabled: true, label: <Option name="Video (WebM)" hint="Not supported in this browser" /> } : o));
+  video.ok ? FILE_OPTIONS : FILE_OPTIONS.map((o) => (o.value === "webm" ? { ...o, disabled: true, label: <Option name={TYPES.video} hint={TYPES.videoUnsupported} /> } : o));
+
+/** The name of a size as the panel shows it: "Original size" stays English in the file names, and is said in the page's language here. */
+const sizeName = (name: string): string => (name === ORIGINAL_SIZE_NAME ? words.originalSize : name);
 
 const fileKeyOf = (s: DownloadSettings): FileKey => (s.format === "pdf" ? (s.pdfMode === "print" ? "pdf-print" : "pdf-standard") : s.format);
 
@@ -141,7 +146,7 @@ function Field({ label, id, children, aside }: { label: string; id?: string; chi
 
 const sizeText = (design: Pick<Design, "width" | "height">, scale: number) => {
   const plan = planRaster(design.width, design.height, { format: "png", scale, pdfMode: "standard" });
-  return { plan, text: `${plan.width.toLocaleString("en-US")} × ${plan.height.toLocaleString("en-US")} px` };
+  return { plan, text: m.exporting.panel.pixels(plan.width, plan.height) };
 };
 
 interface PageGridProps {
@@ -152,7 +157,7 @@ interface PageGridProps {
 
 function PageGrid({ design, selected, onToggle }: PageGridProps) {
   return (
-    <div className="cf-dl__grid" role="group" aria-label="Pages to download">
+    <div className="cf-dl__grid" role="group" aria-label={m.exporting.panel.pagesToDownload}>
       {design.pages.map((page, index) => {
         const on = selected.has(index);
         return (
@@ -160,7 +165,7 @@ function PageGrid({ design, selected, onToggle }: PageGridProps) {
             <button type="button" className="cf-dl__thumb" tabIndex={-1} aria-hidden="true" onClick={() => onToggle(index)}>
               <PageThumb design={design} page={page} width={96} sharp={false} />
             </button>
-            <Checkbox className="cf-dl__check" checked={on} onChange={() => onToggle(index)} aria-label={`Page ${index + 1}`} />
+            <Checkbox className="cf-dl__check" checked={on} onChange={() => onToggle(index)} aria-label={m.exporting.panel.page(index + 1)} />
             <span className="cf-dl__num">{index + 1}</span>
           </div>
         );
@@ -254,7 +259,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
   const fileOptions = useMemo(() => optionsFor(video), [video]);
   const tabHidden = useTabHidden(progress !== null && !bundle && settings.format === "webm");
 
-  if (!design) return <div className="cf-dl cf-dl--empty">Open a design to download it.</div>;
+  if (!design) return <div className="cf-dl cf-dl--empty">{words.empty}</div>;
 
   const busy = progress !== null;
   const multi = pageCount > 1;
@@ -297,11 +302,11 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
             await exportWebPage(design, { pages, notes: webNotes, lang: document.documentElement.lang || "en" }, report, controller.signal)
           : await exportDesign(design, options, report, controller.signal);
       downloadBlob(file.blob, file.name);
-      toast.show({ kind: "success", message: `Downloaded ${file.name}` });
+      toast.show({ kind: "success", message: words.downloaded(file.name) });
       if (file.note) toast.show({ kind: "info", message: file.note, duration: 9000 });
       if (alive.current) onDone?.();
     } catch (error) {
-      if (isCancelled(error)) toast.show({ kind: "info", message: "Download cancelled" });
+      if (isCancelled(error)) toast.show({ kind: "info", message: words.cancelled });
       else {
         console.error("Export failed", error);
         // the size multiplier belongs in the message only where one was chosen: a single PNG or JPG
@@ -316,46 +321,47 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
     }
   };
 
+  const { status: says } = words;
   const status = !progress
     ? null
     : progress.done >= progress.total
-      ? "Finishing up…"
+      ? says.finishing
       : several
-        ? `Rendering picture ${progress.done + 1} of ${progress.total}…`
+        ? says.picture(progress.done + 1, progress.total)
         : format === "webm"
           ? tabHidden
-            ? "Recording pauses while this tab is in the background. Switch back to keep going."
-            : `Recording ${Math.floor(progress.done / VIDEO_FPS)} s of ${Math.round(progress.total / VIDEO_FPS)} s…`
+            ? says.recordingHidden
+            : says.recording(Math.floor(progress.done / VIDEO_FPS), Math.round(progress.total / VIDEO_FPS))
           : format === "gif"
             ? progress.done === 0
-              ? "Preparing your download…"
-              : `Rendering frame ${progress.done + 1} of ${progress.total}…`
+              ? says.preparing
+              : says.frame(progress.done + 1, progress.total)
             : progress.total === 1
-              ? "Preparing your download…"
-              : `Preparing page ${progress.done + 1} of ${progress.total}…`;
+              ? says.preparing
+              : says.page(progress.done + 1, progress.total);
 
   const sliderSize = (
     <>
       <Slider
-        label="Size"
+        label={words.size}
         min={SIZE_MIN}
         max={SIZE_MAX}
         step={0.25}
         value={settings.scale}
         showValue
-        format={(v) => `×${v} · ${sizeText(design, v).text}`}
+        format={(v) => words.sizeValue(v, sizeText(design, v).text)}
         onChange={(v) => patch({ scale: v })}
         disabled={busy}
       />
-      {sizing.plan.clamped ? <p className="cf-dl__hint">Reduced to fit {MAX_EXPORT_SIDE.toLocaleString("en-US")} px on the longest side.</p> : null}
+      {sizing.plan.clamped ? <p className="cf-dl__hint">{words.reduced(MAX_EXPORT_SIDE)}</p> : null}
     </>
   );
 
   return (
-    <section className="cf-dl" aria-label="Download">
-      <Field label="File type" id="cf-dl-type">
+    <section className="cf-dl" aria-label={words.download}>
+      <Field label={words.fileType} id="cf-dl-type">
         <Select<FileKey>
-          aria-label="File type"
+          aria-label={words.fileType}
           value={bundle ?? fileKeyOf(settings)}
           options={fileOptions}
           disabled={busy}
@@ -375,7 +381,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
       {format === "png" && (
         <div className="cf-dl__group">
           {sliderSize}
-          <Switch checked={settings.transparent} onChange={(transparent) => patch({ transparent })} label="Transparent background" disabled={busy} />
+          <Switch checked={settings.transparent} onChange={(transparent) => patch({ transparent })} label={words.transparent} disabled={busy} />
         </div>
       )}
 
@@ -383,13 +389,13 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         <div className="cf-dl__group">
           {sliderSize}
           <Slider
-            label="Quality"
+            label={words.quality}
             min={10}
             max={100}
             step={5}
             value={Math.round(settings.quality * 100)}
             showValue
-            format={(v) => `${Math.round(v)}%`}
+            format={(v) => words.percent(Math.round(v))}
             onChange={(v) => patch({ quality: v / 100 })}
             disabled={busy}
           />
@@ -398,29 +404,29 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
 
       {format === "pdf" && (
         <div className="cf-dl__group">
-          <Field label="Presets">
+          <Field label={words.presets}>
             <Segmented<"standard" | "print">
-              aria-label="PDF preset"
+              aria-label={words.pdfPreset}
               fullWidth
               value={settings.pdfMode}
               onChange={(pdfMode) => patch({ pdfMode })}
               options={[
-                { value: "standard", label: "Digital" },
-                { value: "print", label: "Print" },
+                { value: "standard", label: words.digital },
+                { value: "print", label: words.print },
               ]}
             />
           </Field>
-          <p className="cf-dl__hint">{settings.pdfMode === "print" ? "300 dpi pages, sharp when printed." : "Light pages for screens, email and sharing."}</p>
-          <Switch checked={settings.compress} onChange={(compress) => patch({ compress })} label="Compress PDF" disabled={busy} />
-          <p className="cf-dl__hint">Makes the file smaller with slightly lower image quality.</p>
+          <p className="cf-dl__hint">{settings.pdfMode === "print" ? words.printHint : words.digitalHint}</p>
+          <Switch checked={settings.compress} onChange={(compress) => patch({ compress })} label={words.compress} disabled={busy} />
+          <p className="cf-dl__hint">{words.compressHint}</p>
           {/* what only a printer needs: shown for the print preset alone */}
           {settings.pdfMode === "print" ? (
             <>
-              <Switch checked={settings.bleed} onChange={(bleed) => patch({ bleed })} label="Bleed" disabled={busy} />
+              <Switch checked={settings.bleed} onChange={(bleed) => patch({ bleed })} label={words.bleed} disabled={busy} />
               {settings.bleed ? (
                 <>
                   <NumberField
-                    aria-label="Bleed size"
+                    aria-label={words.bleedSize}
                     value={settings.bleedMm}
                     min={0}
                     max={MAX_BLEED_MM}
@@ -432,13 +438,11 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
                     onChange={(bleedMm) => patch({ bleedMm })}
                     disabled={busy}
                   />
-                  <p className="cf-dl__hint">
-                    The page background is extended {settings.bleedMm} mm beyond every edge, so nothing white shows when the sheet is cut. Keep what matters away from the edges.
-                  </p>
+                  <p className="cf-dl__hint">{words.bleedHint(settings.bleedMm)}</p>
                 </>
               ) : null}
-              <Switch checked={settings.cropMarks} onChange={(cropMarks) => patch({ cropMarks })} label="Crop marks" disabled={busy} />
-              <p className="cf-dl__hint">Thin lines outside the page that show the printer where to cut. The PDF page becomes larger to hold them.</p>
+              <Switch checked={settings.cropMarks} onChange={(cropMarks) => patch({ cropMarks })} label={words.cropMarks} disabled={busy} />
+              <p className="cf-dl__hint">{words.cropMarksHint}</p>
             </>
           ) : null}
         </div>
@@ -446,16 +450,16 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
 
       {format === "svg" && (
         <div className="cf-dl__group">
-          <Switch checked={settings.embedFonts} onChange={(embedFonts) => patch({ embedFonts })} label="Embed fonts" disabled={busy} />
-          <p className="cf-dl__hint">Text looks the same everywhere. Turn off for a smaller file; the SVG then relies on fonts installed on the viewing device.</p>
+          <Switch checked={settings.embedFonts} onChange={(embedFonts) => patch({ embedFonts })} label={words.embedFonts} disabled={busy} />
+          <p className="cf-dl__hint">{words.embedFontsHint}</p>
         </div>
       )}
 
       {animated && animation && (
         <div className="cf-dl__group">
-          <Field label="Resolution" aside={<span className="cf-dl__count">{`${animation.width.toLocaleString("en-US")} × ${animation.height.toLocaleString("en-US")} px`}</span>}>
+          <Field label={words.resolution} aside={<span className="cf-dl__count">{words.pixels(animation.width, animation.height)}</span>}>
             <Segmented<AnimResolution>
-              aria-label="Resolution"
+              aria-label={words.resolution}
               size="sm"
               fullWidth
               value={settings.resolution}
@@ -464,19 +468,19 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
             />
           </Field>
           {format === "gif" ? (
-            <Field label="Frame rate">
+            <Field label={words.frameRate}>
               <Segmented<number>
-                aria-label="Frame rate"
+                aria-label={words.frameRate}
                 size="sm"
                 fullWidth
                 value={settings.gifFps}
                 onChange={(gifFps) => patch({ gifFps })}
-                options={GIF_FPS_CHOICES.map((fps) => ({ value: fps, label: `${fps} fps`, disabled: busy }))}
+                options={GIF_FPS_CHOICES.map((fps) => ({ value: fps, label: words.fps(fps), disabled: busy }))}
               />
             </Field>
           ) : (
-            <Field label="Frame rate" aside={<span className="cf-dl__count">{VIDEO_FPS} fps</span>}>
-              <p className="cf-dl__hint">Recorded as it plays, so it takes as long as the animation. Keep this tab open and in front while it records.</p>
+            <Field label={words.frameRate} aside={<span className="cf-dl__count">{words.fps(VIDEO_FPS)}</span>}>
+              <p className="cf-dl__hint">{words.videoHint}</p>
             </Field>
           )}
           {/* one note at a time, the most useful first: what stops the download, then why it looks static, then a size warning */}
@@ -485,9 +489,9 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
               {problem}
             </p>
           ) : !animation.animated ? (
-            <p className="cf-dl__note">Nothing is animated yet - use Animate on the toolbar</p>
+            <p className="cf-dl__note">{words.notAnimated}</p>
           ) : bigGif ? (
-            <p className="cf-dl__note cf-dl__note--warn">Many sites accept GIFs of about 15 MB at most. A lower resolution or frame rate makes this one smaller.</p>
+            <p className="cf-dl__note cf-dl__note--warn">{words.bigGif}</p>
           ) : null}
         </div>
       )}
@@ -495,14 +499,14 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
       {sizePlan && (
         <div className="cf-dl__group">
           <Field
-            label="Sizes"
+            label={words.sizes}
             aside={
               <span className="cf-dl__count" aria-live="polite">
-                {sizePlan.sizes.length} of {MAX_SIZES}
+                {words.sizesCount(sizePlan.sizes.length, MAX_SIZES)}
               </span>
             }
           >
-            <div className="cf-dl__sizes" role="group" aria-label="Sizes to download">
+            <div className="cf-dl__sizes" role="group" aria-label={words.sizesToDownload}>
               {choices.map((choice) => (
                 <Checkbox
                   key={choice.id}
@@ -512,7 +516,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
                   disabled={busy}
                   label={
                     <>
-                      <span className="cf-dl__size-name">{choice.id === CURRENT_SIZE_ID ? `${choice.name} (this design)` : choice.name}</span>
+                      <span className="cf-dl__size-name">{choice.id === CURRENT_SIZE_ID ? words.thisDesign(sizeName(choice.name)) : choice.name}</span>
                       <span className="cf-dl__size-px">{sizeLabel(choice)}</span>
                     </>
                   }
@@ -520,9 +524,9 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
               ))}
             </div>
           </Field>
-          <Field label="Format">
+          <Field label={words.format}>
             <Segmented<MultiSizeFormat>
-              aria-label="Format of each size"
+              aria-label={words.formatOfEachSize}
               size="sm"
               fullWidth
               value={sizesFormat}
@@ -534,10 +538,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
               ]}
             />
           </Field>
-          <p className="cf-dl__hint">
-            Every size is made from a copy that is scaled to fit and centred, as Resize does it. This design is not changed. The files come together in one .zip
-            {sizesFormat === "pdf" ? ", one PDF for each size." : ", each exactly as many pixels as its size."}
-          </p>
+          <p className="cf-dl__hint">{sizesFormat === "pdf" ? words.sizesHintPdf : words.sizesHintPictures}</p>
           {sizePlan.problem && pages.length ? (
             <p className="cf-dl__note cf-dl__note--error" role="alert">
               {sizePlan.problem}
@@ -548,20 +549,15 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
 
       {format === "html" && (
         <div className="cf-dl__group">
-          <p className="cf-dl__hint">
-            One .html file that shows the pages as a slideshow in any browser, for people who do not have Craftly: next and back with the buttons, the arrow keys, a click or a
-            swipe, and a full screen button. Nothing is loaded from the internet.
-          </p>
-          <p className="cf-dl__hint">Every page is a picture. Animations, transitions and links are not carried over; pages change with a short fade.</p>
-          <Switch checked={webNotes} onChange={setWebNotes} label="Include speaker notes" disabled={busy} />
-          <p className="cf-dl__hint">
-            {webNotes ? "The notes are shown under each page. Everyone who gets the file can read them." : "Notes are private and stay out of the file."}
-          </p>
+          <p className="cf-dl__hint">{words.htmlHint}</p>
+          <p className="cf-dl__hint">{words.htmlPictures}</p>
+          <Switch checked={webNotes} onChange={setWebNotes} label={words.includeNotes} disabled={busy} />
+          <p className="cf-dl__hint">{webNotes ? words.notesShown : words.notesPrivate}</p>
         </div>
       )}
 
       <Field
-        label="Select pages"
+        label={words.selectPages}
         aside={
           <span className="cf-dl__count" aria-live="polite">
             {pagesLabel(pages.length)}
@@ -570,15 +566,15 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
       >
         {multi ? (
           <Segmented<PagesMode>
-            aria-label="Pages to download"
+            aria-label={words.pagesToDownload}
             size="sm"
             fullWidth
             value={settings.pagesMode}
             onChange={(pagesMode) => patch({ pagesMode })}
             options={[
-              { value: "all", label: "All pages" },
-              { value: "current", label: "Current page" },
-              { value: "custom", label: "Custom" },
+              { value: "all", label: words.allPages },
+              { value: "current", label: words.currentPage },
+              { value: "custom", label: words.custom },
             ]}
           />
         ) : null}
@@ -586,10 +582,10 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
           <>
             <div className="cf-dl__bulk">
               <Button size="sm" variant="ghost" onClick={() => setCustom(new Set(Array.from({ length: pageCount }, (_v, i) => i)))} disabled={customSet.size === pageCount}>
-                Select all
+                {words.selectAll}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setCustom(new Set())} disabled={customSet.size === 0}>
-                Select none
+                {words.selectNone}
               </Button>
             </div>
             <PageGrid design={design} selected={customSet} onToggle={toggleCustom} />
@@ -597,8 +593,13 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         ) : null}
         {multi && settings.pagesMode !== "custom" ? (
           <p className="cf-dl__hint">
-            {settings.pagesMode === "current" ? `Page ${activeIndex + 1} of ${pageCount}` : "Every page in this design"}
-            {pages.length > 1 && animated ? " - played one after another" : pages.length > 1 && format !== "pdf" && !bundle ? " - saved together as a .zip" : ""}
+            {settings.pagesMode === "current"
+              ? words.pageOf(activeIndex + 1, pageCount)
+              : pages.length > 1 && animated
+                ? words.everyPagePlayed
+                : pages.length > 1 && format !== "pdf" && !bundle
+                  ? words.everyPageZip
+                  : words.everyPage}
           </p>
         ) : null}
       </Field>
@@ -607,26 +608,26 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         <p className="cf-dl__estimate">
           {pages.length ? (
             <>
-              Estimated size <strong>~{formatBytes(estimate)}</strong>
+              {words.estimated} <strong>~{formatBytes(estimate)}</strong>
               {animation ? <> · {formatDuration(animation.total)}</> : null}
-              {sizePlan ? <> · {sizePlan.files === 1 ? "1 file" : `${sizePlan.files} files`}</> : null}
+              {sizePlan ? <> · {words.files(sizePlan.files)}</> : null}
             </>
           ) : (
-            "Select at least one page to download."
+            m.exporting.errors.noPages
           )}
         </p>
         <Button variant="primary" size="lg" block icon={<IconDownload aria-hidden="true" />} loading={busy} disabled={!pages.length || !!refusal} onClick={run}>
-          Download
+          {words.download}
         </Button>
         {busy ? (
           <div className="cf-dl__progress">
-            <div className="cf-dl__bar" role="progressbar" aria-label="Download progress" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
+            <div className="cf-dl__bar" role="progressbar" aria-label={words.progress} aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
               <span style={{ width: `${Math.max(6, (progress.done / progress.total) * 100)}%` }} />
             </div>
             <div className="cf-dl__status">
               <span role="status">{status}</span>
               <Button size="sm" variant="ghost" onClick={() => abortRef.current?.abort()}>
-                Cancel
+                {m.common.cancel}
               </Button>
             </div>
           </div>

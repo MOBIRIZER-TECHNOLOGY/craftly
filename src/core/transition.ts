@@ -3,6 +3,7 @@
  * says how the old and the new page are drawn part-way through a transition, `buildTimeline` / `frameAt`
  * say which page (and which moment of it) is on screen at a given second of an automatic playback.
  */
+import { m } from "@/i18n";
 import { easeInOutCubic, easeOutCubic, pageDuration, type AnimClip } from "./animation";
 import type { AnimDirection, Page, PageTransition } from "./types";
 
@@ -35,12 +36,12 @@ export interface TransitionPreset {
 const DIRS: readonly AnimDirection[] = ["left", "right", "up", "down"];
 
 export const TRANSITION_PRESETS: readonly TransitionPreset[] = [
-  { id: "dissolve", label: "Dissolve", defaultDuration: 0.7 },
-  { id: "slide", label: "Slide", directions: DIRS, defaultDirection: "left", defaultDuration: 0.6 },
-  { id: "push", label: "Push", directions: DIRS, defaultDirection: "left", defaultDuration: 0.6 },
-  { id: "wipe", label: "Wipe", directions: DIRS, defaultDirection: "left", defaultDuration: 0.7 },
-  { id: "zoom", label: "Zoom", defaultDuration: 0.7 },
-  { id: "fade-black", label: "Dip to black", defaultDuration: 1 },
+  { id: "dissolve", label: m.core.transitions["dissolve"], defaultDuration: 0.7 },
+  { id: "slide", label: m.core.transitions["slide"], directions: DIRS, defaultDirection: "left", defaultDuration: 0.6 },
+  { id: "push", label: m.core.transitions["push"], directions: DIRS, defaultDirection: "left", defaultDuration: 0.6 },
+  { id: "wipe", label: m.core.transitions["wipe"], directions: DIRS, defaultDirection: "left", defaultDuration: 0.7 },
+  { id: "zoom", label: m.core.transitions["zoom"], defaultDuration: 0.7 },
+  { id: "fade-black", label: m.core.transitions["fade-black"], defaultDuration: 1 },
 ];
 
 export const getTransitionPreset = (id: string): TransitionPreset | undefined => TRANSITION_PRESETS.find((p) => p.id === id);

@@ -8,6 +8,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { getActions, useActivePage, useEditor, useSelectedElements } from "@/core/store";
 import { useGesture } from "@/editor/canvas/gestureStore";
 import { designToScreen, useView } from "@/editor/canvas/viewStore";
+import { m } from "@/i18n";
 import { IconDuplicate, IconLock, IconTrash, IconUnlock } from "@/ui";
 import { MoreButton } from "./common";
 import { TBIcon } from "./kit";
@@ -73,14 +74,19 @@ export function MiniToolbar() {
       ref={ref}
       className="cf-minitb"
       role="toolbar"
-      aria-label="Selected element quick actions"
+      aria-label={m.editor.toolbar.quickActions}
       data-cf-ui
       data-cf-minitoolbar={side}
       style={{ left: Math.round(left), top: Math.round(top) }}
     >
-      <TBIcon label={allLocked ? "Unlock" : "Lock"} shortcut="Alt+Shift+L" icon={allLocked ? <IconUnlock /> : <IconLock />} onClick={() => actions.setLocked(ids, !allLocked)} />
-      {!allLocked && <TBIcon label="Duplicate" shortcut="Ctrl+D" icon={<IconDuplicate />} onClick={() => actions.duplicateSelection()} />}
-      {!allLocked && <TBIcon label="Delete" shortcut="Delete" icon={<IconTrash />} onClick={() => actions.deleteElements()} />}
+      <TBIcon
+        label={allLocked ? m.editor.actions.unlock : m.editor.actions.lock}
+        shortcut="Alt+Shift+L"
+        icon={allLocked ? <IconUnlock /> : <IconLock />}
+        onClick={() => actions.setLocked(ids, !allLocked)}
+      />
+      {!allLocked && <TBIcon label={m.editor.actions.duplicate} shortcut="Ctrl+D" icon={<IconDuplicate />} onClick={() => actions.duplicateSelection()} />}
+      {!allLocked && <TBIcon label={m.common.delete} shortcut="Delete" icon={<IconTrash />} onClick={() => actions.deleteElements()} />}
       <MoreButton />
     </div>
   );

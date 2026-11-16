@@ -3,6 +3,7 @@ import { boundsOfElements } from "@/core/geometry";
 import { canArrange, type AlignMode, type ArrangeMode } from "@/core/ops";
 import { getActions, getActivePage, useActivePage, useEditor, useSelectedElements } from "@/core/store";
 import type { DesignElement, ID, Point } from "@/core/types";
+import { m } from "@/i18n";
 import {
   Button,
   IconAlignObjBottom,
@@ -29,20 +30,20 @@ import { useBatch } from "./useBatch";
 import "./ArrangeTab.css";
 
 const ARRANGE: Array<{ mode: ArrangeMode; label: string; icon: ReactNode }> = [
-  { mode: "forward", label: "Forward", icon: <IconBringForward /> },
-  { mode: "backward", label: "Backward", icon: <IconSendBackward /> },
-  { mode: "front", label: "To front", icon: <IconBringToFront /> },
-  { mode: "back", label: "To back", icon: <IconSendToBack /> },
+  { mode: "forward", label: m.panelsContext.arrange.modes.forward, icon: <IconBringForward /> },
+  { mode: "backward", label: m.panelsContext.arrange.modes.backward, icon: <IconSendBackward /> },
+  { mode: "front", label: m.panelsContext.arrange.modes.front, icon: <IconBringToFront /> },
+  { mode: "back", label: m.panelsContext.arrange.modes.back, icon: <IconSendToBack /> },
 ];
 
 /** Laid out like the real panel: Top | Left, Middle | Center, Bottom | Right. */
 const ALIGN: Array<{ mode: AlignMode; label: string; group: string; icon: ReactNode }> = [
-  { mode: "top", label: "Top", group: "Align top edges", icon: <IconAlignObjTop /> },
-  { mode: "left", label: "Left", group: "Align left edges", icon: <IconAlignObjLeft /> },
-  { mode: "middle", label: "Middle", group: "Align vertical centres", icon: <IconAlignObjMiddle /> },
-  { mode: "center", label: "Center", group: "Align horizontal centres", icon: <IconAlignObjCenter /> },
-  { mode: "bottom", label: "Bottom", group: "Align bottom edges", icon: <IconAlignObjBottom /> },
-  { mode: "right", label: "Right", group: "Align right edges", icon: <IconAlignObjRight /> },
+  { mode: "top", label: m.panelsContext.arrange.align.top, group: m.panelsContext.arrange.alignGroup.top, icon: <IconAlignObjTop /> },
+  { mode: "left", label: m.panelsContext.arrange.align.left, group: m.panelsContext.arrange.alignGroup.left, icon: <IconAlignObjLeft /> },
+  { mode: "middle", label: m.panelsContext.arrange.align.middle, group: m.panelsContext.arrange.alignGroup.middle, icon: <IconAlignObjMiddle /> },
+  { mode: "center", label: m.panelsContext.arrange.align.center, group: m.panelsContext.arrange.alignGroup.center, icon: <IconAlignObjCenter /> },
+  { mode: "bottom", label: m.panelsContext.arrange.align.bottom, group: m.panelsContext.arrange.alignGroup.bottom, icon: <IconAlignObjBottom /> },
+  { mode: "right", label: m.panelsContext.arrange.align.right, group: m.panelsContext.arrange.alignGroup.right, icon: <IconAlignObjRight /> },
 ];
 
 /** Icon row order for "Align selection": left, center, right | top, middle, bottom. */
@@ -84,9 +85,7 @@ export function ArrangeTab() {
   const actions = getActions();
 
   if (!page || els.length === 0) {
-    return (
-      <PanelEmpty icon={<IconPosition />} title="Nothing selected" text="Select an element on the page to arrange it, align it to the page or set its exact size and position." />
-    );
+    return <PanelEmpty icon={<IconPosition />} title={m.panelsContext.shared.nothingSelected} text={m.panelsContext.arrange.emptyText} />;
   }
 
   const ids = els.map((e) => e.id);
@@ -103,7 +102,7 @@ export function ArrangeTab() {
         </div>
       </Section>
 
-      <Section title="Align to page">
+      <Section title={m.panelsContext.arrange.alignToPage}>
         <div className="cf-arr__grid">
           {ALIGN.map((a) => (
             <Button key={a.mode} block className="cf-arr__btn" icon={a.icon} onClick={() => actions.align(a.mode, "page")}>
@@ -114,7 +113,7 @@ export function ArrangeTab() {
       </Section>
 
       {count > 1 ? (
-        <Section title="Align selection">
+        <Section title={m.panelsContext.arrange.alignSelection}>
           <div className="cf-arr__icons">
             {ALIGN_ROW.map((a) => (
               <IconButton key={a.mode} className="cf-arr__ibtn" label={a.group} icon={a.icon} onClick={() => actions.align(a.mode, "selection")} />
@@ -124,19 +123,19 @@ export function ArrangeTab() {
       ) : null}
 
       {count > 2 ? (
-        <Section title="Distribute">
+        <Section title={m.panelsContext.arrange.distribute}>
           <div className="cf-arr__grid">
             <Button block className="cf-arr__btn" icon={<IconDistributeH />} onClick={() => actions.distribute("horizontal")}>
-              Horizontally
+              {m.panelsContext.arrange.horizontally}
             </Button>
             <Button block className="cf-arr__btn" icon={<IconDistributeV />} onClick={() => actions.distribute("vertical")}>
-              Vertically
+              {m.panelsContext.arrange.vertically}
             </Button>
           </div>
         </Section>
       ) : null}
 
-      <Section title="Advanced">
+      <Section title={m.panelsContext.arrange.advanced}>
         <AdvancedFields ids={ids} els={els} />
       </Section>
     </div>
@@ -235,10 +234,10 @@ function AdvancedFields({ ids, els }: { ids: ID[]; els: DesignElement[] }) {
   return (
     <div className="cf-arr__adv">
       <div className="cf-arr__fields">
-        <Field label="Width">
-          <NumberField value={model.width} onChange={setWidth} onCommit={commit} min={1} max={20000} suffix="px" aria-label="Width" disabled={disabled} />
+        <Field label={m.panelsContext.arrange.width}>
+          <NumberField value={model.width} onChange={setWidth} onCommit={commit} min={1} max={20000} suffix="px" aria-label={m.panelsContext.arrange.width} disabled={disabled} />
         </Field>
-        <Field label="Height">
+        <Field label={m.panelsContext.arrange.height}>
           <NumberField
             value={model.height}
             onChange={setHeight}
@@ -246,15 +245,15 @@ function AdvancedFields({ ids, els }: { ids: ID[]; els: DesignElement[] }) {
             min={1}
             max={20000}
             suffix="px"
-            aria-label="Height"
+            aria-label={m.panelsContext.arrange.height}
             disabled={disabled || model.heightReadOnly}
-            title={model.heightReadOnly ? (els[0]?.type === "text" ? "Text height follows the text" : "Lines have no height") : undefined}
+            title={model.heightReadOnly ? (els[0]?.type === "text" ? m.panelsContext.arrange.textHeight : m.panelsContext.arrange.lineHeight) : undefined}
           />
         </Field>
-        <Field label="Ratio">
+        <Field label={m.panelsContext.arrange.ratio}>
           <IconButton
             className="cf-arr__lock"
-            label={lock ? "Unlock aspect ratio" : "Lock aspect ratio"}
+            label={lock ? m.panelsContext.arrange.unlockRatio : m.panelsContext.arrange.lockRatio}
             icon={lock ? <IconLock /> : <IconUnlock />}
             active={lock}
             disabled={disabled}
@@ -262,12 +261,12 @@ function AdvancedFields({ ids, els }: { ids: ID[]; els: DesignElement[] }) {
           />
         </Field>
         <Field label="X">
-          <NumberField value={model.x} onChange={setX} onCommit={commit} min={-20000} max={40000} suffix="px" aria-label="X position" disabled={disabled} />
+          <NumberField value={model.x} onChange={setX} onCommit={commit} min={-20000} max={40000} suffix="px" aria-label={m.panelsContext.arrange.xPosition} disabled={disabled} />
         </Field>
         <Field label="Y">
-          <NumberField value={model.y} onChange={setY} onCommit={commit} min={-20000} max={40000} suffix="px" aria-label="Y position" disabled={disabled} />
+          <NumberField value={model.y} onChange={setY} onCommit={commit} min={-20000} max={40000} suffix="px" aria-label={m.panelsContext.arrange.yPosition} disabled={disabled} />
         </Field>
-        <Field label="Rotate">
+        <Field label={m.panelsContext.arrange.rotate}>
           <NumberField
             value={model.single ? Math.round(model.rotation * 100) / 100 : 0}
             onChange={setRotation}
@@ -276,13 +275,13 @@ function AdvancedFields({ ids, els }: { ids: ID[]; els: DesignElement[] }) {
             min={-36000}
             max={36000}
             suffix="°"
-            aria-label={model.single ? "Rotation" : "Rotate selection by"}
-            title={model.single ? undefined : "Turns the whole selection by this many degrees"}
+            aria-label={model.single ? m.panelsContext.arrange.rotation : m.panelsContext.arrange.rotateSelectionBy}
+            title={model.single ? undefined : m.panelsContext.arrange.rotateSelectionTitle}
             disabled={disabled}
           />
         </Field>
       </div>
-      {disabled ? <p className="cf-ctx__hint">This element is locked. Unlock it to change its size or position.</p> : null}
+      {disabled ? <p className="cf-ctx__hint">{m.panelsContext.arrange.lockedHint}</p> : null}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { m } from "@/i18n";
 import "./Select.css";
 import { cx } from "./cx";
 import { IconCheck, IconChevronDown } from "./icons";
@@ -37,7 +38,7 @@ export function Select<T extends string | number = string>({
   value,
   onChange,
   options,
-  placeholder = "Select",
+  placeholder = m.ui.select.placeholder,
   width,
   size = "md",
   disabled = false,

@@ -4,6 +4,7 @@
  */
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { Page, Template } from "@/core/types";
+import { m } from "@/i18n";
 import { confirm } from "@/ui";
 import { fitTemplatePage } from "./fitTemplate";
 
@@ -23,9 +24,9 @@ export async function applyTemplatePage(template: Template, page: Page, mode: "r
   if (!s.design) return false;
   if (mode === "replace" && pageHasContent()) {
     const ok = await confirm({
-      title: "Replace this page?",
-      message: "The content on this page will be swapped for the template. You can undo this with Ctrl+Z.",
-      confirmLabel: "Replace",
+      title: m.panelsTabs.templates.replaceTitle,
+      message: m.panelsTabs.templates.replaceText,
+      confirmLabel: m.panelsTabs.templates.replace,
     });
     if (!ok) return false;
   }
@@ -41,12 +42,9 @@ export async function applyAllTemplatePages(template: Template): Promise<boolean
   if (pageHasContent()) {
     const extra = template.pages.length - 1;
     const ok = await confirm({
-      title: "Replace this page?",
-      message:
-        extra > 0
-          ? `The first template page replaces the content of this page, and ${extra} more page${extra === 1 ? " is" : "s are"} added after it. You can undo this with Ctrl+Z.`
-          : "The content on this page will be swapped for the template. You can undo this with Ctrl+Z.",
-      confirmLabel: "Apply all",
+      title: m.panelsTabs.templates.replaceTitle,
+      message: extra > 0 ? m.panelsTabs.templates.replaceAllText(extra) : m.panelsTabs.templates.replaceText,
+      confirmLabel: m.panelsTabs.templates.applyAllConfirm,
     });
     if (!ok) return false;
   }

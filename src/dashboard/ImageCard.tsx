@@ -2,6 +2,7 @@ import { memo, useEffect, useId, useState } from "react";
 import { Button, IconButton, IconMore, MenuPopover, Skeleton, cx, openContextMenu, type MenuEntry } from "@/ui";
 import { getAssetUrl } from "@/core/assets";
 import type { Asset } from "@/core/types";
+import { m } from "@/i18n";
 import { createFromAsset } from "./actions";
 import { formatBytes, formatRelative } from "./format";
 import { assetMenuItems } from "./menus";
@@ -16,7 +17,7 @@ export interface ImageCardProps {
 }
 
 /** "PNG image", "SVG image" ... from the mime type. */
-const kindLabel = (mime: string): string => `${(mime.split("/")[1] ?? "image").replace(/\+.*$/, "").toUpperCase()} image`;
+const kindLabel = (mime: string): string => m.dashboard.cards.imageKind((mime.split("/")[1] ?? "image").replace(/\+.*$/, "").toUpperCase());
 
 /** An uploaded image: preview on a checkerboard, name, size, "Use in new design" and a "..." menu. */
 export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }: ImageCardProps) {
@@ -34,7 +35,7 @@ export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }
     };
   }, [asset.id, asset.blob]);
 
-  const sizeText = `${asset.width} × ${asset.height} px · ${formatBytes(asset.size)}`;
+  const sizeText = `${m.dashboard.shared.pxSize(asset.width, asset.height)} · ${formatBytes(asset.size)}`;
 
   return (
     <article
@@ -49,7 +50,7 @@ export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }
         {url ? <img className="cf-icard__img" src={url} alt="" loading="lazy" decoding="async" draggable={false} /> : <Skeleton width="100%" height="100%" radius={0} />}
         <div className="cf-icard__use">
           <Button size="sm" variant="secondary" onClick={() => void createFromAsset(asset)}>
-            Use in new design
+            {m.dashboard.shared.useInNewDesign}
           </Button>
         </div>
       </div>
@@ -69,7 +70,7 @@ export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }
         <IconButton
           className="cf-icard__more"
           size="sm"
-          label="More actions"
+          label={m.dashboard.shared.moreActions}
           icon={<IconMore aria-hidden="true" />}
           aria-haspopup="menu"
           aria-expanded={menuAnchor !== null}
@@ -82,7 +83,7 @@ export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }
         onClose={() => setMenuAnchor(null)}
         items={menuAnchor ? assetMenuItems(asset) : NO_ITEMS}
         placement="bottom-end"
-        aria-label={`Actions for ${asset.name}`}
+        aria-label={m.dashboard.shared.actionsFor(asset.name)}
       />
     </article>
   );

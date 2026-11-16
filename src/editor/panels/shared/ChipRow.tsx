@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { m } from "@/i18n";
 import { IconButton, IconChevronLeft, IconChevronRight, cx } from "@/ui";
 import "./ChipRow.css";
 
@@ -58,12 +59,12 @@ export function ChipRow({ chips, value, onChange, "aria-label": ariaLabel, class
       </div>
       {edges.left ? (
         <span className="cf-chiprow__arrow cf-chiprow__arrow--left">
-          <IconButton label="Scroll left" icon={<IconChevronLeft />} size="sm" tabIndex={-1} tooltip={false} onClick={() => scrollBy(-1)} />
+          <IconButton label={m.panelsTabs.shared.scrollLeft} icon={<IconChevronLeft />} size="sm" tabIndex={-1} tooltip={false} onClick={() => scrollBy(-1)} />
         </span>
       ) : null}
       {edges.right ? (
         <span className="cf-chiprow__arrow cf-chiprow__arrow--right">
-          <IconButton label="Scroll right" icon={<IconChevronRight />} size="sm" tabIndex={-1} tooltip={false} onClick={() => scrollBy(1)} />
+          <IconButton label={m.panelsTabs.shared.scrollRight} icon={<IconChevronRight />} size="sm" tabIndex={-1} tooltip={false} onClick={() => scrollBy(1)} />
         </span>
       ) : null}
     </div>

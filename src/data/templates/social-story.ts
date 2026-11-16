@@ -41,7 +41,7 @@ function nightMarket(): Template {
   ]);
 
   return template(
-    { slug: "rooftop-night-market", name: "Rooftop Night Market", category: "social", size: "story", accent: "#2b1360", tags: ["event", "announcement", "night market", "story", "party", "date", "rsvp", "lime", "purple", "city"] },
+    { slug: "rooftop-night-market", category: "social", size: "story", accent: "#2b1360", tags: ["event", "announcement", "night market", "story", "party", "date", "rsvp", "lime", "purple", "city"] },
     [page],
   );
 }
@@ -85,7 +85,7 @@ function plankChallenge(): Template {
   );
 
   return template(
-    { slug: "plank-challenge-black", name: "Plank Challenge Black", category: "social", size: "story", accent: "#161616", tags: ["fitness", "challenge", "workout", "gym", "30 day", "plank", "story", "neon", "black", "training"] },
+    { slug: "plank-challenge-black", category: "social", size: "story", accent: "#161616", tags: ["fitness", "challenge", "workout", "gym", "30 day", "plank", "story", "neon", "black", "training"] },
     [pg(patternBg("diagonal", "#161616", "#0a0a0a", 1), els)],
   );
 }
@@ -133,7 +133,7 @@ function launchCountdown(): Template {
   );
 
   return template(
-    { slug: "launch-countdown-dusk", name: "Dusk Launch Countdown", category: "social", size: "story", accent: "#8a2fb8", tags: ["countdown", "launch", "coming soon", "days left", "reminder", "story", "gradient", "teaser", "drop", "product"] },
+    { slug: "launch-countdown-dusk", category: "social", size: "story", accent: "#8a2fb8", tags: ["countdown", "launch", "coming soon", "days left", "reminder", "story", "gradient", "teaser", "drop", "product"] },
     [pg(gradientBg(160, "#2a1a8a", "#8a2fb8", "#ff5f6d"), els)],
   );
 }
@@ -179,7 +179,7 @@ function travelPostcard(): Template {
   ]);
 
   return template(
-    { slug: "zanzibar-travel-postcard", name: "Zanzibar Travel Postcard", category: "social", size: "story", accent: "#0a7d83", tags: ["travel", "postcard", "beach", "vacation", "story", "guide", "holiday", "tropical", "stamp", "photo"] },
+    { slug: "zanzibar-travel-postcard", category: "social", size: "story", accent: "#0a7d83", tags: ["travel", "postcard", "beach", "vacation", "story", "guide", "holiday", "tropical", "stamp", "photo"] },
     [page],
   );
 }

@@ -3,6 +3,7 @@
  * (the editor's own painter), turned into a data URL, and handed to `buildWebPage` (webPage.ts), which writes the file.
  */
 import type { Design } from "@/core/types";
+import { m } from "@/i18n";
 import { blobToDataUrl } from "./encoding";
 import { ExportError, cancelledError, isCancelled, throwIfAborted } from "./errors";
 import { exportDesign, type ExportFile, type ExportOptions, type ExportProgress } from "./exporters";
@@ -38,7 +39,7 @@ export function webPageOptions(design: Pick<Design, "width" | "height">, page: n
  */
 export async function exportWebPage(design: Design, request: WebPageRequest, onProgress?: ExportProgress, signal?: AbortSignal): Promise<ExportFile> {
   const pages = normalizePages(request.pages, design.pages.length);
-  if (!pages.length) throw new ExportError("no-pages", "Select at least one page to download.");
+  if (!pages.length) throw new ExportError("no-pages", m.exporting.errors.noPages);
   throwIfAborted(signal);
 
   const slides: WebPageSlide[] = [];

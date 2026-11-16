@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type DragEvent } from "react";
 import { addAssetFromFile, assetSrc, deleteAsset, isAcceptedImage, renameAsset } from "@/core/assets";
 import type { Asset } from "@/core/types";
 import { insertImage } from "@/editor/insert";
+import { m } from "@/i18n";
 import { Button, IconButton, IconCloudUpload, IconCopy, IconMore, IconSearch, IconTrash, IconUpload, MenuPopover, Skeleton, TextField, confirm, cx, toast } from "@/ui";
 import { DraggableItem } from "../shared/DraggableItem";
 import { EmptyHint } from "../shared/EmptyHint";
@@ -30,13 +31,10 @@ export default function UploadsTab() {
   const upload = async (files: File[]) => {
     const images = files.filter(isAcceptedImage);
     if (files.length && !images.length) {
-      toast.error("Only images can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP or SVG.");
+      toast.error(m.panelsTabs.uploads.notImages);
       return;
     }
-    if (images.length < files.length)
-      toast.info(
-        files.length - images.length === 1 ? "1 file was skipped because it is not an image." : `${files.length - images.length} files were skipped because they are not images.`,
-      );
+    if (images.length < files.length) toast.info(m.panelsTabs.uploads.skipped(files.length - images.length));
     setUploading((n) => n + images.length);
     let failed = 0;
     for (const file of images) {
@@ -48,7 +46,7 @@ export default function UploadsTab() {
         setUploading((n) => n - 1);
       }
     }
-    if (failed) toast.error(`${failed} upload${failed === 1 ? "" : "s"} failed. Try a smaller image.`);
+    if (failed) toast.error(m.panelsTabs.uploads.failed(failed));
   };
 
   const onDrop = (e: DragEvent) => {
@@ -64,9 +62,9 @@ export default function UploadsTab() {
   return (
     <Panel>
       <PanelTop>
-        <PanelSearch value={query} onChange={setQuery} placeholder="Search uploads by name" />
+        <PanelSearch value={query} onChange={setQuery} placeholder={m.panelsTabs.uploads.search} />
         <Button variant="primary" size="lg" block icon={<IconUpload />} loading={uploading > 0} onClick={() => fileRef.current?.click()}>
-          Upload files
+          {m.panelsTabs.uploads.uploadFiles}
         </Button>
         <input
           ref={fileRef}
@@ -118,7 +116,7 @@ export default function UploadsTab() {
               renderItem={(a) => <UploadCard asset={a} />}
             />
           ) : !empty ? (
-            <EmptyHint icon={<IconSearch />} title="No uploads found" text={`No upload name contains "${q}".`} compact />
+            <EmptyHint icon={<IconSearch />} title={m.panelsTabs.uploads.noneTitle} text={m.panelsTabs.uploads.noneText(q)} compact />
           ) : null}
         </div>
       </PanelScroll>
@@ -135,8 +133,8 @@ function DropHint({ dragging, onBrowse }: { dragging: boolean; onBrowse: () => v
     <button type="button" className="cf-uploads__drop" onClick={onBrowse}>
       <IconCloudUpload aria-hidden="true" />
       <span>
-        <strong>{dragging ? "Drop to upload" : "Drop images here"}</strong>
-        {dragging ? null : <span> or click to browse</span>}
+        <strong>{dragging ? m.panelsTabs.uploads.dropToUpload : m.panelsTabs.uploads.dropHere}</strong>
+        {dragging ? null : <span>{m.panelsTabs.uploads.orBrowse}</span>}
       </span>
     </button>
   );
@@ -163,13 +161,13 @@ function EmptyIntro({ dragging, onBrowse }: { dragging: boolean; onBrowse: () =>
         <circle cx="196" cy="100" r="3" className="art-dot" />
         <circle cx="22" cy="104" r="2.5" className="art-dot art-dot--b" />
       </svg>
-      <h3 className="cf-uploads__intro-title">Upload, store and organize</h3>
-      <p className="cf-uploads__intro-text">Add your own photos and logos. They stay in this browser, ready for any design.</p>
+      <h3 className="cf-uploads__intro-title">{m.panelsTabs.uploads.introTitle}</h3>
+      <p className="cf-uploads__intro-text">{m.panelsTabs.uploads.introText}</p>
       <button type="button" className={cx("cf-uploads__drop", "is-big", dragging && "is-over")} onClick={onBrowse}>
         <IconCloudUpload aria-hidden="true" />
         <span>
-          <strong>{dragging ? "Drop to upload" : "Drop images here"}</strong>
-          {dragging ? null : <span> or click to browse</span>}
+          <strong>{dragging ? m.panelsTabs.uploads.dropToUpload : m.panelsTabs.uploads.dropHere}</strong>
+          {dragging ? null : <span>{m.panelsTabs.uploads.orBrowse}</span>}
         </span>
       </button>
     </div>
@@ -198,21 +196,21 @@ function UploadCard({ asset }: { asset: Asset }) {
 
   const remove = async () => {
     const ok = await confirm({
-      title: `Delete "${asset.name}"?`,
-      message: "Designs that use this image will show an empty frame in its place. This cannot be undone.",
-      confirmLabel: "Delete",
+      title: m.panelsTabs.uploads.deleteTitle(asset.name),
+      message: m.panelsTabs.uploads.deleteText,
+      confirmLabel: m.common.delete,
       danger: true,
     });
     if (ok) {
       await deleteAsset(asset.id);
-      toast.success("Upload deleted");
+      toast.success(m.panelsTabs.uploads.deleted);
     }
   };
 
   return (
     <div className="cf-uploads__card">
       <DraggableItem
-        label={`Add ${asset.name} to the page`}
+        label={m.panelsTabs.uploads.addToPage(asset.name)}
         onInsert={insert}
         getPayload={() => ({ type: "image", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, name: asset.name })}
         className="cf-uploads__item"
@@ -227,7 +225,7 @@ function UploadCard({ asset }: { asset: Asset }) {
         <div className="cf-uploads__rename">
           <TextField
             size="sm"
-            aria-label="Upload name"
+            aria-label={m.panelsTabs.uploads.name}
             value={name}
             autoFocus
             onChange={(e) => setName(e.target.value)}
@@ -245,7 +243,7 @@ function UploadCard({ asset }: { asset: Asset }) {
       ) : null}
       <IconButton
         ref={menuRef}
-        label={`More actions for ${asset.name}`}
+        label={m.panelsTabs.uploads.more(asset.name)}
         icon={<IconMore />}
         size="sm"
         className="cf-uploads__more"
@@ -258,12 +256,12 @@ function UploadCard({ asset }: { asset: Asset }) {
         anchor={menuRef.current}
         onClose={() => setMenuOpen(false)}
         placement="bottom-end"
-        aria-label={`Actions for ${asset.name}`}
+        aria-label={m.panelsTabs.uploads.actions(asset.name)}
         items={[
-          { id: "insert", label: "Insert", icon: <IconCopy />, onSelect: insert },
+          { id: "insert", label: m.panelsTabs.uploads.insert, icon: <IconCopy />, onSelect: insert },
           {
             id: "rename",
-            label: "Rename",
+            label: m.panelsTabs.uploads.rename,
             icon: <IconPencilLine />,
             onSelect: () => {
               setName(asset.name);
@@ -271,7 +269,7 @@ function UploadCard({ asset }: { asset: Asset }) {
             },
           },
           { type: "divider" },
-          { id: "delete", label: "Delete", icon: <IconTrash />, danger: true, onSelect: () => void remove() },
+          { id: "delete", label: m.common.delete, icon: <IconTrash />, danger: true, onSelect: () => void remove() },
         ]}
       />
     </div>

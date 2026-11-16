@@ -14,6 +14,7 @@ import { useEditor } from "@/core/store";
 import type { Design, LiveLink } from "@/core/types";
 import { downloadBlob } from "@/export/download";
 import { exportProjectFile, projectFileName } from "@/export/projectFile";
+import { m } from "@/i18n";
 import { collectAssetIds, portableDesign } from "@/export/projectFormat";
 import { toast } from "@/ui";
 import { create } from "zustand";
@@ -41,18 +42,8 @@ export const useLiveStatus = create<LiveStatusState>(() => ({ status: "off", rea
 
 const OFF: LiveStatusState = { status: "off", reason: null, role: null };
 
-const DENIED: Record<DeniedReason, string> = {
-  "no-access": "This link is not allowed in: its key is wrong or has been withdrawn.",
-  "not-found": "This shared design is no longer there.",
-  "bad-request": "The server did not understand this link.",
-  "server-full": "The server is full. Try again in a moment.",
-  "too-large": "This design is too big for the server.",
-  "server-error": "The server has a problem and could not open this shared design. The design may still be there: try again later.",
-  invalid: "The server sent something that Craftly does not accept, so the connection was closed. Only join designs from a server you trust.",
-};
-
 /** What a person is told when the connection ends for this reason. */
-export const deniedText = (reason: DeniedReason): string => DENIED[reason];
+export const deniedText = (reason: DeniedReason): string => m.editor.live.denied[reason];
 
 /**
  * Keeps the open design in step with the server for as long as the returned function has not been called: what other people do is
@@ -78,7 +69,7 @@ function readOutbox(key: string): StoredOutbox | undefined {
 /** The design as it is now, as a design of its own in the library that is not shared: what a person goes back to for edits that did not get through. */
 function recoveryCopy(design: Design, id: string): Design {
   const now = Date.now();
-  return { ...portableDesign(design), id, title: `${design.title} (unsent changes)`, createdAt: now, updatedAt: now, trashedAt: null };
+  return { ...portableDesign(design), id, title: m.editor.live.unsentTitle(design.title), createdAt: now, updatedAt: now, trashedAt: null };
 }
 
 /** The names in localStorage that start with `prefix`; none where there is no such storage. */
@@ -113,17 +104,17 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     return (copy: Design, what: string, told = false) => {
       latest = copy;
       void saveDesign(copy).then(
-        () => void (told || toast.error(`${what} A recovery copy is in Projects.`, { duration: 0 })),
+        () => void (told || toast.error(m.editor.live.recoveryInProjects(what), { duration: 0 })),
         () => {
           if (offered) return;
           offered = true;
-          toast.error(`${what} Download a recovery copy.`, {
+          toast.error(m.editor.live.recoveryDownload(what), {
             duration: 0,
-            actionLabel: "Download copy",
+            actionLabel: m.editor.recovery.downloadCopy,
             onAction: () =>
               void exportProjectFile(latest)
                 .then((blob) => downloadBlob(blob, projectFileName(latest.title)))
-                .catch(() => toast.error("Could not download the recovery copy.")),
+                .catch(() => toast.error(m.editor.recovery.downloadFailed)),
           });
         },
       );
@@ -156,7 +147,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   const orphans = storedNames(marks).filter((name) => name !== marked);
   const opened = useEditor.getState().design;
   if (orphans.length && opened) {
-    keepLocal(recoveryCopy(opened, uid("d")), "This design has changes from an earlier visit that never reached the server. The shared version is shown now.");
+    keepLocal(recoveryCopy(opened, uid("d")), m.editor.live.earlierVisit);
     for (const name of orphans) localStorage.removeItem(name);
   }
 
@@ -209,7 +200,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       } catch {
         if (warned || typeof sessionStorage === "undefined") return;
         warned = true;
-        toast.error("Craftly could not keep unsent changes for a reload. Keep this tab open or download a project file.");
+        toast.error(m.editor.live.cannotKeepUnsent);
       }
     },
     prepareEdit: (design) => media.upload(design, allowedUploads),
@@ -218,7 +209,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       const design = useEditor.getState().design;
       if (!design) return;
       // the design still has the refused edit in it here: it is taken out right after (onChange)
-      keepRefused(recoveryCopy(design, recoveryIdOnce()), `The server refused an edit: ${reason}`, refusedBefore);
+      keepRefused(recoveryCopy(design, recoveryIdOnce()), m.editor.live.refused(reason), refusedBefore);
       refusedBefore = true;
     },
     onChange: () => {
@@ -229,11 +220,11 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       const typingIn = useEditor.getState().editingTextId;
       const before = useEditor.getState().design;
       actions().applyShared(shared);
-      if (typingIn && !useEditor.getState().editingTextId) toast.info("Someone else deleted the text you were editing.");
+      if (typingIn && !useEditor.getState().editingTextId) toast.info(m.editor.live.textDeleted);
       // a comment or reply of somebody else is said to a screen reader, once (src/editor/comments/commentsStore.ts)
       if (live.sharesComments) announceArrivals(before, useEditor.getState().design);
       if (collectAssetIds(shared).length)
-        void media.download(shared).catch((error: unknown) => showMediaError(error instanceof Error ? error.message : "Could not load shared images."));
+        void media.download(shared).catch((error: unknown) => showMediaError(error instanceof Error ? error.message : m.editor.live.imagesFailed));
     },
     onStatus: (status, reason) => {
       if (status === "live" && live.session.role === "view" && !looking) {
@@ -255,7 +246,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       // sent, edit by edit, and stays in the text until the other types on.
       if ("gone" in heard || heard.editing === null || heard.editing !== useEditor.getState().editingTextId) return;
       actions().endTextEdit();
-      toast.info(`${shownName(heard.name, heard.peer)} started typing in this text a moment before you, so it was closed here. One person at a time types in a text box.`);
+      toast.info(m.editor.live.typedFirst(shownName(heard.name, heard.peer)));
     },
   });
   useLiveStatus.setState({ status: "connecting", reason: null, role: null });
@@ -267,7 +258,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     },
     // a text box that somebody else is typing in is not opened here (the store asks before it opens one), and the person is told who has it
     textHolder: (id) => typingIn(id)?.name ?? null,
-    textRefused: (_id, holder) => void toast.info(`${holder} is typing in this text. You can type in it when they are done.`),
+    textRefused: (_id, holder) => void toast.info(m.editor.live.textTaken(holder)),
     sharesComments: () => live.sharesComments,
   });
   live.start();
@@ -289,7 +280,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
  */
 export class CreateKeyError extends Error {
   constructor(readonly kind: "needed" | "wrong") {
-    super(kind === "needed" ? "This server asks for a key to start sharing. Whoever runs it can give it to you." : "That key is not right. Check it with whoever runs the server.");
+    super(kind === "needed" ? m.editor.live.keyNeeded : m.editor.live.keyWrong);
     this.name = "CreateKeyError";
   }
 }
@@ -305,7 +296,7 @@ async function problemWith(res: Response): Promise<Error> {
   } catch {
     /* not JSON */
   }
-  return new Error(`The server answered ${res.status}.`);
+  return new Error(m.editor.live.serverAnswered(res.status));
 }
 
 /**
@@ -315,9 +306,9 @@ async function problemWith(res: Response): Promise<Error> {
  */
 export async function shareDesign(typedServer: string, env: LiveEnv = {}, createKey = ""): Promise<LiveLink> {
   const server = normalizeServer(typedServer);
-  if (!server) throw new Error("That is not the address of a server. It looks like https://live.example.com or http://localhost:8787.");
+  if (!server) throw new Error(m.editor.live.notAServer);
   const design = useEditor.getState().design;
-  if (!design) throw new Error("There is no design open.");
+  if (!design) throw new Error(m.editor.live.noDesign);
   const { live: _own, ...content } = design;
   const key = createKey.trim();
   // A header carries printable ASCII and nothing else: a browser refuses to send any other, with an error that reads like a
@@ -331,7 +322,7 @@ export async function shareDesign(typedServer: string, env: LiveEnv = {}, create
       ...(key ? { headers: { "x-craftly-create-key": key } } : {}),
     });
   } catch {
-    throw new Error("Couldn't reach the server. Check the address and that the server is running.");
+    throw new Error(m.editor.live.unreachable);
   }
   if (!res.ok) throw await problemWith(res);
   const made = (await res.json()) as { room: string; editKey: string; viewKey: string; ownerKey: string };
@@ -366,7 +357,7 @@ export async function stopSharing(env: LiveEnv = {}): Promise<void> {
     try {
       res = await (env.fetch ?? fetch)(apiUrl(link.server, `/api/rooms/${encodeURIComponent(link.room)}`), { method: "DELETE", headers: { "x-craftly-key": link.ownerKey } });
     } catch {
-      throw new Error("Couldn't reach the server, so sharing could not be stopped. The link is still on this design.");
+      throw new Error(m.editor.live.unreachableStop);
     }
     if (!res.ok && res.status !== 404) throw await problemWith(res);
   }
@@ -396,10 +387,10 @@ export function joinDesign(link: LiveLink, env: LiveEnv = {}): Promise<{ design:
         if (design && role) finish(() => resolve({ design, role }));
       },
       onStatus: (status, reason) => {
-        if (status === "denied") finish(() => reject(new Error(DENIED[reason ?? "no-access"])));
+        if (status === "denied") finish(() => reject(new Error(deniedText(reason ?? "no-access"))));
       },
     });
-    const timer = setTimeout(() => finish(() => reject(new Error("Couldn't reach the server. Check the link and that the server is running."))), env.timeoutMs ?? 15_000);
+    const timer = setTimeout(() => finish(() => reject(new Error(m.editor.live.unreachableLink))), env.timeoutMs ?? 15_000);
     live.start();
   });
 }

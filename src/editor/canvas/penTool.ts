@@ -13,6 +13,7 @@ import { newPathShape } from "@/core/penShape";
 import { getActions, useEditor } from "@/core/store";
 import type { Point } from "@/core/types";
 import { getDrawStroke } from "@/editor/panels/shared/drawSettings";
+import { m } from "@/i18n";
 import { useGesture, type PenCursor } from "./gestureStore";
 import { getMetrics, screenToDesign, type ViewMetrics } from "./viewStore";
 
@@ -156,12 +157,13 @@ interface PageSize {
 const cursorOf = () => useGesture.getState().penCursor;
 const clamp = (n: number, max: number) => Math.min(max, Math.max(0, n));
 /** A place in words: whole pixels, since a pointer may have put a point between two. */
-const spoken = (p: Point) => `${Math.round(p.x)}, ${Math.round(p.y)}`;
+// (`|| 0`: a place a little left of or above the edge is said as 0, not as minus 0)
+const spoken = (p: Point) => m.editor.pen.place(Math.round(p.x) || 0, Math.round(p.y) || 0);
 
 /** The middle of the part of the page that the window shows, in whole design px; of the whole page when none of it shows. */
-export function visibleMiddle(m: ViewMetrics, page: PageSize): Point {
-  const from = screenToDesign(m, 0, 0);
-  const to = screenToDesign(m, m.width, m.height);
+export function visibleMiddle(metrics: ViewMetrics, page: PageSize): Point {
+  const from = screenToDesign(metrics, 0, 0);
+  const to = screenToDesign(metrics, metrics.width, metrics.height);
   const left = Math.max(0, from.x);
   const right = Math.min(page.width, to.x);
   const top = Math.max(0, from.y);
@@ -174,9 +176,8 @@ export function visibleMiddle(m: ViewMetrics, page: PageSize): Point {
 function showPenCursor(pt: Point, say?: string): void {
   const draft = draftOf();
   const target = penTarget(pt, draft?.path.nodes ?? [], useEditor.getState().zoom);
-  const hint = target === "close" ? ". Enter closes the path." : target === "end" ? ". Enter ends the path." : "";
   useGesture.getState().set({
-    penCursor: { x: pt.x, y: pt.y, shown: true, say: say ?? `Pen at ${spoken(pt)}${hint}` },
+    penCursor: { x: pt.x, y: pt.y, shown: true, say: say ?? m.editor.pen.at(spoken(pt), target) },
     ...(draft ? { pen: { ...draft, hover: { x: pt.x, y: pt.y } } } : {}),
   });
 }
@@ -202,7 +203,9 @@ function pullLastHandle(cursor: PenCursor, dx: number, dy: number): void {
   const out = { x: (last.handleOut?.x ?? 0) + dx, y: (last.handleOut?.y ?? 0) + dy };
   const pulled = out.x !== 0 || out.y !== 0;
   const nodes = draft.path.nodes.map((n) => (n === last ? withHandles(n, pulled ? out : null) : n));
-  useGesture.getState().set({ pen: { ...draft, path: { ...draft.path, nodes } }, penCursor: { ...cursor, say: pulled ? `Curve handle ${spoken(out)}` : "No curve handle" } });
+  useGesture
+    .getState()
+    .set({ pen: { ...draft, path: { ...draft.path, nodes } }, penCursor: { ...cursor, say: pulled ? m.editor.pen.curveHandle(spoken(out)) : m.editor.pen.noCurveHandle } });
 }
 
 /**
@@ -215,7 +218,7 @@ function pressAtPenCursor(at: Point, smooth: boolean): void {
   const press = penPress(at, { zoom, shift: false });
   if (!press) {
     // the path was closed or ended, and the Select tool has taken over; a single point made nothing, and the pen stays in hand
-    if (useEditor.getState().tool === "pen") showPenCursor(at, "A single point makes no path.");
+    if (useEditor.getState().tool === "pen") showPenCursor(at, m.editor.pen.singlePoint);
     else forgetPenCursor();
     return;
   }
@@ -227,7 +230,7 @@ function pressAtPenCursor(at: Point, smooth: boolean): void {
     const nodes = draft.path.nodes.map((n, i) => (i === press.shaping ? withHandles(n, out) : n));
     useGesture.getState().set({ pen: { ...draft, path: { ...draft.path, nodes } } });
   }
-  showPenCursor(at, `${curved ? "Smooth point" : "Point"} ${press.shaping + 1} placed at ${spoken(at)}`);
+  showPenCursor(at, m.editor.pen.placed(curved, press.shaping + 1, spoken(at)));
 }
 
 /**

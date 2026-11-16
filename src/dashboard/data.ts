@@ -7,6 +7,7 @@ import { listAssets, subscribeAssets } from "@/core/assets";
 import { getBrandKit, listDesigns, listFolders, setBrandKit, subscribeLibrary } from "@/core/library";
 import { metaGet, metaSet } from "@/core/persistence";
 import type { Asset, BrandKit, DesignSummary, Folder } from "@/core/types";
+import { m } from "@/i18n";
 import { toast } from "@/ui";
 import { createLiveStore, useLive } from "./liveStore";
 
@@ -107,10 +108,10 @@ export async function toggleFavouriteTemplate(id: string, name?: string): Promis
   try {
     await metaSet(FAV_KEY, favourites);
   } catch {
-    toast.error("Couldn't save your favourites on this device.");
+    toast.error(m.dashboard.favourites.saveFailed);
     return;
   }
-  if (!wasFavourite && name) toast.success(`Added “${name}” to your favourites`, { duration: 2200 });
+  if (!wasFavourite && name) toast.success(m.dashboard.favourites.added(name), { duration: 2200 });
 }
 
 /* ------------------------------------------------------------------ */

@@ -54,7 +54,7 @@ function studioTalks(): Template {
     sans("Free entry. Seats are limited, so book a place at openstudiotalks.example.com", M, 2160, W - M * 2, 30, { color: GREY }),
   );
   return template(
-    { slug: "open-studio-talks", name: "Open Studio Talks Series Poster", category: "poster", size: "poster", tags: ["talk", "lecture", "series", "poster", "schedule", "swiss", "grid", "design", "blue"], accent: BLUE },
+    { slug: "open-studio-talks", category: "poster", size: "poster", tags: ["talk", "lecture", "series", "poster", "schedule", "swiss", "grid", "design", "blue"], accent: BLUE },
     [pg(PAPER, els)],
   );
 }
@@ -107,7 +107,7 @@ function plantSwap(): Template {
     body("Hosted by the Wrenfield Garden Club  /  plantswap.example.com", M, 2146, W - M * 2, 32, { align: "center", fontWeight: 700, color: GREEN }),
   );
   return template(
-    { slug: "spring-plant-swap", name: "Spring Plant Swap Poster", category: "poster", size: "poster", tags: ["plants", "swap", "garden", "community", "poster", "spring", "playful", "illustration", "green"], accent: GREEN },
+    { slug: "spring-plant-swap", category: "poster", size: "poster", tags: ["plants", "swap", "garden", "community", "poster", "spring", "playful", "illustration", "green"], accent: GREEN },
     [pg(CREAM, els)],
   );
 }
@@ -145,7 +145,7 @@ function northCoast(): Template {
     els.push(sans(k, x, 2046, 480, 24, { fontWeight: 900, letterSpacing: 260, color: RUST }), sans(v, x, 2086, 470, 34, { fontWeight: 700, lineHeight: 1.3 }));
   });
   return template(
-    { slug: "north-coast-travel", name: "North Coast Travel Poster", category: "poster", size: "poster", tags: ["travel", "tourism", "coast", "sea", "poster", "photo", "vintage", "holiday", "teal"], accent: TEAL },
+    { slug: "north-coast-travel", category: "poster", size: "poster", tags: ["travel", "tourism", "coast", "sea", "poster", "photo", "vintage", "holiday", "teal"], accent: TEAL },
     [pg(CREAM, els)],
   );
 }
@@ -193,7 +193,7 @@ function blueHour(): Template {
     sans("cellardoor.example.com", 1052, 2116, 580, 34, { align: "right" }),
   ];
   return template(
-    { slug: "blue-hour-jazz", name: "Blue Hour Quartet Jazz Poster", category: "poster", size: "poster", tags: ["jazz", "music", "concert", "gig", "poster", "night", "geometric", "dark", "gold"], accent: BLUE },
+    { slug: "blue-hour-jazz", category: "poster", size: "poster", tags: ["jazz", "music", "concert", "gig", "poster", "night", "geometric", "dark", "gold"], accent: BLUE },
     [pg(NIGHT, els)],
   );
 }

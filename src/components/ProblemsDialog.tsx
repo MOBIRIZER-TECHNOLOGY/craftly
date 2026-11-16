@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { PROBLEM_TITLES, clearProblems, listProblems } from "@/core/problems";
+import { date, m } from "@/i18n";
 import { Button, Modal, cx } from "@/ui";
 import { ReportPanel } from "./ReportPanel";
 import "./problemsDialog.css";
-
-const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 interface Props {
   open: boolean;
@@ -30,21 +29,21 @@ export function ProblemsDialog({ open, problemId, onClose }: Props) {
       open={open}
       onClose={onClose}
       size="lg"
-      title="Report a problem"
+      title={m.app.problems.title}
       footer={
         <>
           <Button variant="secondary" disabled={problems.length === 0} onClick={clear}>
-            Clear the list
+            {m.app.problems.clear}
           </Button>
           <Button variant="primary" onClick={onClose}>
-            Close
+            {m.common.close}
           </Button>
         </>
       }
     >
       {selected ? (
         <div className="cf-problems">
-          <ul className="cf-problems__list" aria-label="Problems on this device">
+          <ul className="cf-problems__list" aria-label={m.app.problems.listLabel}>
             {problems.map((p) => (
               <li key={p.id}>
                 <button
@@ -55,10 +54,10 @@ export function ProblemsDialog({ open, problemId, onClose }: Props) {
                 >
                   <span className="cf-problems__title">
                     {PROBLEM_TITLES[p.kind]}
-                    {p.count > 1 ? <span className="cf-problems__count"> ×{p.count}</span> : null}
-                    {p.sent ? <span className="cf-problems__sent"> Sent</span> : null}
+                    {p.count > 1 ? <span className="cf-problems__count"> {m.app.problems.count(p.count)}</span> : null}
+                    {p.sent ? <span className="cf-problems__sent"> {m.app.problems.sent}</span> : null}
                   </span>
-                  <span className="cf-problems__when">{when.format(p.at)}</span>
+                  <span className="cf-problems__when">{date(p.at, { dateStyle: "medium", timeStyle: "short" })}</span>
                   <span className="cf-problems__message">{p.message}</span>
                 </button>
               </li>
@@ -68,10 +67,8 @@ export function ProblemsDialog({ open, problemId, onClose }: Props) {
         </div>
       ) : (
         <div className="cf-problems__empty">
-          <p>No problems have been recorded on this device.</p>
-          <p className="cf-problems__hint">
-            If something does not work, reload the page and try again. When Craftly notices a problem it writes it down here, on this device only.
-          </p>
+          <p>{m.app.problems.empty}</p>
+          <p className="cf-problems__hint">{m.app.problems.emptyHint}</p>
         </div>
       )}
     </Modal>

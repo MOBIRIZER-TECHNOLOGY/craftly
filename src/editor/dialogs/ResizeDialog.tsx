@@ -4,6 +4,7 @@ import { resizeDesign as applyResize } from "@/core/ops";
 import { useEditor } from "@/core/store";
 import type { SizeUnit } from "@/core/types";
 import { DESIGN_CATEGORY_LABELS, DESIGN_TYPES, describeSize, fromPx, toPx, type DesignCategory, type DesignType } from "@/data/designTypes";
+import { m } from "@/i18n";
 import { renderPageToCanvas } from "@/render/renderPage";
 import { designPath, navigate } from "@/router";
 import { Button, Checkbox, IconButton, IconLink, IconUnlink, Modal, NumberField, Select, toast, type SelectOption } from "@/ui";
@@ -15,10 +16,10 @@ const MAX_PX = 8000;
 const CATEGORY_ORDER: DesignCategory[] = ["presentation", "social", "print", "document", "marketing", "branding"];
 
 const UNIT_OPTIONS: SelectOption<SizeUnit>[] = [
-  { value: "px", label: "px", textValue: "pixels" },
-  { value: "in", label: "in", textValue: "inches" },
-  { value: "mm", label: "mm", textValue: "millimetres" },
-  { value: "cm", label: "cm", textValue: "centimetres" },
+  { value: "px", label: "px", textValue: m.editorChrome.resize.unitNames.px },
+  { value: "in", label: "in", textValue: m.editorChrome.resize.unitNames.in },
+  { value: "mm", label: "mm", textValue: m.editorChrome.resize.unitNames.mm },
+  { value: "cm", label: "cm", textValue: m.editorChrome.resize.unitNames.cm },
 ];
 const PRECISION: Record<SizeUnit, number> = { px: 0, in: 2, mm: 1, cm: 2 };
 const STEP: Record<SizeUnit, number> = { px: 1, in: 0.1, mm: 1, cm: 0.1 };
@@ -81,7 +82,7 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
   const resizeHere = () => {
     useEditor.getState().actions.resizeDesign(nw, nh, scale, unit);
     onClose();
-    toast.success(`Resized to ${describeSize(nw, nh, unit)}`);
+    toast.success(m.editorChrome.resize.resized(describeSize(nw, nh, unit)));
   };
 
   const resizeCopy = async () => {
@@ -105,9 +106,9 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
       await saveDesign(copy, thumb);
       onClose();
       navigate(designPath(copy.id));
-      toast.success(`Resized copy created (${describeSize(nw, nh, unit)})`);
+      toast.success(m.editorChrome.resize.copyCreated(describeSize(nw, nh, unit)));
     } catch {
-      toast.error("Couldn't make the resized copy. Check that your browser has free storage and try again.");
+      toast.error(m.editorChrome.resize.copyFailed);
     } finally {
       setBusy(false);
     }
@@ -121,17 +122,17 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
       open={open}
       onClose={onClose}
       size="lg"
-      title="Resize design"
+      title={m.editorChrome.resize.title}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {m.common.cancel}
           </Button>
           <Button variant="secondary" loading={busy} disabled={unchanged} onClick={() => void resizeCopy()}>
-            Make a copy and resize
+            {m.editorChrome.resize.makeCopy}
           </Button>
           <Button variant="primary" disabled={unchanged || busy} onClick={resizeHere}>
-            Resize
+            {m.editorChrome.resize.resize}
           </Button>
         </>
       }
@@ -139,7 +140,7 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
       <div className="cf-resize">
         <section className="cf-resize__formats" aria-labelledby="cf-resize-formats">
           <h3 id="cf-resize-formats" className="cf-resize__heading">
-            Formats
+            {m.editorChrome.resize.formats}
           </h3>
           <div className="cf-resize__list">
             {groups.map((g) => (
@@ -160,12 +161,12 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
 
         <section className="cf-resize__custom" aria-labelledby="cf-resize-custom">
           <h3 id="cf-resize-custom" className="cf-resize__heading">
-            Custom size
+            {m.editorChrome.resize.customSize}
           </h3>
           <div className="cf-resize__fields">
             <NumberField
-              prefix="W"
-              label="Width"
+              prefix={m.editorChrome.resize.widthShort}
+              label={m.editorChrome.resize.width}
               value={unitValue(size.w)}
               min={unitValue(MIN_PX)}
               max={unitValue(MAX_PX)}
@@ -176,14 +177,14 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
             />
             <IconButton
               size="sm"
-              label={lock ? "Unlock aspect ratio" : "Lock aspect ratio"}
+              label={lock ? m.editorChrome.resize.unlockRatio : m.editorChrome.resize.lockRatio}
               active={lock}
               icon={lock ? <IconLink aria-hidden="true" /> : <IconUnlink aria-hidden="true" />}
               onClick={toggleLock}
             />
             <NumberField
-              prefix="H"
-              label="Height"
+              prefix={m.editorChrome.resize.heightShort}
+              label={m.editorChrome.resize.height}
               value={unitValue(size.h)}
               min={unitValue(MIN_PX)}
               max={unitValue(MAX_PX)}
@@ -195,33 +196,29 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
           </div>
           <div className="cf-resize__unit">
             <span className="cf-resize__label" id="cf-resize-unit">
-              Units
+              {m.editorChrome.resize.units}
             </span>
-            <Select<SizeUnit> value={unit} onChange={setUnit} options={UNIT_OPTIONS} aria-label="Units" width={120} />
+            <Select<SizeUnit> value={unit} onChange={setUnit} options={UNIT_OPTIONS} aria-label={m.editorChrome.resize.units} width={120} />
           </div>
-          <Checkbox checked={scale} onChange={setScale} label="Scale content to fit" />
-          <p className="cf-resize__hint">
-            {scale ? "Everything is scaled to fit the new size and centred on each page." : "Everything stays where it is; the page grows or crops around it."}
-          </p>
+          <Checkbox checked={scale} onChange={setScale} label={m.editorChrome.resize.scaleContent} />
+          <p className="cf-resize__hint">{scale ? m.editorChrome.resize.scaleHint : m.editorChrome.resize.keepHint}</p>
           <dl className="cf-resize__facts">
             <div>
-              <dt>Current</dt>
+              <dt>{m.editorChrome.resize.current}</dt>
               <dd>{describeSize(design.width, design.height, design.unit)}</dd>
             </div>
             <div>
-              <dt>New</dt>
+              <dt>{m.editorChrome.resize.next}</dt>
               <dd>{describeSize(nw, nh, unit)}</dd>
             </div>
             {unit !== "px" ? (
               <div>
-                <dt>In pixels</dt>
-                <dd>{`${nw} × ${nh} px`}</dd>
+                <dt>{m.editorChrome.resize.inPixels}</dt>
+                <dd>{m.editorChrome.resize.pixelSize(nw, nh)}</dd>
               </div>
             ) : null}
           </dl>
-          <p className="cf-resize__hint">
-            Sizes can be between {MIN_PX} and {MAX_PX} px on each side.
-          </p>
+          <p className="cf-resize__hint">{m.editorChrome.resize.limits(MIN_PX, MAX_PX)}</p>
         </section>
       </div>
     </Modal>

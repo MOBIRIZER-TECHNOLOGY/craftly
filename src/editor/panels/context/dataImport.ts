@@ -7,6 +7,7 @@ import { CHART_LIMITS, MAX_CELL_CHARS, TABLE_LIMITS, chartData, parseDelimited, 
 import { findElement } from "@/core/ops";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { ChartElement, DesignElement, ID, TableElement } from "@/core/types";
+import { m } from "@/i18n";
 import { toast } from "@/ui";
 import { replaceChartData, replaceTableCells, spreadTableCells } from "./dataEdit";
 
@@ -22,17 +23,16 @@ export interface ImportReport {
 }
 
 const refused = (message: string): ImportReport => ({ ok: false, clean: false, message });
-const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-const TABLE_FULL = `A table holds at most ${TABLE_LIMITS.rows} rows and ${TABLE_LIMITS.cols} columns; the rest was left out.`;
-const CHART_FULL = `A chart holds at most ${CHART_LIMITS.rows - 1} rows and ${CHART_LIMITS.cols - 1} series; the rest was left out.`;
+const TABLE_FULL = m.panelsContext.dataImport.tableFull(TABLE_LIMITS.rows, TABLE_LIMITS.cols);
+const CHART_FULL = m.panelsContext.dataImport.chartFull(CHART_LIMITS.rows - 1, CHART_LIMITS.cols - 1);
 
 /** The sentences about what did not come in. `full` is said when rows or columns were over the limit. */
 function cutNotes(cut: DelimitedData["cut"], overLimit: boolean, full: string): string[] {
   const notes: string[] = [];
   if (overLimit) notes.push(full);
-  if (cut.cells) notes.push(`${count(cut.cells, "cell was", "cells were")} shortened to ${MAX_CELL_CHARS.toLocaleString("en-US")} characters.`);
-  if (cut.input) notes.push("The text was too long, so only its beginning was read.");
+  if (cut.cells) notes.push(m.panelsContext.dataImport.cellsShortened(cut.cells, MAX_CELL_CHARS));
+  if (cut.input) notes.push(m.panelsContext.dataImport.tooLong);
   return notes;
 }
 
@@ -42,8 +42,8 @@ const report = (first: string, notes: string[]): ImportReport => ({ ok: true, cl
 function target<T extends "table" | "chart">(id: ID, type: T): Extract<DesignElement, { type: T }> | ImportReport {
   const page = getActivePage(useEditor.getState());
   const el = page ? findElement(page, id) : null;
-  if (!el || el.type !== type) return refused(`This ${type} is no longer on the page.`);
-  if (el.locked) return refused(`Unlock the ${type} to change its data.`);
+  if (!el || el.type !== type) return refused(m.panelsContext.dataImport.gone[type]);
+  if (el.locked) return refused(m.panelsContext.dataImport.locked[type]);
   return el as Extract<DesignElement, { type: T }>;
 }
 
@@ -52,9 +52,9 @@ export function importTableData(id: ID, text: string, parsed?: DelimitedData): I
   const el = target(id, "table");
   if ("ok" in el) return el;
   const data = parsed ?? parseDelimited(text, TABLE_LIMITS);
-  if (!data.rows.length) return refused("There is no data in this text.");
+  if (!data.rows.length) return refused(m.panelsContext.dataImport.noData);
   getActions().updateElements([id], (t) => replaceTableCells(t as TableElement, data.rows));
-  const first = `Imported ${count(data.rows.length, "row")} and ${count(data.rows[0].length, "column")}.`;
+  const first = m.panelsContext.dataImport.importedTable(data.rows.length, data.rows[0].length);
   return report(first, cutNotes(data.cut, data.cut.rows || data.cut.cols, TABLE_FULL));
 }
 
@@ -64,13 +64,13 @@ export function importChartData(id: ID, text: string): ImportReport {
   if ("ok" in el) return el;
   const parsed = parseDelimited(text, CHART_LIMITS);
   const data = chartData(parsed);
-  if (!data) return refused("There are no numbers for a chart in this text.");
+  if (!data) return refused(m.panelsContext.dataImport.noNumbers);
   getActions().updateElements([id], (c) => replaceChartData(c as ChartElement, data));
   const notes: string[] = [];
-  if (data.notNumbers) notes.push(data.notNumbers === 1 ? "1 cell was empty or not a number and is 0." : `${data.notNumbers} cells were empty or not numbers and are 0.`);
-  if ((el.chart === "pie" || el.chart === "donut") && data.series.length > 1) notes.push("A pie or donut chart shows only the first series.");
+  if (data.notNumbers) notes.push(m.panelsContext.dataImport.notNumbers(data.notNumbers));
+  if ((el.chart === "pie" || el.chart === "donut") && data.series.length > 1) notes.push(m.panelsContext.dataImport.pieFirstSeries);
   notes.push(...cutNotes(parsed.cut, parsed.cut.rows || parsed.cut.cols, CHART_FULL));
-  return report(`Imported ${count(data.labels.length, "row")} and ${data.series.length} series.`, notes);
+  return report(m.panelsContext.dataImport.importedChart(data.labels.length, data.series.length), notes);
 }
 
 /**
@@ -85,7 +85,7 @@ export function pasteIntoTableCell(id: ID, at: { row: number; col: number }, tex
   if ("ok" in el) return el;
   const fit = { overflow: false };
   getActions().updateElements([id], (t) => void (fit.overflow = spreadTableCells(t as TableElement, at, data.rows)));
-  const first = `Pasted ${count(data.rows.length, "row")} and ${count(data.rows[0].length, "column")} from this cell on.`;
+  const first = m.panelsContext.dataImport.pasted(data.rows.length, data.rows[0].length);
   return report(first, cutNotes(data.cut, fit.overflow || data.cut.rows || data.cut.cols, TABLE_FULL));
 }
 

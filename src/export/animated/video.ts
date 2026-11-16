@@ -9,6 +9,7 @@
  * across a long gap, so the animation continues where it stopped instead of skipping ahead; the result says it
  * happened (`stalled`) and the panel tells the person to keep the tab visible while a video records.
  */
+import { m } from "@/i18n";
 import { ExportError, cancelledError, throwIfAborted } from "../errors";
 import { VIDEO_FPS } from "./frames";
 import { withWebmDuration } from "./webm";
@@ -34,7 +35,7 @@ export interface VideoSupport {
 /** In order of preference: VP9 is the smallest, VP8 the most widely recordable, plain `video/webm` lets the browser choose. */
 export const VIDEO_MIME_TYPES: readonly string[] = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
 
-const NO_RECORDER = "Your browser cannot record video. Try Chrome, Edge or Firefox, or download an animated GIF instead.";
+const NO_RECORDER = m.exporting.animation.noRecorder;
 
 export function detectVideoSupport(env: RecorderEnv = globalThis as unknown as RecorderEnv): VideoSupport {
   const recorder = env.MediaRecorder;
@@ -47,7 +48,7 @@ export function detectVideoSupport(env: RecorderEnv = globalThis as unknown as R
       /* try the next one */
     }
   }
-  return { ok: false, mimeType: null, reason: "This browser cannot record WebM video. Try Chrome, Edge or Firefox, or download an animated GIF instead." };
+  return { ok: false, mimeType: null, reason: m.exporting.animation.noWebm };
 }
 
 /* ------------------------------------------------------------------ */
@@ -139,7 +140,7 @@ export interface RecordResult {
   stalled: boolean;
 }
 
-const SAVE_FAILED = "The video could not be recorded. Please try again.";
+const SAVE_FAILED = m.exporting.animation.recordFailed;
 
 /** Resolves after `ms`, or as soon as `until` settles. */
 function waitFor(until: Promise<unknown>, ms: number): Promise<void> {
@@ -167,7 +168,7 @@ export async function recordCanvas(options: RecordOptions): Promise<RecordResult
     recorder = new MediaRecorder(stream, { mimeType: options.mimeType, videoBitsPerSecond: options.bitsPerSecond });
   } catch (cause) {
     stopTracks();
-    throw new ExportError("unsupported", "Your browser could not start recording video. Download an animated GIF instead.", { cause });
+    throw new ExportError("unsupported", m.exporting.animation.cannotStart, { cause });
   }
 
   // an object, not loose variables: the recorder's callbacks change these while this function awaits

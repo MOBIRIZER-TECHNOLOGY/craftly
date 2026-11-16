@@ -24,7 +24,7 @@ function kilnWorks(): Template {
     T("Ceramics studio  ·  Est. 2014", 40, 408, 420, 16, { fontFamily: "Manrope", fontWeight: 700, letterSpacing: 300, textCase: "upper", color: INK, align: "center", lineHeight: 1.2, name: "Tagline" }),
   ]);
   return template(
-    { slug: "kiln-works-boxed", name: "Kiln Works Boxed Wordmark", category: "logo", size: "logo", accent: CLAY, tags: ["logo", "wordmark", "boxed", "frame", "ceramics", "studio", "craft", "bold", "minimal", "black"] },
+    { slug: "kiln-works-boxed", category: "logo", size: "logo", accent: CLAY, tags: ["logo", "wordmark", "boxed", "frame", "ceramics", "studio", "craft", "bold", "minimal", "black"] },
     [page],
   );
 }
@@ -43,7 +43,7 @@ function tallybird(): Template {
     T("Budgets that add up", 40, 384, 420, 20, { fontFamily: FONT, fontWeight: 600, letterSpacing: 60, color: "#4b547a", align: "center", lineHeight: 1.2, name: "Tagline" }),
   ]);
   return template(
-    { slug: "tallybird-app-tile", name: "Tallybird App Tile Logo", category: "logo", size: "logo", accent: "#5a5cff", tags: ["logo", "app", "icon", "tile", "fintech", "startup", "tech", "gradient", "modern", "blue"] },
+    { slug: "tallybird-app-tile", category: "logo", size: "logo", accent: "#5a5cff", tags: ["logo", "app", "icon", "tile", "fintech", "startup", "tech", "gradient", "modern", "blue"] },
     [page],
   );
 }
@@ -64,7 +64,7 @@ function wildThyme(): Template {
     T("Wrenfield", 30, 388, 440, 15, { fontFamily: "Josefin Sans", fontWeight: 400, letterSpacing: 480, textCase: "upper", color: INK, align: "center", lineHeight: 1.3, name: "Place" }),
   ]);
   return template(
-    { slug: "wild-thyme-signature", name: "Wild Thyme Script Signature", category: "logo", size: "logo", accent: BLUSH, tags: ["logo", "script", "signature", "florist", "handwritten", "boutique", "feminine", "blush", "botanical", "small business"] },
+    { slug: "wild-thyme-signature", category: "logo", size: "logo", accent: BLUSH, tags: ["logo", "script", "signature", "florist", "handwritten", "boutique", "feminine", "blush", "botanical", "small business"] },
     [page],
   );
 }
@@ -87,7 +87,7 @@ function summitScoop(): Template {
     T("Ice cream  ·  Since 2019", 40, 434, 420, 26, { fontFamily: "Bebas Neue", letterSpacing: 300, textCase: "upper", color: DEEP, align: "center", lineHeight: 1.1, name: "Descriptor" }),
   ]);
   return template(
-    { slug: "summit-scoop-sticker", name: "Summit Scoop Sticker Logo", category: "logo", size: "logo", accent: BERRY, tags: ["logo", "sticker", "scallop", "ice cream", "dessert", "retro", "playful", "food", "pink", "shop"] },
+    { slug: "summit-scoop-sticker", category: "logo", size: "logo", accent: BERRY, tags: ["logo", "sticker", "scallop", "ice cream", "dessert", "retro", "playful", "food", "pink", "shop"] },
     [page],
   );
 }

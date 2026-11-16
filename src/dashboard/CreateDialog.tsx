@@ -24,6 +24,8 @@ import {
 } from "@/ui";
 import type { SizeUnit } from "@/core/types";
 import { isAcceptedImage } from "@/core/assets";
+import { englishName } from "@/data/names";
+import { m, num } from "@/i18n";
 import { DESIGN_CATEGORY_LABELS, DESIGN_TYPES, POPULAR_DESIGN_TYPES, describeSize, fromPx, toPx, type DesignCategory, type DesignType } from "@/data/designTypes";
 import { MAX_SIZE_PX, MIN_SIZE_PX, createBlankAndOpen, createCustomAndOpen, createFromImageFile, IMAGE_ACCEPT } from "./actions";
 import { closeCreateDialog, useCreateDialog, type CreateTab } from "./createDialogState";
@@ -48,15 +50,15 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { id: "for-you", label: "For you", icon: <IconEffects aria-hidden="true" />, color: "var(--c-primary)" },
+  { id: "for-you", label: m.dashboard.create.forYou, icon: <IconEffects aria-hidden="true" />, color: "var(--c-primary)" },
   { id: "presentation", label: DESIGN_CATEGORY_LABELS.presentation, icon: <IconPresentation aria-hidden="true" />, color: categoryColor("presentation") },
   { id: "social", label: DESIGN_CATEGORY_LABELS.social, icon: <IconSocial aria-hidden="true" />, color: categoryColor("social") },
   { id: "print", label: DESIGN_CATEGORY_LABELS.print, icon: <IconPrint aria-hidden="true" />, color: categoryColor("print") },
   { id: "document", label: DESIGN_CATEGORY_LABELS.document, icon: <IconDocument aria-hidden="true" />, color: categoryColor("document") },
   { id: "branding", label: DESIGN_CATEGORY_LABELS.branding, icon: <IconLogo aria-hidden="true" />, color: categoryColor("branding") },
   { id: "marketing", label: DESIGN_CATEGORY_LABELS.marketing, icon: <IconBanner aria-hidden="true" />, color: categoryColor("marketing") },
-  { id: "custom", label: "Custom size", icon: <IconCustomSize aria-hidden="true" />, color: "var(--c-ink-2)" },
-  { id: "upload", label: "Upload", icon: <IconUpload aria-hidden="true" />, color: "var(--c-ink-2)" },
+  { id: "custom", label: m.dashboard.shared.customSize, icon: <IconCustomSize aria-hidden="true" />, color: "var(--c-ink-2)" },
+  { id: "upload", label: m.dashboard.shared.upload, icon: <IconUpload aria-hidden="true" />, color: "var(--c-ink-2)" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -68,7 +70,7 @@ export function CreateDialog() {
   const state = useCreateDialog();
   const searchRef = useRef<HTMLInputElement>(null);
   return (
-    <Modal open={state.open} onClose={closeCreateDialog} size="xl" flush className="cf-create-modal" aria-label="Create a design" initialFocusRef={searchRef}>
+    <Modal open={state.open} onClose={closeCreateDialog} size="xl" flush className="cf-create-modal" aria-label={m.dashboard.shared.createDesign} initialFocusRef={searchRef}>
       <CreateBody initialTab={state.tab} initialQuery={state.query} folderId={state.folderId} searchRef={searchRef} />
     </Modal>
   );
@@ -128,7 +130,7 @@ function CreateBody({ initialTab, initialQuery, folderId, searchRef }: BodyProps
   else if (tab === "for-you") {
     content = (
       <>
-        <h3 className="cf-create__heading">Popular on Craftly</h3>
+        <h3 className="cf-create__heading">{m.dashboard.create.popular}</h3>
         <TileGrid types={POPULAR_DESIGN_TYPES} options={options} />
       </>
     );
@@ -148,9 +150,9 @@ function CreateBody({ initialTab, initialQuery, folderId, searchRef }: BodyProps
   return (
     <div className="cf-create">
       <aside className="cf-create__side">
-        <h2 className="cf-create__title">Create a design</h2>
+        <h2 className="cf-create__title">{m.dashboard.shared.createDesign}</h2>
         {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- the tabs are the focusable parts; the arrow keys move between them */}
-        <div className="cf-create__nav" role="tablist" aria-orientation="vertical" aria-label="Design categories" onKeyDown={onNavKey}>
+        <div className="cf-create__nav" role="tablist" aria-orientation="vertical" aria-label={m.dashboard.create.categories} onKeyDown={onNavKey}>
           {NAV.map((item) => {
             const selected = !searching && item.id === tab;
             return (
@@ -178,10 +180,10 @@ function CreateBody({ initialTab, initialQuery, folderId, searchRef }: BodyProps
 
       <div className="cf-create__main">
         <div className="cf-create__search">
-          <SearchField ref={searchRef} value={query} onChange={setQuery} placeholder="What would you like to create?" aria-label="Search design types" />
+          <SearchField ref={searchRef} value={query} onChange={setQuery} placeholder={m.dashboard.create.searchPlaceholder} aria-label={m.dashboard.create.searchLabel} />
         </div>
-        {folder ? <p className="cf-create__folder">New designs are saved in “{folder.name}”.</p> : null}
-        <div className="cf-create__content" role="tabpanel" aria-label={searching ? "Search results" : activeLabel}>
+        {folder ? <p className="cf-create__folder">{m.dashboard.create.savedIn(folder.name)}</p> : null}
+        <div className="cf-create__content" role="tabpanel" aria-label={searching ? m.dashboard.shared.searchResults : activeLabel}>
           {content}
         </div>
       </div>
@@ -207,7 +209,10 @@ function SearchResults({ query, words, onCustom, options }: { query: string; wor
   const types = useMemo(
     () =>
       DESIGN_TYPES.filter((type) =>
-        matchesWords(`${type.name} ${type.id.replace(/-/g, " ")} ${DESIGN_CATEGORY_LABELS[type.category]} ${describeSize(type.width, type.height, type.unit)}`, words),
+        matchesWords(
+          `${type.name} ${englishName("designTypes", type.id)} ${type.id.replace(/-/g, " ")} ${DESIGN_CATEGORY_LABELS[type.category]} ${englishName("designCategories", type.category)} ${describeSize(type.width, type.height, type.unit)}`,
+          words,
+        ),
       ),
     [words],
   );
@@ -217,11 +222,11 @@ function SearchResults({ query, words, onCustom, options }: { query: string; wor
     return (
       <EmptyState
         icon={<IconSearch />}
-        title={`No design types match “${query.trim()}”`}
-        text="Try a word like poster, instagram or resume, or type a size such as 1200 x 628."
+        title={m.dashboard.create.noMatch(query.trim())}
+        text={m.dashboard.create.noMatchText}
         action={
           <Button variant="primary" icon={<IconCustomSize aria-hidden="true" />} onClick={onCustom}>
-            Create a custom size
+            {m.dashboard.create.createCustomSize}
           </Button>
         }
       />
@@ -230,7 +235,7 @@ function SearchResults({ query, words, onCustom, options }: { query: string; wor
 
   return (
     <>
-      <h3 className="cf-create__heading">Results for “{query.trim()}”</h3>
+      <h3 className="cf-create__heading">{m.dashboard.create.resultsFor(query.trim())}</h3>
       <div className="cf-create__grid">
         {size ? (
           <CustomSizeTile
@@ -269,7 +274,7 @@ const UNIT_OPTIONS: SelectOption<SizeUnit>[] = [
 const UNIT_STEP: Record<SizeUnit, number> = { px: 1, in: 0.1, mm: 1, cm: 0.1 };
 const UNIT_PRECISION: Record<SizeUnit, number> = { px: 0, in: 2, mm: 1, cm: 2 };
 
-const trimNumber = (n: number) => String(Number(n.toFixed(2)));
+const trimNumber = (n: number) => num(Number(n.toFixed(2)), { useGrouping: false, maximumFractionDigits: 2 });
 
 function CustomSizePanel({ folderId }: { folderId: string | null }) {
   const [unit, setUnit] = useState<SizeUnit>("px");
@@ -302,13 +307,13 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
 
   return (
     <div className="cf-custom">
-      <h3 className="cf-create__heading">Custom size</h3>
+      <h3 className="cf-create__heading">{m.dashboard.shared.customSize}</h3>
       <div className="cf-custom__layout">
         <div className="cf-custom__form">
           <div className="cf-custom__row">
             <div className="cf-custom__field">
               <label className="cf-custom__label" htmlFor="cf-custom-width">
-                Width
+                {m.dashboard.create.width}
               </label>
               <NumberField
                 id="cf-custom-width"
@@ -316,22 +321,22 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
                 onChange={changeWidth}
                 step={UNIT_STEP[unit]}
                 precision={UNIT_PRECISION[unit]}
-                prefix={<span>W</span>}
+                prefix={<span>{m.dashboard.create.widthShort}</span>}
                 suffix={unit}
-                aria-label="Width"
+                aria-label={m.dashboard.create.width}
                 scrub={false}
               />
             </div>
             <IconButton
               className="cf-custom__lock"
-              label={locked ? "Unlock aspect ratio" : "Lock aspect ratio"}
+              label={locked ? m.dashboard.create.unlockRatio : m.dashboard.create.lockRatio}
               icon={locked ? <IconLink aria-hidden="true" /> : <IconUnlink aria-hidden="true" />}
               active={locked}
               onClick={() => setLocked((value) => !value)}
             />
             <div className="cf-custom__field">
               <label className="cf-custom__label" htmlFor="cf-custom-height">
-                Height
+                {m.dashboard.create.height}
               </label>
               <NumberField
                 id="cf-custom-height"
@@ -339,9 +344,9 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
                 onChange={changeHeight}
                 step={UNIT_STEP[unit]}
                 precision={UNIT_PRECISION[unit]}
-                prefix={<span>H</span>}
+                prefix={<span>{m.dashboard.create.heightShort}</span>}
                 suffix={unit}
-                aria-label="Height"
+                aria-label={m.dashboard.create.height}
                 scrub={false}
               />
             </div>
@@ -349,23 +354,25 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
 
           <div className="cf-custom__field cf-custom__field--unit">
             <label className="cf-custom__label" htmlFor="cf-custom-unit">
-              Units
+              {m.dashboard.create.units}
             </label>
-            <Select<SizeUnit> id="cf-custom-unit" value={unit} onChange={setUnit} options={UNIT_OPTIONS} aria-label="Units" />
+            <Select<SizeUnit> id="cf-custom-unit" value={unit} onChange={setUnit} options={UNIT_OPTIONS} aria-label={m.dashboard.create.units} />
           </div>
 
           {!widthOk || !heightOk ? (
             <p className="cf-custom__error" role="alert">
-              {widthOk ? "Height" : heightOk ? "Width" : "Width and height"} must be between {rangeText}.
+              {widthOk ? m.dashboard.create.heightRange(rangeText) : heightOk ? m.dashboard.create.widthRange(rangeText) : m.dashboard.create.bothRange(rangeText)}
             </p>
           ) : (
             <p className="cf-custom__hint">
-              {unit === "px" ? `Between ${rangeText} per side.` : `${Math.round(widthPx)} × ${Math.round(heightPx)} px. Between ${rangeText} per side.`}
+              {unit === "px"
+                ? m.dashboard.create.perSide(rangeText)
+                : m.dashboard.create.pxAndPerSide(m.dashboard.shared.pxSize(Math.round(widthPx), Math.round(heightPx)), rangeText)}
             </p>
           )}
 
           <Button variant="primary" size="lg" disabled={!ready} onClick={create}>
-            Create new design
+            {m.dashboard.create.createNew}
           </Button>
         </div>
 
@@ -391,7 +398,7 @@ function UploadPanel({ folderId }: { folderId: string | null }) {
     if (!file) return;
     setProblem(null);
     if (!isAcceptedImage(file)) {
-      setProblem("That file is not an image. Choose a PNG, JPG, WebP, GIF or SVG file.");
+      setProblem(m.dashboard.actions.notAnImage);
       return;
     }
     setBusy(true);
@@ -412,7 +419,7 @@ function UploadPanel({ folderId }: { folderId: string | null }) {
 
   return (
     <div className="cf-upload">
-      <h3 className="cf-create__heading">Upload</h3>
+      <h3 className="cf-create__heading">{m.dashboard.shared.upload}</h3>
       <div
         className={cx("cf-upload__zone", dragging && "is-dragging")}
         onDragOver={(event) => {
@@ -428,12 +435,12 @@ function UploadPanel({ folderId }: { folderId: string | null }) {
         <span className="cf-upload__icon" aria-hidden="true">
           <IconUpload />
         </span>
-        <p className="cf-upload__title">Start a design from your photo</p>
-        <p className="cf-upload__text">Drop an image here. The new design is sized to the picture and the picture fills the page.</p>
+        <p className="cf-upload__title">{m.dashboard.create.uploadTitle}</p>
+        <p className="cf-upload__text">{m.dashboard.create.uploadText}</p>
         <Button variant="primary" size="lg" loading={busy} icon={<IconUpload aria-hidden="true" />} onClick={choose}>
-          Choose an image
+          {m.dashboard.create.chooseImage}
         </Button>
-        <p className="cf-upload__formats">PNG, JPG, WebP, GIF or SVG</p>
+        <p className="cf-upload__formats">{m.dashboard.create.formats}</p>
         {problem ? (
           <p className="cf-upload__error" role="alert">
             {problem}

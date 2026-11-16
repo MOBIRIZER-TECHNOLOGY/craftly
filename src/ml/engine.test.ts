@@ -142,7 +142,8 @@ describe("the engine", () => {
     const fake = fakeOrt({ failRun: new Error("Non-zero status code returned while running Conv node") });
     const error = last(await send(createEngine({ loadRuntime: async () => fake.ort }), run()));
     expect(error).toMatchObject({ type: "error", code: "runtime" });
-    expect((error as Extract<WorkerResponse, { type: "error" }>).message).not.toContain("Conv");
+    // the worker sends no words at all (the page puts the code in words), so the technical text can only be in `detail`
+    expect(Object.keys(error).sort()).toEqual(["code", "detail", "id", "type"]);
   });
 
   it("treats an answer without the expected output as a runtime error", async () => {
@@ -183,11 +184,11 @@ describe("the engine", () => {
     expect(last(await send(createEngine({ loadRuntime: async () => throwing }), run()))).toMatchObject({ type: "error", code: "out-of-memory" });
   });
 
-  it("passes the technical text along for bug reports, apart from the plain message", async () => {
+  it("passes the technical text along for bug reports, apart from the code the page words", async () => {
     const fake = fakeOrt({ failRun: new Error("Non-zero status code returned while running Conv node. Name:'/conv'") });
     const error = last(await send(createEngine({ loadRuntime: async () => fake.ort }), run())) as Extract<WorkerResponse, { type: "error" }>;
     expect(error.detail).toContain("Non-zero status code returned while running Conv node");
-    expect(error.message).not.toContain("Non-zero");
+    expect(error).not.toHaveProperty("message");
   });
 
   it("keeps the technical text of a failure that was not an Error object", async () => {

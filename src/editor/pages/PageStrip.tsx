@@ -4,6 +4,7 @@ import { pageHasAnimation } from "@/core/animation";
 import { useEditor } from "@/core/store";
 import type { Page } from "@/core/types";
 import { useGesture } from "@/editor/canvas/gestureStore";
+import { m } from "@/i18n";
 import { Button, IconButton, IconChevronDown, IconDuplicate, IconMore, IconPlus, IconSparkle, MenuPopover, cx, type MenuEntry, type PopoverAnchor } from "@/ui";
 import { PageCaption, deletePageWithUndo, pageMenuItems, useHeld, usePageReorder, useThrottled, type ReorderItemProps } from "./pageParts";
 import "./pageStrip.css";
@@ -60,7 +61,7 @@ const Cell = memo(function Cell({
   const gesture = useGesture((g) => g.active);
   const shown = useThrottled(useHeld(page, gesture), 400);
   const moves = pageHasAnimation(page) || !!page.transition;
-  const label = `Page ${index + 1} of ${count}${page.name ? `, ${page.name}` : ""}${moves ? ", animated" : ""}`;
+  const label = m.editorChrome.pages.stripCell(index + 1, count, page.name ?? "", moves);
   return (
     <li
       className={cx("cf-strip__cell", active && "is-active", dragging && "is-dragging", dropBefore && "is-drop-before", dropAfter && "is-drop-after", menuOpen && "is-menu-open")}
@@ -85,7 +86,7 @@ const Cell = memo(function Cell({
           {index + 1}
         </span>
         {moves ? (
-          <span className="cf-strip__anim" aria-hidden="true" title="This page has animation">
+          <span className="cf-strip__anim" aria-hidden="true" title={m.editorChrome.pages.hasAnimation}>
             <IconSparkle />
           </span>
         ) : null}
@@ -93,7 +94,7 @@ const Cell = memo(function Cell({
       <IconButton
         className="cf-strip__more"
         size="sm"
-        label={`Page ${index + 1} options`}
+        label={m.editorChrome.pages.options(index + 1)}
         icon={<IconMore aria-hidden="true" />}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
@@ -194,14 +195,14 @@ export function PageStrip() {
     : [];
 
   const addItems: MenuEntry[] = [
-    { id: "add", label: "Add page", icon: <IconPlus aria-hidden="true" />, disabled: readOnly, onSelect: () => actions.addPage() },
-    { id: "duplicate", label: "Duplicate this page", icon: <IconDuplicate aria-hidden="true" />, disabled: readOnly, onSelect: () => actions.duplicatePage() },
+    { id: "add", label: m.editorChrome.pages.addPage, icon: <IconPlus aria-hidden="true" />, disabled: readOnly, onSelect: () => actions.addPage() },
+    { id: "duplicate", label: m.editorChrome.pages.duplicateThis, icon: <IconDuplicate aria-hidden="true" />, disabled: readOnly, onSelect: () => actions.duplicatePage() },
   ];
 
   if (!pages) return null;
 
   return (
-    <section className="cf-strip" aria-label="Pages">
+    <section className="cf-strip" aria-label={m.editorChrome.pages.strip}>
       <div className="cf-strip__scroll" onKeyDown={onKeyDown}>
         <ul ref={listRef} className="cf-strip__track">
           {pages.map((page, index) => (
@@ -231,7 +232,7 @@ export function PageStrip() {
                 variant="ghost"
                 className="cf-strip__add-main"
                 icon={<IconPlus aria-hidden="true" />}
-                aria-label="Add page"
+                aria-label={m.editorChrome.pages.addPage}
                 disabled={readOnly}
                 onClick={() => actions.addPage()}
               />
@@ -239,7 +240,7 @@ export function PageStrip() {
                 variant="ghost"
                 className="cf-strip__add-caret"
                 icon={<IconChevronDown aria-hidden="true" />}
-                aria-label="Add page options"
+                aria-label={m.editorChrome.pages.addPageOptions}
                 aria-haspopup="menu"
                 aria-expanded={addMenu !== null}
                 disabled={readOnly}
@@ -258,9 +259,16 @@ export function PageStrip() {
         onClose={() => setMenu(null)}
         items={menuItems}
         placement="top-start"
-        aria-label={menuIndex >= 0 ? `Page ${menuIndex + 1} options` : "Page options"}
+        aria-label={menuIndex >= 0 ? m.editorChrome.pages.options(menuIndex + 1) : m.editorChrome.pages.pageOptions}
       />
-      <MenuPopover open={addMenu !== null} anchor={addMenu} onClose={() => setAddMenu(null)} items={addItems} placement="top-end" aria-label="Add page options" />
+      <MenuPopover
+        open={addMenu !== null}
+        anchor={addMenu}
+        onClose={() => setAddMenu(null)}
+        items={addItems}
+        placement="top-end"
+        aria-label={m.editorChrome.pages.addPageOptions}
+      />
     </section>
   );
 }

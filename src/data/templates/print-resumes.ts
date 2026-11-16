@@ -85,7 +85,7 @@ function modernSidebar(): Template {
   section("RECOGNITION");
   els.push(sans("Webby Honoree 2023, Health and Wellness category\nSpeaker, Config 2022: Designing for accessibility at scale", X, y, MW, 15.5, { list: "bullet", lineHeight: 1.6, color: "#2a3445" }));
   return template(
-    { slug: "modern-sidebar", name: "Modern Sidebar Resume", category: "resume", size: "resume", tags: ["resume", "cv", "modern", "two column", "sidebar", "designer", "navy", "teal"], accent: TEAL },
+    { slug: "modern-sidebar", category: "resume", size: "resume", tags: ["resume", "cv", "modern", "two column", "sidebar", "designer", "navy", "teal"], accent: TEAL },
     [pg(PAPER, els)],
   );
 }
@@ -165,7 +165,7 @@ function minimalist(): Template {
     sans("Structured log shipping library used by 300+ projects.", CX + 112, y + 27, CW - 112, 15, { color: "#2d2d2d" }),
   );
   return template(
-    { slug: "minimal-engineer", name: "Minimalist Engineer Resume", category: "resume", size: "resume", tags: ["resume", "cv", "minimalist", "clean", "software", "engineer", "single column", "mono"], accent: ACC },
+    { slug: "minimal-engineer", category: "resume", size: "resume", tags: ["resume", "cv", "minimalist", "clean", "software", "engineer", "single column", "mono"], accent: ACC },
     [pg("#ffffff", els)],
   );
 }
@@ -262,7 +262,7 @@ function creativeHeader(): Template {
   rsec("Recognition");
   els.push(sans("Society of Illustrators Gold Medal, 2022\nCommunication Arts Award of Excellence, 2021", RX, ry, RW, 15, { lineHeight: 1.5, color: BODY }));
   return template(
-    { slug: "creative-header", name: "Creative Color Header Resume", category: "resume", size: "resume", tags: ["resume", "cv", "creative", "colorful", "illustrator", "portfolio", "coral", "artist"], accent: CORAL },
+    { slug: "creative-header", category: "resume", size: "resume", tags: ["resume", "cv", "creative", "colorful", "illustrator", "portfolio", "coral", "artist"], accent: CORAL },
     [pg(PAPER, els)],
   );
 }
@@ -332,7 +332,7 @@ function executiveClassic(): Template {
     body("Chicago Youth Symphony, 2018 - Present", X + half, y + 72, half, 15, { color: GREY }),
   );
   return template(
-    { slug: "executive-classic", name: "Executive Classic Resume", category: "resume", size: "resume", tags: ["resume", "cv", "executive", "classic", "traditional", "finance", "navy", "serif"], accent: NAVY },
+    { slug: "executive-classic", category: "resume", size: "resume", tags: ["resume", "cv", "executive", "classic", "traditional", "finance", "navy", "serif"], accent: NAVY },
     [pg("#fefefe", els)],
   );
 }

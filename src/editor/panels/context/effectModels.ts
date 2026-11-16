@@ -4,6 +4,7 @@
  */
 import { parseColor, rgba, toHex } from "@/core/color";
 import type { Shadow, TextEffect, TextEffectKind } from "@/core/types";
+import { m } from "@/i18n";
 
 /* ------------------------------------------------------------------ */
 /* text effects                                                        */
@@ -12,14 +13,14 @@ import type { Shadow, TextEffect, TextEffectKind } from "@/core/types";
 export type EffectControl = "offset" | "direction" | "blur" | "intensity" | "thickness" | "roundness" | "spread" | "transparency";
 
 export const CONTROL_INFO: Record<EffectControl, { label: string; min: number; max: number; fallback: number }> = {
-  offset: { label: "Offset", min: 0, max: 100, fallback: 50 },
-  direction: { label: "Direction", min: -180, max: 180, fallback: 45 },
-  blur: { label: "Blur", min: 0, max: 100, fallback: 0 },
-  intensity: { label: "Intensity", min: 0, max: 100, fallback: 50 },
-  thickness: { label: "Thickness", min: 0, max: 100, fallback: 50 },
-  roundness: { label: "Roundness", min: 0, max: 100, fallback: 50 },
-  spread: { label: "Spread", min: 0, max: 100, fallback: 50 },
-  transparency: { label: "Transparency", min: 0, max: 100, fallback: 0 },
+  offset: { label: m.panelsContext.effects.controls.offset, min: 0, max: 100, fallback: 50 },
+  direction: { label: m.panelsContext.effects.controls.direction, min: -180, max: 180, fallback: 45 },
+  blur: { label: m.panelsContext.effects.controls.blur, min: 0, max: 100, fallback: 0 },
+  intensity: { label: m.panelsContext.effects.controls.intensity, min: 0, max: 100, fallback: 50 },
+  thickness: { label: m.panelsContext.effects.controls.thickness, min: 0, max: 100, fallback: 50 },
+  roundness: { label: m.panelsContext.effects.controls.roundness, min: 0, max: 100, fallback: 50 },
+  spread: { label: m.panelsContext.effects.controls.spread, min: 0, max: 100, fallback: 50 },
+  transparency: { label: m.panelsContext.effects.controls.transparency, min: 0, max: 100, fallback: 0 },
 };
 
 export interface EffectDef {
@@ -34,30 +35,30 @@ export interface EffectDef {
 }
 
 export const TEXT_EFFECTS: EffectDef[] = [
-  { kind: "none", label: "None", defaults: { kind: "none" }, controls: [], color: false },
+  { kind: "none", label: m.panelsContext.effects.styles.none, defaults: { kind: "none" }, controls: [], color: false },
   {
     kind: "shadow",
-    label: "Shadow",
+    label: m.panelsContext.effects.styles.shadow,
     defaults: { kind: "shadow", color: "#000000", offset: 50, direction: 45, blur: 30, transparency: 50 },
     controls: ["offset", "direction", "blur", "transparency"],
     color: true,
   },
-  { kind: "lift", label: "Lift", defaults: { kind: "lift", intensity: 50 }, controls: ["intensity"], color: false },
-  { kind: "hollow", label: "Hollow", defaults: { kind: "hollow", thickness: 50 }, controls: ["thickness"], color: false },
+  { kind: "lift", label: m.panelsContext.effects.styles.lift, defaults: { kind: "lift", intensity: 50 }, controls: ["intensity"], color: false },
+  { kind: "hollow", label: m.panelsContext.effects.styles.hollow, defaults: { kind: "hollow", thickness: 50 }, controls: ["thickness"], color: false },
   {
     kind: "splice",
-    label: "Splice",
+    label: m.panelsContext.effects.styles.splice,
     defaults: { kind: "splice", color: "#8b3dff", thickness: 50, offset: 50, direction: 45 },
     controls: ["thickness", "offset", "direction"],
     color: true,
   },
-  { kind: "outline", label: "Outline", defaults: { kind: "outline", color: "#000000", thickness: 50 }, controls: ["thickness"], color: true },
-  { kind: "echo", label: "Echo", defaults: { kind: "echo", offset: 50, direction: 45 }, controls: ["offset", "direction"], color: true },
-  { kind: "glitch", label: "Glitch", defaults: { kind: "glitch", offset: 50 }, controls: ["offset"], color: false },
-  { kind: "neon", label: "Neon", defaults: { kind: "neon", color: "#ff2fb3", intensity: 50 }, controls: ["intensity"], color: true },
+  { kind: "outline", label: m.panelsContext.effects.styles.outline, defaults: { kind: "outline", color: "#000000", thickness: 50 }, controls: ["thickness"], color: true },
+  { kind: "echo", label: m.panelsContext.effects.styles.echo, defaults: { kind: "echo", offset: 50, direction: 45 }, controls: ["offset", "direction"], color: true },
+  { kind: "glitch", label: m.panelsContext.effects.styles.glitch, defaults: { kind: "glitch", offset: 50 }, controls: ["offset"], color: false },
+  { kind: "neon", label: m.panelsContext.effects.styles.neon, defaults: { kind: "neon", color: "#ff2fb3", intensity: 50 }, controls: ["intensity"], color: true },
   {
     kind: "background",
-    label: "Background",
+    label: m.panelsContext.effects.styles.background,
     defaults: { kind: "background", color: "#ffe066", roundness: 50, spread: 50, transparency: 0 },
     controls: ["roundness", "spread", "transparency"],
     color: true,
@@ -95,10 +96,10 @@ export interface ShadowParts {
 export type ShadowPresetId = "drop" | "glow" | "soft" | "hard";
 
 export const SHADOW_PRESETS: Array<{ id: ShadowPresetId; label: string; parts: ShadowParts }> = [
-  { id: "drop", label: "Drop", parts: { offset: 35, direction: 45, blur: 30, transparency: 55, color: "#000000" } },
-  { id: "glow", label: "Glow", parts: { offset: 0, direction: 45, blur: 60, transparency: 15, color: "#8b3dff" } },
-  { id: "soft", label: "Soft", parts: { offset: 20, direction: 90, blur: 90, transparency: 72, color: "#0e1318" } },
-  { id: "hard", label: "Hard", parts: { offset: 40, direction: 45, blur: 0, transparency: 10, color: "#0e1318" } },
+  { id: "drop", label: m.panelsContext.effects.shadowPresets.drop, parts: { offset: 35, direction: 45, blur: 30, transparency: 55, color: "#000000" } },
+  { id: "glow", label: m.panelsContext.effects.shadowPresets.glow, parts: { offset: 0, direction: 45, blur: 60, transparency: 15, color: "#8b3dff" } },
+  { id: "soft", label: m.panelsContext.effects.shadowPresets.soft, parts: { offset: 20, direction: 90, blur: 90, transparency: 72, color: "#0e1318" } },
+  { id: "hard", label: m.panelsContext.effects.shadowPresets.hard, parts: { offset: 40, direction: 45, blur: 0, transparency: 10, color: "#0e1318" } },
 ];
 
 /** Design px per slider unit on a page whose short side is 1080px; other page sizes scale with it. */

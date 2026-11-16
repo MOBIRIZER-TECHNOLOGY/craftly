@@ -3,6 +3,7 @@
  * Resolves with the trimmed text, or null when cancelled. Mount <PromptHost /> once (the Dashboard does).
  */
 import { useId, useRef, useState, useSyncExternalStore } from "react";
+import { m } from "@/i18n";
 import { Button, Modal, TextField } from "@/ui";
 import "./prompt.css";
 
@@ -98,10 +99,10 @@ function PromptForm({ request, onSettle }: { request: PromptOptions; onSettle: (
       />
       <div className="cf-prompt__actions">
         <Button variant="secondary" onClick={() => onSettle(null)}>
-          Cancel
+          {m.common.cancel}
         </Button>
         <Button type="submit" variant="primary" disabled={!trimmed}>
-          {request.confirmLabel ?? "Save"}
+          {request.confirmLabel ?? m.common.save}
         </Button>
       </div>
     </form>

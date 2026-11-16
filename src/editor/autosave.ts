@@ -6,6 +6,7 @@ import { saveDesign, saveThumbnail, saveVersion } from "@/core/library";
 import { recordProblem } from "@/core/problems";
 import { useEditor } from "@/core/store";
 import type { Design } from "@/core/types";
+import { m } from "@/i18n";
 import { toast } from "@/ui";
 import { renderPageToCanvas } from "@/render/renderPage";
 
@@ -64,19 +65,18 @@ export function installAutosave(revision?: string | null): (() => void) & { flus
       const cur = useEditor.getState();
       if (active && cur.design?.id === designId) {
         cur.actions.setSaveState("error");
-        const message =
-          error instanceof Error && error.name === "DesignSaveConflict" ? error.message : "Could not save your design. Try again or download a project file to keep your edits.";
+        const message = error instanceof Error && error.name === "DesignSaveConflict" ? error.message : m.editor.recovery.saveFailed;
         if (message !== lastError) {
           toast.error(message, {
             duration: 0,
-            actionLabel: "Download copy",
+            actionLabel: m.editor.recovery.downloadCopy,
             onAction: () =>
               void import("@/export/projectFile")
                 .then(async ({ exportProjectFile, projectFileName }) => {
                   const { downloadBlob } = await import("@/export/download");
                   downloadBlob(await exportProjectFile(cur.design ?? design), projectFileName(design.title));
                 })
-                .catch(() => toast.error("Could not download the recovery copy.")),
+                .catch(() => toast.error(m.editor.recovery.downloadFailed)),
           });
         }
         lastError = message;

@@ -2,6 +2,7 @@
 import { extractSvgColors } from "@/core/svg";
 import { useEditor } from "@/core/store";
 import type { GraphicElement } from "@/core/types";
+import { m } from "@/i18n";
 import { Divider } from "@/ui";
 import { AnimateButton, CopyStyleButton, EffectsButton, FlipMenu, MoreButton, MultiActions, PositionButton, Swatch, TransparencyButton, type BarProps } from "../common";
 import { IconStrokeWeight } from "../icons";
@@ -38,8 +39,8 @@ export function GraphicBar({ els, ids, copyEnabled }: BarProps<GraphicElement> &
           return (
             <TBIcon
               key={key}
-              label={`Color ${i + 1}`}
-              tip={keys.length > 1 ? `Color ${i + 1} of ${keys.length}` : "Color"}
+              label={m.editor.graphicBar.colorN(i + 1)}
+              tip={keys.length > 1 ? m.editor.graphicBar.colorNOf(i + 1, keys.length) : m.editor.toolbar.color}
               icon={<Swatch large css={shown} />}
               active={openKey === key}
               onClick={() => toggleContext({ kind: "color", target: "graphic", key })}
@@ -48,10 +49,10 @@ export function GraphicBar({ els, ids, copyEnabled }: BarProps<GraphicElement> &
         })}
 
       {stroked && (
-        <PopoverButton label="Stroke width" tip="Stroke width" icon={<IconStrokeWeight />} panelClass="cf-tbpop--narrow">
+        <PopoverButton label={m.editor.graphicBar.strokeWidth} tip={m.editor.graphicBar.strokeWidth} icon={<IconStrokeWeight />} panelClass="cf-tbpop--narrow">
           {() => (
             <SliderField
-              label="Stroke width"
+              label={m.editor.graphicBar.strokeWidth}
               value={strokeWidth.value ?? 2}
               mixed={strokeWidth.mixed}
               min={0.5}

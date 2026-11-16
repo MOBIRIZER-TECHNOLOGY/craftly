@@ -5,29 +5,36 @@
  *
  * Whatever reads `blend` goes through `blendOf`, so a value that is not one of these (a hand edited file, another person's
  * browser) is the same as none and never reaches a canvas or a line of markup.
+ *
+ * The live server bundles this file too (for `isBlendMode`, through src/collab/protocol.ts), so it takes the names a person
+ * reads from the two `core` catalogs and the language of the page directly, not from `@/i18n`, whose `switchLanguage` brings
+ * the whole editor (and its font files) into the bundle.
  */
+import { core as en } from "@/i18n/en/core";
+import { core as hi } from "@/i18n/hi/core";
+import { lang, type Language } from "@/i18n/language";
 import type { BlendMode } from "./types";
 
-/** Every mode with the name a person reads, in the order of the list of a photo editor: darken, lighten, contrast, compare, colour. */
-const LABELS: Readonly<Record<BlendMode, string>> = {
-  darken: "Darken",
-  multiply: "Multiply",
-  "color-burn": "Color burn",
-  lighten: "Lighten",
-  screen: "Screen",
-  "color-dodge": "Color dodge",
-  overlay: "Overlay",
-  "soft-light": "Soft light",
-  "hard-light": "Hard light",
-  difference: "Difference",
-  exclusion: "Exclusion",
-  hue: "Hue",
-  saturation: "Saturation",
-  color: "Color",
-  luminosity: "Luminosity",
-};
+const NAMES: Readonly<Record<Language, typeof en.blend>> = { en: en.blend, hi: hi.blend };
 
-export const BLEND_MODES: readonly BlendMode[] = Object.keys(LABELS) as BlendMode[];
+/** Every mode, in the order of the list of a photo editor: darken, lighten, contrast, compare, colour. */
+export const BLEND_MODES: readonly BlendMode[] = [
+  "darken",
+  "multiply",
+  "color-burn",
+  "lighten",
+  "screen",
+  "color-dodge",
+  "overlay",
+  "soft-light",
+  "hard-light",
+  "difference",
+  "exclusion",
+  "hue",
+  "saturation",
+  "color",
+  "luminosity",
+];
 
 const KNOWN: ReadonlySet<unknown> = new Set(BLEND_MODES);
 
@@ -37,4 +44,4 @@ export const isBlendMode = (value: unknown): value is BlendMode => KNOWN.has(val
 export const blendOf = (el: { blend?: unknown }): BlendMode | undefined => (isBlendMode(el.blend) ? el.blend : undefined);
 
 /** The name of a mode as a person reads it; no mode is Normal. */
-export const blendLabel = (mode: BlendMode | undefined): string => (mode ? LABELS[mode] : "Normal");
+export const blendLabel = (mode: BlendMode | undefined): string => (mode ? NAMES[lang][mode] : NAMES[lang].normal);

@@ -4,6 +4,8 @@
  */
 import type { LinearGradientFill } from "@/core/types";
 import { hsvToRgb, lighten, darken, parseColor, rgbToHsv, toHex } from "@/core/color";
+import { m } from "@/i18n";
+import { nameIn } from "./names";
 
 /* ------------------------------------------------------------------ */
 /* Default solid colours: 7 x 4 grid                                  */
@@ -71,51 +73,50 @@ export interface ColorPalette {
 }
 
 const PALETTE_DATA: Array<[string, string[]]> = [
-  ["Sunset market", ["#3d2c4d", "#c8553d", "#f28f3b", "#ffd58a", "#fff3d6"]],
-  ["Sea glass", ["#0b3c49", "#1f7a8c", "#7fc8c0", "#bfe3d6", "#f1f7f0"]],
-  ["Peach fuzz", ["#ffe5d4", "#ffc2a1", "#ff9b85", "#d6657a", "#7a3b69"]],
-  ["Berry smoothie", ["#3b1c32", "#6a1a4c", "#b3366a", "#ee6c8a", "#ffc9d6"]],
-  ["Forest floor", ["#1b2b20", "#2f5233", "#6b8f4e", "#b7c58a", "#efe6c8"]],
-  ["Desert bloom", ["#5a3e36", "#b5654b", "#e3a07f", "#f4d6b0", "#8fa88a"]],
-  ["Midnight jazz", ["#0d1b2a", "#1b263b", "#415a77", "#778da9", "#e0e1dd"]],
-  ["Cotton candy", ["#ffc8dd", "#ffafcc", "#bde0fe", "#a2d2ff", "#fff5fb"]],
-  ["Matcha latte", ["#3a4a2c", "#7a9a52", "#c4d49a", "#f0ead2", "#a77d5c"]],
-  ["Coral reef", ["#05396b", "#0c7a8d", "#37b5a5", "#ff8a65", "#ffe0c2"]],
-  ["Lavender haze", ["#2b2145", "#5b4b8a", "#9d8ec7", "#cfc4e8", "#f5f0ff"]],
-  ["Autumn harvest", ["#3d1f0f", "#8c3b12", "#d2691e", "#e8a53c", "#f5deb3"]],
-  ["Ink and paper", ["#111111", "#3a3a3a", "#8a8a8a", "#d8d3c8", "#faf7f0"]],
-  ["Tropical punch", ["#00695c", "#26c6a2", "#ffd54f", "#ff7043", "#e91e63"]],
-  ["Nordic morning", ["#1f3a4d", "#5a8399", "#a9c6d3", "#e6eef2", "#f2b882"]],
-  ["Rose garden", ["#4a1c2c", "#a23b5b", "#e07a95", "#f6b8c6", "#fdecef"]],
-  ["Citrus grove", ["#2f4b26", "#7cb518", "#e9d758", "#f9a03f", "#fff4cc"]],
-  ["Blueberry pie", ["#1d1b4d", "#3c3a8f", "#6a74d9", "#b3b9f0", "#f4d6a0"]],
-  ["Terracotta studio", ["#6b3a2e", "#b8583d", "#e0916b", "#efd5b6", "#7c8b6f"]],
-  ["Mint chocolate", ["#2e1f1a", "#5c3d2e", "#8cd0b4", "#cdeee0", "#fbfffc"]],
-  ["Golden hour", ["#2c2a4a", "#7a4e7e", "#e07a5f", "#f2cc8f", "#fff1d0"]],
-  ["Pool party", ["#00b4d8", "#48cae4", "#90e0ef", "#caf0f8", "#ff5d8f"]],
-  ["Moss and stone", ["#2b2d2a", "#5c6b57", "#9aa58b", "#d1cfc0", "#f2efe6"]],
-  ["Candy shop", ["#ff4d8d", "#ff9bd2", "#ffd6a5", "#a0e7e5", "#6c5ce7"]],
-  ["Espresso", ["#1e1511", "#4a2f24", "#7b5844", "#c1a18a", "#f3e7da"]],
-  ["Spring meadow", ["#386641", "#6a994e", "#a7c957", "#f2e8cf", "#bc4749"]],
-  ["Dusty rose", ["#583a45", "#9a6b75", "#c99aa2", "#e8cfcf", "#f8efea"]],
-  ["Electric night", ["#0a0a23", "#2d1b69", "#7b2ff7", "#00e5ff", "#f5f5ff"]],
-  ["Sandstone", ["#4a3b2a", "#9c7a54", "#d4b98c", "#ecdcc0", "#faf4e6"]],
-  ["Wild orchid", ["#3a0f4d", "#7a2a8c", "#c459c8", "#f0a6e0", "#ffe9f8"]],
-  ["Glacier", ["#0a2540", "#1b6ca8", "#6fb7e9", "#cfe9f7", "#ffffff"]],
-  ["Olive oil", ["#3b3d1c", "#6b6e2a", "#a9ab4e", "#e4e1a6", "#fbf8e1"]],
-  ["Hot chilli", ["#2b0a0a", "#7a1212", "#d62828", "#f77f00", "#fcbf49"]],
-  ["Soft sage", ["#4a5d4e", "#87a08b", "#b9cbb8", "#e5ece2", "#f7f4ec"]],
-  ["Dream sky", ["#355c9a", "#7aa6e0", "#c3d9f5", "#ffd9c0", "#ffb3a7"]],
-  ["Plum wine", ["#2a0f24", "#5b1e45", "#912f63", "#d9728f", "#f6c1a7"]],
-  ["Lemon sorbet", ["#fff6a8", "#ffe066", "#ffc857", "#b8e0d2", "#5aa9a1"]],
-  ["Craftly studio", ["#12c2b9", "#3b82f6", "#7c3aed", "#0e1318", "#f6f7f9"]],
-  ["Retro diner", ["#d62839", "#f4f1de", "#ffb703", "#219ebc", "#023047"]],
-  ["Misty mountain", ["#2f3e46", "#52796f", "#84a98c", "#cad2c5", "#e9f0ec"]],
+  ["sunset-market", ["#3d2c4d", "#c8553d", "#f28f3b", "#ffd58a", "#fff3d6"]],
+  ["sea-glass", ["#0b3c49", "#1f7a8c", "#7fc8c0", "#bfe3d6", "#f1f7f0"]],
+  ["peach-fuzz", ["#ffe5d4", "#ffc2a1", "#ff9b85", "#d6657a", "#7a3b69"]],
+  ["berry-smoothie", ["#3b1c32", "#6a1a4c", "#b3366a", "#ee6c8a", "#ffc9d6"]],
+  ["forest-floor", ["#1b2b20", "#2f5233", "#6b8f4e", "#b7c58a", "#efe6c8"]],
+  ["desert-bloom", ["#5a3e36", "#b5654b", "#e3a07f", "#f4d6b0", "#8fa88a"]],
+  ["midnight-jazz", ["#0d1b2a", "#1b263b", "#415a77", "#778da9", "#e0e1dd"]],
+  ["cotton-candy", ["#ffc8dd", "#ffafcc", "#bde0fe", "#a2d2ff", "#fff5fb"]],
+  ["matcha-latte", ["#3a4a2c", "#7a9a52", "#c4d49a", "#f0ead2", "#a77d5c"]],
+  ["coral-reef", ["#05396b", "#0c7a8d", "#37b5a5", "#ff8a65", "#ffe0c2"]],
+  ["lavender-haze", ["#2b2145", "#5b4b8a", "#9d8ec7", "#cfc4e8", "#f5f0ff"]],
+  ["autumn-harvest", ["#3d1f0f", "#8c3b12", "#d2691e", "#e8a53c", "#f5deb3"]],
+  ["ink-and-paper", ["#111111", "#3a3a3a", "#8a8a8a", "#d8d3c8", "#faf7f0"]],
+  ["tropical-punch", ["#00695c", "#26c6a2", "#ffd54f", "#ff7043", "#e91e63"]],
+  ["nordic-morning", ["#1f3a4d", "#5a8399", "#a9c6d3", "#e6eef2", "#f2b882"]],
+  ["rose-garden", ["#4a1c2c", "#a23b5b", "#e07a95", "#f6b8c6", "#fdecef"]],
+  ["citrus-grove", ["#2f4b26", "#7cb518", "#e9d758", "#f9a03f", "#fff4cc"]],
+  ["blueberry-pie", ["#1d1b4d", "#3c3a8f", "#6a74d9", "#b3b9f0", "#f4d6a0"]],
+  ["terracotta-studio", ["#6b3a2e", "#b8583d", "#e0916b", "#efd5b6", "#7c8b6f"]],
+  ["mint-chocolate", ["#2e1f1a", "#5c3d2e", "#8cd0b4", "#cdeee0", "#fbfffc"]],
+  ["golden-hour", ["#2c2a4a", "#7a4e7e", "#e07a5f", "#f2cc8f", "#fff1d0"]],
+  ["pool-party", ["#00b4d8", "#48cae4", "#90e0ef", "#caf0f8", "#ff5d8f"]],
+  ["moss-and-stone", ["#2b2d2a", "#5c6b57", "#9aa58b", "#d1cfc0", "#f2efe6"]],
+  ["candy-shop", ["#ff4d8d", "#ff9bd2", "#ffd6a5", "#a0e7e5", "#6c5ce7"]],
+  ["espresso", ["#1e1511", "#4a2f24", "#7b5844", "#c1a18a", "#f3e7da"]],
+  ["spring-meadow", ["#386641", "#6a994e", "#a7c957", "#f2e8cf", "#bc4749"]],
+  ["dusty-rose", ["#583a45", "#9a6b75", "#c99aa2", "#e8cfcf", "#f8efea"]],
+  ["electric-night", ["#0a0a23", "#2d1b69", "#7b2ff7", "#00e5ff", "#f5f5ff"]],
+  ["sandstone", ["#4a3b2a", "#9c7a54", "#d4b98c", "#ecdcc0", "#faf4e6"]],
+  ["wild-orchid", ["#3a0f4d", "#7a2a8c", "#c459c8", "#f0a6e0", "#ffe9f8"]],
+  ["glacier", ["#0a2540", "#1b6ca8", "#6fb7e9", "#cfe9f7", "#ffffff"]],
+  ["olive-oil", ["#3b3d1c", "#6b6e2a", "#a9ab4e", "#e4e1a6", "#fbf8e1"]],
+  ["hot-chilli", ["#2b0a0a", "#7a1212", "#d62828", "#f77f00", "#fcbf49"]],
+  ["soft-sage", ["#4a5d4e", "#87a08b", "#b9cbb8", "#e5ece2", "#f7f4ec"]],
+  ["dream-sky", ["#355c9a", "#7aa6e0", "#c3d9f5", "#ffd9c0", "#ffb3a7"]],
+  ["plum-wine", ["#2a0f24", "#5b1e45", "#912f63", "#d9728f", "#f6c1a7"]],
+  ["lemon-sorbet", ["#fff6a8", "#ffe066", "#ffc857", "#b8e0d2", "#5aa9a1"]],
+  ["craftly-studio", ["#12c2b9", "#3b82f6", "#7c3aed", "#0e1318", "#f6f7f9"]],
+  ["retro-diner", ["#d62839", "#f4f1de", "#ffb703", "#219ebc", "#023047"]],
+  ["misty-mountain", ["#2f3e46", "#52796f", "#84a98c", "#cad2c5", "#e9f0ec"]],
 ];
 
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-export const COLOR_PALETTES: ColorPalette[] = PALETTE_DATA.map(([name, colors]) => ({ id: slug(name), name, colors }));
+/** (each palette is written with its id; the name is the catalog's) */
+export const COLOR_PALETTES: ColorPalette[] = PALETTE_DATA.map(([id, colors]) => ({ id, name: nameIn(m.data.palettes, id), colors }));
 
 /* ------------------------------------------------------------------ */
 /* Colour names and search                                            */
@@ -151,8 +152,8 @@ function hslToHex(h: number, s: number, l: number): string {
   const hp = (((h % 360) + 360) % 360) / 60;
   const x = c * (1 - Math.abs((hp % 2) - 1));
   const [r, g, b] = hp < 1 ? [c, x, 0] : hp < 2 ? [x, c, 0] : hp < 3 ? [0, c, x] : hp < 4 ? [0, x, c] : hp < 5 ? [x, 0, c] : [c, 0, x];
-  const m = l - c / 2;
-  return toHex({ r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255, a: 1 });
+  const base = l - c / 2;
+  return toHex({ r: (r + base) * 255, g: (g + base) * 255, b: (b + base) * 255, a: 1 });
 }
 
 interface Family {
@@ -234,11 +235,11 @@ function curated(base: ColorName): string[] {
 }
 
 function hexQuery(q: string): string | null {
-  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(q);
-  if (!m) return null;
+  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(q);
+  if (!hex) return null;
   // a bare 3-digit string is far more likely to be a word ("add", "bad") than a colour
-  if (q[0] !== "#" && m[1].length === 3) return null;
-  const c = parseColor("#" + m[1]);
+  if (q[0] !== "#" && hex[1].length === 3) return null;
+  const c = parseColor("#" + hex[1]);
   return c ? toHex(c) : null;
 }
 

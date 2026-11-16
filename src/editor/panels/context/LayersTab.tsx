@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { getActions, useActivePage, useEditor } from "@/core/store";
 import type { DesignElement, ID } from "@/core/types";
+import { m } from "@/i18n";
 import {
   cx,
   IconBringForward,
@@ -71,7 +72,7 @@ export function LayersTab() {
   const hasGroups = page?.elements.some((e) => e.type === "group") ?? false;
 
   if (!page || page.elements.length === 0) {
-    return <PanelEmpty icon={<IconLayers />} title="No layers yet" text="Everything you add to this page shows up here, top-most first, so you can reorder, hide or lock it." />;
+    return <PanelEmpty icon={<IconLayers />} title={m.panelsContext.layers.emptyTitle} text={m.panelsContext.layers.emptyText} />;
   }
 
   /* ---- selection ---- */
@@ -146,11 +147,11 @@ export function LayersTab() {
     const el = row.el;
     const id = el.id;
     const top = row.depth === 0;
-    const items: MenuEntry[] = [{ id: "rename", label: "Rename", icon: <IconTextBox />, onSelect: () => setRenaming(id) }];
+    const items: MenuEntry[] = [{ id: "rename", label: m.panelsContext.layers.rename, icon: <IconTextBox />, onSelect: () => setRenaming(id) }];
     if (top) {
       items.push({
         id: "duplicate",
-        label: "Duplicate",
+        label: m.panelsContext.layers.duplicate,
         icon: <IconDuplicate />,
         shortcut: "Mod+D",
         onSelect: () => {
@@ -160,12 +161,12 @@ export function LayersTab() {
       });
       const current = useEditor.getState().selection;
       if (current.length > 1 && current.includes(id)) {
-        items.push({ id: "group", label: "Group", icon: <IconGroup />, shortcut: "Mod+G", onSelect: () => actions.groupSelection() });
+        items.push({ id: "group", label: m.panelsContext.layers.group, icon: <IconGroup />, shortcut: "Mod+G", onSelect: () => actions.groupSelection() });
       }
       if (el.type === "group") {
         items.push({
           id: "ungroup",
-          label: "Ungroup",
+          label: m.panelsContext.layers.ungroup,
           icon: <IconUngroup />,
           shortcut: "Mod+Shift+G",
           onSelect: () => {
@@ -177,15 +178,25 @@ export function LayersTab() {
     }
     items.push(
       { type: "divider" },
-      { id: "front", label: "Bring to front", icon: <IconBringToFront />, disabled: isTopOfList(row), onSelect: () => actions.arrange("front", [id]) },
-      { id: "forward", label: "Bring forward", icon: <IconBringForward />, disabled: isTopOfList(row), onSelect: () => actions.arrange("forward", [id]) },
-      { id: "backward", label: "Send backward", icon: <IconSendBackward />, disabled: row.index === 0, onSelect: () => actions.arrange("backward", [id]) },
-      { id: "back", label: "Send to back", icon: <IconSendToBack />, disabled: row.index === 0, onSelect: () => actions.arrange("back", [id]) },
+      { id: "front", label: m.panelsContext.layers.bringToFront, icon: <IconBringToFront />, disabled: isTopOfList(row), onSelect: () => actions.arrange("front", [id]) },
+      { id: "forward", label: m.panelsContext.layers.bringForward, icon: <IconBringForward />, disabled: isTopOfList(row), onSelect: () => actions.arrange("forward", [id]) },
+      { id: "backward", label: m.panelsContext.layers.sendBackward, icon: <IconSendBackward />, disabled: row.index === 0, onSelect: () => actions.arrange("backward", [id]) },
+      { id: "back", label: m.panelsContext.layers.sendToBack, icon: <IconSendToBack />, disabled: row.index === 0, onSelect: () => actions.arrange("back", [id]) },
       { type: "divider" },
-      { id: "hide", label: el.hidden ? "Show" : "Hide", icon: el.hidden ? <IconEye /> : <IconEyeOff />, onSelect: () => actions.setHidden([id], !el.hidden) },
-      { id: "lock", label: el.locked ? "Unlock" : "Lock", icon: el.locked ? <IconUnlock /> : <IconLock />, onSelect: () => actions.setLocked([id], !el.locked) },
+      {
+        id: "hide",
+        label: el.hidden ? m.panelsContext.layers.show : m.panelsContext.layers.hide,
+        icon: el.hidden ? <IconEye /> : <IconEyeOff />,
+        onSelect: () => actions.setHidden([id], !el.hidden),
+      },
+      {
+        id: "lock",
+        label: el.locked ? m.panelsContext.layers.unlock : m.panelsContext.layers.lock,
+        icon: el.locked ? <IconUnlock /> : <IconLock />,
+        onSelect: () => actions.setLocked([id], !el.locked),
+      },
       { type: "divider" },
-      { id: "delete", label: "Delete", icon: <IconTrash />, danger: true, shortcut: "Delete", disabled: !!el.locked, onSelect: () => actions.deleteElements([id]) },
+      { id: "delete", label: m.common.delete, icon: <IconTrash />, danger: true, shortcut: "Delete", disabled: !!el.locked, onSelect: () => actions.deleteElements([id]) },
     );
     return items;
   };
@@ -193,7 +204,7 @@ export function LayersTab() {
   return (
     <>
       {/* eslint-disable-next-line jsx-a11y/no-redundant-roles -- list-style: none takes the list semantics away in Safari; the role puts them back */}
-      <ul ref={listRef} className="cf-layers" role="list" aria-label="Layers, top-most first" onKeyDown={onListKeyDown}>
+      <ul ref={listRef} className="cf-layers" role="list" aria-label={m.panelsContext.layers.listLabel} onKeyDown={onListKeyDown}>
         {rows.map((row) => {
           const el = row.el;
           const isOpen = el.type === "group" && expanded.has(el.id);
@@ -242,7 +253,7 @@ export function LayersTab() {
         onClose={() => setMenu(null)}
         items={menu ? menuItems(menu.row) : []}
         placement="bottom-end"
-        aria-label="Layer actions"
+        aria-label={m.panelsContext.layers.actions}
       />
     </>
   );
@@ -321,14 +332,14 @@ function LayerRow(p: LayerRowProps) {
       onDragLeave={p.onDragLeave}
       onDrop={p.onDrop}
     >
-      <span className="cf-layer__grip" draggable onDragStart={p.onDragStart} onDragEnd={p.onDragEnd} aria-hidden="true" title="Drag to reorder">
+      <span className="cf-layer__grip" draggable onDragStart={p.onDragStart} onDragEnd={p.onDragEnd} aria-hidden="true" title={m.panelsContext.layers.dragToReorder}>
         <IconGripVertical />
       </span>
       {isGroup ? (
         <button
           type="button"
           className={cx("cf-layer__chev", p.open && "is-open")}
-          aria-label={p.open ? `Collapse ${name}` : `Expand ${name}`}
+          aria-label={p.open ? m.panelsContext.layers.collapse(name) : m.panelsContext.layers.expand(name)}
           aria-expanded={p.open}
           onClick={p.onToggleOpen}
         >
@@ -349,8 +360,8 @@ function LayerRow(p: LayerRowProps) {
           tabIndex={0}
           data-layer-main
           aria-pressed={selected}
-          aria-label={`${layerKind(el)}: ${name}`}
-          title={`${name} (double-click to rename)`}
+          aria-label={m.panelsContext.layers.rowLabel(layerKind(el), name)}
+          title={m.panelsContext.layers.rowTitle(name)}
           onClick={(e) => p.onSelect(row, e)}
           onDoubleClick={p.onRename}
           onKeyDown={onMainKey}
@@ -363,18 +374,18 @@ function LayerRow(p: LayerRowProps) {
         <IconButton
           size="sm"
           className={cx("cf-layer__tool", el.hidden && "is-on")}
-          label={el.hidden ? "Show layer" : "Hide layer"}
+          label={el.hidden ? m.panelsContext.layers.showLayer : m.panelsContext.layers.hideLayer}
           icon={el.hidden ? <IconEyeOff /> : <IconEye />}
           onClick={p.onToggleHidden}
         />
         <IconButton
           size="sm"
           className={cx("cf-layer__tool", el.locked && "is-on")}
-          label={el.locked ? "Unlock layer" : "Lock layer"}
+          label={el.locked ? m.panelsContext.layers.unlockLayer : m.panelsContext.layers.lockLayer}
           icon={el.locked ? <IconLock /> : <IconUnlock />}
           onClick={p.onToggleLocked}
         />
-        <IconButton size="sm" className="cf-layer__tool cf-layer__more" label="Layer actions" icon={<IconMore />} onClick={(e) => p.onMenu(e.currentTarget)} />
+        <IconButton size="sm" className="cf-layer__tool cf-layer__more" label={m.panelsContext.layers.actions} icon={<IconMore />} onClick={(e) => p.onMenu(e.currentTarget)} />
       </div>
     </li>
   );
@@ -398,7 +409,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (name: stri
       className="cf-layer__rename"
       defaultValue={initial}
       maxLength={80}
-      aria-label="Layer name"
+      aria-label={m.panelsContext.layers.nameLabel}
       spellCheck={false}
       onBlur={() => finish(true)}
       onClick={(e) => e.stopPropagation()}

@@ -5,9 +5,10 @@
  * vector, so the person is told, once for a batch of them.
  */
 import { subscribeFlattenedSvg } from "@/core/assets";
+import { m } from "@/i18n";
 import { toast } from "@/ui";
 
-export const FLATTENED_SVG_NOTICE = "This SVG had parts Craftly does not keep, so it was added as a picture.";
+export const FLATTENED_SVG_NOTICE = m.app.uploadNotices.flattenedSvg;
 
 /** How long the notice stays, and how long another SVG of the same kind is not announced again. */
 const NOTICE_MS = 8000;

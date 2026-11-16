@@ -12,6 +12,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } f
 import { commentPosition } from "@/core/comments";
 import { getActivePage, useEditor } from "@/core/store";
 import type { DesignComment, Page } from "@/core/types";
+import { m } from "@/i18n";
 import { Button } from "@/ui";
 import { PRESENCE_COLORS } from "../live/presence";
 import { firstWords, myAuthor, numbered, rememberMine, useComments } from "./commentsStore";
@@ -21,8 +22,7 @@ import "./comments.css";
 export const authorColor = (index: number): string => PRESENCE_COLORS[Math.abs(Math.trunc(index)) % PRESENCE_COLORS.length];
 
 /** What a pin is called for a screen reader and in its tooltip. */
-export const pinName = (number: number, comment: DesignComment): string =>
-  `Comment ${number} by ${comment.author.name}: ${firstWords(comment.text)}${comment.resolved ? " (resolved)" : ""}`;
+export const pinName = (number: number, comment: DesignComment): string => m.editor.comments.pin(number, comment.author.name, firstWords(comment.text), comment.resolved);
 
 export function CommentsOverlay() {
   const design = useEditor((s) => s.design);
@@ -107,7 +107,7 @@ function DraftEditor({ zoom }: { zoom: number }) {
       <span className="cf-comment-pin cf-comment-pin--draft" aria-hidden="true" />
       <form
         className="cf-comment-draft__box"
-        aria-label="New comment"
+        aria-label={m.editor.comments.newComment}
         onSubmit={(e) => {
           e.preventDefault();
           post();
@@ -116,9 +116,9 @@ function DraftEditor({ zoom }: { zoom: number }) {
         <textarea
           ref={area}
           className="cf-comment-draft__text"
-          aria-label="Comment"
+          aria-label={m.editor.comments.comment}
           aria-describedby="cf-comment-draft-hint"
-          placeholder="Add a comment"
+          placeholder={m.editor.comments.placeholder}
           rows={3}
           maxLength={2000}
           value={text}
@@ -126,14 +126,14 @@ function DraftEditor({ zoom }: { zoom: number }) {
           onKeyDown={onKeyDown}
         />
         <span id="cf-comment-draft-hint" className="cf-sr-only">
-          Enter posts the comment, Shift and Enter starts a new line, Escape cancels.
+          {m.editor.comments.draftHint}
         </span>
         <div className="cf-comment-draft__actions">
           <Button size="sm" variant="ghost" onClick={() => close(null)}>
-            Cancel
+            {m.common.cancel}
           </Button>
           <Button size="sm" variant="primary" type="submit" disabled={!text.trim()}>
-            Post
+            {m.editor.comments.post}
           </Button>
         </div>
       </form>

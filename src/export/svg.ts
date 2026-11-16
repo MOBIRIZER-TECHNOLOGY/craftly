@@ -19,6 +19,7 @@ import { getAsset } from "@/core/assets";
 import { blendOf } from "@/core/blend";
 import { svgProblem } from "@/core/svgSafety";
 import type { Design, DesignElement, Fill, GraphicElement, ImageElement, LineElement, Page, ShapeElement, Stroke, TableElement } from "@/core/types";
+import { m } from "@/i18n";
 import { isNeutral, renderFiltered } from "@/render/imageFilters";
 import { drawableSize, loadImage, type Drawable } from "@/render/images";
 import { collectResources, graphicMarkup } from "@/render/renderPage";
@@ -96,7 +97,7 @@ async function sourceHref(src: string, drawable: Drawable, doc: SvgDoc): Promise
     const photo = src.startsWith("builtin:");
     return { href: canvas.toDataURL(photo ? "image/jpeg" : "image/png", 0.92), mime: photo ? "image/jpeg" : "image/png" };
   } catch {
-    doc.warn("Some images could not be embedded, so they are shown as grey boxes.");
+    doc.warn(m.exporting.errors.svgImages);
     return { href: null, mime: "image/png" };
   }
 }
@@ -152,7 +153,7 @@ async function fontStyle(page: Page, doc: SvgDoc): Promise<string> {
     const kind = FONT_KINDS[f.format ?? "woff2"];
     css += `@font-face{font-family:"${f.css}";font-style:${f.italic ? "italic" : "normal"};font-weight:${weight};src:url(data:${kind.mime};base64,${data}) format("${kind.format}");}`;
   }
-  if (failed) doc.warn("Some fonts could not be embedded; other programs may substitute them.");
+  if (failed) doc.warn(m.exporting.errors.svgFonts);
   return css ? `<style>${css}</style>` : "";
 }
 
@@ -218,7 +219,7 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Renames every id of an inlined graphic (and the references to it) so several graphics never collide. */
 function scopeIds(inner: string, prefix: string): string {
   const ids = new Set<string>();
-  for (const m of inner.matchAll(/\sid\s*=\s*(["'])(.*?)\1/g)) ids.add(m[2]);
+  for (const match of inner.matchAll(/\sid\s*=\s*(["'])(.*?)\1/g)) ids.add(match[2]);
   let out = inner;
   for (const id of ids) {
     const e = escapeRe(id);
@@ -358,27 +359,27 @@ class PageBuilder {
 
   private element(el: DesignElement, parent: Matrix, alpha: number): string {
     if (el.hidden) return "";
-    const m = multiply(parent, elementMatrix(el));
+    const matrix = multiply(parent, elementMatrix(el));
     const a = alpha * el.opacity;
     let inner = "";
     switch (el.type) {
       case "text":
-        inner = textElementSvg(el, { doc: this.doc, matrix: m, alpha: a });
+        inner = textElementSvg(el, { doc: this.doc, matrix, alpha: a });
         break;
       case "shape":
-        inner = this.shape(el, m, a);
+        inner = this.shape(el, matrix, a);
         break;
       case "line":
-        inner = this.line(el, m, a);
+        inner = this.line(el, matrix, a);
         break;
       case "image":
-        inner = this.image(el, m, a);
+        inner = this.image(el, matrix, a);
         break;
       case "graphic":
-        inner = this.graphic(el, m, a);
+        inner = this.graphic(el, matrix, a);
         break;
       case "group":
-        inner = el.children.map((child) => this.element(child, m, a)).join("");
+        inner = el.children.map((child) => this.element(child, matrix, a)).join("");
         break;
       case "table":
         inner = tableSvg(el as TableElement, { doc: this.doc, alpha: a });
@@ -402,14 +403,14 @@ class PageBuilder {
   }
 
   /** Canvas style shadow of an element, rotated into the element's own space. */
-  private shadowFilterFor(el: DesignElement, m: Matrix, includeSource: boolean): string | null {
+  private shadowFilterFor(el: DesignElement, matrix: Matrix, includeSource: boolean): string | null {
     const s = el.shadow;
     if (!s) return null;
-    const local = inverseLinear(m, s.x, s.y);
+    const local = inverseLinear(matrix, s.x, s.y);
     return this.doc.shadowFilter({ dx: local.x, dy: local.y, sigma: s.blur / 2, color: s.color, includeSource, region: { x: 0, y: 0, w: el.width, h: el.height } });
   }
 
-  private shape(el: ShapeElement, m: Matrix, a: number): string {
+  private shape(el: ShapeElement, matrix: Matrix, a: number): string {
     const geometry = shapeGeometry(el.shape, el.width, el.height, {
       radius: el.radius,
       params: el.params,
@@ -423,7 +424,7 @@ class PageBuilder {
     const rule = shapeFillRule(el.shape) === "evenodd" ? ` fill-rule="evenodd"` : "";
     let out = "";
     if (el.shadow) {
-      const filter = this.shadowFilterFor(el, m, false);
+      const filter = this.shadowFilterFor(el, matrix, false);
       out += geometry(
         `${rule} fill="${fill ? "#000000" : "none"}"${hasStroke ? strokeAttrs(el.stroke as Stroke, 1) : ""} filter="url(#${filter})"${a < 0.9995 ? ` opacity="${num(a)}"` : ""}`,
       );
@@ -457,7 +458,7 @@ class PageBuilder {
     }
   }
 
-  private line(el: LineElement, m: Matrix, a: number): string {
+  private line(el: LineElement, matrix: Matrix, a: number): string {
     const s = el.stroke;
     const head = Math.max(s.width * 3.2, 14);
     const startInset = el.startArrow !== "none" ? head * 0.1 : 0;
@@ -468,13 +469,13 @@ class PageBuilder {
     let body = `<path d="M${num(x0)} 0L${num(Math.max(x0, x1))} 0" fill="none"${strokeAttrs(s, a)}/>`;
     if (end.markup) body += `<g transform="translate(${num(el.width)} 0)">${end.markup}</g>`;
     if (start.markup) body += `<g transform="scale(-1 1)">${start.markup}</g>`;
-    const filter = this.shadowFilterFor(el, m, true);
+    const filter = this.shadowFilterFor(el, matrix, true);
     return filter ? `<g filter="url(#${filter})">${body}</g>` : body;
   }
 
   /* ---- images ---- */
 
-  private image(el: ImageElement, m: Matrix, a: number): string {
+  private image(el: ImageElement, matrix: Matrix, a: number): string {
     const { width: w, height: h } = el;
     const geometry = shapeGeometry(el.mask || "rect", w, h, { radius: el.radius });
     if (!geometry) return "";
@@ -495,7 +496,7 @@ class PageBuilder {
     const dh = el.crop.h * h;
     let out = "";
     if (el.shadow) {
-      const filter = this.shadowFilterFor(el, m, false);
+      const filter = this.shadowFilterFor(el, matrix, false);
       out += geometry(` fill="#000000" filter="url(#${filter})"${opacity}`);
     }
 
@@ -511,7 +512,7 @@ class PageBuilder {
         const href = baked.toDataURL(mayHaveAlpha(rec.mime) ? "image/png" : "image/jpeg", 0.92);
         picture = `<image width="${num(w)}" height="${num(h)}" preserveAspectRatio="none" xlink:href="${href}"${opacity}/>`;
       } catch {
-        this.doc.warn("Some filtered images could not be embedded.");
+        this.doc.warn(m.exporting.errors.svgFilteredImages);
       }
     }
     out += picture ? `<g clip-path="url(#${clipId})">${picture}</g>` : `<g clip-path="url(#${clipId})"><rect width="${num(w)}" height="${num(h)}" fill="#eceef3"${opacity}/></g>`;
@@ -523,7 +524,7 @@ class PageBuilder {
 
   private graphicCount = 0;
 
-  private graphic(el: GraphicElement, m: Matrix, a: number): string {
+  private graphic(el: GraphicElement, matrix: Matrix, a: number): string {
     // The markup goes into the file as it is, and the file is opened as a document of its own, where a script would run. A list
     // of what to take out can be walked around (a script behind a prefix, a page in another namespace, an address written with an
     // escape), so nothing is taken out: a graphic is written only when all of it is plain drawing, as it is drawn now (recoloured,
@@ -531,7 +532,7 @@ class PageBuilder {
     const markup = graphicMarkup(el);
     const parts = svgProblem(markup) === null ? splitSvg(markup) : null;
     if (!parts) {
-      this.doc.warn("A graphic could not be read and was left out.");
+      this.doc.warn(m.exporting.errors.svgGraphic);
       return "";
     }
     const prefix = `g${++this.graphicCount}-`;
@@ -542,7 +543,7 @@ class PageBuilder {
       .replace(/\s(xmlns(:\w+)?|width|height|viewBox|preserveAspectRatio|x|y|id|version|baseProfile)\s*=\s*("[^"]*"|'[^']*')/gi, "")
       .replace(/\s+/g, " ")
       .trimEnd();
-    const filter = this.shadowFilterFor(el, m, true);
+    const filter = this.shadowFilterFor(el, matrix, true);
     const opacity = a < 0.9995 ? ` opacity="${num(a)}"` : "";
     const nested = `<svg x="0" y="0" width="${num(el.width)}" height="${num(el.height)}" viewBox="${escAttr(viewBox)}"${pAR ? ` preserveAspectRatio="${escAttr(pAR)}"` : ""}${kept}>${scopeIds(parts.inner, prefix)}</svg>`;
     // the filter / opacity sit on a wrapper: on the nested <svg> itself the viewport clip would cut the shadow off

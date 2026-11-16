@@ -3,6 +3,7 @@
  * history. Everything lives in IndexedDB; components subscribe with
  * `subscribeLibrary` (or `useLibrary` in dashboard code) to refresh on change.
  */
+import { m } from "@/i18n";
 import { createDesign, createPage, solid } from "./factory";
 import { uid } from "./ids";
 import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany, metaGet, metaSet, openDb, wrap, writeTransaction, type StoreName } from "./persistence";
@@ -65,11 +66,7 @@ export const getSummary = (id: string) => dbGet<DesignSummary>("summaries", id).
 
 export class DesignSaveConflict extends Error {
   constructor(deleted: boolean) {
-    super(
-      deleted
-        ? "This design was deleted in another tab. Download a project file to keep your edits."
-        : "This design changed in another tab. Download a project file to keep your edits.",
-    );
+    super(deleted ? m.core.saveConflict.deleted : m.core.saveConflict.changed);
     this.name = "DesignSaveConflict";
   }
 }
@@ -95,6 +92,7 @@ export async function saveDesign(design: Design, thumbnail?: string, expectedRev
       const original = await wrap<Design | undefined>(designs.get(design.id));
       if (original) {
         const now = Date.now();
+        // (the label is stored, and is a key of the list of versions in recovery.ts, which gives the words a person reads)
         const record: VersionRecord = { id: `${design.id}:${now}`, designId: design.id, createdAt: now, label: "Before the update", design: original };
         tx.objectStore("versions").put(record);
       }
@@ -139,7 +137,7 @@ export async function updateSummary(id: string, patch: Partial<DesignSummary>): 
   if (written) emit();
 }
 
-export const renameDesign = (id: string, title: string) => updateSummary(id, { title: title.trim() || "Untitled design" });
+export const renameDesign = (id: string, title: string) => updateSummary(id, { title: title.trim() || m.core.untitledDesign });
 export const setStarred = (id: string, starred: boolean) => updateSummary(id, { starred });
 export const moveToFolder = (id: string, folderId: string | null) => updateSummary(id, { folderId });
 export const moveToTrash = (id: string) => updateSummary(id, { trashedAt: Date.now() });
@@ -166,7 +164,7 @@ export async function duplicateDesign(id: string): Promise<Design | null> {
   if (!src) return null;
   const copy: Design = structuredClone(src);
   copy.id = uid("d");
-  copy.title = `${src.title} (copy)`;
+  copy.title = m.core.copyOf(src.title);
   copy.createdAt = copy.updatedAt = Date.now();
   copy.trashedAt = null;
   copy.starred = false;
@@ -237,7 +235,7 @@ export async function listFolders(): Promise<Folder[]> {
 }
 
 export async function createFolder(name: string, parentId: string | null = null): Promise<Folder> {
-  const folder: Folder = { id: uid("f"), name: name.trim() || "Untitled folder", createdAt: Date.now(), parentId };
+  const folder: Folder = { id: uid("f"), name: name.trim() || m.core.untitledFolder, createdAt: Date.now(), parentId };
   await dbPut("folders", folder);
   emit();
   return folder;

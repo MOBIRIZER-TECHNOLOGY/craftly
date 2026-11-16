@@ -27,6 +27,7 @@ import type {
 } from "@/core/types";
 import { useGesture } from "@/editor/canvas/gestureStore";
 import { usePathEdit } from "@/editor/canvas/pathEditStore";
+import { m } from "@/i18n";
 import { AltTextDialog } from "./AltTextDialog";
 import { CropBar, FrameBar, ImageBar } from "./bars/ImageBar";
 import { PathBar } from "./bars/PathBar";
@@ -51,20 +52,20 @@ interface Resolved {
 /** Decides which toolbar the current selection / mode needs. */
 function resolveBar(page: Page, targets: DesignElement[], selection: string[], cropId: string | null, pathEditId: string | null): Resolved {
   const crop = cropId ? findElement(page, cropId) : null;
-  if (crop?.type === "image" && crop.src) return { label: "Crop controls", kind: "crop", content: <CropBar el={crop} /> };
+  if (crop?.type === "image" && crop.src) return { label: m.editor.toolbar.bars.crop, kind: "crop", content: <CropBar el={crop} /> };
   const editing = pathEditId ? findElement(page, pathEditId) : null;
-  if (editing?.type === "shape" && elementPath(editing)) return { label: "Point editing controls", kind: "path", content: <PathBar el={editing} /> };
+  if (editing?.type === "shape" && elementPath(editing)) return { label: m.editor.toolbar.bars.path, kind: "path", content: <PathBar el={editing} /> };
 
-  if (!targets.length) return { label: "Page controls", kind: "page", content: <PageBar background={page.background} /> };
+  if (!targets.length) return { label: m.editor.toolbar.bars.page, kind: "page", content: <PageBar background={page.background} /> };
 
   // Locked elements cannot be edited: the toolbar acts on the rest of the selection.
   const editable = targets.filter((e) => !e.locked);
-  if (!editable.length) return { label: "Locked element controls", kind: "locked", content: <LockedBar ids={targets.map((e) => e.id)} /> };
+  if (!editable.length) return { label: m.editor.toolbar.bars.locked, kind: "locked", content: <LockedBar ids={targets.map((e) => e.id)} /> };
 
   const ids = editable.map((e) => e.id);
   /** copy / paste style work on the real selection only (not on a text edited inside a group) */
   const copyEnabled = sameIds(selection, ids);
-  const common = { label: "Selected element common controls" };
+  const common = { label: m.editor.toolbar.bars.selected };
 
   if (allOfType(editable, "text")) return { ...common, kind: "text", content: <TextBar els={editable as TextElement[]} ids={ids} copyEnabled={copyEnabled} /> };
   if (allOfType(editable, "shape")) return { ...common, kind: "shape", content: <ShapeBar els={editable as ShapeElement[]} ids={ids} copyEnabled={copyEnabled} /> };

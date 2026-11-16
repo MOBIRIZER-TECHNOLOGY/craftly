@@ -1,4 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { m } from "@/i18n";
 import "./Confirm.css";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
@@ -52,7 +53,7 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
       warned = true;
       console.warn("[ui] confirm() called without a mounted <ConfirmHost />; falling back to window.confirm.");
     }
-    const text = plainText(options.message, plainText(options.title, "Are you sure?"));
+    const text = plainText(options.message, plainText(options.title, m.ui.confirm.areYouSure));
     return Promise.resolve(window.confirm(text));
   }
   return new Promise<boolean>((resolve) => {
@@ -97,10 +98,10 @@ export function ConfirmHost() {
         view ? (
           <>
             <Button variant="secondary" onClick={() => settle(false)} data-autofocus={view.danger || view.focusCancel ? "" : undefined}>
-              {view.cancelLabel ?? "Cancel"}
+              {view.cancelLabel ?? m.common.cancel}
             </Button>
             <Button variant={view.danger ? "danger" : "primary"} onClick={() => settle(true)} data-autofocus={view.danger || view.focusCancel ? undefined : ""}>
-              {view.confirmLabel ?? "Confirm"}
+              {view.confirmLabel ?? m.ui.confirm.confirm}
             </Button>
           </>
         ) : null

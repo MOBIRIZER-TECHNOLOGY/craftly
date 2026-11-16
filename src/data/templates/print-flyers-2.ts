@@ -61,7 +61,7 @@ function yogaSchedule(): Template {
     sans("stillwateryoga.example.com\n3 Mill Row, Alderbrook\n555-0139", 480, 890, 260, 14.5, { color: SAND, fontWeight: 600, align: "right", lineHeight: 1.6 }),
   );
   return template(
-    { slug: "yoga-class-schedule", name: "Stillwater Yoga Class Schedule Flyer", category: "flyer", size: "flyer", tags: ["yoga", "schedule", "timetable", "class", "wellness", "studio", "flyer", "calm", "table", "sage"], accent: SAGE },
+    { slug: "yoga-class-schedule", category: "flyer", size: "flyer", tags: ["yoga", "schedule", "timetable", "class", "wellness", "studio", "flyer", "calm", "table", "sage"], accent: SAGE },
     [pg(SAND, els)],
   );
 }
@@ -113,7 +113,7 @@ function cleanupDay(): Template {
     sans("cleanup.example.com   /   or text HELP to 555-0164", M + 28, 954, 660, 16.5, { fontWeight: 600 }),
   );
   return template(
-    { slug: "street-cleanup-day", name: "Neighborhood Clean-Up Day Flyer", category: "flyer", size: "flyer", tags: ["volunteer", "community", "cleanup", "neighborhood", "flyer", "event", "blue", "yellow", "bold"], accent: BLUE },
+    { slug: "street-cleanup-day", category: "flyer", size: "flyer", tags: ["volunteer", "community", "cleanup", "neighborhood", "flyer", "event", "blue", "yellow", "bold"], accent: BLUE },
     [pg(WHITE, els)],
   );
 }
@@ -159,7 +159,7 @@ function localFirstMeetup(): Template {
   meta.forEach(([k, v, x, w]) => els.push(mono(k, x, 908, w, 12, { color: LIME, letterSpacing: 220, fontWeight: 700 }), grot(v, x, 930, w, 18.5, { fontWeight: 600, lineHeight: 1.25 })));
   els.push(R(0, H - 14, W, 14, LIME));
   return template(
-    { slug: "local-first-meetup", name: "Local-First Software Meetup Flyer", category: "flyer", size: "flyer", tags: ["meetup", "tech", "developer", "talks", "agenda", "flyer", "dark", "monospace", "event", "lime"], accent: LIME },
+    { slug: "local-first-meetup", category: "flyer", size: "flyer", tags: ["meetup", "tech", "developer", "talks", "agenda", "flyer", "dark", "monospace", "event", "lime"], accent: LIME },
     [pg(patternBg("grid", "#121922", BG, 1.6), els)],
   );
 }
@@ -204,7 +204,7 @@ function guitarLessons(): Template {
     els.push(T("Guitar lessons with Theo\n555-0118  theo@example.com", cx - 125, cy - 21, 250, 15, { fontFamily: "Open Sans", fontWeight: 700, color: INK, align: "center", lineHeight: 1.4, rotation: -90 }));
   }
   return template(
-    { slug: "guitar-lessons-tear-off", name: "Guitar Lessons Tear-Off Flyer", category: "flyer", size: "flyer", tags: ["lessons", "music", "guitar", "tutor", "tear off", "notice board", "flyer", "retro", "teal", "mustard"], accent: TEAL },
+    { slug: "guitar-lessons-tear-off", category: "flyer", size: "flyer", tags: ["lessons", "music", "guitar", "tutor", "tear off", "notice board", "flyer", "retro", "teal", "mustard"], accent: TEAL },
     [pg(CREAM, els)],
   );
 }

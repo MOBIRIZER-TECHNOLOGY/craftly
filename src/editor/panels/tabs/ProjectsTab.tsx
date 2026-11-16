@@ -3,6 +3,7 @@ import { createFolder } from "@/core/library";
 import { useEditor } from "@/core/store";
 import type { DesignSummary, Folder } from "@/core/types";
 import { getDesignType } from "@/data/designTypes";
+import { m } from "@/i18n";
 import { designPath, navigate } from "@/router";
 import { Badge, Button, IconFolder, IconPlus, IconSearch, IconStar, IconTemplate, Skeleton, Tabs, TextField, cx, toast } from "@/ui";
 import { EmptyHint } from "../shared/EmptyHint";
@@ -16,13 +17,13 @@ import "./ProjectsTab.css";
 
 const STARRED = "__starred";
 const VIEWS = [
-  { id: "all", label: "All" },
-  { id: "designs", label: "Designs" },
-  { id: "folders", label: "Folders" },
+  { id: "all", label: m.panelsTabs.shared.all },
+  { id: "designs", label: m.panelsTabs.projects.views.designs },
+  { id: "folders", label: m.panelsTabs.projects.views.folders },
 ];
 
 /** "Presentation (16:9)" -> "Presentation" */
-const typeLabel = (d: DesignSummary) => (getDesignType(d.typeId)?.name ?? "Custom size").replace(/\s*\(.*\)\s*$/, "");
+const typeLabel = (d: DesignSummary) => (getDesignType(d.typeId)?.name ?? m.panelsTabs.projects.customSize).replace(/\s*\(.*\)\s*$/, "");
 
 /** Opens another design. The current one is saved first (the autosave listens for this event). */
 function openDesign(id: string) {
@@ -74,19 +75,19 @@ export default function ProjectsTab() {
   return (
     <Panel>
       <PanelTop>
-        <PanelSearch value={query} onChange={setQuery} placeholder="Search your content" />
+        <PanelSearch value={query} onChange={setQuery} placeholder={m.panelsTabs.projects.search} />
         <Button variant="primary" size="lg" block icon={<IconPlus />} onClick={createNew}>
-          Create new design
+          {m.panelsTabs.projects.createNew}
         </Button>
         {inFolder ? (
           <PanelHeader
-            title={openFolder === STARRED ? "Starred" : (folder?.name ?? "Folder")}
-            subtitle={`${visibleDesigns.length} design${visibleDesigns.length === 1 ? "" : "s"}`}
+            title={openFolder === STARRED ? m.panelsTabs.projects.starred : (folder?.name ?? m.panelsTabs.projects.folder)}
+            subtitle={m.panelsTabs.projects.designCount(visibleDesigns.length)}
             onBack={() => setOpenFolder(null)}
-            backLabel="Back to all projects"
+            backLabel={m.panelsTabs.projects.back}
           />
         ) : (
-          <Tabs tabs={VIEWS} value={view} onChange={setView} fullWidth aria-label="Show" idBase="cf-projects" />
+          <Tabs tabs={VIEWS} value={view} onChange={setView} fullWidth aria-label={m.panelsTabs.projects.show} idBase="cf-projects" />
         )}
       </PanelTop>
       {/* the Show tabs control this area (inside a folder they are replaced by its header, and it is no tab panel) */}
@@ -96,7 +97,7 @@ export default function ProjectsTab() {
         aria-labelledby={inFolder ? undefined : `cf-projects-tab-${view}`}
       >
         {showDesigns ? (
-          <PanelSection title={inFolder ? undefined : "Designs"}>
+          <PanelSection title={inFolder ? undefined : m.panelsTabs.projects.views.designs}>
             {loading ? (
               <ItemGrid columns={2} gap={10}>
                 <Skeleton height={104} radius={12} />
@@ -112,17 +113,20 @@ export default function ProjectsTab() {
               <EmptyHint
                 compact
                 icon={q ? <IconSearch /> : <IconTemplate />}
-                title={q ? "No designs found" : inFolder ? "Nothing in here yet" : "No saved designs yet"}
-                text={
-                  q ? `No design title contains "${q}".` : inFolder ? "Move designs into this folder from the dashboard." : "Your designs are saved automatically and show up here."
-                }
+                title={q ? m.panelsTabs.projects.noneFound : inFolder ? m.panelsTabs.projects.emptyFolder : m.panelsTabs.projects.noSaved}
+                text={q ? m.panelsTabs.projects.noneFoundText(q) : inFolder ? m.panelsTabs.projects.emptyFolderText : m.panelsTabs.projects.noSavedText}
               />
             )}
           </PanelSection>
         ) : null}
         {showFolders ? (
-          <PanelSection title="Folders">
-            <FolderList folders={visibleFolders} starredCount={live.filter((d) => d.starred).length} onOpen={setOpenFolder} hideStarred={!!q && !"starred".includes(q)} />
+          <PanelSection title={m.panelsTabs.projects.views.folders}>
+            <FolderList
+              folders={visibleFolders}
+              starredCount={live.filter((d) => d.starred).length}
+              onOpen={setOpenFolder}
+              hideStarred={!!q && !"starred".includes(q) && !m.panelsTabs.projects.starred.toLowerCase().includes(q)}
+            />
           </PanelSection>
         ) : null}
       </PanelScroll>
@@ -137,7 +141,7 @@ export default function ProjectsTab() {
 function DesignCard({ design, current }: { design: DesignSummary; current: boolean }) {
   return (
     <DraggableItem
-      label={current ? `${design.title} (open now)` : `Open ${design.title}`}
+      label={current ? m.panelsTabs.projects.openNowLabel(design.title) : m.panelsTabs.projects.open(design.title)}
       onInsert={() => openDesign(design.id)}
       disabled={current}
       className={cx("cf-proj__design", current && "is-current")}
@@ -147,17 +151,14 @@ function DesignCard({ design, current }: { design: DesignSummary; current: boole
         {design.thumbnail ? <img src={design.thumbnail} alt="" draggable={false} /> : <IconTemplate aria-hidden="true" />}
         {current ? (
           <span className="cf-proj__badge">
-            <Badge tone="primary">Open now</Badge>
+            <Badge tone="primary">{m.panelsTabs.projects.openNow}</Badge>
           </span>
         ) : null}
-        {design.starred ? <IconStar className="cf-proj__star" aria-label="Starred" /> : null}
+        {design.starred ? <IconStar className="cf-proj__star" aria-label={m.panelsTabs.projects.starred} /> : null}
       </div>
       <div className="cf-proj__meta">
         <span className="cf-proj__title">{design.title}</span>
-        <span className="cf-proj__sub">
-          {typeLabel(design)}
-          {design.pageCount > 1 ? ` - ${design.pageCount} pages` : ""}
-        </span>
+        <span className="cf-proj__sub">{m.panelsTabs.projects.meta(typeLabel(design), design.pageCount)}</span>
       </div>
     </DraggableItem>
   );
@@ -179,9 +180,9 @@ function FolderList({ folders, starredCount, onOpen, hideStarred }: { folders: F
     if (!value) return;
     try {
       const f = await createFolder(value);
-      toast.success(`Folder "${f.name}" created`);
+      toast.success(m.panelsTabs.projects.folderCreated(f.name));
     } catch {
-      toast.error("The folder could not be created.");
+      toast.error(m.panelsTabs.projects.folderFailed);
     }
   };
 
@@ -195,8 +196,8 @@ function FolderList({ folders, starredCount, onOpen, hideStarred }: { folders: F
           <TextField
             ref={inputRef}
             size="sm"
-            aria-label="Folder name"
-            placeholder="Folder name"
+            aria-label={m.panelsTabs.projects.folderName}
+            placeholder={m.panelsTabs.projects.folderName}
             value={name}
             autoFocus
             onChange={(e) => setName(e.target.value)}
@@ -216,7 +217,7 @@ function FolderList({ folders, starredCount, onOpen, hideStarred }: { folders: F
           <span className="cf-proj__folder-icon is-create">
             <IconPlus aria-hidden="true" />
           </span>
-          <span className="cf-proj__folder-name">Create folder</span>
+          <span className="cf-proj__folder-name">{m.panelsTabs.projects.createFolder}</span>
         </button>
       )}
       {hideStarred ? null : (
@@ -225,10 +226,8 @@ function FolderList({ folders, starredCount, onOpen, hideStarred }: { folders: F
             <IconStar aria-hidden="true" />
           </span>
           <span className="cf-proj__folder-name">
-            Starred
-            <span className="cf-proj__folder-count">
-              {starredCount} design{starredCount === 1 ? "" : "s"}
-            </span>
+            {m.panelsTabs.projects.starred}
+            <span className="cf-proj__folder-count">{m.panelsTabs.projects.designCount(starredCount)}</span>
           </span>
         </button>
       )}

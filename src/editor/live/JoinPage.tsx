@@ -7,6 +7,7 @@
  * (knownServers.ts says which servers are known and why it matters).
  */
 import { useEffect, useRef, useState } from "react";
+import { m } from "@/i18n";
 import { designPath } from "@/router";
 import "../editor.css";
 import { Button, EmptyState, IconHome, IconUsers, IconWarning, Spinner } from "@/ui";
@@ -35,7 +36,7 @@ export function JoinPage({ token, onOpen = open }: { token: string; onOpen?: (de
     setAsking(null);
     const link = parseJoinToken(token);
     if (!link) {
-      setProblem("This is not a link that Craftly made. Ask the person who shared the design for a new one.");
+      setProblem(m.editor.live.join.notCraftly);
       return;
     }
     void (async () => {
@@ -49,7 +50,7 @@ export function JoinPage({ token, onOpen = open }: { token: string; onOpen?: (de
         const id = await saveJoined(design, { ...link, role });
         if (!cancelled) onOpen(id);
       } catch (error) {
-        if (!cancelled) setProblem(error instanceof Error ? error.message : "The shared design could not be opened.");
+        if (!cancelled) setProblem(error instanceof Error ? error.message : m.editor.live.join.openFailed);
       }
     })();
     return () => {
@@ -74,36 +75,36 @@ export function JoinPage({ token, onOpen = open }: { token: string; onOpen?: (de
       {problem ? (
         <EmptyState
           icon={<IconWarning />}
-          title="This shared design could not be opened"
+          title={m.editor.live.join.problemTitle}
           text={problem}
           action={
             <Button variant="primary" icon={<IconHome aria-hidden="true" />} onClick={home}>
-              Back to home
+              {m.editor.shell.backHome}
             </Button>
           }
         />
       ) : asking ? (
         <EmptyState
           icon={<IconUsers />}
-          title="Join this shared design?"
-          text={`This link connects to ${serverName(asking)}, a server this device has not used before. That server will see your network address, and the design it sends is saved in your library. Join only if you trust whoever gave you the link.`}
+          title={m.editor.live.join.askTitle}
+          text={m.editor.live.join.askText(serverName(asking))}
           action={
             // the name the others will see is asked for here, once; it has a default, and can be changed later in the Share panel
             <div className="cf-live-join">
               <NameField />
               <div className="cf-editor-state__actions">
                 <Button ref={yes} variant="secondary" icon={<IconHome aria-hidden="true" />} onClick={home}>
-                  Back to home
+                  {m.editor.shell.backHome}
                 </Button>
                 <Button variant="primary" onClick={join}>
-                  Join
+                  {m.editor.live.join.join}
                 </Button>
               </div>
             </div>
           }
         />
       ) : (
-        <Spinner size={32} label="Joining the shared design" />
+        <Spinner size={32} label={m.editor.live.join.joining} />
       )}
     </div>
   );

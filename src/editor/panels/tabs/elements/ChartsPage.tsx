@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { createChart } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
 import type { ChartKind } from "@/core/types";
+import { m } from "@/i18n";
 import { IconChart } from "@/ui";
 import { DraggableItem } from "../../shared/DraggableItem";
 import { EmptyHint } from "../../shared/EmptyHint";
@@ -18,12 +19,12 @@ interface ChartDef {
 }
 
 const CHARTS: ChartDef[] = [
-  { kind: "column", name: "Column chart", hint: "Compare values side by side" },
-  { kind: "bar", name: "Bar chart", hint: "Rank categories" },
-  { kind: "line", name: "Line chart", hint: "Show a trend over time" },
-  { kind: "area", name: "Area chart", hint: "Trend with volume" },
-  { kind: "pie", name: "Pie chart", hint: "Parts of a whole" },
-  { kind: "donut", name: "Donut chart", hint: "Parts of a whole, with a hole" },
+  { kind: "column", ...m.panelsTabs.elements.charts.kinds.column },
+  { kind: "bar", ...m.panelsTabs.elements.charts.kinds.bar },
+  { kind: "line", ...m.panelsTabs.elements.charts.kinds.line },
+  { kind: "area", ...m.panelsTabs.elements.charts.kinds.area },
+  { kind: "pie", ...m.panelsTabs.elements.charts.kinds.pie },
+  { kind: "donut", ...m.panelsTabs.elements.charts.kinds.donut },
 ];
 
 const PALETTE = createChart().palette;
@@ -120,10 +121,10 @@ function ChartPreview({ kind }: { kind: ChartKind }) {
 export function ChartsPage() {
   const query = useElementsNav((s) => s.query);
   const q = query.trim().toLowerCase();
-  const charts = useMemo(() => CHARTS.filter((c) => !q || `${c.name} ${c.hint} chart graph`.toLowerCase().includes(q)), [q]);
+  const charts = useMemo(() => CHARTS.filter((c) => !q || `${c.name} ${c.hint} ${c.kind} chart graph`.toLowerCase().includes(q)), [q]);
   return (
     <Panel>
-      <SubPageTop title="Charts" placeholder="Search charts" subtitle="Edit the data after you add one" />
+      <SubPageTop title={m.panelsTabs.elements.categories.charts} placeholder={m.panelsTabs.elements.charts.search} subtitle={m.panelsTabs.elements.charts.subtitle} />
       <PanelScroll>
         {charts.length ? (
           <ItemGrid columns={2} minCell={130} gap={10}>
@@ -141,7 +142,7 @@ export function ChartsPage() {
             ))}
           </ItemGrid>
         ) : (
-          <EmptyHint icon={<IconChart />} title="No charts found" text={`Nothing matches "${query.trim()}". Try "pie", "line" or "bar".`} />
+          <EmptyHint icon={<IconChart />} title={m.panelsTabs.elements.charts.noneTitle} text={m.panelsTabs.elements.charts.noneText(query.trim())} />
         )}
       </PanelScroll>
     </Panel>

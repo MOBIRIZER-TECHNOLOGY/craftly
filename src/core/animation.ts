@@ -8,6 +8,7 @@
  *   exit       [pageDuration - delay - duration, pageDuration - delay]    (an exit's delay counts back from the end)
  *   emphasis   repeats every `duration` for as long as the page is shown
  */
+import { m } from "@/i18n";
 import type { AnimDirection, DesignElement, ElementAnimation, ElementAnimations, Page } from "./types";
 
 export type AnimPhase = "in" | "out" | "loop";
@@ -162,10 +163,10 @@ const ALL_DIRS = DIRECTIONS;
 const IN_OUT: readonly AnimPhase[] = ["in", "out"];
 
 export const ANIMATION_PRESETS: readonly AnimationPreset[] = [
-  { id: "fade", label: "Fade", phases: IN_OUT, defaultDuration: 0.7, enter: (p) => ({ opacity: easeInOutCubic(p) }) },
+  { id: "fade", label: m.core.animations["fade"], phases: IN_OUT, defaultDuration: 0.7, enter: (p) => ({ opacity: easeInOutCubic(p) }) },
   {
     id: "rise",
-    label: "Rise",
+    label: m.core.animations["rise"],
     phases: IN_OUT,
     directions: ALL_DIRS,
     defaultDirection: "up",
@@ -174,18 +175,18 @@ export const ANIMATION_PRESETS: readonly AnimationPreset[] = [
   },
   {
     id: "pan",
-    label: "Pan",
+    label: m.core.animations["pan"],
     phases: IN_OUT,
     directions: ALL_DIRS,
     defaultDirection: "right",
     defaultDuration: 0.8,
     enter: (p, d) => ({ opacity: Math.min(1, p * 2.5), ...travel(p, d, 0.24) }),
   },
-  { id: "pop", label: "Pop", phases: IN_OUT, defaultDuration: 0.6, enter: (p) => ({ opacity: Math.min(1, p * 3), scale: 0.55 + 0.45 * easeOutBack(p) }) },
-  { id: "zoom", label: "Zoom", phases: IN_OUT, defaultDuration: 0.8, enter: (p) => ({ opacity: Math.min(1, p * 2.2), scale: 1.4 - 0.4 * easeOutCubic(p) }) },
+  { id: "pop", label: m.core.animations["pop"], phases: IN_OUT, defaultDuration: 0.6, enter: (p) => ({ opacity: Math.min(1, p * 3), scale: 0.55 + 0.45 * easeOutBack(p) }) },
+  { id: "zoom", label: m.core.animations["zoom"], phases: IN_OUT, defaultDuration: 0.8, enter: (p) => ({ opacity: Math.min(1, p * 2.2), scale: 1.4 - 0.4 * easeOutCubic(p) }) },
   {
     id: "wipe",
-    label: "Wipe",
+    label: m.core.animations["wipe"],
     phases: IN_OUT,
     directions: ALL_DIRS,
     defaultDirection: "right",
@@ -194,7 +195,7 @@ export const ANIMATION_PRESETS: readonly AnimationPreset[] = [
   },
   {
     id: "slide",
-    label: "Slide",
+    label: m.core.animations["slide"],
     phases: IN_OUT,
     directions: ALL_DIRS,
     defaultDirection: "up",
@@ -205,10 +206,10 @@ export const ANIMATION_PRESETS: readonly AnimationPreset[] = [
       return { clip: { x0: 0, y0: 0, x1: 1, y1: 1 }, innerDx: -vx * k, innerDy: -vy * k };
     },
   },
-  { id: "drop", label: "Drop", phases: IN_OUT, defaultDuration: 0.9, enter: (p) => ({ opacity: Math.min(1, p * 5), dy: -(1 - easeOutBounce(p)) * 0.16 }) },
+  { id: "drop", label: m.core.animations["drop"], phases: IN_OUT, defaultDuration: 0.9, enter: (p) => ({ opacity: Math.min(1, p * 5), dy: -(1 - easeOutBounce(p)) * 0.16 }) },
   {
     id: "tumble",
-    label: "Tumble",
+    label: m.core.animations["tumble"],
     phases: IN_OUT,
     defaultDuration: 0.9,
     enter: (p) => {
@@ -216,15 +217,21 @@ export const ANIMATION_PRESETS: readonly AnimationPreset[] = [
       return { opacity: Math.min(1, p * 2.5), rotate: -(1 - e) * 100, scale: 0.4 + 0.6 * e };
     },
   },
-  { id: "typewriter", label: "Typewriter", phases: IN_OUT, textFriendly: true, defaultDuration: 1.2, enter: (p) => ({ reveal: p }) },
-  { id: "flicker", label: "Flicker", phases: IN_OUT, defaultDuration: 0.8, enter: (p) => ({ opacity: flickerOn(p) ? easeInOutCubic(Math.min(1, p * 1.6)) : 0.06 }) },
+  { id: "typewriter", label: m.core.animations["typewriter"], phases: IN_OUT, textFriendly: true, defaultDuration: 1.2, enter: (p) => ({ reveal: p }) },
+  {
+    id: "flicker",
+    label: m.core.animations["flicker"],
+    phases: IN_OUT,
+    defaultDuration: 0.8,
+    enter: (p) => ({ opacity: flickerOn(p) ? easeInOutCubic(Math.min(1, p * 1.6)) : 0.06 }),
+  },
 
-  { id: "breathe", label: "Breathe", phases: ["loop"], defaultDuration: 2.4, loop: (ph) => ({ scale: 1 + 0.05 * Math.sin(2 * Math.PI * ph) }) },
-  { id: "pulse", label: "Pulse", phases: ["loop"], defaultDuration: 1.6, loop: (ph) => ({ opacity: 0.7 + 0.3 * (0.5 + 0.5 * Math.sin(2 * Math.PI * ph)) }) },
-  { id: "float", label: "Float", phases: ["loop"], defaultDuration: 3, loop: (ph) => ({ dy: 0.014 * Math.sin(2 * Math.PI * ph) }) },
-  { id: "wiggle", label: "Wiggle", phases: ["loop"], defaultDuration: 1.2, loop: (ph) => ({ rotate: 4 * Math.sin(4 * Math.PI * ph) }) },
-  { id: "spin", label: "Spin", phases: ["loop"], defaultDuration: 3, loop: (ph) => ({ rotate: 360 * ph }) },
-  { id: "flash", label: "Flash", phases: ["loop"], defaultDuration: 1.2, loop: (ph) => ({ opacity: ph < 0.5 ? 1 : 0.2 }) },
+  { id: "breathe", label: m.core.animations["breathe"], phases: ["loop"], defaultDuration: 2.4, loop: (ph) => ({ scale: 1 + 0.05 * Math.sin(2 * Math.PI * ph) }) },
+  { id: "pulse", label: m.core.animations["pulse"], phases: ["loop"], defaultDuration: 1.6, loop: (ph) => ({ opacity: 0.7 + 0.3 * (0.5 + 0.5 * Math.sin(2 * Math.PI * ph)) }) },
+  { id: "float", label: m.core.animations["float"], phases: ["loop"], defaultDuration: 3, loop: (ph) => ({ dy: 0.014 * Math.sin(2 * Math.PI * ph) }) },
+  { id: "wiggle", label: m.core.animations["wiggle"], phases: ["loop"], defaultDuration: 1.2, loop: (ph) => ({ rotate: 4 * Math.sin(4 * Math.PI * ph) }) },
+  { id: "spin", label: m.core.animations["spin"], phases: ["loop"], defaultDuration: 3, loop: (ph) => ({ rotate: 360 * ph }) },
+  { id: "flash", label: m.core.animations["flash"], phases: ["loop"], defaultDuration: 1.2, loop: (ph) => ({ opacity: ph < 0.5 ? 1 : 0.2 }) },
 ];
 
 const BY_ID = new Map(ANIMATION_PRESETS.map((p) => [p.id, p]));
@@ -320,14 +327,14 @@ export interface PageAnimationPreset {
 }
 
 export const PAGE_ANIMATION_PRESETS: readonly PageAnimationPreset[] = [
-  { id: "rise", label: "Rise", kind: "rise", direction: "up", duration: 0.8, stagger: 0.14 },
-  { id: "fade", label: "Fade", kind: "fade", duration: 0.7, stagger: 0.1 },
-  { id: "pan", label: "Pan", kind: "pan", direction: "right", duration: 0.8, stagger: 0.14 },
-  { id: "pop", label: "Pop", kind: "pop", duration: 0.6, stagger: 0.12 },
-  { id: "wipe", label: "Wipe", kind: "wipe", direction: "right", duration: 0.8, stagger: 0.14 },
-  { id: "zoom", label: "Zoom", kind: "zoom", duration: 0.8, stagger: 0.12 },
-  { id: "drop", label: "Drop", kind: "drop", duration: 0.9, stagger: 0.16 },
-  { id: "cascade", label: "Cascade", kind: "slide", direction: "up", duration: 0.7, stagger: 0.2 },
+  { id: "rise", label: m.core.animations["rise"], kind: "rise", direction: "up", duration: 0.8, stagger: 0.14 },
+  { id: "fade", label: m.core.animations["fade"], kind: "fade", duration: 0.7, stagger: 0.1 },
+  { id: "pan", label: m.core.animations["pan"], kind: "pan", direction: "right", duration: 0.8, stagger: 0.14 },
+  { id: "pop", label: m.core.animations["pop"], kind: "pop", duration: 0.6, stagger: 0.12 },
+  { id: "wipe", label: m.core.animations["wipe"], kind: "wipe", direction: "right", duration: 0.8, stagger: 0.14 },
+  { id: "zoom", label: m.core.animations["zoom"], kind: "zoom", duration: 0.8, stagger: 0.12 },
+  { id: "drop", label: m.core.animations["drop"], kind: "drop", duration: 0.9, stagger: 0.16 },
+  { id: "cascade", label: m.core.animations["cascade"], kind: "slide", direction: "up", duration: 0.7, stagger: 0.2 },
 ];
 
 export const getPageAnimationPreset = (id: string): PageAnimationPreset | undefined => PAGE_ANIMATION_PRESETS.find((p) => p.id === id);

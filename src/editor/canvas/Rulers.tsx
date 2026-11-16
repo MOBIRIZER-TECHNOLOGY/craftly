@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { designToScreen, screenToDesign, useView } from "./viewStore";
 
 export const RULER = 22;
@@ -132,10 +133,10 @@ export function Rulers() {
   return (
     <>
       <div className="cf-ruler__corner" data-cf-ui style={{ width: RULER, height: RULER }} />
-      <div className="cf-ruler cf-ruler--top" data-cf-ui style={{ left: RULER, height: RULER }} onPointerDown={(e) => startGuide(e, "h")} title="Drag down to add a guide">
+      <div className="cf-ruler cf-ruler--top" data-cf-ui style={{ left: RULER, height: RULER }} onPointerDown={(e) => startGuide(e, "h")} title={m.editor.canvas.addGuideDown}>
         <canvas ref={topRef} />
       </div>
-      <div className="cf-ruler cf-ruler--left" data-cf-ui style={{ top: RULER, width: RULER }} onPointerDown={(e) => startGuide(e, "v")} title="Drag right to add a guide">
+      <div className="cf-ruler cf-ruler--left" data-cf-ui style={{ top: RULER, width: RULER }} onPointerDown={(e) => startGuide(e, "v")} title={m.editor.canvas.addGuideRight}>
         <canvas ref={leftRef} />
       </div>
       {draft && <DraftGuide axis={draft.axis} pos={draft.pos} />}
@@ -200,7 +201,7 @@ export function Guides() {
       data-cf-ui
       style={axis === "v" ? { left: pos * zoom } : { top: pos * zoom }}
       onPointerDown={(e) => drag(e, axis, index)}
-      title="Drag to move; drag onto the ruler to remove"
+      title={m.editor.canvas.moveGuide}
     />
   );
 

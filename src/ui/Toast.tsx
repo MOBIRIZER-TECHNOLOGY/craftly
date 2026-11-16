@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { m } from "@/i18n";
 import "./Toast.css";
 import { cx } from "./cx";
 import { IconAlert, IconClose, IconInfo, IconSuccess } from "./icons";
@@ -88,7 +89,7 @@ export function ToastHost() {
   const list = useSyncExternalStore(subscribe, getItems, getItems);
   if (list.length === 0) return null;
   return createPortal(
-    <div className="cf-toasts" role="region" aria-label="Notifications">
+    <div className="cf-toasts" role="region" aria-label={m.ui.toast.region}>
       {list.map((item) => (
         <ToastView key={item.id} item={item} />
       ))}
@@ -145,7 +146,7 @@ function ToastView({ item }: { item: ToastItem }) {
           {item.actionLabel}
         </button>
       ) : null}
-      <button type="button" className="cf-toast__close" aria-label="Dismiss notification" onClick={() => dismiss(id)}>
+      <button type="button" className="cf-toast__close" aria-label={m.ui.toast.dismiss} onClick={() => dismiss(id)}>
         <IconClose aria-hidden="true" />
       </button>
     </div>

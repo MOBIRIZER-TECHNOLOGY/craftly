@@ -2,6 +2,7 @@
  * The models the app knows about. An entry names exactly one set of bytes (repository, commit, file, size, SHA-256) and
  * carries what the licence screen has to show. Add a model only with all of it; see docs/ON-DEVICE-AI.md.
  */
+import { m, num } from "@/i18n";
 import type { MlTask, ModelId, ModelSpec } from "./types";
 
 /**
@@ -13,10 +14,9 @@ import type { MlTask, ModelId, ModelSpec } from "./types";
 const ISNET_GENERAL: ModelSpec = {
   id: "isnet-general",
   task: "background-removal",
-  tool: "Background remover",
+  tool: m.ml.models.backgroundRemover.tool,
   name: "ISNet general-use",
-  summary:
-    "Finds the main subject of a photo, so it can be cut out, or the background behind it blurred or turned black and white. Made of plain convolutions, so it runs on ordinary graphics cards.",
+  summary: m.ml.models.backgroundRemover.summary,
   repo: "Ko033/isnet-general-use-onnx",
   revision: "5349b617911fd60c619b52f32e2b593517b78df3",
   file: "onnx/model_fp16.onnx",
@@ -52,9 +52,9 @@ const ISNET_GENERAL: ModelSpec = {
 const REALESRGAN_GENERAL: ModelSpec = {
   id: "realesrgan-general",
   task: "upscaling",
-  tool: "Upscaler",
+  tool: m.ml.models.upscaler.tool,
   name: "Real-ESRGAN general x4 v3",
-  summary: "Makes a picture two or four times larger and draws back the sharpness that was lost. Small enough to run on ordinary graphics cards.",
+  summary: m.ml.models.upscaler.summary,
   repo: "skillsafe-ai/realesr-general-x4v3",
   revision: "042a40bc4c918349ad3e2e607a68ae509a4c27b5",
   file: "model.onnx",
@@ -76,7 +76,7 @@ export const MODELS: readonly ModelSpec[] = [ISNET_GENERAL, REALESRGAN_GENERAL];
 /** The model each task uses unless the person picks another. */
 export const DEFAULT_MODEL: Record<MlTask, ModelId> = { "background-removal": ISNET_GENERAL.id, upscaling: REALESRGAN_GENERAL.id };
 
-export const getModelSpec = (id: ModelId): ModelSpec | undefined => MODELS.find((m) => m.id === id);
+export const getModelSpec = (id: ModelId): ModelSpec | undefined => MODELS.find((model) => model.id === id);
 
 const HOST = "https://huggingface.co";
 
@@ -108,5 +108,5 @@ export function formatBytes(bytes: number): string {
     value /= 1000;
     unit++;
   }
-  return unit === 0 ? `${Math.round(value)} B` : `${value.toFixed(1)} ${units[unit]}`;
+  return unit === 0 ? `${num(Math.round(value))} B` : `${num(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${units[unit]}`;
 }

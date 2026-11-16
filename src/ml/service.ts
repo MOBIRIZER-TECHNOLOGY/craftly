@@ -8,6 +8,7 @@ import { addAssetFromBlob, assetSrc, deleteAsset, getAsset } from "@/core/assets
 import { findElement } from "@/core/ops";
 import { useEditor } from "@/core/store";
 import type { Asset, ID, ImageElement } from "@/core/types";
+import { m } from "@/i18n";
 import { loadImage, type Drawable } from "@/render/images";
 import { BLUR_STRENGTHS, blurSigma, createBackgroundBlur, type BlurStrength } from "./blur";
 import { sharedClient, type MlClient } from "./client";
@@ -601,7 +602,7 @@ export function upscale(elementId: ID, options: UpscaleOptions, deps: MlDeps = d
     if (!UPSCALE_FACTORS.includes(factor)) throw new MlError("runtime", undefined, { cause: `a picture cannot be made ${factor} times larger` });
     // going by the size the photo is recorded with, before anything is downloaded: the picture itself is checked again below
     if (!upscaleChoices(element.naturalWidth, element.naturalHeight, [factor])[0]!.fits) throw new MlError("too-large");
-    if ((await describeSource(element.src!)).vector) throw new MlError("image", "A vector picture stays sharp at any size, so there is nothing to make larger.");
+    if ((await describeSource(element.src!)).vector) throw new MlError("image", m.ml.errors.vector);
   };
   return runPhotoJob({ kind: "upscale", label: "Upscale", task: "upscaling" }, elementId, options, deps, check, async (context) => {
     const { spec, stored, signal, stopIfCancelled, startSrc } = context;
@@ -658,7 +659,7 @@ export async function restoreOriginal(elementId: ID, deps: MlDeps = defaultDeps(
   if (!found || !original) return;
   if (!canEdit(found.element)) throw new MlError("locked");
   const picture = await deps.loadSource(original);
-  if (!picture) throw new MlError("image", "The original picture is no longer available.");
+  if (!picture) throw new MlError("image", m.ml.errors.originalGone);
   const { width, height } = sizeOf(picture);
   useEditor.getState().actions.updateElementsOnPage(found.pageId, [elementId], (draft) => {
     if (draft.type !== "image" || draft.originalSrc !== original) return;

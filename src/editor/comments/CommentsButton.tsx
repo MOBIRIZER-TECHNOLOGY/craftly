@@ -1,4 +1,5 @@
 import { useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { IconButton, IconComment } from "@/ui";
 import { openCount, useComments } from "./commentsStore";
 import "./comments.css";
@@ -12,7 +13,7 @@ export function CommentsButton() {
   const open = useComments((s) => s.panelOpen);
   return (
     <IconButton
-      label={count ? `Comments, ${count} open` : "Comments"}
+      label={count ? m.editor.comments.buttonOpen(count) : m.editor.comments.title}
       className="cf-comments-button"
       active={open}
       data-cf-comments-button=""

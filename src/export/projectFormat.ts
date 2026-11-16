@@ -13,6 +13,7 @@ import { isUsableElement } from "@/core/usableElement";
 import { usableComments } from "@/core/comments";
 import { MAX_TRANSITION_DURATION } from "@/core/transition";
 import type { AnimDirection, Design, DesignElement, Fill, Page, PageTransition } from "@/core/types";
+import { m } from "@/i18n";
 
 /**
  * The version of the file around the design (`craftly`). The design inside has a version of its own
@@ -24,9 +25,9 @@ export const PROJECT_MIGRATIONS: readonly MigrationStep[] = [];
 const projectMigrator = createMigrator({ kind: "project", field: "craftly", current: PROJECT_FORMAT_VERSION, steps: PROJECT_MIGRATIONS });
 
 export const PROJECT_FILE_EXTENSION = ".craftly";
-export const NOT_A_PROJECT_MESSAGE = "That does not look like a Craftly project file";
-export const NEWER_PROJECT_MESSAGE = "This project was saved by a newer version of Craftly. Update the app, then try again.";
-export const UPDATE_PROJECT_MESSAGE = "This project could not be brought up to date for this version of Craftly.";
+export const NOT_A_PROJECT_MESSAGE = m.exporting.project.notAProject;
+export const NEWER_PROJECT_MESSAGE = m.exporting.project.newer;
+export const UPDATE_PROJECT_MESSAGE = m.exporting.project.cannotUpdate;
 
 export interface ProjectAsset {
   name: string;
@@ -337,8 +338,8 @@ export function prepareImportedDesign(design: Design, id: string, now: number = 
 /* ------------------------------------------------------------------ */
 
 export function mimeOfDataUrl(dataUrl: string): string | null {
-  const m = dataUrl.match(/^data:([^;,]*)/i);
-  return m && m[1] ? m[1].toLowerCase() : null;
+  const match = dataUrl.match(/^data:([^;,]*)/i);
+  return match && match[1] ? match[1].toLowerCase() : null;
 }
 
 /** Decodes a `data:` URL (base64 or percent-encoded) into bytes. Returns null when it is malformed. */

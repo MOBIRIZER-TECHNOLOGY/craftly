@@ -5,6 +5,7 @@
  * `createSocket` (the browser's WebSocket by default), so tests can make one up.
  */
 import type { Design } from "@/core/types";
+import { m } from "@/i18n";
 import type { PresenceHeard, PresenceState } from "./presence";
 import type { ClientMsg, DeniedReason, Feature } from "./protocol";
 import { Session, type Outbox } from "./session";
@@ -187,7 +188,7 @@ export class Live {
       })
       .catch((error: unknown) => {
         if (socket !== this.socket) return;
-        const reason = error instanceof Error ? error.message : "Could not send a shared image.";
+        const reason = error instanceof Error ? error.message : m.core.sharedImageNotSent;
         if (error instanceof PermanentSendError) {
           // Trying again cannot help, and every edit behind this one would wait for it for ever. It is given up the way an edit
           // that the server refused is, the person is told the same way, and the connection stays for the rest.

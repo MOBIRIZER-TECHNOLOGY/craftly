@@ -1,4 +1,5 @@
 import { useSelectedElements } from "@/core/store";
+import { m } from "@/i18n";
 import { IconTable } from "@/ui";
 import { ChartEditor } from "./ChartEditor";
 import { PanelEmpty, PanelShell } from "./PanelShell";
@@ -16,21 +17,21 @@ export function DataPanel({ cell }: { cell?: { row: number; col: number } }) {
 
   if (subject?.type === "table") {
     return (
-      <PanelShell title="Table">
+      <PanelShell title={m.panelsContext.dataPanel.table}>
         <TableEditor table={subject} focusCell={cell} />
       </PanelShell>
     );
   }
   if (subject?.type === "chart") {
     return (
-      <PanelShell title="Chart">
+      <PanelShell title={m.panelsContext.dataPanel.chart}>
         <ChartEditor chart={subject} />
       </PanelShell>
     );
   }
   return (
-    <PanelShell title="Data">
-      <PanelEmpty icon={<IconTable />} title="No table or chart selected" text="Select a table or a chart on the page to edit its cells, numbers and colors here." />
+    <PanelShell title={m.panelsContext.dataPanel.data}>
+      <PanelEmpty icon={<IconTable />} title={m.panelsContext.dataPanel.emptyTitle} text={m.panelsContext.dataPanel.emptyText} />
     </PanelShell>
   );
 }

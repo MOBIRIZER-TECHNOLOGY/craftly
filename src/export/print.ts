@@ -3,6 +3,7 @@
  * is the design size, and the browser's print dialog is opened for it.
  */
 import type { Design } from "@/core/types";
+import { m } from "@/i18n";
 import { ExportError, throwIfAborted } from "./errors";
 import { nextMacrotask } from "./yield";
 import { planRaster } from "./options";
@@ -39,9 +40,9 @@ img:last-child { break-after: auto; page-break-after: auto; }
 
 /** Renders every page and opens the print dialog. Resolves once the dialog has been requested. */
 export async function printDesign(design: Design, options: PrintOptions = {}): Promise<void> {
-  if (typeof document === "undefined") throw new ExportError("unsupported", "Printing is not available here.");
+  if (typeof document === "undefined") throw new ExportError("unsupported", m.exporting.print.unavailable);
   const wanted = (options.pages ?? design.pages.map((_p, i) => i)).filter((i) => i >= 0 && i < design.pages.length);
-  if (!wanted.length) throw new ExportError("no-pages", "There is nothing to print.");
+  if (!wanted.length) throw new ExportError("no-pages", m.exporting.print.nothing);
 
   // about 190 dpi on a 1080p design: sharp on paper without a gigantic file per page. Lossless PNG for ordinary
   // documents, high-quality JPEG once there are so many pages that PNGs would eat the tab's memory.
@@ -79,7 +80,7 @@ export async function printDesign(design: Design, options: PrintOptions = {}): P
 
   await new Promise<void>((resolve, reject) => {
     frame.onload = () => resolve();
-    frame.onerror = () => reject(new ExportError("unsupported", "Could not prepare the pages for printing."));
+    frame.onerror = () => reject(new ExportError("unsupported", m.exporting.print.prepareFailed));
     frame.srcdoc = printDocumentHtml(design, urls);
     document.body.appendChild(frame);
   }).catch((error) => {
@@ -90,7 +91,7 @@ export async function printDesign(design: Design, options: PrintOptions = {}): P
   const win = frame.contentWindow;
   if (!win) {
     cleanup();
-    throw new ExportError("unsupported", "Could not open the print dialog. Allow pop-ups for this site or download the PDF instead.");
+    throw new ExportError("unsupported", m.exporting.print.dialogFailed);
   }
   // every <img> must be decoded before the dialog opens, or sheets come out blank
   await Promise.all(

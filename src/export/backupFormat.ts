@@ -17,6 +17,7 @@
 import { isAcceptedImage } from "@/core/assets";
 import { createMigrator, type MigrationError, type MigrationErrorCode, type MigrationStep } from "@/core/schema/migrator";
 import type { BrandKit, Folder } from "@/core/types";
+import { m } from "@/i18n";
 import { extensionForMime } from "./projectFormat";
 
 /**
@@ -32,15 +33,15 @@ export const BACKUP_MANIFEST_NAME = "craftly-backup.json";
 
 export type BackupErrorCode = "not-a-backup" | "newer" | "damaged" | "too-large" | "cancelled" | "storage" | "unsupported";
 
+const { backup: words } = m.exporting;
 const MESSAGES: Record<BackupErrorCode, string> = {
-  "not-a-backup": "That file is not a Craftly backup.",
-  newer: "This backup was made by a newer version of Craftly. Update the app, then try again.",
-  damaged: "This backup is damaged.",
-  "too-large":
-    "Your library is larger than one backup file can hold (4 GB). Delete uploads you no longer need, or save the biggest designs one by one with Share > Save project file.",
-  cancelled: "Cancelled.",
-  storage: "Your browser has no room left for this. Free some space and try again.",
-  unsupported: "This backup cannot be opened here.",
+  "not-a-backup": words.notABackup,
+  newer: words.newer,
+  damaged: words.damaged,
+  "too-large": words.tooLarge,
+  cancelled: words.cancelled,
+  storage: words.storage,
+  unsupported: words.unsupported,
 };
 
 export class BackupError extends Error {

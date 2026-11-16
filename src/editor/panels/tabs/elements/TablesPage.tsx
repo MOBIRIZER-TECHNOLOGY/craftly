@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { createTable } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { IconTable, Switch, cx } from "@/ui";
 import { PanelSection, Panel, PanelScroll } from "../../shared/PanelLayout";
 import { DraggableItem } from "../../shared/DraggableItem";
@@ -42,7 +43,7 @@ export function TablesPage() {
   const query = useElementsNav((s) => s.query);
   const shown = hover ?? focus;
   const q = query.trim().toLowerCase();
-  const matches = !q || "table grid rows columns spreadsheet".includes(q);
+  const matches = !q || "table grid rows columns spreadsheet".includes(q) || m.panelsTabs.elements.categories.tables.toLowerCase().includes(q);
 
   const insert = (rows: number, cols: number) => void getActions().addElement(buildTable(rows, cols, headerRow));
 
@@ -59,14 +60,21 @@ export function TablesPage() {
 
   return (
     <Panel>
-      <SubPageTop title="Tables" placeholder="Search tables" />
+      <SubPageTop title={m.panelsTabs.elements.categories.tables} placeholder={m.panelsTabs.elements.tables.search} />
       <PanelScroll>
         {matches ? (
           <>
-            <PanelSection title="Choose a size">
+            <PanelSection title={m.panelsTabs.elements.tables.chooseSize}>
               <div className="cf-tablepick">
                 {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- the cells are the focusable parts; the arrow keys move between them */}
-                <div ref={gridRef} className="cf-tablepick__grid" role="grid" aria-label="Table size" onKeyDown={onKeyDown} onPointerLeave={() => setHover(null)}>
+                <div
+                  ref={gridRef}
+                  className="cf-tablepick__grid"
+                  role="grid"
+                  aria-label={m.panelsTabs.elements.tables.sizeLabel}
+                  onKeyDown={onKeyDown}
+                  onPointerLeave={() => setHover(null)}
+                >
                   {SIZES.map((rows) => (
                     <div key={rows} role="row" className="cf-tablepick__row">
                       {SIZES.map((cols) => {
@@ -79,7 +87,7 @@ export function TablesPage() {
                             data-rows={rows}
                             data-cols={cols}
                             tabIndex={rows === focus.rows && cols === focus.cols ? 0 : -1}
-                            aria-label={`${rows} ${rows === 1 ? "row" : "rows"} by ${cols} ${cols === 1 ? "column" : "columns"}`}
+                            aria-label={m.panelsTabs.elements.tables.cell(rows, cols)}
                             className={cx("cf-tablepick__cell", lit && "is-lit")}
                             onPointerEnter={() => setHover({ rows, cols })}
                             onFocus={() => setFocus({ rows, cols })}
@@ -94,14 +102,12 @@ export function TablesPage() {
                   <strong>
                     {shown.rows} x {shown.cols}
                   </strong>
-                  <span>
-                    {shown.rows} {shown.rows === 1 ? "row" : "rows"}, {shown.cols} {shown.cols === 1 ? "column" : "columns"}
-                  </span>
+                  <span>{m.panelsTabs.elements.tables.caption(shown.rows, shown.cols)}</span>
                 </p>
               </div>
-              <Switch checked={headerRow} onChange={setHeaderRow} label="Header row" />
+              <Switch checked={headerRow} onChange={setHeaderRow} label={m.panelsTabs.elements.tables.headerRow} />
             </PanelSection>
-            <PanelSection title="Quick add">
+            <PanelSection title={m.panelsTabs.elements.tables.quickAdd}>
               <div className="cf-tablequick">
                 {[
                   { rows: 2, cols: 2, name: "2 x 2" },
@@ -111,7 +117,7 @@ export function TablesPage() {
                 ].map((s) => (
                   <DraggableItem
                     key={s.name}
-                    label={`${s.name} table`}
+                    label={m.panelsTabs.elements.tables.quickLabel(s.name)}
                     onInsert={() => insert(s.rows, s.cols)}
                     getPayload={() => ({ type: "elements", elements: [buildTable(s.rows, s.cols, headerRow)] })}
                     className="cf-cell cf-tablequick__item"
@@ -130,7 +136,7 @@ export function TablesPage() {
         ) : (
           <div className="cf-tablepick__none">
             <IconTable aria-hidden="true" />
-            <p>No tables match "{query.trim()}".</p>
+            <p>{m.panelsTabs.elements.tables.none(query.trim())}</p>
           </div>
         )}
       </PanelScroll>

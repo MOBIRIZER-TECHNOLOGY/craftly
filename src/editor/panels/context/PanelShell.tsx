@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from "react";
 import { getActions } from "@/core/store";
+import { m } from "@/i18n";
 import { cx, EmptyState, IconButton, IconClose } from "@/ui";
 import "./PanelShell.css";
 
@@ -23,7 +24,7 @@ export function PanelShell({ title, tabs, headerActions, footer, className, chil
         <h2 className="cf-ctx__title">{title}</h2>
         <div className="cf-ctx__head-actions">
           {headerActions}
-          <IconButton label="Close panel" icon={<IconClose />} onClick={() => getActions().closeContext()} />
+          <IconButton label={m.panelsContext.shared.closePanel} icon={<IconClose />} onClick={() => getActions().closeContext()} />
         </div>
       </header>
       {tabs ? <div className="cf-ctx__tabs">{tabs}</div> : null}

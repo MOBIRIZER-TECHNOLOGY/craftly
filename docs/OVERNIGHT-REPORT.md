@@ -110,10 +110,10 @@ size is now saved one edit at a time, and only the edit that does not fit is ref
 | B14 | The Pen from the keyboard | done | `1fa8fb0` |
 | B15 | Text to points | done on 2026-11-15, after the night, with fontkit 2.0.4 (committed on 2026-11-16) | `4b16eb1` |
 | B16 | 30 more templates (102 templates, 175 pages) | done | `f854df5` `30c5eba` `c1c98a8` |
-| B17 | Interface translation | **not started** | |
+| B17 | Interface translation | done on 2026-11-16, after the night: English and Hindi, every screen | (see the log) |
 | B18 | Journeys in Edge | done: all 234 pass, nothing had to be fixed | |
 
-Why three were not started in the night (B3 and B15 were built after it, see the table; B17 is the one still open):
+Why three were not started in the night (all three were built after it, see the table):
 
 - **Comments (B3)** need a decision first. New kinds of operation are refused by an older server and end the session of an
   older browser; putting the comments through the existing "design" operation would lose comments made at the same moment.
@@ -215,6 +215,7 @@ The four failed journey checks are the same two in both runs: the WebM download 
 got no data and no error, headless and in a window. The video code has not changed since the first commit; CI is the next
 place to see these two pass. With the usual 30-second limits the unit suite still fails here on time alone.
 
-Still open: translation (B17), a merge (not a lock) for text edited by two people, CMYK, accounts and sync, real stock
+Translation (B17) was built later the same day: English and Hindi (see `docs/TRANSLATION.md`); the Hindi needs a native
+speaker's reading. Still open: a merge (not a lock) for text edited by two people, CMYK, accounts and sync, real stock
 photos, Firefox and Safari, a load test of group commit, the video journey on a machine whose Chrome records, and for text to
 points a real uploaded font and a screen reader.

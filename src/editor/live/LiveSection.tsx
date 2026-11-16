@@ -11,6 +11,7 @@ import { CONFIGURED_SERVER } from "./knownServers";
 import { useState } from "react";
 import { useEditor } from "@/core/store";
 import type { LiveLink } from "@/core/types";
+import { m } from "@/i18n";
 import { Badge, Button, TextField, toast } from "@/ui";
 import { CreateKeyError, deniedText, shareDesign, stopSharing, useLiveStatus } from "./connection";
 import { rememberShared } from "./joined";
@@ -31,14 +32,15 @@ const savedServer = (): string => {
 
 /** How the connection is, in words. */
 export function liveStatusText(status: ReturnType<typeof useLiveStatus.getState>["status"], role: "edit" | "view" | null): string {
-  if (status === "live") return role === "view" ? "Live, view only" : "Live";
-  if (status === "connecting") return "Connecting...";
-  if (status === "reconnecting") return "Reconnecting...";
-  if (status === "denied") return "Not allowed in";
-  return "Not connected";
+  if (status === "live") return role === "view" ? m.editor.live.status.liveView : m.editor.live.status.live;
+  if (status === "connecting") return m.editor.live.status.connecting;
+  if (status === "reconnecting") return m.editor.live.status.reconnecting;
+  if (status === "denied") return m.editor.live.status.denied;
+  return m.editor.live.status.off;
 }
 
-function CopyLink({ label, url, hint }: { label: string; url: string; hint: string }) {
+/** `copyLabel` names the button that copies the link. */
+function CopyLink({ label, copyLabel, url, hint }: { label: string; copyLabel: string; url: string; hint: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -46,7 +48,7 @@ function CopyLink({ label, url, hint }: { label: string; url: string; hint: stri
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("The link could not be copied. Select it and copy it by hand.");
+      toast.error(m.editor.live.copyFailed);
     }
   };
   return (
@@ -58,8 +60,8 @@ function CopyLink({ label, url, hint }: { label: string; url: string; hint: stri
         value={url}
         onFocus={(e) => e.currentTarget.select()}
         trailing={
-          <Button size="sm" variant="secondary" onClick={() => void copy()} aria-label={`Copy the ${label.toLowerCase()}`}>
-            {copied ? "Copied" : "Copy"}
+          <Button size="sm" variant="secondary" onClick={() => void copy()} aria-label={copyLabel}>
+            {copied ? m.editor.live.copied : m.editor.live.copy}
           </Button>
         }
       />
@@ -105,7 +107,7 @@ export function LiveSection() {
         // the first time it is a question, shown as the hint of the field; a key that was sent and refused is a problem
         setKeyAsked(true);
         if (error.kind === "wrong") setKeyProblem(error.message);
-      } else setProblem(error instanceof Error ? error.message : "Sharing could not be started.");
+      } else setProblem(error instanceof Error ? error.message : m.editor.live.startFailed);
     } finally {
       setBusy(false);
     }
@@ -118,7 +120,7 @@ export function LiveSection() {
       await stopSharing();
       setAsking(false);
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : "Sharing could not be stopped.");
+      setProblem(error instanceof Error ? error.message : m.editor.live.stopFailed);
     } finally {
       setBusy(false);
     }
@@ -128,20 +130,27 @@ export function LiveSection() {
     return (
       <section className="cf-live" aria-labelledby="cf-live-title">
         <h3 className="cf-live__title" id="cf-live-title">
-          Work together
+          {m.editor.live.title}
         </h3>
-        <p className="cf-live__text">Edit this design at the same time as other people, and see each other's changes as they happen. It needs a Craftly live server.</p>
-        <TextField label="Server address" value={server} onChange={(e) => changeServer(e.target.value)} spellCheck={false} autoComplete="off" error={problem ?? undefined} />
+        <p className="cf-live__text">{m.editor.live.intro}</p>
+        <TextField
+          label={m.editor.live.serverAddress}
+          value={server}
+          onChange={(e) => changeServer(e.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+          error={problem ?? undefined}
+        />
         {keyAsked ? (
           <TextField
-            label="Key to start sharing"
+            label={m.editor.live.keyLabel}
             type="password"
             value={createKey}
             onChange={(e) => {
               setCreateKey(e.target.value);
               setKeyProblem(null);
             }}
-            hint="This server asks for a key to start sharing. Whoever runs it can give it to you."
+            hint={m.editor.live.keyNeeded}
             error={keyProblem ?? undefined}
             spellCheck={false}
             autoComplete="off"
@@ -150,7 +159,7 @@ export function LiveSection() {
         ) : null}
         <NameField />
         <Button variant="primary" onClick={() => void start()} disabled={busy || !server.trim() || (keyAsked && !createKey.trim())} aria-busy={busy || undefined}>
-          Start live session
+          {m.editor.live.start}
         </Button>
       </section>
     );
@@ -162,19 +171,22 @@ export function LiveSection() {
     <section className="cf-live" aria-labelledby="cf-live-title">
       <div className="cf-live__head">
         <h3 className="cf-live__title" id="cf-live-title">
-          Work together
+          {m.editor.live.title}
         </h3>
         <Badge tone={status === "live" ? "success" : status === "denied" ? "danger" : "warning"}>{liveStatusText(status, role)}</Badge>
       </div>
       {owner ? (
         <>
-          <CopyLink label="Edit link" url={joinUrl(here, link)} hint="Anyone with this link can change the design." />
-          <CopyLink label="View link" url={joinUrl(here, { ...link, key: link.viewKey as string, role: "view" })} hint="Anyone with this link can look, not change." />
+          <CopyLink label={m.editor.live.editLink} copyLabel={m.editor.live.copyEditLink} url={joinUrl(here, link)} hint={m.editor.live.editLinkHint} />
+          <CopyLink
+            label={m.editor.live.viewLink}
+            copyLabel={m.editor.live.copyViewLink}
+            url={joinUrl(here, { ...link, key: link.viewKey as string, role: "view" })}
+            hint={m.editor.live.viewLinkHint}
+          />
         </>
       ) : (
-        <p className="cf-live__text">
-          {link.role === "view" ? "You can look at this design, not change it." : "You are editing this design together with the person who shared it."}
-        </p>
+        <p className="cf-live__text">{link.role === "view" ? m.editor.live.youView : m.editor.live.youEdit}</p>
       )}
       <NameField />
       {problem ? (
@@ -188,22 +200,20 @@ export function LiveSection() {
         </p>
       ) : null}
       {asking ? (
-        <div className="cf-live__ask" role="group" aria-label="Stop sharing">
-          <p className="cf-live__text">
-            {owner ? "Everybody is sent away and the links stop working. The design stays on this device." : "This design stays on this device as your own copy."}
-          </p>
+        <div className="cf-live__ask" role="group" aria-label={m.editor.live.stopSharing}>
+          <p className="cf-live__text">{owner ? m.editor.live.stopOwner : m.editor.live.stopGuest}</p>
           <div className="cf-live__actions">
             <Button variant="danger" onClick={() => void stop()} disabled={busy}>
-              {owner ? "Stop sharing" : "Leave"}
+              {owner ? m.editor.live.stopSharing : m.editor.live.leave}
             </Button>
             <Button variant="secondary" onClick={() => setAsking(false)} disabled={busy}>
-              Keep sharing
+              {m.editor.live.keepSharing}
             </Button>
           </div>
         </div>
       ) : (
         <Button variant="secondary" onClick={() => setAsking(true)}>
-          {owner ? "Stop sharing" : "Leave"}
+          {owner ? m.editor.live.stopSharing : m.editor.live.leave}
         </Button>
       )}
     </section>
@@ -216,7 +226,7 @@ export function LiveBadge() {
   const { status, role } = useLiveStatus();
   if (!link) return null;
   return (
-    <span className={`cf-live-badge cf-live-badge--${status}`} role="status" title={link.role === "view" ? "Shared with you to look at" : "Shared: changes are sent to everybody"}>
+    <span className={`cf-live-badge cf-live-badge--${status}`} role="status" title={link.role === "view" ? m.editor.live.badgeView : m.editor.live.badgeEdit}>
       <span className="cf-live-badge__dot" aria-hidden="true" />
       {liveStatusText(status, role)}
     </span>

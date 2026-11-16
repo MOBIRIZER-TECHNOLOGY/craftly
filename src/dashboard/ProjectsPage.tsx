@@ -26,13 +26,14 @@ import {
   type SelectOption,
 } from "@/ui";
 import type { Asset, DesignSummary, Folder } from "@/core/types";
+import { m } from "@/i18n";
 import { navigate } from "@/router";
 import { IMAGE_ACCEPT, createFolderAction, deleteFolderAction, moveDesignAction, renameFolderAction, uploadImageFiles } from "./actions";
 import { openCreateDialog } from "./createDialogState";
 import { useAssets, useDesigns, useFolders, useNow } from "./data";
 import { DESIGN_DRAG_TYPE, DesignCard, DesignCardSkeleton } from "./DesignCard";
 import { pickFiles } from "./files";
-import { matchesWords, plural, searchWords } from "./format";
+import { matchesWords, searchWords } from "./format";
 import { FolderCard } from "./FolderCard";
 import { ImageCard } from "./ImageCard";
 import { fullTypeName, shortTypeName } from "./labels";
@@ -46,9 +47,9 @@ type View = "grid" | "list";
 const VIEW_KEY = "craftly:projects-view";
 
 const SORT_OPTIONS: SelectOption<SortKey>[] = [
-  { value: "recent", label: "Most recent" },
-  { value: "oldest", label: "Oldest" },
-  { value: "az", label: "A-Z" },
+  { value: "recent", label: m.dashboard.projects.mostRecent },
+  { value: "oldest", label: m.dashboard.projects.oldest },
+  { value: "az", label: m.dashboard.projects.az },
 ];
 
 function readView(): View {
@@ -129,7 +130,7 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
   const typeOptions = useMemo<SelectOption<string>[]>(() => {
     const ids = [...new Set(designs.map((design) => design.typeId))];
     const options = ids.map((id) => ({ value: id, label: fullTypeName(id) })).sort((a, b) => byName(a.label, b.label));
-    return [{ value: "all", label: "All types" }, ...options];
+    return [{ value: "all", label: m.dashboard.projects.allTypes }, ...options];
   }, [designs]);
 
   useEffect(() => {
@@ -192,14 +193,14 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
 
   const tabs = folder
     ? [
-        { id: "all", label: "All" },
-        { id: "designs", label: "Designs" },
+        { id: "all", label: m.dashboard.shared.all },
+        { id: "designs", label: m.dashboard.projects.designs },
       ]
     : [
-        { id: "all", label: "All" },
-        { id: "designs", label: "Designs" },
-        { id: "folders", label: "Folders" },
-        { id: "images", label: "Images" },
+        { id: "all", label: m.dashboard.shared.all },
+        { id: "designs", label: m.dashboard.projects.designs },
+        { id: "folders", label: m.dashboard.projects.folders },
+        { id: "images", label: m.dashboard.projects.images },
       ];
 
   const upload = () => {
@@ -228,7 +229,7 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
     // the folder list is still loading, or the id is unknown: never flash the top-level header
     header = (
       <PageHeader
-        title={foldersReady ? "Folder not found" : <Skeleton width={200} height={30} radius={8} />}
+        title={foldersReady ? m.dashboard.projects.folderNotFound : <Skeleton width={200} height={30} radius={8} />}
         above={<Breadcrumb folderName={null} onDropDesign={() => undefined} />}
       />
     );
@@ -237,14 +238,14 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
       <PageHeader
         above={<Breadcrumb folderName={folder.name} onDropDesign={(id) => moveDropped(id, null)} />}
         title={folder.name}
-        subtitle={plural(folderCounts.get(folder.id) ?? 0, "design")}
+        subtitle={m.dashboard.counts.designs(folderCounts.get(folder.id) ?? 0)}
         actions={
           <>
             <Button variant="primary" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog({ folderId: folder.id })}>
-              Create design
+              {m.dashboard.shared.createDesignShort}
             </Button>
             <IconButton
-              label="Folder options"
+              label={m.dashboard.projects.folderOptions}
               icon={<IconMore aria-hidden="true" />}
               aria-haspopup="menu"
               aria-expanded={folderMenu !== null}
@@ -255,12 +256,12 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
               anchor={folderMenu}
               onClose={() => setFolderMenu(null)}
               placement="bottom-end"
-              aria-label="Folder options"
+              aria-label={m.dashboard.projects.folderOptions}
               items={[
-                { id: "rename", label: "Rename folder", icon: <IconPen aria-hidden="true" />, onSelect: () => void renameFolderAction(folder) },
+                { id: "rename", label: m.dashboard.actions.renameFolder, icon: <IconPen aria-hidden="true" />, onSelect: () => void renameFolderAction(folder) },
                 {
                   id: "delete",
-                  label: "Delete folder",
+                  label: m.dashboard.shared.deleteFolder,
                   icon: <IconTrash aria-hidden="true" />,
                   danger: true,
                   onSelect: () => {
@@ -278,18 +279,18 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
   } else {
     header = (
       <PageHeader
-        title="Projects"
-        subtitle="Your designs, folders and uploads, saved on this device."
+        title={m.dashboard.shell.nav.projects}
+        subtitle={m.dashboard.projects.subtitle}
         actions={
           <>
             <Button variant="secondary" icon={<IconFolderPlus aria-hidden="true" />} onClick={() => void createFolderAction()}>
-              Create folder
+              {m.dashboard.shared.createFolder}
             </Button>
             <Button variant="secondary" icon={<IconUpload aria-hidden="true" />} onClick={upload}>
-              Upload
+              {m.dashboard.shared.upload}
             </Button>
             <Button variant="primary" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()}>
-              Create design
+              {m.dashboard.shared.createDesignShort}
             </Button>
           </>
         }
@@ -305,18 +306,18 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
       <EmptyState
         headingLevel={2}
         icon={<IconFolder />}
-        title="This folder doesn't exist"
-        text="It may have been deleted. Your designs are safe in Projects."
+        title={m.dashboard.projects.missingTitle}
+        text={m.dashboard.projects.missingText}
         action={
           <Button variant="primary" onClick={() => navigate("/projects")}>
-            Back to Projects
+            {m.dashboard.projects.backToProjects}
           </Button>
         }
       />
     );
   } else if (!ready) {
     body = (
-      <div className="cf-projects__grid" aria-busy="true" aria-label="Loading your projects">
+      <div className="cf-projects__grid" aria-busy="true" aria-label={m.dashboard.projects.loading}>
         {Array.from({ length: 8 }, (_unused, index) => (
           <DesignCardSkeleton key={index} />
         ))}
@@ -327,15 +328,15 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
       <EmptyState
         headingLevel={2}
         icon={<IconFolder />}
-        title="Start your first project"
-        text="Designs you create are saved here on this device. Pick a size, start from a template or upload a photo."
+        title={m.dashboard.projects.firstTitle}
+        text={m.dashboard.projects.firstText}
         action={
           <div className="cf-projects__cta">
             <Button variant="primary" size="lg" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()}>
-              Create a design
+              {m.dashboard.shared.createDesign}
             </Button>
             <Button variant="secondary" size="lg" icon={<IconFolderPlus aria-hidden="true" />} onClick={() => void createFolderAction()}>
-              Create folder
+              {m.dashboard.shared.createFolder}
             </Button>
           </div>
         }
@@ -348,11 +349,11 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
       <EmptyState
         headingLevel={2}
         icon={<IconFolder />}
-        title="This folder is empty"
-        text="Drag designs here from Projects, or create a new design in this folder."
+        title={m.dashboard.projects.emptyFolderTitle}
+        text={m.dashboard.projects.emptyFolderText}
         action={
           <Button variant="primary" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog({ folderId: folder?.id ?? null })}>
-            Create design
+            {m.dashboard.shared.createDesignShort}
           </Button>
         }
       />
@@ -360,11 +361,11 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
       <EmptyState
         headingLevel={2}
         icon={<IconSearch />}
-        title={words.length > 0 ? `Nothing matches “${query.trim()}”` : "Nothing matches your filters"}
-        text="Try a different word, or clear the filters to see everything again."
+        title={words.length > 0 ? m.dashboard.projects.noMatch(query.trim()) : m.dashboard.projects.noFilterMatch}
+        text={m.dashboard.projects.noMatchText}
         action={
           <Button variant="primary" onClick={clearFilters}>
-            Clear search and filters
+            {m.dashboard.projects.clearFilters}
           </Button>
         }
       />
@@ -372,11 +373,11 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
       <EmptyState
         headingLevel={2}
         icon={<IconImages />}
-        title="No uploads yet"
-        text="Upload photos and logos to use them in your designs, or to start a design from a picture."
+        title={m.dashboard.projects.noUploads}
+        text={m.dashboard.projects.noUploadsText}
         action={
           <Button variant="primary" icon={<IconUpload aria-hidden="true" />} onClick={upload}>
-            Upload images
+            {m.dashboard.projects.uploadImages}
           </Button>
         }
       />
@@ -384,11 +385,11 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
       <EmptyState
         headingLevel={2}
         icon={<IconFolderPlus />}
-        title="No folders yet"
-        text="Folders keep related designs together. Drag a design onto a folder to file it."
+        title={m.dashboard.projects.noFolders}
+        text={m.dashboard.projects.noFoldersText}
         action={
           <Button variant="primary" icon={<IconFolderPlus aria-hidden="true" />} onClick={() => void createFolderAction()}>
-            Create folder
+            {m.dashboard.shared.createFolder}
           </Button>
         }
       />
@@ -396,11 +397,11 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
       <EmptyState
         headingLevel={2}
         icon={<IconFolder />}
-        title="No designs here yet"
-        text="Designs you create appear here. Everything is saved on this device."
+        title={m.dashboard.projects.noDesigns}
+        text={m.dashboard.projects.noDesignsText}
         action={
           <Button variant="primary" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()}>
-            Create a design
+            {m.dashboard.shared.createDesign}
           </Button>
         }
       />
@@ -413,15 +414,15 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
         {!grid ? (
           <div className="cf-projects__listhead" aria-hidden="true">
             <span />
-            <span>Name</span>
-            <span>Type</span>
-            <span>Modified</span>
+            <span>{m.dashboard.projects.name}</span>
+            <span>{m.dashboard.projects.type}</span>
+            <span>{m.dashboard.projects.modified}</span>
             <span />
           </div>
         ) : null}
         {parts.folders.length > 0 ? (
-          <section className="cf-projects__group" aria-label="Folders">
-            {title("Folders")}
+          <section className="cf-projects__group" aria-label={m.dashboard.projects.folders}>
+            {title(m.dashboard.projects.folders)}
             <div className={grid ? "cf-projects__folders" : "cf-projects__list"}>
               {parts.folders.map((item) => (
                 <FolderCard
@@ -437,8 +438,8 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
           </section>
         ) : null}
         {parts.designs.length > 0 ? (
-          <section className="cf-projects__group" aria-label="Designs">
-            {title("Designs")}
+          <section className="cf-projects__group" aria-label={m.dashboard.projects.designs}>
+            {title(m.dashboard.projects.designs)}
             <div className={grid ? "cf-projects__grid" : "cf-projects__list"}>
               {parts.designs.map((design) => (
                 <DesignCard key={design.id} design={design} folders={folders} now={now} layout={cardLayout} draggable />
@@ -447,8 +448,8 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
           </section>
         ) : null}
         {parts.images.length > 0 ? (
-          <section className="cf-projects__group" aria-label="Images">
-            {title("Images")}
+          <section className="cf-projects__group" aria-label={m.dashboard.projects.images}>
+            {title(m.dashboard.projects.images)}
             <div className={grid ? "cf-projects__grid" : "cf-projects__list"}>
               {parts.images.map((asset) => (
                 <ImageCard key={asset.id} asset={asset} now={now} layout={cardLayout} />
@@ -468,32 +469,39 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
 
       {showToolbar ? (
         <>
-          <Tabs variant="underline" aria-label="Project content" className="cf-projects__tabs" value={activeTab} onChange={(id) => setTab(id as Tab)} tabs={tabs} />
+          <Tabs variant="underline" aria-label={m.dashboard.projects.content} className="cf-projects__tabs" value={activeTab} onChange={(id) => setTab(id as Tab)} tabs={tabs} />
 
-          <div className="cf-projects__toolbar" role="group" aria-label="Search, sort and filter">
-            <SearchField className="cf-projects__search" value={query} onChange={setQuery} placeholder="Search your content" />
-            <Select<SortKey> className="cf-projects__select" value={sort} onChange={setSort} options={SORT_OPTIONS} aria-label="Sort by" width={158} />
+          <div className="cf-projects__toolbar" role="group" aria-label={m.dashboard.projects.toolbar}>
+            <SearchField className="cf-projects__search" value={query} onChange={setQuery} placeholder={m.dashboard.projects.searchPlaceholder} />
+            <Select<SortKey> className="cf-projects__select" value={sort} onChange={setSort} options={SORT_OPTIONS} aria-label={m.dashboard.projects.sortBy} width={158} />
             {designTab ? (
               <>
-                <Select<string> className="cf-projects__select" value={typeFilter} onChange={setTypeFilter} options={typeOptions} aria-label="Filter by design type" width={190} />
+                <Select<string>
+                  className="cf-projects__select"
+                  value={typeFilter}
+                  onChange={setTypeFilter}
+                  options={typeOptions}
+                  aria-label={m.dashboard.projects.filterType}
+                  width={190}
+                />
                 <Button
                   variant={starredOnly ? "soft" : "secondary"}
                   icon={<IconStar aria-hidden="true" className={starredOnly ? "cf-projects__star is-on" : "cf-projects__star"} />}
                   aria-pressed={starredOnly}
                   onClick={() => setStarredOnly((value) => !value)}
                 >
-                  Starred
+                  {m.dashboard.projects.starred}
                 </Button>
               </>
             ) : null}
             <Segmented<View>
               className="cf-projects__view"
-              aria-label="View"
+              aria-label={m.dashboard.projects.view}
               value={view}
               onChange={changeView}
               options={[
-                { value: "grid", icon: <IconGridView aria-hidden="true" />, title: "Grid view" },
-                { value: "list", icon: <IconListView aria-hidden="true" />, title: "List view" },
+                { value: "grid", icon: <IconGridView aria-hidden="true" />, title: m.dashboard.projects.gridView },
+                { value: "list", icon: <IconListView aria-hidden="true" />, title: m.dashboard.projects.listView },
               ]}
             />
           </div>
@@ -502,7 +510,7 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
 
       <div className="cf-projects__body">{body}</div>
       <p className="cf-sr-only" aria-live="polite">
-        {ready && total > 0 ? `${total} items shown` : ""}
+        {ready && total > 0 ? m.dashboard.projects.itemsShown(total) : ""}
       </p>
     </Page>
   );
@@ -513,7 +521,7 @@ function Breadcrumb({ folderName, onDropDesign }: { folderName: string | null; o
   const [over, setOver] = useState(false);
   const carries = (event: DragEvent) => Array.from(event.dataTransfer.types).includes(DESIGN_DRAG_TYPE);
   return (
-    <nav className="cf-projects__crumbs" aria-label="Breadcrumb">
+    <nav className="cf-projects__crumbs" aria-label={m.dashboard.projects.breadcrumb}>
       <ol>
         <li>
           <a
@@ -534,7 +542,7 @@ function Breadcrumb({ folderName, onDropDesign }: { folderName: string | null; o
               if (id) onDropDesign(id);
             }}
           >
-            Projects
+            {m.dashboard.shell.nav.projects}
           </a>
         </li>
         {folderName !== null ? (

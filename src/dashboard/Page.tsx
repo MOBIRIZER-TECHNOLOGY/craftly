@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from "react";
+import { m } from "@/i18n";
 import { Button, cx } from "@/ui";
 import { navigate } from "@/router";
 import "./Page.css";
@@ -56,7 +57,7 @@ export function Section({ title, action, children, className }: SectionProps) {
 }
 
 /** "See all" button for a section header: goes to a route, or runs a callback. */
-export function SeeAll({ to, onClick, label = "See all" }: { to?: string; onClick?: () => void; label?: string }) {
+export function SeeAll({ to, onClick, label = m.dashboard.home.seeAll }: { to?: string; onClick?: () => void; label?: string }) {
   return (
     <Button variant="ghost" size="sm" className="cf-dsection__more" onClick={() => (onClick ? onClick() : to ? navigate(to) : undefined)}>
       {label}

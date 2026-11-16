@@ -1,4 +1,5 @@
 import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { m } from "@/i18n";
 import { Badge, IconEmoji, IconImage, IconPalette, IconQrCode, IconSearch, IconSparkle, IconText } from "@/ui";
 import { DraggableItem } from "../shared/DraggableItem";
 import { EmptyHint } from "../shared/EmptyHint";
@@ -26,8 +27,8 @@ interface AppDef {
 const APPS: AppDef[] = [
   {
     id: "qr",
-    name: "QR code",
-    description: "Make a scannable code for a link, Wi-Fi or text",
+    name: m.panelsTabs.apps.list.qr.name,
+    description: m.panelsTabs.apps.list.qr.description,
     keywords: "qr code scan barcode link wifi url",
     icon: <IconQrCode />,
     from: "#a78bfa",
@@ -35,8 +36,8 @@ const APPS: AppDef[] = [
   },
   {
     id: "emoji",
-    name: "Emoji",
-    description: "Search and drop emoji onto your design",
+    name: m.panelsTabs.apps.list.emoji.name,
+    description: m.panelsTabs.apps.list.emoji.description,
     keywords: "emoji smiley emoticon sticker reaction",
     icon: <IconEmoji />,
     from: "#fcd34d",
@@ -44,8 +45,8 @@ const APPS: AppDef[] = [
   },
   {
     id: "lorem",
-    name: "Lorem ipsum",
-    description: "Placeholder text by the paragraph, sentence or word",
+    name: m.panelsTabs.apps.list.lorem.name,
+    description: m.panelsTabs.apps.list.lorem.description,
     keywords: "lorem ipsum dummy filler placeholder text copy",
     icon: <IconText />,
     from: "#5eead4",
@@ -53,8 +54,8 @@ const APPS: AppDef[] = [
   },
   {
     id: "placeholder",
-    name: "Placeholder image",
-    description: "A coloured stand-in picture at any size",
+    name: m.panelsTabs.apps.list.placeholder.name,
+    description: m.panelsTabs.apps.list.placeholder.description,
     keywords: "placeholder image picture frame mock dummy",
     icon: <IconImage />,
     from: "#7dd3fc",
@@ -62,8 +63,8 @@ const APPS: AppDef[] = [
   },
   {
     id: "palette",
-    name: "Colour palette from image",
-    description: "Pull the main colours out of a picture",
+    name: m.panelsTabs.apps.list.palette.name,
+    description: m.panelsTabs.apps.list.palette.description,
     keywords: "colour color palette image extract swatches brand",
     icon: <IconPalette />,
     from: "#f9a8d4",
@@ -102,38 +103,38 @@ function AppList() {
   return (
     <Panel>
       <PanelTop>
-        <PanelSearch value={query} onChange={setQuery} placeholder="Search apps" />
+        <PanelSearch value={query} onChange={setQuery} placeholder={m.panelsTabs.apps.search} />
       </PanelTop>
       <PanelScroll>
         {!q ? (
           <div className="cf-apps__banner">
             <div className="cf-apps__banner-text">
-              <strong>Tools that run right here</strong>
-              <span>Nothing leaves your browser, and every app works offline.</span>
+              <strong>{m.panelsTabs.apps.bannerTitle}</strong>
+              <span>{m.panelsTabs.apps.bannerText}</span>
             </div>
             <span className="cf-apps__banner-art" aria-hidden="true">
               <IconSparkle />
             </span>
           </div>
         ) : null}
-        <PanelSection title={q ? `${apps.length} app${apps.length === 1 ? "" : "s"}` : "Built into Craftly"}>
+        <PanelSection title={q ? m.panelsTabs.apps.count(apps.length) : m.panelsTabs.apps.builtIn}>
           {apps.length ? (
             <div className="cf-apps__list">
               {apps.map((a) => (
-                <DraggableItem key={a.id} label={`${a.name}. ${a.description}`} onInsert={() => open(a.id)} className="cf-apps__item" tooltip={false}>
+                <DraggableItem key={a.id} label={m.panelsTabs.apps.itemLabel(a.name, a.description)} onInsert={() => open(a.id)} className="cf-apps__item" tooltip={false}>
                   <span className="cf-apps__tile" style={{ "--_from": a.from, "--_to": a.to } as CSSProperties} aria-hidden="true">
                     {a.icon}
                   </span>
                   <span className="cf-apps__text">
                     <strong>{a.name}</strong>
                     <span>{a.description}</span>
-                    <Badge tone="neutral">Works offline</Badge>
+                    <Badge tone="neutral">{m.panelsTabs.apps.worksOffline}</Badge>
                   </span>
                 </DraggableItem>
               ))}
             </div>
           ) : (
-            <EmptyHint icon={<IconSearch />} title="No apps found" text={`Nothing matches "${q}". Try "qr", "emoji" or "palette".`} />
+            <EmptyHint icon={<IconSearch />} title={m.panelsTabs.apps.noneTitle} text={m.panelsTabs.apps.noneText(q)} />
           )}
         </PanelSection>
       </PanelScroll>

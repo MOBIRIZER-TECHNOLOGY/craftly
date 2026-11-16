@@ -1,11 +1,17 @@
 /** Illustration / sticker library: both hand-drawn packs merged, with search and element creation. */
 import { createGraphic } from "@/core/factory";
 import type { GraphicElement } from "@/core/types";
+import { m } from "@/i18n";
+import { data as en } from "@/i18n/en/data";
 import { GRAPHICS_A } from "./graphicsA";
 import { GRAPHICS_B } from "./graphicsB";
 import { GRAPHIC_CATEGORY_LABELS, type GraphicCategory, type GraphicDef } from "./graphicTypes";
+import { nameIn } from "./names";
 
-export const GRAPHICS: GraphicDef[] = [...GRAPHICS_A, ...GRAPHICS_B];
+export const GRAPHICS: GraphicDef[] = [...GRAPHICS_A, ...GRAPHICS_B].map(({ id, ...g }) => ({ id, name: nameIn(m.data.graphics, id), ...g }));
+
+/** The English name of a graphic: what a template names the element it places (design content), and what search also finds. */
+export const englishGraphicName = (id: string): string => nameIn(en.graphics, id);
 
 export const GRAPHIC_CATEGORIES: Array<{ id: GraphicCategory; label: string; count: number }> = (Object.keys(GRAPHIC_CATEGORY_LABELS) as GraphicCategory[])
   .map((id) => ({ id, label: GRAPHIC_CATEGORY_LABELS[id], count: GRAPHICS.filter((g) => g.category === id).length }))
@@ -20,7 +26,7 @@ export function searchGraphics(query: string, category?: GraphicCategory | null)
   return GRAPHICS.filter((g) => {
     if (category && g.category !== category) return false;
     if (!words.length) return true;
-    const hay = `${g.name} ${g.category} ${g.tags.join(" ")}`.toLowerCase();
+    const hay = `${g.name} ${englishGraphicName(g.id)} ${g.category} ${g.tags.join(" ")}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
 }
@@ -31,8 +37,8 @@ export function createGraphicElement(def: GraphicDef, pageMin: number): GraphicE
 }
 
 function fitWidth(svg: string, size: number): { width: number; height: number } {
-  const m = svg.match(/viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/);
-  const w = m ? parseFloat(m[1]) : 1;
-  const h = m ? parseFloat(m[2]) : 1;
+  const box = svg.match(/viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/);
+  const w = box ? parseFloat(box[1]) : 1;
+  const h = box ? parseFloat(box[2]) : 1;
   return w >= h ? { width: size, height: Math.round((size * h) / w) } : { width: Math.round((size * w) / h), height: size };
 }

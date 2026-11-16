@@ -14,6 +14,7 @@
  *     used, and why a stream that failed is aborted and never closed.
  */
 import { metaGet, metaSet } from "@/core/persistence";
+import { m } from "@/i18n";
 
 const KEY = "backupFile";
 
@@ -64,17 +65,14 @@ const nameOf = (error: unknown): string => (typeof error === "object" && error !
 function writeFailure(error: unknown, file: string): BackupFileError {
   switch (nameOf(error)) {
     case "NotFoundError":
-      return new BackupFileError(
-        "gone",
-        `Craftly could not find “${file}”. It may have been moved, renamed or deleted, or its disk is not connected. Choose the file again, or download the backup.`,
-      );
+      return new BackupFileError("gone", m.dashboard.backupFile.gone(file));
     case "NotAllowedError":
     case "SecurityError":
-      return new BackupFileError("denied", `Your browser did not let Craftly write to “${file}”. Allow it when the browser asks, or download the backup.`);
+      return new BackupFileError("denied", m.dashboard.backupFile.denied(file));
     case "QuotaExceededError":
-      return new BackupFileError("no-room", `There is no room left where “${file}” is kept. The backup that was in the file before is unchanged.`);
+      return new BackupFileError("no-room", m.dashboard.backupFile.noRoom(file));
     default:
-      return new BackupFileError("failed", `Writing “${file}” did not finish. The backup that was in the file before is unchanged. Try again, or download the backup.`);
+      return new BackupFileError("failed", m.dashboard.backupFile.failed(file));
   }
 }
 
@@ -103,16 +101,16 @@ export async function chooseBackupFile(): Promise<KeptBackupFile | null> {
   if (!picker) return null;
   let handle: BackupFileHandle;
   try {
-    handle = await picker({ suggestedName: "Craftly backup.zip", types: [{ description: "Craftly backup", accept: { "application/zip": [".zip"] } }] });
+    handle = await picker({ suggestedName: "Craftly backup.zip", types: [{ description: m.dashboard.backupFile.pickerDescription, accept: { "application/zip": [".zip"] } }] });
   } catch (error) {
     if (nameOf(error) === "AbortError") return null;
-    throw new BackupFileError("failed", "Your browser did not open its file dialog. Try again, or download the backup.");
+    throw new BackupFileError("failed", m.dashboard.backupFile.noDialog);
   }
   const kept: KeptBackupFile = { handle, name: handle.name, writtenAt: null };
   try {
     await metaSet(KEY, kept);
   } catch {
-    throw new BackupFileError("failed", "Craftly could not remember that file in this browser. Download the backup instead.");
+    throw new BackupFileError("failed", m.dashboard.backupFile.notRemembered);
   }
   return kept;
 }
@@ -136,7 +134,7 @@ export async function writePermission(handle: BackupFileHandle, mayAsk: boolean)
  */
 export async function writeBackupFile(kept: KeptBackupFile, backup: Blob, options: { signal?: AbortSignal; now?: number } = {}): Promise<KeptBackupFile> {
   const { signal, now = Date.now() } = options;
-  const cancelled = () => new BackupFileError("cancelled", "The backup was cancelled.");
+  const cancelled = () => new BackupFileError("cancelled", m.dashboard.backupFile.cancelled);
   if (signal?.aborted) throw cancelled();
   let stream: WritableBackupStream;
   try {

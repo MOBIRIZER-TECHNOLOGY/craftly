@@ -20,9 +20,13 @@
  * grid by `field()` and stretched over the picture; 3D-ish landscapes (dunes, canyon, fields) go through
  * the small heightfield renderer `terrain()`. Nothing relies on `ctx.filter`, so Safari renders the same.
  *
- * Adding a photo: append a `photo(id, name, category, size, "search tags", (S) => { ... })` call in the
- * right family section of part 5. Ids are stable API (templates reference them), so never rename one.
+ * Adding a photo: append a `photo(id, category, size, "search tags", (S) => { ... })` call in the
+ * right family section of part 5, and its name to `photos` in the data catalogs of src/i18n. Ids are stable API (templates
+ * reference them), so never rename one.
  */
+import { m as i18n } from "@/i18n";
+import { data as en } from "@/i18n/en/data";
+import { nameIn } from "./names";
 
 /* ========================================================================== */
 /* 1. Public types                                                            */
@@ -1445,16 +1449,12 @@ const REGISTRY = new Map<string, Entry>();
 /** All photos, in panel order. Filled by the `photo(...)` calls below. */
 export const PHOTOS: PhotoDef[] = [];
 
-function photo(
-  id: string,
-  name: string,
-  category: PhotoCategory,
-  size: [number, number],
-  tags: string,
-  paint: Painter,
-  seed = hashString(id),
-): void {
-  const def: PhotoDef = { id, name, category, tags: tags.split(/[\s,]+/).filter(Boolean), width: size[0], height: size[1] };
+/** The name is the catalog's, by id; in another language the English name stays a search word. */
+function photo(id: string, category: PhotoCategory, size: [number, number], tags: string, paint: Painter, seed = hashString(id)): void {
+  const name = nameIn(i18n.data.photos, id);
+  const english = nameIn(en.photos, id);
+  const words = name === english ? tags : `${tags} ${english.toLowerCase()}`;
+  const def: PhotoDef = { id, name, category, tags: words.split(/[\s,]+/).filter(Boolean), width: size[0], height: size[1] };
   PHOTOS.push(def);
   REGISTRY.set(id, { def, seed, paint });
 }
@@ -1466,7 +1466,7 @@ const SQUARE: [number, number] = [1400, 1400];
 
 /* ---------------------------------------------------------------- landscapes */
 
-photo("sunset-hills", "Sunset hills", "landscape", LANDSCAPE, "sunset dusk hills purple orange golden hour silhouette sky evening pines", (S) => {
+photo("sunset-hills", "landscape", LANDSCAPE, "sunset dusk hills purple orange golden hour silhouette sky evening pines", (S) => {
   const { w, h } = S;
   const hz = 0.6 * h;
   fillV(S, 0, hz + 0.08 * h, [
@@ -1502,7 +1502,7 @@ photo("sunset-hills", "Sunset hills", "landscape", LANDSCAPE, "sunset dusk hills
   grain(S, 0.09, true);
 });
 
-photo("ocean-waves", "Ocean waves", "landscape", WIDE, "ocean sea waves water blue teal swell surf horizon sun summer golden hour", (S) => {
+photo("ocean-waves", "landscape", WIDE, "ocean sea waves water blue teal swell surf horizon sun summer golden hour", (S) => {
   const { ctx, w, h, noise, rng } = S;
   const hz = 0.4 * h;
   const sx = 0.66 * w;
@@ -1574,7 +1574,7 @@ photo("ocean-waves", "Ocean waves", "landscape", WIDE, "ocean sea waves water bl
   grain(S, 0.08, true);
 });
 
-photo("mountain-lake", "Mountain lake", "landscape", LANDSCAPE, "mountain lake reflection alpine dawn pine forest snow peaks calm water still", (S) => {
+photo("mountain-lake", "landscape", LANDSCAPE, "mountain lake reflection alpine dawn pine forest snow peaks calm water still", (S) => {
   const { ctx, w, h } = S;
   const hz = 0.6 * h;
   const top = layer(S, w, hz, (L) => {
@@ -1617,7 +1617,7 @@ photo("mountain-lake", "Mountain lake", "landscape", LANDSCAPE, "mountain lake r
   grain(S, 0.08, true);
 });
 
-photo("desert-dunes", "Desert dunes", "landscape", PORTRAIT, "desert dunes sand sahara warm golden sun terracotta arid sky ridges", (S) => {
+photo("desert-dunes", "landscape", PORTRAIT, "desert dunes sand sahara warm golden sun terracotta arid sky ridges", (S) => {
   const { ctx, w, h, noise } = S;
   const hz = 0.34;
   const fogC = "#f8dcc0";
@@ -1667,7 +1667,7 @@ photo("desert-dunes", "Desert dunes", "landscape", PORTRAIT, "desert dunes sand 
   grain(S, 0.09);
 });
 
-photo("forest-mist", "Misty forest", "landscape", PORTRAIT, "forest mist fog pine trees green foggy morning woods rays light", (S) => {
+photo("forest-mist", "landscape", PORTRAIT, "forest mist fog pine trees green foggy morning woods rays light", (S) => {
   const { w, h } = S;
   fillV(S, 0, h, [[0, "#a3b9b4"], [0.3, "#c8d8d2"], [0.6, "#e2eae4"], [1, "#c3d2cb"]]);
   glow(S, 0.22 * w, 0.06 * h, 0.8 * w, "#fffbe8", 0.6);
@@ -1690,7 +1690,7 @@ photo("forest-mist", "Misty forest", "landscape", PORTRAIT, "forest mist fog pin
   grain(S, 0.1);
 });
 
-photo("snowy-peaks", "Snowy peaks", "landscape", PORTRAIT, "snowy peaks mountains alpine snow glacier alpenglow winter summit range sunrise", (S) => {
+photo("snowy-peaks", "landscape", PORTRAIT, "snowy peaks mountains alpine snow glacier alpenglow winter summit range sunrise", (S) => {
   const { w, h } = S;
   fillV(S, 0, h * 0.86, [[0, "#1f3674"], [0.28, "#566fb0"], [0.52, "#b3a5ca"], [0.74, "#f0c4c4"], [1, "#fbdccb"]]);
   clouds(S, { y0: 0.04, y1: 0.5, fx: 1.4, fy: 8, cover: 0.3, soft: 0.3, lit: "#ffd5d0", shade: "#7a84bd", alpha: 0.5, seed: 8, light: [-0.6, 0.8] });
@@ -1710,7 +1710,7 @@ photo("snowy-peaks", "Snowy peaks", "landscape", PORTRAIT, "snowy peaks mountain
   grain(S, 0.08);
 });
 
-photo("canyon-glow", "Canyon glow", "landscape", PORTRAIT, "canyon desert mesa red rock sunset glow arizona buttes strata warm", (S) => {
+photo("canyon-glow", "landscape", PORTRAIT, "canyon desert mesa red rock sunset glow arizona buttes strata warm", (S) => {
   const { ctx, w, h, noise } = S;
   const hz = 0.4;
   const fogC = "#f7b98f";
@@ -1763,7 +1763,7 @@ photo("canyon-glow", "Canyon glow", "landscape", PORTRAIT, "canyon desert mesa r
   grain(S, 0.09);
 });
 
-photo("rolling-fields", "Rolling fields", "landscape", WIDE, "fields farmland countryside hills green yellow crops spring meadow agriculture patchwork", (S) => {
+photo("rolling-fields", "landscape", WIDE, "fields farmland countryside hills green yellow crops spring meadow agriculture patchwork", (S) => {
   const { ctx, w, h, noise } = S;
   const hz = 0.4;
   const fogC = "#d8e8ee";
@@ -1818,7 +1818,7 @@ photo("rolling-fields", "Rolling fields", "landscape", WIDE, "fields farmland co
   grain(S, 0.07);
 });
 
-photo("tropical-beach", "Tropical beach", "landscape", LANDSCAPE, "beach tropical palm sea ocean sand turquoise summer holiday island paradise vacation", (S) => {
+photo("tropical-beach", "landscape", LANDSCAPE, "beach tropical palm sea ocean sand turquoise summer holiday island paradise vacation", (S) => {
   const { w, h, noise } = S;
   const hz = 0.42 * h;
   fillV(S, 0, hz + 2, [[0, "#2c9be6"], [0.45, "#79c8f0"], [0.8, "#cdeff7"], [1, "#eefaf8"]]);
@@ -1885,7 +1885,7 @@ photo("tropical-beach", "Tropical beach", "landscape", LANDSCAPE, "beach tropica
   grain(S, 0.06);
 });
 
-photo("aurora-night", "Northern lights", "landscape", WIDE, "aurora borealis northern lights night sky stars snow mountains lake winter green polar", (S) => {
+photo("aurora-night", "landscape", WIDE, "aurora borealis northern lights night sky stars snow mountains lake winter green polar", (S) => {
   const { ctx, w, h, noise } = S;
   const wy = 0.76 * h;
   const top = layer(S, w, wy, (L) => {
@@ -1955,7 +1955,7 @@ photo("aurora-night", "Northern lights", "landscape", WIDE, "aurora borealis nor
   grain(S, 0.06, true);
 });
 
-photo("pastel-clouds", "Pastel clouds", "landscape", PORTRAIT, "clouds sky pastel dreamy soft pink blue peach cotton candy heaven airy wallpaper", (S) => {
+photo("pastel-clouds", "landscape", PORTRAIT, "clouds sky pastel dreamy soft pink blue peach cotton candy heaven airy wallpaper", (S) => {
   const { w, h } = S;
   fillV(S, 0, h, [[0, "#9ec5ff"], [0.35, "#c9c4ff"], [0.62, "#ffc8e0"], [0.85, "#ffe0c4"], [1, "#fff1d6"]]);
   glow(S, 0.5 * w, 0.98 * h, 0.8 * w, "#fff6dc", 0.6, "screen", 1.4, 0.7);
@@ -1965,7 +1965,7 @@ photo("pastel-clouds", "Pastel clouds", "landscape", PORTRAIT, "clouds sky paste
   grain(S, 0.08);
 });
 
-photo("lavender-fields", "Lavender fields", "landscape", WIDE, "lavender fields purple provence summer sunset rows countryside flowers violet perspective", (S) => {
+photo("lavender-fields", "landscape", WIDE, "lavender fields purple provence summer sunset rows countryside flowers violet perspective", (S) => {
   const { ctx, w, h, noise } = S;
   const hz = 0.43;
   const fogC = "#f6c3a4";
@@ -2015,7 +2015,7 @@ photo("lavender-fields", "Lavender fields", "landscape", WIDE, "lavender fields 
 
 /* -------------------------------------------------------------------- city */
 
-photo("city-night", "City at night", "city", WIDE, "city night skyline skyscrapers lights urban downtown dusk river buildings windows", (S) => {
+photo("city-night", "city", WIDE, "city night skyline skyscrapers lights urban downtown dusk river buildings windows", (S) => {
   const { ctx, w, h } = S;
   const wy = 0.8 * h;
   const top = layer(S, w, wy, (L) => {
@@ -2046,7 +2046,7 @@ photo("city-night", "City at night", "city", WIDE, "city night skyline skyscrape
   grain(S, 0.08, true);
 });
 
-photo("city-dawn", "City at dawn", "city", PORTRAIT, "city dawn sunrise skyline morning mist fog buildings pastel hazy golden urban", (S) => {
+photo("city-dawn", "city", PORTRAIT, "city dawn sunrise skyline morning mist fog buildings pastel hazy golden urban", (S) => {
   const { w, h } = S;
   const hz = 0.7 * h;
   fillV(S, 0, h, [[0, "#6d86bd"], [0.25, "#a9b6dc"], [0.45, "#f1c6c3"], [0.62, "#ffd9b0"], [0.75, "#ffe9c8"], [1, "#f6d9c4"]]);
@@ -2069,7 +2069,7 @@ photo("city-dawn", "City at dawn", "city", PORTRAIT, "city dawn sunrise skyline 
   grain(S, 0.09);
 });
 
-photo("glass-towers", "Glass towers", "city", PORTRAIT, "glass towers skyscrapers modern architecture office blue sky looking up facade reflections business", (S) => {
+photo("glass-towers", "city", PORTRAIT, "glass towers skyscrapers modern architecture office blue sky looking up facade reflections business", (S) => {
   const { ctx, w, h, rng } = S;
   // sky between the towers
   fillV(S, 0, h, [[0, "#9fd3ff"], [0.5, "#d9efff"], [1, "#f4fbff"]]);
@@ -2142,7 +2142,7 @@ photo("glass-towers", "Glass towers", "city", PORTRAIT, "glass towers skyscraper
 
 /* ---------------------------------------------------------------- abstract */
 
-photo("mesh-sunrise", "Mesh sunrise", "abstract", SQUARE, "gradient mesh warm sunrise peach pink coral soft background pastel glow wallpaper", (S) => {
+photo("mesh-sunrise", "abstract", SQUARE, "gradient mesh warm sunrise peach pink coral soft background pastel glow wallpaper", (S) => {
   meshGrid(
     S,
     [
@@ -2158,7 +2158,7 @@ photo("mesh-sunrise", "Mesh sunrise", "abstract", SQUARE, "gradient mesh warm su
   grain(S, 0.1);
 });
 
-photo("mesh-ocean", "Mesh ocean", "abstract", WIDE, "gradient mesh ocean teal blue aqua water calm background wallpaper cool", (S) => {
+photo("mesh-ocean", "abstract", WIDE, "gradient mesh ocean teal blue aqua water calm background wallpaper cool", (S) => {
   meshGrid(
     S,
     [
@@ -2173,7 +2173,7 @@ photo("mesh-ocean", "Mesh ocean", "abstract", WIDE, "gradient mesh ocean teal bl
   grain(S, 0.1);
 });
 
-photo("mesh-candy", "Mesh candy", "abstract", PORTRAIT, "gradient mesh candy pink lilac baby blue mint pastel soft playful background wallpaper", (S) => {
+photo("mesh-candy", "abstract", PORTRAIT, "gradient mesh candy pink lilac baby blue mint pastel soft playful background wallpaper", (S) => {
   meshGrid(
     S,
     [
@@ -2188,7 +2188,7 @@ photo("mesh-candy", "Mesh candy", "abstract", PORTRAIT, "gradient mesh candy pin
   grain(S, 0.09);
 });
 
-photo("mesh-forest", "Mesh forest", "abstract", SQUARE, "gradient mesh forest green sage olive nature deep calm background wallpaper earthy", (S) => {
+photo("mesh-forest", "abstract", SQUARE, "gradient mesh forest green sage olive nature deep calm background wallpaper earthy", (S) => {
   meshGrid(
     S,
     [
@@ -2203,7 +2203,7 @@ photo("mesh-forest", "Mesh forest", "abstract", SQUARE, "gradient mesh forest gr
   grain(S, 0.1);
 });
 
-photo("mesh-midnight", "Mesh midnight", "abstract", WIDE, "gradient mesh midnight navy indigo violet magenta dark night neon glow background wallpaper", (S) => {
+photo("mesh-midnight", "abstract", WIDE, "gradient mesh midnight navy indigo violet magenta dark night neon glow background wallpaper", (S) => {
   meshGrid(
     S,
     [
@@ -2218,7 +2218,7 @@ photo("mesh-midnight", "Mesh midnight", "abstract", WIDE, "gradient mesh midnigh
   grain(S, 0.08, true);
 });
 
-photo("liquid-purple", "Liquid purple", "abstract", PORTRAIT, "liquid purple silk satin waves fluid chrome violet magenta glossy flowing background wallpaper", (S) => {
+photo("liquid-purple", "abstract", PORTRAIT, "liquid purple silk satin waves fluid chrome violet magenta glossy flowing background wallpaper", (S) => {
   const asp = S.w / S.h;
   const ramp = makeRamp([[0, "#1d0a4d"], [0.3, "#5a1fc6"], [0.55, "#a24df2"], [0.78, "#ee7ef2"], [1, "#fff0ff"]]);
   const H = (X: number, Y: number) => {
@@ -2252,7 +2252,7 @@ photo("liquid-purple", "Liquid purple", "abstract", PORTRAIT, "liquid purple sil
   grain(S, 0.07);
 });
 
-photo("neon-grid", "Neon grid", "abstract", WIDE, "neon grid synthwave retro 80s outrun sunset purple magenta cyan futuristic perspective", (S) => {
+photo("neon-grid", "abstract", WIDE, "neon grid synthwave retro 80s outrun sunset purple magenta cyan futuristic perspective", (S) => {
   const { ctx, w, h } = S;
   const hz = 0.58 * h;
   fillV(S, 0, hz, [[0, "#07011a"], [0.45, "#26085a"], [0.78, "#7a1ea2"], [1, "#ff3d9a"]]);
@@ -2327,7 +2327,7 @@ photo("neon-grid", "Neon grid", "abstract", WIDE, "neon grid synthwave retro 80s
   grain(S, 0.07, true);
 });
 
-photo("soft-blobs", "Soft blobs", "abstract", SQUARE, "blobs organic shapes pastel soft shadows playful modern abstract background cream peach", (S) => {
+photo("soft-blobs", "abstract", SQUARE, "blobs organic shapes pastel soft shadows playful modern abstract background cream peach", (S) => {
   const { ctx, w, h, noise, rng } = S;
   fillV(S, 0, h, [[0, "#fdf6ee"], [1, "#fbe6dc"]]);
   const blob = (cx: number, cy: number, r: number, seed: number, wob: number) => {
@@ -2382,7 +2382,7 @@ photo("soft-blobs", "Soft blobs", "abstract", SQUARE, "blobs organic shapes past
   grain(S, 0.08);
 });
 
-photo("paper-waves", "Paper waves", "abstract", WIDE, "paper cut layers waves papercut layered gradient teal coral depth modern abstract background", (S) => {
+photo("paper-waves", "abstract", WIDE, "paper cut layers waves papercut layered gradient teal coral depth modern abstract background", (S) => {
   const { ctx, h } = S;
   fillV(S, 0, h, [[0, "#ffe6d4"], [1, "#ffd0b8"]]);
   const cols = ["#ffb59c", "#ff8f8f", "#f2708f", "#c85a9c", "#8f4fa2", "#524a9e", "#2c3a7c"];
@@ -2399,7 +2399,7 @@ photo("paper-waves", "Paper waves", "abstract", WIDE, "paper cut layers waves pa
   grain(S, 0.1);
 });
 
-photo("boho-arches", "Boho arches", "abstract", PORTRAIT, "boho arches terracotta sage cream earthy minimal modern rainbow arch aesthetic neutral background", (S) => {
+photo("boho-arches", "abstract", PORTRAIT, "boho arches terracotta sage cream earthy minimal modern rainbow arch aesthetic neutral background", (S) => {
   const { ctx, w, h } = S;
   fillV(S, 0, h, [[0, "#f7ead9"], [1, "#f0dcc4"]]);
   glow(S, 0.5 * w, 0.32 * h, 0.5 * w, "#fff6e6", 0.7);
@@ -2439,7 +2439,7 @@ photo("boho-arches", "Boho arches", "abstract", PORTRAIT, "boho arches terracott
   grain(S, 0.14);
 });
 
-photo("grain-orb", "Grainy orb", "abstract", SQUARE, "grainy gradient orb glow noise texture sunset dark purple orange poster modern abstract background", (S) => {
+photo("grain-orb", "abstract", SQUARE, "grainy gradient orb glow noise texture sunset dark purple orange poster modern abstract background", (S) => {
   const { ctx, w, h } = S;
   fillV(S, 0, h, [[0, "#0d0826"], [1, "#1c1250"]]);
   glow(S, 0.5 * w, 0.58 * h, 0.62 * S.U, "#ff6a4a", 0.4);
@@ -2455,7 +2455,7 @@ photo("grain-orb", "Grainy orb", "abstract", SQUARE, "grainy gradient orb glow n
 
 /* ----------------------------------------------------------------- textures */
 
-photo("paper-cream", "Cream paper", "texture", SQUARE, "paper cream texture fibre handmade cotton warm background stationery", (S) => {
+photo("paper-cream", "texture", SQUARE, "paper cream texture fibre handmade cotton warm background stationery", (S) => {
   const base = rgbOf("#f5eddd");
   const dark = rgbOf("#e3d5b8");
   field(S, 560, (u, v, o) => {
@@ -2471,7 +2471,7 @@ photo("paper-cream", "Cream paper", "texture", SQUARE, "paper cream texture fibr
   grain(S, 0.12);
 });
 
-photo("marble-white", "White marble", "texture", SQUARE, "marble white stone veins luxury elegant texture polished surface countertop grey gold", (S) => {
+photo("marble-white", "texture", SQUARE, "marble white stone veins luxury elegant texture polished surface countertop grey gold", (S) => {
   const asp = S.w / S.h;
   const tmp = new Float32Array(3);
   const body = makeRamp([[0, "#dcdde0"], [0.5, "#f2f2f0"], [1, "#fcfcfb"]]);
@@ -2514,7 +2514,7 @@ photo("marble-white", "White marble", "texture", SQUARE, "marble white stone vei
   grain(S, 0.05);
 });
 
-photo("concrete-gray", "Concrete", "texture", PORTRAIT, "concrete grey gray cement wall industrial brutalist texture raw architectural rough", (S) => {
+photo("concrete-gray", "texture", PORTRAIT, "concrete grey gray cement wall industrial brutalist texture raw architectural rough", (S) => {
   const { ctx, w, h, rng, noise } = S;
   const lo = rgbOf("#8d8c89");
   const hi = rgbOf("#b4b3af");
@@ -2578,7 +2578,7 @@ photo("concrete-gray", "Concrete", "texture", PORTRAIT, "concrete grey gray ceme
   grain(S, 0.13);
 });
 
-photo("linen-beige", "Linen", "texture", SQUARE, "linen fabric beige woven cloth textile natural weave burlap canvas background", (S) => {
+photo("linen-beige", "texture", SQUARE, "linen fabric beige woven cloth textile natural weave burlap canvas background", (S) => {
   const res = 640;
   const threads = 210;
   const pxPerThread = Math.min(res, S.w) / threads;
@@ -2617,7 +2617,7 @@ photo("linen-beige", "Linen", "texture", SQUARE, "linen fabric beige woven cloth
   grain(S, 0.08);
 });
 
-photo("terrazzo", "Terrazzo", "texture", SQUARE, "terrazzo stone chips speckled floor tile mosaic pattern terracotta sage speckle surface", (S) => {
+photo("terrazzo", "texture", SQUARE, "terrazzo stone chips speckled floor tile mosaic pattern terracotta sage speckle surface", (S) => {
   const { ctx, w, h, rng, noise } = S;
   const bg = rgbOf("#eee8dd");
   field(S, 420, (u, v, o) => {
@@ -2685,7 +2685,7 @@ photo("terrazzo", "Terrazzo", "texture", SQUARE, "terrazzo stone chips speckled 
   grain(S, 0.08);
 });
 
-photo("watercolor-wash", "Watercolor wash", "texture", PORTRAIT, "watercolor wash paint paper artistic texture blue pink soft brush painted pastel abstract background", (S) => {
+photo("watercolor-wash", "texture", PORTRAIT, "watercolor wash paint paper artistic texture blue pink soft brush painted pastel abstract background", (S) => {
   const { ctx, w, h, noise } = S;
   field(S, 480, (u, v, o) => {
     const t = 0.955 + 0.04 * noise.fbm(u * 5, v * 5, 3) + 0.03 * noise.n(u * 300, v * 300);
@@ -2764,7 +2764,7 @@ photo("watercolor-wash", "Watercolor wash", "texture", PORTRAIT, "watercolor was
   grain(S, 0.05);
 });
 
-photo("kraft-paper", "Kraft paper", "texture", SQUARE, "kraft paper brown cardboard recycled packaging craft texture natural rustic background", (S) => {
+photo("kraft-paper", "texture", SQUARE, "kraft paper brown cardboard recycled packaging craft texture natural rustic background", (S) => {
   const light = rgbOf("#c79a68");
   const dark = rgbOf("#a97c4c");
   field(S, 560, (u, v, o) => {
@@ -2781,7 +2781,7 @@ photo("kraft-paper", "Kraft paper", "texture", SQUARE, "kraft paper brown cardbo
   grain(S, 0.14);
 });
 
-photo("wood-oak", "Oak planks", "texture", SQUARE, "wood oak planks timber floor grain natural brown rustic table surface texture background", (S) => {
+photo("wood-oak", "texture", SQUARE, "wood oak planks timber floor grain natural brown rustic table surface texture background", (S) => {
   const planks = 5;
   const dark = rgbOf("#8b5a31");
   const light = rgbOf("#cf9a5f");
@@ -2813,7 +2813,7 @@ photo("wood-oak", "Oak planks", "texture", SQUARE, "wood oak planks timber floor
 
 /* ------------------------------------------------------------------- nature */
 
-photo("palm-leaves", "Palm leaves", "nature", PORTRAIT, "palm leaves tropical jungle green foliage fronds botanical summer plants backlit exotic", (S) => {
+photo("palm-leaves", "nature", PORTRAIT, "palm leaves tropical jungle green foliage fronds botanical summer plants backlit exotic", (S) => {
   const { w, h } = S;
   fillV(S, 0, h, [[0, "#06362c"], [0.45, "#0b5a42"], [1, "#04221b"]]);
   glow(S, 0.82 * w, 0.08 * h, 0.8 * w, "#f5ffb8", 0.6);
@@ -2834,7 +2834,7 @@ photo("palm-leaves", "Palm leaves", "nature", PORTRAIT, "palm leaves tropical ju
   grain(S, 0.08, true);
 });
 
-photo("monstera", "Monstera", "nature", SQUARE, "monstera leaf plant tropical botanical green houseplant swiss cheese foliage cream background", (S) => {
+photo("monstera", "nature", SQUARE, "monstera leaf plant tropical botanical green houseplant swiss cheese foliage cream background", (S) => {
   const { w, h } = S;
   fillV(S, 0, h, [[0, "#f6e9dc"], [1, "#ecd3c0"]]);
   glow(S, 0.2 * w, 0.1 * h, 0.7 * w, "#ffffff", 0.5);
@@ -2847,7 +2847,7 @@ photo("monstera", "Monstera", "nature", SQUARE, "monstera leaf plant tropical bo
   grain(S, 0.07);
 });
 
-photo("wildflowers", "Wildflowers", "nature", PORTRAIT, "wildflowers meadow daisies flowers spring summer field floral soft focus petals garden", (S) => {
+photo("wildflowers", "nature", PORTRAIT, "wildflowers meadow daisies flowers spring summer field floral soft focus petals garden", (S) => {
   const { ctx, w, h, rng } = S;
   fillV(S, 0, h, [[0, "#cde5f1"], [0.34, "#e9f1d8"], [0.56, "#bfd88c"], [1, "#4f8636"]]);
   glow(S, 0.2 * w, 0.05 * h, 0.8 * w, "#fffbe0", 0.7);
@@ -2938,7 +2938,7 @@ photo("wildflowers", "Wildflowers", "nature", PORTRAIT, "wildflowers meadow dais
   grain(S, 0.08);
 });
 
-photo("bokeh-gold", "Golden bokeh", "nature", WIDE, "bokeh gold lights glitter festive champagne warm blur sparkle celebration party luxury", (S) => {
+photo("bokeh-gold", "nature", WIDE, "bokeh gold lights glitter festive champagne warm blur sparkle celebration party luxury", (S) => {
   const { ctx, w, h, rng } = S;
   fillV(S, 0, h, [[0, "#1a0f08"], [0.55, "#2c1a0b"], [1, "#46290f"]]);
   glow(S, 0.78 * w, 0.18 * h, 0.7 * w, "#ffb347", 0.4);
@@ -2970,7 +2970,7 @@ photo("bokeh-gold", "Golden bokeh", "nature", WIDE, "bokeh gold lights glitter f
   grain(S, 0.07, true);
 });
 
-photo("water-ripples", "Water ripples", "nature", SQUARE, "water ripples pool caustics turquoise swimming summer waves surface light reflections aqua", (S) => {
+photo("water-ripples", "nature", SQUARE, "water ripples pool caustics turquoise swimming summer waves surface light reflections aqua", (S) => {
   const asp = S.w / S.h;
   const n = S.noise;
   const deep = rgbOf("#0a7fa3");
@@ -3019,7 +3019,7 @@ photo("water-ripples", "Water ripples", "nature", SQUARE, "water ripples pool ca
   grain(S, 0.05);
 });
 
-photo("cherry-blossom", "Cherry blossom", "nature", PORTRAIT, "cherry blossom sakura spring pink flowers branch japan petals tree soft bokeh floral", (S) => {
+photo("cherry-blossom", "nature", PORTRAIT, "cherry blossom sakura spring pink flowers branch japan petals tree soft bokeh floral", (S) => {
   const { ctx, w, h, rng } = S;
   fillV(S, 0, h, [[0, "#cfe3fb"], [0.5, "#f7e3f0"], [1, "#fff1e4"]]);
   glow(S, 0.85 * w, 0.08 * h, 0.7 * w, "#ffffff", 0.7);
@@ -3125,7 +3125,7 @@ photo("cherry-blossom", "Cherry blossom", "nature", PORTRAIT, "cherry blossom sa
 
 /* -------------------------------------------------------------------- space */
 
-photo("starfield", "Starfield", "space", WIDE, "stars night sky space galaxy milky way dark universe astronomy", (S) => {
+photo("starfield", "space", WIDE, "stars night sky space galaxy milky way dark universe astronomy", (S) => {
   const { ctx, w, h, rng, noise } = S;
   fillV(S, 0, h, [[0, "#02030c"], [0.5, "#060a1c"], [1, "#0b1030"]]);
   // the Milky Way: a soft diagonal band with dust lanes
@@ -3189,7 +3189,7 @@ photo("starfield", "Starfield", "space", WIDE, "stars night sky space galaxy mil
   grain(S, 0.06, true);
 });
 
-photo("nebula", "Nebula", "space", WIDE, "nebula space galaxy cosmos purple magenta teal stars cosmic clouds deep space astronomy", (S) => {
+photo("nebula", "space", WIDE, "nebula space galaxy cosmos purple magenta teal stars cosmic clouds deep space astronomy", (S) => {
   const { w, h, rng, noise } = S;
   const asp = w / h;
   const ramp = makeRamp([[0, "#05030f"], [0.25, "#1b0f55"], [0.5, "#5a1e9a"], [0.7, "#b62f9c"], [0.86, "#f0709e"], [1, "#ffe0d6"]]);
@@ -3221,7 +3221,7 @@ photo("nebula", "Nebula", "space", WIDE, "nebula space galaxy cosmos purple mage
   grain(S, 0.06, true);
 });
 
-photo("moon-horizon", "Moonrise", "space", PORTRAIT, "moon full moon night sky moonlight lunar craters horizon dark silhouette stars hills", (S) => {
+photo("moon-horizon", "space", PORTRAIT, "moon full moon night sky moonlight lunar craters horizon dark silhouette stars hills", (S) => {
   const { w, h, noise } = S;
   fillV(S, 0, h, [[0, "#04081a"], [0.5, "#0c1a40"], [0.8, "#223765"], [1, "#2c4476"]]);
   stars(S, 800, { y1: 0.75, size: 1 });
@@ -3268,7 +3268,7 @@ photo("moon-horizon", "Moonrise", "space", PORTRAIT, "moon full moon night sky m
   grain(S, 0.07, true);
 });
 
-photo("galaxy-spiral", "Spiral galaxy", "space", SQUARE, "galaxy spiral milky way stars cosmos deep space astronomy andromeda arms core universe", (S) => {
+photo("galaxy-spiral", "space", SQUARE, "galaxy spiral milky way stars cosmos deep space astronomy andromeda arms core universe", (S) => {
   const { w, h, rng } = S;
   fillV(S, 0, h, [[0, "#02030a"], [1, "#05081a"]]);
   const R = 640;

@@ -4,6 +4,7 @@
  * exact scale, optionally flattened onto a solid colour, and encodes with a cancelable `toBlob`.
  */
 import type { Design, Page } from "@/core/types";
+import { m } from "@/i18n";
 import { fontsEpoch } from "@/render/fonts";
 import { imagesEpoch } from "@/render/images";
 import { releaseLayers, renderPage } from "@/render/renderPage";
@@ -28,7 +29,7 @@ export interface RasterRequest {
   signal?: AbortSignal;
 }
 
-const TOO_LARGE = "This design is too large to export at this size - try a smaller size.";
+const TOO_LARGE = m.exporting.errors.tooLargeAtThisSize;
 
 /** How long the main thread may be held before it is handed back to the browser. */
 const SLICE_MS = 24;

@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { Button, Modal, Switch, TextField } from "@/ui";
 import { SharePanel } from "../topbar/SharePopover";
 import { startNewDesign } from "../topbar/designActions";
@@ -11,7 +12,7 @@ import "./dialogs.css";
 
 export function ShareDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} onClose={onClose} size="sm" flush aria-label="Share design">
+    <Modal open={open} onClose={onClose} size="sm" flush aria-label={m.editorChrome.share.title}>
       <SharePanel onClose={onClose} />
     </Modal>
   );
@@ -27,17 +28,17 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
       open={open}
       onClose={onClose}
       size="sm"
-      title="Settings"
+      title={m.editorChrome.settings.title}
       footer={
         <Button variant="primary" onClick={onClose}>
-          Done
+          {m.common.done}
         </Button>
       }
     >
       <div className="cf-dialog-stack">
-        <Switch checked={showRulers} onChange={() => actions.toggle("showRulers")} label="Show rulers" />
-        <Switch checked={snapEnabled} onChange={() => actions.toggle("snapEnabled")} label="Snap to guides" />
-        <Switch checked={showPageStrip} onChange={() => actions.toggle("showPageStrip")} label="Show page thumbnails" />
+        <Switch checked={showRulers} onChange={() => actions.toggle("showRulers")} label={m.editorChrome.settings.showRulers} />
+        <Switch checked={snapEnabled} onChange={() => actions.toggle("snapEnabled")} label={m.editorChrome.settings.snapToGuides} />
+        <Switch checked={showPageStrip} onChange={() => actions.toggle("showPageStrip")} label={m.editorChrome.settings.showPageThumbnails} />
       </div>
     </Modal>
   );
@@ -55,14 +56,14 @@ export function RenameDialog({ open, onClose }: { open: boolean; onClose: () => 
       open={open}
       onClose={onClose}
       size="sm"
-      title="Rename design"
+      title={m.editorChrome.rename.title}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {m.common.cancel}
           </Button>
           <Button variant="primary" onClick={save}>
-            Rename
+            {m.editorChrome.rename.rename}
           </Button>
         </>
       }
@@ -73,7 +74,14 @@ export function RenameDialog({ open, onClose }: { open: boolean; onClose: () => 
           save();
         }}
       >
-        <TextField label="Design name" value={value} maxLength={120} data-autofocus="" onChange={(e) => setValue(e.target.value)} onFocus={(e) => e.currentTarget.select()} />
+        <TextField
+          label={m.editorChrome.rename.designName}
+          value={value}
+          maxLength={120}
+          data-autofocus=""
+          onChange={(e) => setValue(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+        />
       </form>
     </Modal>
   );

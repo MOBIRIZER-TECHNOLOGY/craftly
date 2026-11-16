@@ -1,3 +1,4 @@
+import { m } from "@/i18n";
 import { confirm } from "@/ui";
 import { formatBytes, modelHost } from "./registry";
 import type { ModelSpec } from "./types";
@@ -6,10 +7,10 @@ import type { ModelSpec } from "./types";
 export function askToDownload(spec: ModelSpec): Promise<boolean> {
   const size = formatBytes(spec.bytes);
   return confirm({
-    title: `Download the ${spec.tool.toLowerCase()}?`,
-    message: `This tool runs an AI model on your device, so your photos are never uploaded. The model, ${spec.name}, is ${size}. It downloads once from ${modelHost(spec)} and stays on this device, so the tool then works offline. Licence: ${spec.licence.name}.`,
-    confirmLabel: `Download ${size}`,
-    cancelLabel: "Not now",
+    title: m.ml.ask.title(spec.tool),
+    message: m.ml.ask.message(spec.name, size, modelHost(spec), spec.licence.name),
+    confirmLabel: m.ml.ask.confirm(size),
+    cancelLabel: m.ml.ask.notNow,
     // the dialog opens from a button that is often pressed with Enter: a second press must not agree to 88 MB
     focusCancel: true,
   });

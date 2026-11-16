@@ -131,6 +131,7 @@ export {
   Command as IconCommand,
   Sun as IconSun,
   Moon as IconMoon,
+  Languages as IconLanguages,
 
   /* ---- status ---- */
   Info as IconInfo,

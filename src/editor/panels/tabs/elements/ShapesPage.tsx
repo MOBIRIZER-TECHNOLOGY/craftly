@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { getActions } from "@/core/store";
 import { ELLIPSE_PRESET, LINE_PRESETS, ROUNDED_RECT_PRESET, SHAPE_GROUP_LABELS, SHAPE_PRESETS, createLineFromPreset, type LinePreset, type ShapePreset } from "@/data/shapes";
 import type { ArrowKind } from "@/core/types";
+import { englishName } from "@/data/names";
+import { m } from "@/i18n";
 import { IconShapes } from "@/ui";
 import { DraggableItem } from "../../shared/DraggableItem";
 import { EmptyHint } from "../../shared/EmptyHint";
@@ -26,7 +28,7 @@ export const ALL_SHAPE_PRESETS: ShapePreset[] = (() => {
 })();
 
 export const matchShape = (p: ShapePreset, q: string): boolean => !q || `${p.name} ${SHAPE_GROUP_LABELS[p.group]} ${p.id} ${p.keywords ?? ""}`.toLowerCase().includes(q);
-export const matchLine = (p: LinePreset, q: string): boolean => !q || `${p.name} line arrow`.toLowerCase().includes(q);
+export const matchLine = (p: LinePreset, q: string): boolean => !q || `${p.name} ${englishName("lines", p.id)} line arrow`.toLowerCase().includes(q);
 
 /* ------------------------------------------------------------------ */
 /* line previews                                                        */
@@ -122,7 +124,7 @@ export function ShapesPage() {
 
   return (
     <Panel>
-      <SubPageTop title="Shapes" placeholder="Search shapes" />
+      <SubPageTop title={m.panelsTabs.elements.categories.shapes} placeholder={m.panelsTabs.elements.shapes.search} />
       <PanelScroll>
         {groups.map((g) => (
           <PanelSection key={g.id} title={g.label}>
@@ -134,12 +136,12 @@ export function ShapesPage() {
           </PanelSection>
         ))}
         {hasLines ? (
-          <PanelSection title="Lines">
+          <PanelSection title={m.panelsTabs.elements.categories.lines}>
             <LinesSection query={q} />
           </PanelSection>
         ) : null}
         {!groups.length && !hasLines ? (
-          <EmptyHint icon={<IconShapes />} title="No shapes found" text={`Nothing matches "${query.trim()}". Try "circle", "arrow" or "star".`} />
+          <EmptyHint icon={<IconShapes />} title={m.panelsTabs.elements.shapes.noneTitle} text={m.panelsTabs.elements.shapes.noneText(query.trim())} />
         ) : null}
       </PanelScroll>
     </Panel>
@@ -152,9 +154,13 @@ export function LinesPage() {
   const found = LINE_PRESETS.some((p) => matchLine(p, q));
   return (
     <Panel>
-      <SubPageTop title="Lines" placeholder="Search lines and arrows" />
+      <SubPageTop title={m.panelsTabs.elements.categories.lines} placeholder={m.panelsTabs.elements.lines.search} />
       <PanelScroll>
-        {found ? <LinesSection query={q} /> : <EmptyHint icon={<IconShapes />} title="No lines found" text={`Nothing matches "${query.trim()}". Try "arrow" or "dashed".`} />}
+        {found ? (
+          <LinesSection query={q} />
+        ) : (
+          <EmptyHint icon={<IconShapes />} title={m.panelsTabs.elements.lines.noneTitle} text={m.panelsTabs.elements.lines.noneText(query.trim())} />
+        )}
       </PanelScroll>
     </Panel>
   );

@@ -6,6 +6,7 @@ import { getDesignForEditing } from "@/core/library";
 import { isCrashing, keepBeforeProblem } from "@/core/recovery";
 import { MigrationError } from "@/core/schema/migrator";
 import { useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { navigate } from "@/router";
 import { Button, EmptyState, IconHome, IconSearch, IconWarning, Spinner, cx } from "@/ui";
 import { installAutosave } from "./autosave";
@@ -163,7 +164,7 @@ export function Editor({ designId }: { designId: string }) {
   if (status === "loading") {
     return (
       <EditorState>
-        <Spinner size={32} label="Opening your design" />
+        <Spinner size={32} label={m.editor.shell.opening} />
       </EditorState>
     );
   }
@@ -174,21 +175,17 @@ export function Editor({ designId }: { designId: string }) {
       <EditorState>
         <EmptyState
           icon={<IconWarning />}
-          title={newer ? "Update Craftly to open this design" : "We couldn't bring this design up to date"}
-          text={
-            newer
-              ? "It was saved by a newer version of Craftly than the one running in this tab. Reload to get the newest version, then open it again. The design has not been changed."
-              : `${detail} Nothing has been changed, and your other designs are not affected.`
-          }
+          title={newer ? m.editor.shell.newerTitle : m.editor.shell.failedTitle}
+          text={newer ? m.editor.shell.newerText : m.editor.shell.failedText(detail)}
           action={
             <div className="cf-editor-state__actions">
               {newer ? (
                 <Button variant="primary" onClick={() => window.location.reload()}>
-                  Reload
+                  {m.common.reload}
                 </Button>
               ) : null}
               <Button variant={newer ? "secondary" : "primary"} icon={<IconHome aria-hidden="true" />} onClick={() => navigate("/")}>
-                Back to home
+                {m.editor.shell.backHome}
               </Button>
             </div>
           }
@@ -202,16 +199,12 @@ export function Editor({ designId }: { designId: string }) {
       <EditorState>
         <EmptyState
           icon={<IconSearch />}
-          title={status === "missing" ? "We couldn't find this design" : "We couldn't open this design"}
-          text={
-            status === "missing"
-              ? "It may have been deleted, or it was saved in another browser. Head home to open one of your designs or start a new one."
-              : "Its file looks damaged. Go back to an earlier version below, or head home to open another design - your other designs are not affected."
-          }
+          title={status === "missing" ? m.editor.shell.missingTitle : m.editor.shell.brokenTitle}
+          text={status === "missing" ? m.editor.shell.missingText : m.editor.shell.brokenText}
           action={
             <>
               <Button variant="primary" icon={<IconHome aria-hidden="true" />} onClick={() => navigate("/")}>
-                Back to home
+                {m.editor.shell.backHome}
               </Button>
               {status === "broken" ? (
                 <div className="cf-editor-state__recovery">
@@ -233,7 +226,7 @@ export function Editor({ designId }: { designId: string }) {
         <div className="cf-editor__body">
           <LeftRail />
           <SidePanel />
-          <main className="cf-editor__center" aria-label="Design">
+          <main className="cf-editor__center" aria-label={m.editor.shell.region}>
             {gridView ? (
               <GridView />
             ) : (

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { m } from "@/i18n";
 import { PanelHeader } from "../../shared/PanelHeader";
 import { PanelSearch } from "../../shared/PanelSearch";
 import { PanelTop } from "../../shared/PanelLayout";
@@ -11,7 +12,7 @@ export function SubPageTop({ title, placeholder, children, subtitle }: { title: 
   const back = useElementsNav((s) => s.back);
   return (
     <PanelTop>
-      <PanelHeader title={title} subtitle={subtitle} onBack={back} backLabel="Back to all elements" />
+      <PanelHeader title={title} subtitle={subtitle} onBack={back} backLabel={m.panelsTabs.elements.back} />
       <PanelSearch value={query} onChange={setQuery} placeholder={placeholder} />
       {children}
     </PanelTop>

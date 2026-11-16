@@ -32,7 +32,7 @@ function physioCard(): Template {
   ];
   ["555-0158", "mika@example.com", "motionworks.example.com", "2 Fern Road, Port Merrow"].forEach((r, i) => back.push(sans(r, 24, 100 + i * 17, 164, 9.5, { fontWeight: 500 })));
   return template(
-    { slug: "physio-card", name: "Motion Works Physiotherapy Business Card", category: "card", size: "businessCard", tags: ["business card", "physiotherapy", "health", "clinic", "appointment", "minimal", "red", "front and back", "bold"], accent: CLAY },
+    { slug: "physio-card", category: "card", size: "businessCard", tags: ["business card", "physiotherapy", "health", "clinic", "appointment", "minimal", "red", "front and back", "bold"], accent: CLAY },
     [pg(CLAY, front), pg(PAPER, back)],
   );
 }
@@ -66,7 +66,7 @@ function thankYouCard(): Template {
     gxb("nature-daisy", 446, 356, 84),
   ];
   return template(
-    { slug: "thank-you-card", name: "Thank You Flowers Greeting Card", category: "card", size: "postcard", tags: ["greeting card", "thank you", "thanks", "flowers", "card", "note", "warm", "yellow", "front and inside"], accent: CORAL },
+    { slug: "thank-you-card", category: "card", size: "postcard", tags: ["greeting card", "thank you", "thanks", "flowers", "card", "note", "warm", "yellow", "front and inside"], accent: CORAL },
     [pg(BUTTER, front), pg("#fffaf0", inside)],
   );
 }
@@ -113,7 +113,7 @@ function winterCard(): Template {
     sans("12 Fern Road, December 2027", 60, 296, 456, 12.5, { align: "center", color: "#4b5d78" }),
   ];
   return template(
-    { slug: "winter-greeting-card", name: "Quiet Winter Greeting Card", category: "card", size: "postcard", tags: ["greeting card", "winter", "holiday", "christmas", "new year", "season", "snow", "night", "card", "front and inside"], accent: NIGHT },
+    { slug: "winter-greeting-card", category: "card", size: "postcard", tags: ["greeting card", "winter", "holiday", "christmas", "new year", "season", "snow", "night", "card", "front and inside"], accent: NIGHT },
     [pg(gradientBg(180, NIGHT, "#1c3a63"), front), pg(SNOW, inside)],
   );
 }

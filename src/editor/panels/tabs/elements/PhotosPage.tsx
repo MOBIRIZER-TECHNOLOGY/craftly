@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { PHOTOS, type PhotoCategory, type PhotoDef } from "@/data/photos";
 import { insertImageFiles } from "@/editor/insert";
+import { m } from "@/i18n";
 import { IconImage, IconUpload, toast } from "@/ui";
 import { ChipRow } from "../../shared/ChipRow";
 import { EmptyHint } from "../../shared/EmptyHint";
@@ -11,14 +12,7 @@ import { useElementsNav } from "./nav";
 import { SubPageTop } from "./SubPageTop";
 import "./PhotosPage.css";
 
-const CATEGORY_LABELS: Record<PhotoCategory, string> = {
-  landscape: "Landscapes",
-  city: "City",
-  abstract: "Abstract",
-  texture: "Textures",
-  nature: "Nature",
-  space: "Space",
-};
+const CATEGORY_LABELS: Record<PhotoCategory, string> = m.panelsTabs.elements.photos.categories;
 
 export const matchPhoto = (p: PhotoDef, q: string): boolean => {
   if (!q) return true;
@@ -37,7 +31,7 @@ export function PhotosPage() {
 
   const chips = useMemo(() => {
     const present = (Object.keys(CATEGORY_LABELS) as PhotoCategory[]).filter((c) => PHOTOS.some((p) => p.category === c));
-    return [{ id: "all", label: "All" }, ...present.map((c) => ({ id: c, label: CATEGORY_LABELS[c] }))];
+    return [{ id: "all", label: m.panelsTabs.shared.all }, ...present.map((c) => ({ id: c, label: CATEGORY_LABELS[c] }))];
   }, []);
 
   const results = useMemo(() => PHOTOS.filter((p) => (category === "all" || p.category === category) && matchPhoto(p, q)), [category, q]);
@@ -46,18 +40,18 @@ export function PhotosPage() {
     if (!files?.length) return;
     try {
       const ids = await insertImageFiles(Array.from(files));
-      if (ids.length) toast.success(ids.length === 1 ? "Photo added to the page and to your uploads" : `${ids.length} photos added to the page and to your uploads`);
-      else toast.error("That file is not an image. Choose a PNG, JPG, WebP, GIF or SVG.");
+      if (ids.length) toast.success(m.panelsTabs.elements.photos.added(ids.length));
+      else toast.error(m.panelsTabs.elements.photos.notImage);
     } catch {
-      toast.error("The photo could not be added. Try a smaller file.");
+      toast.error(m.panelsTabs.elements.photos.addFailed);
     }
     if (fileRef.current) fileRef.current.value = "";
   };
 
   return (
     <Panel>
-      <SubPageTop title="Photos" placeholder="Search photos">
-        <ChipRow chips={chips} value={category} onChange={setCategory} aria-label="Photo categories" />
+      <SubPageTop title={m.panelsTabs.elements.categories.photos} placeholder={m.panelsTabs.elements.photos.search}>
+        <ChipRow chips={chips} value={category} onChange={setCategory} aria-label={m.panelsTabs.elements.photos.categoriesLabel} />
       </SubPageTop>
       <PanelScroll>
         <button type="button" className="cf-photos__upload" onClick={() => fileRef.current?.click()}>
@@ -65,8 +59,8 @@ export function PhotosPage() {
             <IconUpload aria-hidden="true" />
           </span>
           <span className="cf-photos__upload-text">
-            <strong>Upload your own</strong>
-            <span>Add photos from your computer</span>
+            <strong>{m.panelsTabs.elements.photos.uploadOwn}</strong>
+            <span>{m.panelsTabs.elements.photos.uploadOwnText}</span>
           </span>
         </button>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => void onFiles(e.target.files)} />
@@ -75,8 +69,8 @@ export function PhotosPage() {
         ) : (
           <EmptyHint
             icon={<IconImage />}
-            title="No photos found"
-            text={q ? `Nothing matches "${query.trim()}". Try "sunset", "ocean" or "forest".` : "No photos in this category yet."}
+            title={m.panelsTabs.elements.photos.noneTitle}
+            text={q ? m.panelsTabs.elements.photos.noneText(query.trim()) : m.panelsTabs.elements.photos.emptyCategory}
           />
         )}
       </PanelScroll>

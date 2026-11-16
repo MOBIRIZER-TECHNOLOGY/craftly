@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useEditor } from "@/core/store";
 import type { Page } from "@/core/types";
+import { m } from "@/i18n";
 import { IconArrowLeft, IconArrowRight, IconDuplicate, IconPen, IconPlay, IconTrash, toast, useLatest, type MenuEntry } from "@/ui";
 import "./pageParts.css";
 
@@ -140,7 +141,7 @@ export function deletePageWithUndo(id: string): void {
   const s = useEditor.getState();
   if (!s.design || s.design.pages.length <= 1 || s.mode === "view") return;
   s.actions.deletePage(id);
-  toast.info("Page deleted", { actionLabel: "Undo", onAction: () => useEditor.getState().actions.undo() });
+  toast.info(m.editorChrome.pages.deleted, { actionLabel: m.common.undo, onAction: () => useEditor.getState().actions.undo() });
 }
 
 export interface PageMenuOptions {
@@ -155,11 +156,17 @@ export interface PageMenuOptions {
 export function pageMenuItems(o: PageMenuOptions): MenuEntry[] {
   const a = useEditor.getState().actions;
   return [
-    { id: "title", label: o.hasName ? "Edit page title" : "Add page title", icon: <IconPen aria-hidden="true" />, disabled: o.readOnly, onSelect: o.onRename },
-    { id: "duplicate", label: "Duplicate page", icon: <IconDuplicate aria-hidden="true" />, disabled: o.readOnly, onSelect: () => a.duplicatePage(o.pageId) },
+    {
+      id: "title",
+      label: o.hasName ? m.editorChrome.pages.editTitle : m.editorChrome.pages.addTitle,
+      icon: <IconPen aria-hidden="true" />,
+      disabled: o.readOnly,
+      onSelect: o.onRename,
+    },
+    { id: "duplicate", label: m.editorChrome.pages.duplicatePage, icon: <IconDuplicate aria-hidden="true" />, disabled: o.readOnly, onSelect: () => a.duplicatePage(o.pageId) },
     {
       id: "present",
-      label: "Present from this page",
+      label: m.editorChrome.pages.presentFromHere,
       icon: <IconPlay aria-hidden="true" />,
       onSelect: () => {
         a.setActivePage(o.pageId);
@@ -167,10 +174,16 @@ export function pageMenuItems(o: PageMenuOptions): MenuEntry[] {
       },
     },
     { type: "divider" },
-    { id: "left", label: "Move left", icon: <IconArrowLeft aria-hidden="true" />, disabled: o.readOnly || o.index === 0, onSelect: () => a.movePage(o.pageId, o.index - 1) },
+    {
+      id: "left",
+      label: m.editorChrome.pages.moveLeft,
+      icon: <IconArrowLeft aria-hidden="true" />,
+      disabled: o.readOnly || o.index === 0,
+      onSelect: () => a.movePage(o.pageId, o.index - 1),
+    },
     {
       id: "right",
-      label: "Move right",
+      label: m.editorChrome.pages.moveRight,
       icon: <IconArrowRight aria-hidden="true" />,
       disabled: o.readOnly || o.index >= o.count - 1,
       onSelect: () => a.movePage(o.pageId, o.index + 1),
@@ -178,7 +191,7 @@ export function pageMenuItems(o: PageMenuOptions): MenuEntry[] {
     { type: "divider" },
     {
       id: "delete",
-      label: "Delete page",
+      label: m.editorChrome.pages.deletePage,
       icon: <IconTrash aria-hidden="true" />,
       danger: true,
       disabled: o.readOnly || o.count <= 1,
@@ -213,9 +226,9 @@ function RenameInput({ page, onDone }: { page: Page; onDone: () => void }) {
       ref={ref}
       className="cf-pagecap__input"
       defaultValue={page.name ?? ""}
-      placeholder="Page title"
+      placeholder={m.editorChrome.pages.pageTitle}
       maxLength={60}
-      aria-label="Page title"
+      aria-label={m.editorChrome.pages.pageTitle}
       spellCheck={false}
       onBlur={finish}
       onClick={(e) => e.stopPropagation()}

@@ -4,6 +4,7 @@
  */
 import { useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
+import { m } from "@/i18n";
 import { ColorPicker, ColorSwatch, Popover, cx } from "@/ui";
 import { PanelHeader } from "../../shared/PanelHeader";
 import { Panel, PanelScroll, PanelTop } from "../../shared/PanelLayout";
@@ -44,7 +45,7 @@ export function AppPage({ title, subtitle, top, children, footer, scrollClassNam
   return (
     <Panel>
       <PanelTop>
-        <PanelHeader title={title} subtitle={subtitle} onBack={back} backLabel="Back to apps" />
+        <PanelHeader title={title} subtitle={subtitle} onBack={back} backLabel={m.panelsTabs.appKit.back} />
         {top}
       </PanelTop>
       <PanelScroll className={scrollClassName}>{children}</PanelScroll>
@@ -86,7 +87,7 @@ export function ColorButton({ value, onChange, label, presets }: ColorButtonProp
         ref={ref}
         type="button"
         className="cf-app__color"
-        aria-label={`${label}: ${value}. Change colour`}
+        aria-label={m.panelsTabs.appKit.colorButton(label, value)}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
@@ -96,7 +97,7 @@ export function ColorButton({ value, onChange, label, presets }: ColorButtonProp
       </button>
       <Popover open={open} anchor={ref.current} onClose={() => setOpen(false)} placement="bottom-start" className="cf-app__picker" aria-label={label}>
         {presets?.length ? (
-          <div className="cf-app__presets" role="group" aria-label="Quick colours">
+          <div className="cf-app__presets" role="group" aria-label={m.panelsTabs.appKit.quickColours}>
             {presets.map((c) => (
               <ColorSwatch key={c} color={c} size={24} selected={c.toLowerCase() === value.toLowerCase()} title={c} onClick={() => onChange(c)} />
             ))}

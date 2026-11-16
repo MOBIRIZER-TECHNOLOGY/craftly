@@ -3,6 +3,7 @@ import { contrastRatio } from "@/core/color";
 import { createGraphic } from "@/core/factory";
 import { getActions } from "@/core/store";
 import { svgToDataUrl } from "@/core/svg";
+import { m } from "@/i18n";
 import { Button, IconAlert, IconPlus, IconWarning, Segmented, Select, TextField } from "@/ui";
 import { designMin } from "../../shared/panelActions";
 import { AppField, AppPage, ColorButton } from "./appKit";
@@ -12,18 +13,18 @@ import "./QrApp.css";
 type Level = QrLevel;
 type Kind = "link" | "text" | "wifi" | "email";
 
-const KINDS = [
-  { value: "link", label: "Link" },
-  { value: "text", label: "Text" },
-  { value: "wifi", label: "Wi-Fi" },
-  { value: "email", label: "Email" },
-] as const;
+const KINDS: Array<{ value: Kind; label: string }> = [
+  { value: "link", label: m.panelsTabs.qr.kinds.link },
+  { value: "text", label: m.panelsTabs.qr.kinds.text },
+  { value: "wifi", label: m.panelsTabs.qr.kinds.wifi },
+  { value: "email", label: m.panelsTabs.qr.kinds.email },
+];
 
 const LEVELS: Array<{ value: Level; label: string }> = [
-  { value: "L", label: "Low - 7% can be damaged" },
-  { value: "M", label: "Medium - 15%" },
-  { value: "Q", label: "Quartile - 25%" },
-  { value: "H", label: "High - 30%" },
+  { value: "L", label: m.panelsTabs.qr.levels.L },
+  { value: "M", label: m.panelsTabs.qr.levels.M },
+  { value: "Q", label: m.panelsTabs.qr.levels.Q },
+  { value: "H", label: m.panelsTabs.qr.levels.H },
 ];
 
 const PRESETS = ["#0e1318", "#7c3aed", "#1d4ed8", "#0f766e", "#be123c", "#ffffff"];
@@ -65,7 +66,7 @@ export function QrApp() {
     try {
       return { svg: qrSvg(payload, level, fg, bg), error: null };
     } catch {
-      return { svg: null, error: "That is too long for a QR code at this error-correction level. Shorten it or choose a lower level." };
+      return { svg: null, error: m.panelsTabs.qr.tooLong };
     }
   }, [payload, level, fg, bg]);
 
@@ -80,19 +81,19 @@ export function QrApp() {
 
   return (
     <AppPage
-      title="QR code"
-      subtitle="Scannable codes for links, text and Wi-Fi"
+      title={m.panelsTabs.qr.title}
+      subtitle={m.panelsTabs.qr.subtitle}
       footer={
         <Button variant="primary" size="lg" block icon={<IconPlus />} disabled={!result.svg} onClick={add}>
-          Add to design
+          {m.panelsTabs.shared.addToDesign}
         </Button>
       }
     >
       <div className="cf-qr__stage cf-app__stage">
         {result.svg ? (
-          <img className="cf-qr__img" src={svgToDataUrl(result.svg)} alt={`QR code for ${payload.length > 60 ? `${payload.slice(0, 60)}...` : payload}`} />
+          <img className="cf-qr__img" src={svgToDataUrl(result.svg)} alt={m.panelsTabs.qr.alt(payload.length > 60 ? `${payload.slice(0, 60)}...` : payload)} />
         ) : (
-          <div className="cf-qr__empty">{result.error ? "Too much data" : "Your code appears here"}</div>
+          <div className="cf-qr__empty">{result.error ? m.panelsTabs.qr.tooMuch : m.panelsTabs.qr.empty}</div>
         )}
       </div>
 
@@ -106,49 +107,53 @@ export function QrApp() {
         {result.svg && (contrast < 3 || inverted) ? (
           <p className="cf-app__warn">
             <IconWarning aria-hidden="true" />
-            {contrast < 3
-              ? "The two colours are too close: some phones will not scan this code."
-              : "Light-on-dark codes are not read by every scanner. Dark squares on a light background are safest."}
+            {contrast < 3 ? m.panelsTabs.qr.lowContrast : m.panelsTabs.qr.inverted}
           </p>
         ) : null}
 
-        <AppField label="What should it open?">
-          <Segmented<Kind> value={kind} onChange={setKind} options={[...KINDS]} size="sm" fullWidth aria-label="Code content" />
+        <AppField label={m.panelsTabs.qr.whatOpens}>
+          <Segmented<Kind> value={kind} onChange={setKind} options={KINDS} size="sm" fullWidth aria-label={m.panelsTabs.qr.codeContent} />
         </AppField>
 
-        {kind === "link" ? <TextField label="Web address" placeholder="https://example.com" value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" /> : null}
-        {kind === "text" ? <TextField label="Text" placeholder="Anything you want people to read" value={text} onChange={(e) => setText(e.target.value)} /> : null}
-        {kind === "email" ? <TextField label="Email address" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" /> : null}
+        {kind === "link" ? (
+          <TextField label={m.panelsTabs.qr.webAddress} placeholder="https://example.com" value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" />
+        ) : null}
+        {kind === "text" ? <TextField label={m.panelsTabs.qr.text} placeholder={m.panelsTabs.qr.textPlaceholder} value={text} onChange={(e) => setText(e.target.value)} /> : null}
+        {kind === "email" ? (
+          <TextField label={m.panelsTabs.qr.emailAddress} placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
+        ) : null}
         {kind === "wifi" ? (
           <div className="cf-qr__wifi">
-            <TextField label="Network name" value={ssid} onChange={(e) => setSsid(e.target.value)} placeholder="My Wi-Fi" />
-            <AppField label="Security">
+            <TextField label={m.panelsTabs.qr.networkName} value={ssid} onChange={(e) => setSsid(e.target.value)} placeholder={m.panelsTabs.qr.networkPlaceholder} />
+            <AppField label={m.panelsTabs.qr.security}>
               <Select<"WPA" | "WEP" | "nopass">
                 value={security}
                 onChange={setSecurity}
-                aria-label="Wi-Fi security"
+                aria-label={m.panelsTabs.qr.wifiSecurity}
                 options={[
                   { value: "WPA", label: "WPA / WPA2 / WPA3" },
                   { value: "WEP", label: "WEP" },
-                  { value: "nopass", label: "No password" },
+                  { value: "nopass", label: m.panelsTabs.qr.noPassword },
                 ]}
               />
             </AppField>
-            {security !== "nopass" ? <TextField label="Password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Network password" /> : null}
+            {security !== "nopass" ? (
+              <TextField label={m.panelsTabs.qr.password} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={m.panelsTabs.qr.passwordPlaceholder} />
+            ) : null}
           </div>
         ) : null}
 
         <div className="cf-app__row cf-qr__colors">
-          <AppField label="Squares">
-            <ColorButton label="Square colour" value={fg} onChange={setFg} presets={PRESETS} />
+          <AppField label={m.panelsTabs.qr.squares}>
+            <ColorButton label={m.panelsTabs.qr.squareColour} value={fg} onChange={setFg} presets={PRESETS} />
           </AppField>
-          <AppField label="Background">
-            <ColorButton label="Background colour" value={bg} onChange={setBg} presets={PRESETS} />
+          <AppField label={m.panelsTabs.qr.background}>
+            <ColorButton label={m.panelsTabs.qr.backgroundColour} value={bg} onChange={setBg} presets={PRESETS} />
           </AppField>
         </div>
 
-        <AppField label="Error correction" hint="Higher levels still scan when part of the code is covered or printed badly, but make the pattern denser.">
-          <Select<Level> value={level} onChange={setLevel} options={LEVELS} aria-label="Error correction" />
+        <AppField label={m.panelsTabs.qr.errorCorrection} hint={m.panelsTabs.qr.errorCorrectionHint}>
+          <Select<Level> value={level} onChange={setLevel} options={LEVELS} aria-label={m.panelsTabs.qr.errorCorrection} />
         </AppField>
       </div>
     </AppPage>

@@ -38,7 +38,7 @@ function housewarming(): Template {
   });
   els.push(hr(36, 576, 408, SAND, 1.5), sans("Tell Ana and Sol you are coming: 555-0145", 36, 598, 408, 13.5, { fontWeight: 700, color: TERRA }));
   return template(
-    { slug: "housewarming", name: "We Moved Housewarming Invitation", category: "invitation", size: "invitation", tags: ["housewarming", "new home", "moving", "invitation", "party", "modern", "terracotta", "colour block", "casual"], accent: TERRA },
+    { slug: "housewarming", category: "invitation", size: "invitation", tags: ["housewarming", "new home", "moving", "invitation", "party", "modern", "terracotta", "colour block", "casual"], accent: TERRA },
     [pg(CREAM, els)],
   );
 }
@@ -66,7 +66,7 @@ function midsummerSupper(): Template {
     sans("Five courses from the garden. Reply to Maren by 5 June: maren@example.com", 70, 608, 340, 12.5, { align: "center", fontWeight: 500, color: GREEN, lineHeight: 1.5 }),
   ];
   return template(
-    { slug: "midsummer-supper", name: "Midsummer Supper Invitation", category: "invitation", size: "invitation", tags: ["dinner", "supper", "invitation", "summer", "garden", "elegant", "photo", "arch", "serif", "green"], accent: GREEN },
+    { slug: "midsummer-supper", category: "invitation", size: "invitation", tags: ["dinner", "supper", "invitation", "summer", "garden", "elegant", "photo", "arch", "serif", "green"], accent: GREEN },
     [pg(LINEN, els)],
   );
 }
@@ -113,7 +113,7 @@ function graduationTicket(): Template {
   stub.forEach(([k, v, x, w]) => els.push(sans(k, x, 458, w, 10, { fontWeight: 800, letterSpacing: 280, color: COBALT }), cond(v, x, 476, w, 25, { color: INK, lineHeight: 1.1 })));
   els.push(sans("Garden party, cake and one short speech. Reply by 1 July to 555-0133.", 66, 522, 348, 13, { align: "center", fontWeight: 600, lineHeight: 1.5 }), group("Barcode", barcode));
   return template(
-    { slug: "graduation-ticket", name: "Class of 2027 Graduation Ticket Invitation", category: "invitation", size: "invitation", tags: ["graduation", "party", "invitation", "ticket", "class of", "school", "university", "bold", "blue", "yellow"], accent: COBALT },
+    { slug: "graduation-ticket", category: "invitation", size: "invitation", tags: ["graduation", "party", "invitation", "ticket", "class of", "school", "university", "bold", "blue", "yellow"], accent: COBALT },
     [pg(COBALT, els)],
   );
 }

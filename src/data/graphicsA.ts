@@ -7,7 +7,7 @@
  * #rrggbb colours (recolourable by regex) and only basic elements (path, rect, circle, ellipse,
  * polygon, polyline, line, g and the odd gradient). Strokes always use round caps and joins.
  */
-import type { GraphicCategory, GraphicDef } from "./graphicTypes";
+import type { GraphicCategory, GraphicDraft } from "./graphicTypes";
 
 /* ------------------------------------------------------------------------------------------ *
  *  Toolkit
@@ -215,14 +215,14 @@ function crescentD(c1: Pt, R: number, c2: Pt, r: number): string {
 /** A dot made of a zero-length round-capped stroke (very compact for stipple textures). */
 const dot = (x: number, y: number): string => `M${Math.round(x)} ${Math.round(y)}h.1`;
 
-const def = (
-  id: string,
-  name: string,
-  category: GraphicCategory,
-  tags: string,
-  markup: string,
-  kind: "illustration" | "sticker" = "illustration",
-): GraphicDef => ({ id, name, category, tags: tags.split(" "), svg: markup, kind });
+/** (the name comes from the catalog by id, see graphics.ts) */
+const def = (id: string, category: GraphicCategory, tags: string, markup: string, kind: "illustration" | "sticker" = "illustration"): GraphicDraft => ({
+  id,
+  category,
+  tags: tags.split(" "),
+  svg: markup,
+  kind,
+});
 
 /* ------------------------------------------------------------------------------------------ *
  *  ABSTRACT
@@ -450,42 +450,42 @@ const grainArch = (): string => {
   );
 };
 
-const ABSTRACT: GraphicDef[] = [
-  def("abstract-blob-1", "Soft pebble blob", "abstract", "blob organic shape pebble fluid",
+const ABSTRACT: GraphicDraft[] = [
+  def("abstract-blob-1", "abstract", "blob organic shape pebble fluid",
     blob(blobPts([{ k: 2, a: 0.07, p: 0.4 }, { k: 3, a: 0.09, p: 1.3 }, { k: 5, a: 0.035, p: 2.2 }]), "#ff8a65")),
-  def("abstract-blob-2", "Tall egg blob", "abstract", "blob egg oval organic shape",
+  def("abstract-blob-2", "abstract", "blob egg oval organic shape",
     blob(blobPts([{ k: 2, a: 0.08, p: 0 }, { k: 3, a: 0.07, p: 2.1 }], 0.8, 1, 14, -0.25), "#7c83fd")),
-  def("abstract-blob-3", "Rounded triangle blob", "abstract", "blob triangle organic shape fluid",
+  def("abstract-blob-3", "abstract", "blob triangle organic shape fluid",
     blob(blobPts([{ k: 3, a: 0.17, p: 0.5 }, { k: 2, a: 0.05, p: 1 }]), "#2ec4b6")),
-  def("abstract-blob-4", "Clover blob", "abstract", "blob flower clover petal shape",
+  def("abstract-blob-4", "abstract", "blob flower clover petal shape",
     blob(blobPts([{ k: 5, a: 0.15, p: 0 }, { k: 2, a: 0.04, p: 0.7 }], 1, 1, 20), "#ffc857")),
-  def("abstract-blob-5", "Bean blob", "abstract", "blob bean kidney organic shape",
+  def("abstract-blob-5", "abstract", "blob bean kidney organic shape",
     blob(bean, "#f78fb3")),
-  def("abstract-blob-6", "Leaf drop blob", "abstract", "blob leaf drop teardrop organic shape",
+  def("abstract-blob-6", "abstract", "blob leaf drop teardrop organic shape",
     blob(leafDrop, "#8e7cf0")),
-  def("abstract-blob-7", "Layered wobble blob", "abstract", "blob wobble layered shadow shape",
+  def("abstract-blob-7", "abstract", "blob wobble layered shadow shape",
     blob2(blobPts([{ k: 6, a: 0.07, p: 0.3 }, { k: 3, a: 0.1, p: 2 }, { k: 2, a: 0.05, p: 0 }], 1, 1, 18), "#bde7c9", "#4cb782")),
-  def("abstract-blob-8", "Layered pillow blob", "abstract", "blob pillow layered shadow shape",
+  def("abstract-blob-8", "abstract", "blob pillow layered shadow shape",
     blob2(blobPts([{ k: 4, a: 0.1, p: 0.2 }, { k: 2, a: 0.08, p: 1.4 }, { k: 7, a: 0.03, p: 0 }], 1.05, 0.85, 18), "#ffd9a0", "#ff7a59")),
-  def("abstract-overlap-circles", "Overlapping circles", "abstract", "circles overlap venn trio transparent",
+  def("abstract-overlap-circles", "abstract", "circles overlap venn trio transparent",
     overlapCircles()),
-  def("abstract-arches", "Nested arches", "abstract", "arch rainbow boho nested warm",
+  def("abstract-arches", "abstract", "arch rainbow boho nested warm",
     archesNested()),
-  def("abstract-bauhaus-tiles", "Bauhaus tiles", "abstract", "bauhaus half-circle geometric tiles quarter",
+  def("abstract-bauhaus-tiles", "abstract", "bauhaus half-circle geometric tiles quarter",
     bauhaus()),
-  def("abstract-wavy-stripes", "Wavy stripes", "abstract", "wavy stripes lines waves pattern",
+  def("abstract-wavy-stripes", "abstract", "wavy stripes lines waves pattern",
     wavyStripes()),
-  def("abstract-sunburst", "Retro sunburst", "abstract", "sunburst rays retro radial burst",
+  def("abstract-sunburst", "abstract", "sunburst rays retro radial burst",
     sunburst()),
-  def("abstract-concentric-rings", "Concentric rings", "abstract", "rings concentric circles target ripple",
+  def("abstract-concentric-rings", "abstract", "rings concentric circles target ripple",
     rings()),
-  def("abstract-memphis-bold", "Memphis set bold", "abstract", "memphis squiggle triangle shapes 80s",
+  def("abstract-memphis-bold", "abstract", "memphis squiggle triangle shapes 80s",
     memphisA()),
-  def("abstract-memphis-warm", "Memphis set warm", "abstract", "memphis stripes hatch shapes retro",
+  def("abstract-memphis-warm", "abstract", "memphis stripes hatch shapes retro",
     memphisB()),
-  def("abstract-grain-sunrise", "Grainy sunrise orb", "abstract", "grain gradient noise orb sunrise",
+  def("abstract-grain-sunrise", "abstract", "grain gradient noise orb sunrise",
     grainOrb()),
-  def("abstract-grain-arch", "Grainy gradient arch", "abstract", "grain gradient arch noise boho",
+  def("abstract-grain-arch", "abstract", "grain gradient arch noise boho",
     grainArch()),
 ];
 
@@ -839,22 +839,22 @@ const grass = (): string => {
   return svg(200, 170, fp(back, GB) + fp(front, GA) + `<rect x="30" y="148" width="140" height="10" rx="5" fill="${GB}"/>`);
 };
 
-const NATURE: GraphicDef[] = [
-  def("nature-monstera", "Monstera leaf", "nature", "monstera leaf tropical plant jungle", monstera()),
-  def("nature-fern", "Fern frond", "nature", "fern frond leaf forest plant", fern()),
-  def("nature-olive-branch", "Leafy branch", "nature", "branch leaves olive twig berries", branch()),
-  def("nature-sun", "Sunny sun", "nature", "sun sunshine summer rays weather", sun()),
-  def("nature-moon-stars", "Moon and stars", "nature", "moon crescent stars night sparkle", moonStars()),
-  def("nature-clouds", "Soft clouds", "nature", "clouds sky weather soft", clouds()),
-  def("nature-mountains", "Mountain range", "nature", "mountains landscape peaks snow hills", mountains()),
-  def("nature-daisy", "Daisy flower", "nature", "daisy flower bloom spring floral", daisy()),
-  def("nature-cactus", "Potted cactus", "nature", "cactus succulent desert plant pot", cactus()),
-  def("nature-pine-trees", "Pine trees", "nature", "pine trees forest evergreen woods", pines()),
-  def("nature-wheat", "Wheat stalks", "nature", "wheat grain harvest autumn grass", wheat()),
-  def("nature-rainbow", "Rainbow with clouds", "nature", "rainbow clouds sky colorful kids", rainbow()),
-  def("nature-wave", "Ocean waves", "nature", "waves ocean sea water beach", wave()),
-  def("nature-tulips", "Tulip trio", "nature", "tulips flowers bouquet spring floral", tulips()),
-  def("nature-grass", "Grass tuft", "nature", "grass blades meadow lawn green", grass()),
+const NATURE: GraphicDraft[] = [
+  def("nature-monstera", "nature", "monstera leaf tropical plant jungle", monstera()),
+  def("nature-fern", "nature", "fern frond leaf forest plant", fern()),
+  def("nature-olive-branch", "nature", "branch leaves olive twig berries", branch()),
+  def("nature-sun", "nature", "sun sunshine summer rays weather", sun()),
+  def("nature-moon-stars", "nature", "moon crescent stars night sparkle", moonStars()),
+  def("nature-clouds", "nature", "clouds sky weather soft", clouds()),
+  def("nature-mountains", "nature", "mountains landscape peaks snow hills", mountains()),
+  def("nature-daisy", "nature", "daisy flower bloom spring floral", daisy()),
+  def("nature-cactus", "nature", "cactus succulent desert plant pot", cactus()),
+  def("nature-pine-trees", "nature", "pine trees forest evergreen woods", pines()),
+  def("nature-wheat", "nature", "wheat grain harvest autumn grass", wheat()),
+  def("nature-rainbow", "nature", "rainbow clouds sky colorful kids", rainbow()),
+  def("nature-wave", "nature", "waves ocean sea water beach", wave()),
+  def("nature-tulips", "nature", "tulips flowers bouquet spring floral", tulips()),
+  def("nature-grass", "nature", "grass blades meadow lawn green", grass()),
 ];
 
 /* ------------------------------------------------------------------------------------------ *
@@ -1065,21 +1065,21 @@ const curlyRibbons = (): string => {
   );
 };
 
-const DECOR: GraphicDef[] = [
-  def("decor-boho-arches", "Boho arches", "decor", "boho arches rainbow terracotta sun neutral", bohoArches()),
-  def("decor-dried-palm", "Dried palm lines", "decor", "palm dried boho line leaf botanical", driedPalm()),
-  def("decor-sparkles", "Sparkles", "decor", "sparkle stars shine glitter magic", sparkles(), "sticker"),
-  def("decor-heart", "Glossy heart", "decor", "heart love valentine romance sticker", heart(), "sticker"),
-  def("decor-hearts-cluster", "Heart cluster", "decor", "hearts love pink valentine cute", hearts(), "sticker"),
-  def("decor-confetti", "Confetti burst", "decor", "confetti party celebration scatter fun", confetti()),
-  def("decor-gift-bow", "Ribbon bow", "decor", "bow ribbon gift present pink", bow(), "sticker"),
-  def("decor-washi-stripes", "Washi tape stripes", "decor", "washi tape stripes scrapbook pink", washiTape("#ffc4d6", "#ff9ab8", "stripes"), "sticker"),
-  def("decor-washi-dots", "Washi tape dots", "decor", "washi tape dots polka scrapbook mint", washiTape("#c6ecd9", "#86d3b0", "dots"), "sticker"),
-  def("decor-paperclip", "Paper clip", "decor", "paperclip clip office note sticker", paperclip(), "sticker"),
-  def("decor-pushpin", "Push pin", "decor", "pushpin pin thumbtack note board", pushpin(), "sticker"),
-  def("decor-star-sticker", "Chunky star", "decor", "star gold favourite rating sticker", starSticker(), "sticker"),
-  def("decor-confetti-dots", "Confetti dots", "decor", "confetti dots polka party scatter pastel", confettiDots()),
-  def("decor-curly-ribbons", "Curly streamers", "decor", "ribbon curly streamers gift party curl", curlyRibbons()),
+const DECOR: GraphicDraft[] = [
+  def("decor-boho-arches", "decor", "boho arches rainbow terracotta sun neutral", bohoArches()),
+  def("decor-dried-palm", "decor", "palm dried boho line leaf botanical", driedPalm()),
+  def("decor-sparkles", "decor", "sparkle stars shine glitter magic", sparkles(), "sticker"),
+  def("decor-heart", "decor", "heart love valentine romance sticker", heart(), "sticker"),
+  def("decor-hearts-cluster", "decor", "hearts love pink valentine cute", hearts(), "sticker"),
+  def("decor-confetti", "decor", "confetti party celebration scatter fun", confetti()),
+  def("decor-gift-bow", "decor", "bow ribbon gift present pink", bow(), "sticker"),
+  def("decor-washi-stripes", "decor", "washi tape stripes scrapbook pink", washiTape("#ffc4d6", "#ff9ab8", "stripes"), "sticker"),
+  def("decor-washi-dots", "decor", "washi tape dots polka scrapbook mint", washiTape("#c6ecd9", "#86d3b0", "dots"), "sticker"),
+  def("decor-paperclip", "decor", "paperclip clip office note sticker", paperclip(), "sticker"),
+  def("decor-pushpin", "decor", "pushpin pin thumbtack note board", pushpin(), "sticker"),
+  def("decor-star-sticker", "decor", "star gold favourite rating sticker", starSticker(), "sticker"),
+  def("decor-confetti-dots", "decor", "confetti dots polka party scatter pastel", confettiDots()),
+  def("decor-curly-ribbons", "decor", "ribbon curly streamers gift party curl", curlyRibbons()),
 ];
 
 /* ------------------------------------------------------------------------------------------ *
@@ -1184,16 +1184,16 @@ const excitedBurst = (): string => {
   return svg(200, 200, sp(d, "#7c3aed", 9) + sp(dots, "#7c3aed", 8));
 };
 
-const DOODLES: GraphicDef[] = [
-  def("doodles-underline-marker", "Marker underline", "doodles", "underline marker hand-drawn stroke emphasis", markerUnderline()),
-  def("doodles-underline-zigzag", "Zigzag underline", "doodles", "underline zigzag hand-drawn stroke emphasis", zigzagUnderline()),
-  def("doodles-circle-scribble", "Circled highlight", "doodles", "circle scribble highlight hand-drawn emphasis", circleScribble()),
-  def("doodles-squiggle", "Loose squiggle", "doodles", "squiggle wave line hand-drawn playful", squiggle()),
-  def("doodles-star", "Scribble star", "doodles", "star doodle hand-drawn sketch shine", scribbleStar()),
-  def("doodles-spiral", "Spiral", "doodles", "spiral swirl doodle hand-drawn", spiral()),
-  def("doodles-brush-swoosh", "Brush swoosh", "doodles", "brush swoosh paint stroke highlight", brushSwoosh()),
-  def("doodles-heart-scribble", "Scribble heart", "doodles", "heart doodle love hand-drawn sketch", scribbleHeart()),
-  def("doodles-burst", "Excited burst", "doodles", "burst rays lines doodle pop", excitedBurst()),
+const DOODLES: GraphicDraft[] = [
+  def("doodles-underline-marker", "doodles", "underline marker hand-drawn stroke emphasis", markerUnderline()),
+  def("doodles-underline-zigzag", "doodles", "underline zigzag hand-drawn stroke emphasis", zigzagUnderline()),
+  def("doodles-circle-scribble", "doodles", "circle scribble highlight hand-drawn emphasis", circleScribble()),
+  def("doodles-squiggle", "doodles", "squiggle wave line hand-drawn playful", squiggle()),
+  def("doodles-star", "doodles", "star doodle hand-drawn sketch shine", scribbleStar()),
+  def("doodles-spiral", "doodles", "spiral swirl doodle hand-drawn", spiral()),
+  def("doodles-brush-swoosh", "doodles", "brush swoosh paint stroke highlight", brushSwoosh()),
+  def("doodles-heart-scribble", "doodles", "heart doodle love hand-drawn sketch", scribbleHeart()),
+  def("doodles-burst", "doodles", "burst rays lines doodle pop", excitedBurst()),
 ];
 
 /* ------------------------------------------------------------------------------------------ *
@@ -1277,15 +1277,15 @@ const floralRule = (): string => {
   return svg(360, 60, vine() + mirror(360, vine()) + petals + circ(180, 30, 9, CEN));
 };
 
-const DIVIDERS: GraphicDef[] = [
-  def("dividers-ornamental-rule", "Ornamental rule", "dividers", "divider rule ornament diamond elegant line", ornamentalRule()),
-  def("dividers-wavy", "Wavy line", "dividers", "divider wavy wave dots line separator", wavyRule()),
-  def("dividers-braid", "Twisted rope", "dividers", "divider braid rope twist wave line", braidRule()),
-  def("dividers-zigzag", "Double zigzag", "dividers", "divider zigzag double line separator bold", zigzagRule()),
-  def("dividers-dotted", "Swelling dots", "dividers", "divider dots dotted line separator", dottedRule()),
-  def("dividers-scallop", "Scallop line", "dividers", "divider scallop border bunting line", scallopRule()),
-  def("dividers-diamond-rule", "Diamond rule", "dividers", "divider diamonds rule classic line", diamondRule()),
-  def("dividers-floral", "Floral vine", "dividers", "divider floral flower vine leaves botanical", floralRule()),
+const DIVIDERS: GraphicDraft[] = [
+  def("dividers-ornamental-rule", "dividers", "divider rule ornament diamond elegant line", ornamentalRule()),
+  def("dividers-wavy", "dividers", "divider wavy wave dots line separator", wavyRule()),
+  def("dividers-braid", "dividers", "divider braid rope twist wave line", braidRule()),
+  def("dividers-zigzag", "dividers", "divider zigzag double line separator bold", zigzagRule()),
+  def("dividers-dotted", "dividers", "divider dots dotted line separator", dottedRule()),
+  def("dividers-scallop", "dividers", "divider scallop border bunting line", scallopRule()),
+  def("dividers-diamond-rule", "dividers", "divider diamonds rule classic line", diamondRule()),
+  def("dividers-floral", "dividers", "divider floral flower vine leaves botanical", floralRule()),
 ];
 
 /* ------------------------------------------------------------------------------------------ *
@@ -1400,14 +1400,14 @@ const archWindow = (): string => {
   );
 };
 
-const FRAMES: GraphicDef[] = [
-  def("frames-rounded-border", "Rounded border", "frames", "frame border rounded page outline simple", roundedBorder()),
-  def("frames-double-line", "Double-line frame", "frames", "frame border double line classic elegant", doubleLineFrame()),
-  def("frames-corner-brackets", "Corner brackets", "frames", "frame corners brackets viewfinder minimal", cornerBrackets()),
-  def("frames-corner-flourish", "Ornate corner", "frames", "corner flourish ornament vintage swirl", cornerFlourish()),
-  def("frames-polaroid", "Polaroid frame", "frames", "polaroid photo frame instant tape", polaroid()),
-  def("frames-ticket", "Ticket", "frames", "ticket coupon admission stub label", ticket()),
-  def("frames-arch-window", "Arch window frame", "frames", "arch window frame boho photo mask", archWindow()),
+const FRAMES: GraphicDraft[] = [
+  def("frames-rounded-border", "frames", "frame border rounded page outline simple", roundedBorder()),
+  def("frames-double-line", "frames", "frame border double line classic elegant", doubleLineFrame()),
+  def("frames-corner-brackets", "frames", "frame corners brackets viewfinder minimal", cornerBrackets()),
+  def("frames-corner-flourish", "frames", "corner flourish ornament vintage swirl", cornerFlourish()),
+  def("frames-polaroid", "frames", "polaroid photo frame instant tape", polaroid()),
+  def("frames-ticket", "frames", "ticket coupon admission stub label", ticket()),
+  def("frames-arch-window", "frames", "arch window frame boho photo mask", archWindow()),
 ];
 
 /* ------------------------------------------------------------------------------------------ *
@@ -1522,13 +1522,13 @@ const rosette = (): string => {
   );
 };
 
-const BADGES: GraphicDef[] = [
-  def("badges-seal", "Gold seal", "badges", "badge seal medal quality premium circle", sealBadge()),
-  def("badges-ribbon-banner", "Ribbon banner", "badges", "ribbon banner label title scroll red", ribbonBanner()),
-  def("badges-starburst-sale", "Sale starburst", "badges", "sale starburst discount offer sticker burst", starburstSale()),
-  def("badges-price-tag", "Price tag", "badges", "price tag label sale hang shop", priceTag()),
-  def("badges-laurel-wreath", "Laurel wreath", "badges", "laurel wreath award winner victory", laurelWreath()),
-  def("badges-rosette", "Award rosette", "badges", "rosette award prize ribbon medal blue", rosette()),
+const BADGES: GraphicDraft[] = [
+  def("badges-seal", "badges", "badge seal medal quality premium circle", sealBadge()),
+  def("badges-ribbon-banner", "badges", "ribbon banner label title scroll red", ribbonBanner()),
+  def("badges-starburst-sale", "badges", "sale starburst discount offer sticker burst", starburstSale()),
+  def("badges-price-tag", "badges", "price tag label sale hang shop", priceTag()),
+  def("badges-laurel-wreath", "badges", "laurel wreath award winner victory", laurelWreath()),
+  def("badges-rosette", "badges", "rosette award prize ribbon medal blue", rosette()),
 ];
 
 /* ------------------------------------------------------------------------------------------ *
@@ -1645,23 +1645,23 @@ const sketchArrowDown = (): string => {
   return svg(200, 200, mv(4, 4, sp(d, "#bfe6f9", 7.5)) + sp(d, "#0ea5e9", 7.5) + circ(60, 18, 6, "#0ea5e9"));
 };
 
-const ARROWS: GraphicDef[] = [
-  def("arrows-curved-hand", "Curved arrow", "arrows", "arrow curved hand-drawn pointer swoosh direction", curvedArrowA()),
-  def("arrows-curved-s", "S-curve arrow", "arrows", "arrow curve s-shaped hand-drawn flow direction", curvedArrowB()),
-  def("arrows-loop", "Loop arrow", "arrows", "arrow loop swirl hand-drawn twist direction", loopArrow()),
-  def("arrows-dotted-path", "Dotted path arrow", "arrows", "arrow dotted path trail dashed route", dottedArrow()),
-  def("arrows-double-ended", "Double-ended arrow", "arrows", "arrow double both ways hand-drawn two-way", doubleArrow()),
-  def("arrows-block-right", "Block arrow", "arrows", "arrow block bold right next direction", blockArrow()),
-  def("arrows-block-curved", "Curved block arrow", "arrows", "arrow block curved bold turn direction", blockCurvedArrow()),
-  def("arrows-chevrons", "Chevron arrows", "arrows", "arrow chevron forward next fast bold", chevrons()),
-  def("arrows-scribble-down", "Scribble arrow down", "arrows", "arrow down scribble swirl hand-drawn scroll", sketchArrowDown()),
+const ARROWS: GraphicDraft[] = [
+  def("arrows-curved-hand", "arrows", "arrow curved hand-drawn pointer swoosh direction", curvedArrowA()),
+  def("arrows-curved-s", "arrows", "arrow curve s-shaped hand-drawn flow direction", curvedArrowB()),
+  def("arrows-loop", "arrows", "arrow loop swirl hand-drawn twist direction", loopArrow()),
+  def("arrows-dotted-path", "arrows", "arrow dotted path trail dashed route", dottedArrow()),
+  def("arrows-double-ended", "arrows", "arrow double both ways hand-drawn two-way", doubleArrow()),
+  def("arrows-block-right", "arrows", "arrow block bold right next direction", blockArrow()),
+  def("arrows-block-curved", "arrows", "arrow block curved bold turn direction", blockCurvedArrow()),
+  def("arrows-chevrons", "arrows", "arrow chevron forward next fast bold", chevrons()),
+  def("arrows-scribble-down", "arrows", "arrow down scribble swirl hand-drawn scroll", sketchArrowDown()),
 ];
 
 /* ------------------------------------------------------------------------------------------ *
  *  Library
  * ------------------------------------------------------------------------------------------ */
 
-export const GRAPHICS_A: GraphicDef[] = [
+export const GRAPHICS_A: GraphicDraft[] = [
   ...ABSTRACT,
   ...NATURE,
   ...DECOR,

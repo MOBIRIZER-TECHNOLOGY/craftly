@@ -4,6 +4,7 @@ import { useEditor } from "@/core/store";
 import type { Template, TemplateCategory } from "@/core/types";
 import { TEMPLATES, TEMPLATE_CATEGORY_LABELS, searchTemplates } from "@/data/templates";
 import { describeSize, getDesignType } from "@/data/designTypes";
+import { m } from "@/i18n";
 import { Button, IconButton, IconFilterList, IconPages, IconPlus, IconTemplate, MenuPopover, Skeleton } from "@/ui";
 import { ChipRow } from "../shared/ChipRow";
 import { DraggableItem } from "../shared/DraggableItem";
@@ -47,7 +48,7 @@ export default function TemplatesTab() {
     // the design's own category comes first, right after "All"
     const first = type && present.includes(type.templates) ? type.templates : null;
     const ordered = first ? [first, ...present.filter((c) => c !== first)] : present;
-    return [{ id: "all", label: "All" }, ...ordered.map((c) => ({ id: c, label: TEMPLATE_CATEGORY_LABELS[c] }))];
+    return [{ id: "all", label: m.panelsTabs.shared.all }, ...ordered.map((c) => ({ id: c, label: TEMPLATE_CATEGORY_LABELS[c] }))];
   }, [available, type]);
 
   const results = useMemo(() => {
@@ -59,7 +60,7 @@ export default function TemplatesTab() {
 
   if (detail) return <TemplateDetail template={detail} onBack={() => setDetail(null)} />;
 
-  const placeholder = type && type.id !== "custom" ? `Search ${shortTypeName(type.name)} templates` : "Search templates";
+  const placeholder = type && type.id !== "custom" ? m.panelsTabs.templates.searchType(shortTypeName(type.name)) : m.panelsTabs.templates.search;
   const colWidth = wallWidth > 0 ? Math.floor((wallWidth - GAP) / 2) : 0;
 
   const choose = (t: Template) => {
@@ -77,7 +78,7 @@ export default function TemplatesTab() {
           trailing={
             <IconButton
               ref={filterRef}
-              label="Filter templates"
+              label={m.panelsTabs.templates.filter}
               icon={<IconFilterList />}
               size="sm"
               active={onlyShape}
@@ -92,33 +93,28 @@ export default function TemplatesTab() {
           anchor={filterRef.current}
           onClose={() => setFilterOpen(false)}
           placement="bottom-end"
-          aria-label="Template filters"
+          aria-label={m.panelsTabs.templates.filters}
           items={[
-            { type: "label", label: "Show" },
-            { id: "all", label: "All templates", checked: !onlyShape, onSelect: () => setOnlyShape(false) },
-            { id: "shape", label: "Same shape as this design", checked: onlyShape, onSelect: () => setOnlyShape(true) },
-            { type: "label", label: `This design is ${describeSize(design.width, design.height, design.unit)}` },
+            { type: "label", label: m.panelsTabs.templates.show },
+            { id: "all", label: m.panelsTabs.templates.allTemplates, checked: !onlyShape, onSelect: () => setOnlyShape(false) },
+            { id: "shape", label: m.panelsTabs.templates.sameShape, checked: onlyShape, onSelect: () => setOnlyShape(true) },
+            { type: "label", label: m.panelsTabs.templates.designIs(describeSize(design.width, design.height, design.unit)) },
           ]}
         />
-        {chips.length > 1 ? <ChipRow chips={chips} value={category} onChange={setCategory} aria-label="Template categories" /> : null}
+        {chips.length > 1 ? <ChipRow chips={chips} value={category} onChange={setCategory} aria-label={m.panelsTabs.templates.categories} /> : null}
       </PanelTop>
       <PanelScroll>
         <div ref={wallRef} className="cf-tpl__wall">
           {TEMPLATES.length === 0 ? (
             <>
-              <EmptyHint
-                icon={<IconTemplate />}
-                title="Templates are on their way"
-                text="Ready-made layouts for this design size will appear here as soon as they finish loading."
-                compact
-              />
+              <EmptyHint icon={<IconTemplate />} title={m.panelsTabs.templates.onTheirWay} text={m.panelsTabs.templates.onTheirWayText} compact />
               <TemplateSkeletons width={colWidth} />
             </>
           ) : results.length === 0 ? (
             <EmptyHint
               icon={<IconTemplate />}
-              title="No templates found"
-              text={debounced.trim() ? `Nothing matches "${debounced.trim()}". Try a broader word or another category.` : "No templates in this category yet."}
+              title={m.panelsTabs.templates.noneTitle}
+              text={debounced.trim() ? m.panelsTabs.templates.noneText(debounced.trim()) : m.panelsTabs.templates.emptyCategory}
               action={
                 category !== "all" || onlyShape || query ? (
                   <Button
@@ -130,7 +126,7 @@ export default function TemplatesTab() {
                       setQuery("");
                     }}
                   >
-                    Show all templates
+                    {m.panelsTabs.templates.showAll}
                   </Button>
                 ) : undefined
               }
@@ -165,7 +161,7 @@ function TemplateSkeletons({ width }: { width: number }) {
 function TemplateCard({ template, width, onChoose }: { template: Template; width: number; onChoose: (t: Template) => void }) {
   const pages = template.pages.length;
   return (
-    <DraggableItem label={`${template.name}${pages > 1 ? `, ${pages} pages` : ""}`} onInsert={() => onChoose(template)} className="cf-tpl__card" tooltip={false}>
+    <DraggableItem label={m.panelsTabs.templates.card(template.name, pages)} onInsert={() => onChoose(template)} className="cf-tpl__card" tooltip={false}>
       <TemplateThumb template={template} width={width} className="cf-tpl__thumb" />
       {pages > 1 ? (
         <span className="cf-tpl__pages">
@@ -204,9 +200,14 @@ function TemplateDetail({ template, onBack }: { template: Template; onBack: () =
   return (
     <Panel>
       <PanelTop>
-        <PanelHeader title={template.name} subtitle={`${n} pages - ${describeSize(template.width, template.height, "px")}`} onBack={onBack} backLabel="Back to templates" />
+        <PanelHeader
+          title={template.name}
+          subtitle={m.panelsTabs.templates.detailSubtitle(n, describeSize(template.width, template.height, "px"))}
+          onBack={onBack}
+          backLabel={m.panelsTabs.templates.back}
+        />
         <Button variant="primary" size="lg" block icon={<IconPages />} loading={busy} onClick={() => void applyAll()}>
-          Apply all {n} pages
+          {m.panelsTabs.templates.applyAll(n)}
         </Button>
       </PanelTop>
       <PanelScroll>
@@ -215,13 +216,13 @@ function TemplateDetail({ template, onBack }: { template: Template; onBack: () =
             ? fitted.map((page, i) => (
                 <div key={page.id} className="cf-tpl__page">
                   <div className="cf-tpl__page-head">
-                    <span className="cf-tpl__page-no">Page {i + 1}</span>
+                    <span className="cf-tpl__page-no">{m.panelsTabs.templates.page(i + 1)}</span>
                     <Button variant="ghost" size="sm" icon={<IconPlus />} onClick={() => void applyTemplatePage(template, template.pages[i], "add")} className="cf-tpl__add">
-                      Add as new page
+                      {m.panelsTabs.templates.addAsNew}
                     </Button>
                   </div>
                   <DraggableItem
-                    label={`Use page ${i + 1} on the current page`}
+                    label={m.panelsTabs.templates.usePage(i + 1)}
                     onInsert={() => void applyTemplatePage(template, template.pages[i], "replace")}
                     className="cf-tpl__page-card"
                     tooltip={false}

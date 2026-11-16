@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { m } from "@/i18n";
 import { settleSaves } from "./settleSaves";
 
 export interface Route {
@@ -33,10 +34,10 @@ export function useRoute(): Route {
         window.history.replaceState(null, "", current);
         const { confirm } = await import("@/ui");
         const discard = await confirm({
-          title: "Leave with unsaved changes?",
-          message: "Stay to retry saving or download a project file. Leaving will discard the unsaved changes in this tab.",
-          confirmLabel: "Leave editor",
-          cancelLabel: "Stay in editor",
+          title: m.app.leaveEditor.title,
+          message: m.app.leaveEditor.message,
+          confirmLabel: m.app.leaveEditor.leave,
+          cancelLabel: m.app.leaveEditor.stay,
           danger: true,
         });
         if (request !== pending || !discard) return;

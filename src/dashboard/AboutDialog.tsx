@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { HardDrive } from "lucide-react";
+import { m } from "@/i18n";
 import { MODELS, modelHost } from "@/ml/registry";
 import { BrandMark, Button, Modal } from "@/ui";
 import { formatBytes } from "./format";
@@ -21,7 +22,7 @@ async function readStorage(): Promise<StorageInfo> {
 /** "About Craftly": where things are stored (this device), how much, and a button to protect it from automatic cleanup. */
 export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} onClose={onClose} size="sm" title="About Craftly" className="cf-about">
+    <Modal open={open} onClose={onClose} size="sm" title={m.dashboard.account.about} className="cf-about">
       <AboutBody />
     </Modal>
   );
@@ -58,39 +59,27 @@ function AboutBody() {
         <BrandMark size={44} />
         <div>
           <p className="cf-about__name">Craftly</p>
-          <p className="cf-about__tag">Design anything, right in your browser.</p>
+          <p className="cf-about__tag">{m.dashboard.about.tagline}</p>
         </div>
       </div>
 
-      <p className="cf-about__text">
-        Everything you make here is stored on this device. Your designs, uploaded images and brand kit live in your browser's local storage, and nothing is sent to a server or an
-        account. Craftly keeps working offline.
-      </p>
-      <p className="cf-about__text">
-        The AI photo tools are the one exception: with your permission they download each model once, from {modelHost(MODELS[0]!)}, and then work offline. Your designs and photos
-        are never sent.
-      </p>
-      <p className="cf-about__text">
-        Clearing your browser's site data removes all of it, so keep a copy: Back up &amp; restore, in the account menu, saves everything in one file.
-      </p>
+      <p className="cf-about__text">{m.dashboard.about.stored}</p>
+      <p className="cf-about__text">{m.dashboard.about.aiTools(modelHost(MODELS[0]!))}</p>
+      <p className="cf-about__text">{m.dashboard.about.keepCopy}</p>
 
       <div className="cf-about__storage">
         <span className="cf-about__storage-icon" aria-hidden="true">
           <HardDrive />
         </span>
         <div className="cf-about__storage-text">
-          <p className="cf-about__storage-title">{info?.used != null ? `${formatBytes(info.used)} stored on this device` : "Stored on this device"}</p>
+          <p className="cf-about__storage-title">{info?.used != null ? m.dashboard.about.storedSize(formatBytes(info.used)) : m.dashboard.about.storedHere}</p>
           <p className="cf-about__storage-sub">
-            {info?.persisted === true
-              ? "Protected: your browser will not clear it automatically."
-              : info?.persisted === false
-                ? "Your browser may clear it when the device is low on space."
-                : "Local browser storage"}
+            {info?.persisted === true ? m.dashboard.about.protected : info?.persisted === false ? m.dashboard.shared.mayClear : m.dashboard.about.localStorage}
           </p>
         </div>
         {info?.persisted === false ? (
           <Button size="sm" variant="soft" loading={asking} onClick={() => void protect()}>
-            Protect
+            {m.dashboard.shared.protect}
           </Button>
         ) : null}
       </div>

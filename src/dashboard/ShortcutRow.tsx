@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { IconCustomSize, IconMore, IconPrint, IconSocial, IconUpload, MenuPopover, cx, type LucideIcon, type MenuEntry } from "@/ui";
 import { DESIGN_TYPES, describeSize, getDesignType, type DesignType } from "@/data/designTypes";
+import { m } from "@/i18n";
 import { createBlankAndOpen, pickImageAndCreate } from "./actions";
 import { openCreateDialog } from "./createDialogState";
 import { typeIcon } from "./designIcons";
@@ -27,15 +28,15 @@ function typeShortcut(id: string, label: string): Shortcut | null {
 
 function buildShortcuts(): Shortcut[] {
   const list: Array<Shortcut | null> = [
-    typeShortcut("presentation", "Presentation"),
-    { id: "social", label: "Social media", icon: IconSocial, color: categoryColor("social"), types: DESIGN_TYPES.filter((type) => type.category === "social") },
-    { id: "print", label: "Printables", icon: IconPrint, color: categoryColor("print"), types: DESIGN_TYPES.filter((type) => type.category === "print") },
-    typeShortcut("doc-a4", "Doc"),
-    typeShortcut("resume", "Resume"),
-    typeShortcut("logo", "Logo"),
-    { id: "custom", label: "Custom size", icon: IconCustomSize, run: () => openCreateDialog({ tab: "custom" }) },
-    { id: "upload", label: "Upload", icon: IconUpload, run: () => void pickImageAndCreate() },
-    { id: "more", label: "More", icon: IconMore, run: () => openCreateDialog() },
+    typeShortcut("presentation", m.dashboard.shortcuts.presentation),
+    { id: "social", label: m.dashboard.shortcuts.social, icon: IconSocial, color: categoryColor("social"), types: DESIGN_TYPES.filter((type) => type.category === "social") },
+    { id: "print", label: m.dashboard.shortcuts.print, icon: IconPrint, color: categoryColor("print"), types: DESIGN_TYPES.filter((type) => type.category === "print") },
+    typeShortcut("doc-a4", m.dashboard.shortcuts.doc),
+    typeShortcut("resume", m.dashboard.shortcuts.resume),
+    typeShortcut("logo", m.dashboard.shortcuts.logo),
+    { id: "custom", label: m.dashboard.shared.customSize, icon: IconCustomSize, run: () => openCreateDialog({ tab: "custom" }) },
+    { id: "upload", label: m.dashboard.shared.upload, icon: IconUpload, run: () => void pickImageAndCreate() },
+    { id: "more", label: m.common.more, icon: IconMore, run: () => openCreateDialog() },
   ];
   return list.filter((item): item is Shortcut => item !== null);
 }
@@ -59,7 +60,7 @@ export function ShortcutRow() {
 
   return (
     <div className="cf-dshortcuts-wrap">
-      <div className="cf-dshortcuts" role="group" aria-label="Start a design">
+      <div className="cf-dshortcuts" role="group" aria-label={m.dashboard.shortcuts.group}>
         {shortcuts.map((item) => {
           const Icon = item.icon;
           const isMenu = item.types !== undefined;

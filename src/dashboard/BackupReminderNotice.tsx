@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { m } from "@/i18n";
 import { Button, IconArchive } from "@/ui";
 import { reminderWords } from "./backupReminder";
 import { openBackupDialog, snoozeBackupReminder, useBackupReminder } from "./backupReminderState";
@@ -23,17 +24,17 @@ export function BackupReminderNotice() {
   };
 
   return (
-    <div className="cf-dremind-region" role="status" aria-label="Backup reminder" tabIndex={-1} ref={region}>
+    <div className="cf-dremind-region" role="status" aria-label={m.dashboard.reminder.label} tabIndex={-1} ref={region}>
       {reminder ? (
         <div className="cf-dremind">
           <IconArchive className="cf-dremind__icon" aria-hidden="true" />
           <p className="cf-dremind__text">{reminderWords(reminder, now)}</p>
           <div className="cf-dremind__actions">
             <Button size="sm" variant="secondary" onClick={() => openBackupDialog({ start: true })}>
-              Back up now
+              {m.dashboard.shared.backUpNow}
             </Button>
             <Button size="sm" variant="ghost" onClick={later}>
-              Remind me later
+              {m.dashboard.reminder.later}
             </Button>
           </div>
         </div>

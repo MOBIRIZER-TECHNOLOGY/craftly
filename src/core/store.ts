@@ -11,6 +11,7 @@
  *    or pass `{ coalesce: "key" }` for repeated discrete edits.
  */
 import { applyOps, diffDesign, type Op } from "@/collab/ops";
+import { m } from "@/i18n";
 import { withShared } from "@/collab/session";
 import { animatableElements, getPageAnimationPreset, MAX_PAGE_DURATION, MIN_PAGE_DURATION, pageAnimationFor, type AnimPhase } from "./animation";
 import { cloneDeep } from "./clone";
@@ -380,9 +381,9 @@ function normalizeTexts(next: Design, prev: Design | null, all = false): Design 
       if (el.type !== "text") return;
       const before = prevById.get(el.id);
       if (!all && before === el) return;
-      const m = measureTextElement(el);
-      if (Math.abs(m.width - el.width) < 0.5 && Math.abs(m.height - el.height) < 0.5) return;
-      const wrapped = before && onPage.has(el) ? wrapAtPageEdge(el, before, m.width, next.width) : null;
+      const size = measureTextElement(el);
+      if (Math.abs(size.width - el.width) < 0.5 && Math.abs(size.height - el.height) < 0.5) return;
+      const wrapped = before && onPage.has(el) ? wrapAtPageEdge(el, before, size.width, next.width) : null;
       if (wrapped) {
         fixes.push({ id: el.id, ...wrapped, y: el.y, wraps: true });
         return;
@@ -396,12 +397,12 @@ function normalizeTexts(next: Design, prev: Design | null, all = false): Design 
         const origin = { x: 0, y: 0 };
         const oldCentre = { x: el.x + el.width / 2, y: el.y + el.height / 2 };
         const oldOff = rotatePoint({ x: (a - 0.5) * el.width, y: -el.height / 2 }, origin, el.rotation);
-        const newOff = rotatePoint({ x: (a - 0.5) * m.width, y: -m.height / 2 }, origin, el.rotation);
+        const newOff = rotatePoint({ x: (a - 0.5) * size.width, y: -size.height / 2 }, origin, el.rotation);
         const centre = { x: oldCentre.x + oldOff.x - newOff.x, y: oldCentre.y + oldOff.y - newOff.y };
-        x = centre.x - m.width / 2;
-        y = centre.y - m.height / 2;
+        x = centre.x - size.width / 2;
+        y = centre.y - size.height / 2;
       }
-      fixes.push({ id: el.id, width: m.width, height: m.height, x, y });
+      fixes.push({ id: el.id, width: size.width, height: size.height, x, y });
     });
   }
   if (!fixes.length) return next;
@@ -687,7 +688,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     },
     setTitle(title) {
       commit((d) => {
-        d.title = title.trim() || "Untitled design";
+        d.title = title.trim() || m.core.untitledDesign;
       });
     },
     updateMeta(patch) {

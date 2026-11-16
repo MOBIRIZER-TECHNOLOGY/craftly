@@ -11,12 +11,13 @@
  *   - a database that a newer release upgraded cannot be opened by an older one (the browser refuses, "VersionError"). That
  *     is the protection against older code writing over newer data; it becomes a `MigrationError` with a message to show.
  */
+import { m } from "@/i18n";
 import { MigrationError } from "./migrator";
 
 /** A step of a database upgrade: create a store or an index, or move records with `transaction`. Never edit a step that has shipped. */
 export type DbStep = (db: IDBDatabase, transaction: IDBTransaction) => void;
 
-export const DATABASE_NEWER_MESSAGE = "Your designs were saved by a newer version of Craftly than this one. Reload the page to get the newest version.";
+export const DATABASE_NEWER_MESSAGE = m.core.storage.newer;
 
 export interface OpenDatabaseOptions {
   name: string;
@@ -35,7 +36,7 @@ export function openDatabase(options: OpenDatabaseOptions): Promise<IDBDatabase>
   const { name, steps, onBlocked, onReplaced, onClosed, graceMs = 3000 } = options;
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined" || !indexedDB) {
-      reject(new Error("IndexedDB is not available in this browser."));
+      reject(new Error(m.core.storage.unavailable));
       return;
     }
     const request = indexedDB.open(name, steps.length);
@@ -47,7 +48,7 @@ export function openDatabase(options: OpenDatabaseOptions): Promise<IDBDatabase>
       try {
         for (; version < steps.length; version++) steps[version](request.result, transaction);
       } catch (cause) {
-        failure = new MigrationError("failed", "library", "Craftly could not bring your saved designs up to date. They have not been changed.", { step: version + 1, cause });
+        failure = new MigrationError("failed", "library", m.core.storage.upgradeFailed, { step: version + 1, cause });
         transaction.abort();
       }
     };
@@ -56,7 +57,7 @@ export function openDatabase(options: OpenDatabaseOptions): Promise<IDBDatabase>
       const error = request.error;
       if (failure) reject(failure);
       else if (error?.name === "VersionError") reject(new MigrationError("newer", "library", DATABASE_NEWER_MESSAGE));
-      else reject(error ?? new Error("Could not open the local database."));
+      else reject(error ?? new Error(m.core.storage.cannotOpen));
     };
     request.onsuccess = () => {
       const db = request.result;

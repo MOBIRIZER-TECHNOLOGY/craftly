@@ -28,7 +28,7 @@ import { designPath, navigate } from "@/router";
 import { confirm, toast } from "@/ui";
 import { closeCreateDialog } from "./createDialogState";
 import { pickFiles } from "./files";
-import { plural } from "./format";
+import { m } from "@/i18n";
 import { promptText } from "./prompt";
 import { closeTemplatePreview } from "./templatePreview";
 
@@ -38,7 +38,7 @@ export const MAX_SIZE_PX = 8000;
 
 export const IMAGE_ACCEPT = ACCEPTED_IMAGE_TYPES.join(",");
 
-const reason = (error: unknown): string => (error instanceof Error && error.message ? error.message : "Please try again.");
+const reason = (error: unknown): string => (error instanceof Error && error.message ? error.message : m.dashboard.actions.tryAgain);
 
 /** Runs a task; shows an error toast and returns false when it throws. */
 async function guard(task: () => Promise<unknown>, failure: string): Promise<boolean> {
@@ -110,7 +110,7 @@ export function createBlankAndOpen(type: DesignType, options: CreateOptions = {}
   return exclusive(async () => {
     const design = await createBlankDesign({ typeId: type.id, width: type.width, height: type.height, unit: type.unit, folderId: options.folderId ?? null });
     openInEditor(design);
-  }, "Couldn't create the design.");
+  }, m.dashboard.actions.couldNotCreate);
 }
 
 /** A blank design of any size (already validated: whole pixels inside the limits). */
@@ -118,7 +118,7 @@ export function createCustomAndOpen(width: number, height: number, unit: SizeUni
   return exclusive(async () => {
     const design = await createBlankDesign({ typeId: "custom", width: Math.round(width), height: Math.round(height), unit, folderId: options.folderId ?? null });
     openInEditor(design);
-  }, "Couldn't create the design.");
+  }, m.dashboard.actions.couldNotCreate);
 }
 
 /** Scales a size down / up so both sides stay inside the 40-8000 px limits, keeping the aspect ratio. */
@@ -158,7 +158,7 @@ async function createDesignWithAsset(asset: Asset, options: CreateOptions): Prom
     typeId: "custom",
     width,
     height,
-    title: asset.name || "Untitled design",
+    title: asset.name || m.dashboard.actions.untitledDesign,
     pages: [createPage({ elements: [picture] })],
     folderId: options.folderId ?? null,
   });
@@ -168,7 +168,7 @@ async function createDesignWithAsset(asset: Asset, options: CreateOptions): Prom
 
 /** Stores an image file in the uploads library and starts a design from it. Resolves with an error message or null. */
 export async function createFromImageFile(file: File, options: CreateOptions = {}): Promise<string | null> {
-  if (!isAcceptedImage(file)) return "That file is not an image. Choose a PNG, JPG, WebP, GIF or SVG file.";
+  if (!isAcceptedImage(file)) return m.dashboard.actions.notAnImage;
   if (creating) return null;
   creating = true;
   try {
@@ -176,13 +176,13 @@ export async function createFromImageFile(file: File, options: CreateOptions = {
     try {
       asset = await addAssetFromFile(file);
     } catch {
-      return "Craftly could not read that image. Try a different file.";
+      return m.dashboard.actions.unreadableImage;
     }
     await createDesignWithAsset(asset, options);
     return null;
   } catch (error) {
     console.error(error);
-    return `Couldn't create the design. ${reason(error)}`;
+    return m.dashboard.actions.couldNotCreateWithReason(reason(error));
   } finally {
     creating = false;
   }
@@ -198,7 +198,7 @@ export async function pickImageAndCreate(options: CreateOptions = {}): Promise<v
 
 /** "Use in new design" for something already in the uploads library. */
 export function createFromAsset(asset: Asset, options: CreateOptions = {}): Promise<void> {
-  return exclusive(() => createDesignWithAsset(asset, options), "Couldn't create the design.");
+  return exclusive(() => createDesignWithAsset(asset, options), m.dashboard.actions.couldNotCreate);
 }
 
 /** "Customize this template": a new design with the template's pages, opened in the editor. */
@@ -214,7 +214,7 @@ export function createFromTemplate(template: Template, options: CreateOptions = 
     });
     await finishNewDesign(design, getDesignType(template.typeId)?.unit ?? "px");
     openInEditor(design);
-  }, "Couldn't start a design from this template.");
+  }, m.dashboard.actions.couldNotStartFromTemplate);
 }
 
 /* ------------------------------------------------------------------ */
@@ -240,29 +240,34 @@ export async function uploadImageFiles(files: File[], options: { quiet?: boolean
       skipped.push(file.name);
     }
   }
-  if (stored.length > 0 && !options.quiet) toast.success(`Uploaded ${plural(stored.length, "image")}`, { duration: 2800 });
+  if (stored.length > 0 && !options.quiet) toast.success(m.dashboard.actions.uploaded(stored.length), { duration: 2800 });
   if (skipped.length > 0) {
-    const names = skipped.length > 2 ? `${skipped.slice(0, 2).join(", ")} and ${skipped.length - 2} more` : skipped.join(", ");
-    toast.error(`Couldn't upload ${names}. Use PNG, JPG, WebP, GIF or SVG images.`);
+    const names = skipped.length > 2 ? m.dashboard.actions.namesAndMore(skipped.slice(0, 2).join(", "), skipped.length - 2) : skipped.join(", ");
+    toast.error(m.dashboard.actions.uploadFailed(names));
   }
   return stored;
 }
 
 export async function renameAssetAction(asset: Asset): Promise<void> {
-  const name = await promptText({ title: "Rename image", label: "Image name", initialValue: asset.name, confirmLabel: "Rename" });
+  const name = await promptText({
+    title: m.dashboard.actions.renameImage,
+    label: m.dashboard.actions.imageName,
+    initialValue: asset.name,
+    confirmLabel: m.dashboard.shared.rename,
+  });
   if (name === null || name === asset.name) return;
-  await guard(() => renameAsset(asset.id, name), "Couldn't rename the image.");
+  await guard(() => renameAsset(asset.id, name), m.dashboard.actions.renameImageFailed);
 }
 
 export async function deleteAssetAction(asset: Asset): Promise<void> {
   const ok = await confirm({
-    title: `Delete “${asset.name}”?`,
-    message: "The image is removed from your uploads. Designs that still use it will lose the picture.",
-    confirmLabel: "Delete image",
+    title: m.dashboard.actions.deleteImageTitle(asset.name),
+    message: m.dashboard.actions.deleteImageMessage,
+    confirmLabel: m.dashboard.actions.deleteImage,
     danger: true,
   });
   if (!ok) return;
-  if (await guard(() => deleteAsset(asset.id), "Couldn't delete the image.")) toast.success("Image deleted", { duration: 2600 });
+  if (await guard(() => deleteAsset(asset.id), m.dashboard.actions.deleteImageFailed)) toast.success(m.dashboard.actions.imageDeleted, { duration: 2600 });
 }
 
 /* ------------------------------------------------------------------ */
@@ -272,82 +277,93 @@ export async function deleteAssetAction(asset: Asset): Promise<void> {
 export const openDesign = (design: Pick<DesignSummary, "id">): void => navigate(designPath(design.id));
 
 export async function renameDesignAction(design: DesignSummary): Promise<void> {
-  const name = await promptText({ title: "Rename design", label: "Design name", initialValue: design.title, confirmLabel: "Rename", placeholder: "Untitled design" });
+  const name = await promptText({
+    title: m.dashboard.actions.renameDesign,
+    label: m.dashboard.actions.designName,
+    initialValue: design.title,
+    confirmLabel: m.dashboard.shared.rename,
+    placeholder: m.dashboard.actions.untitledDesign,
+  });
   if (name === null || name === design.title) return;
-  await guard(() => renameDesign(design.id, name), "Couldn't rename the design.");
+  await guard(() => renameDesign(design.id, name), m.dashboard.actions.renameDesignFailed);
 }
 
 export async function duplicateDesignAction(design: DesignSummary): Promise<void> {
   const made: { id?: string } = {};
   const ok = await guard(async () => {
     const copy = await duplicateDesign(design.id);
-    if (!copy) throw new Error("The original design could not be found.");
+    if (!copy) throw new Error(m.dashboard.actions.originalMissing);
     made.id = copy.id;
-  }, "Couldn't make a copy.");
+  }, m.dashboard.actions.copyFailed);
   const id = made.id;
-  if (ok && id) toast.success("Made a copy", { actionLabel: "Open", onAction: () => navigate(designPath(id)) });
+  if (ok && id) toast.success(m.dashboard.actions.copied, { actionLabel: m.dashboard.shared.open, onAction: () => navigate(designPath(id)) });
 }
 
 export async function toggleStarAction(design: DesignSummary): Promise<void> {
-  await guard(() => setStarred(design.id, !design.starred), "Couldn't update the star.");
+  await guard(() => setStarred(design.id, !design.starred), m.dashboard.actions.starFailed);
 }
 
 /** Moves a design into a folder (or back to Projects when `folder` is null). */
 export async function moveDesignAction(design: DesignSummary, folder: Folder | null): Promise<void> {
   if ((design.folderId ?? null) === (folder?.id ?? null)) return;
-  const ok = await guard(() => moveToFolder(design.id, folder ? folder.id : null), "Couldn't move the design.");
-  if (ok) toast.success(folder ? `Moved to “${folder.name}”` : "Moved to Projects", { duration: 2800 });
+  const ok = await guard(() => moveToFolder(design.id, folder ? folder.id : null), m.dashboard.actions.moveFailed);
+  if (ok) toast.success(folder ? m.dashboard.actions.movedTo(folder.name) : m.dashboard.actions.movedToProjects, { duration: 2800 });
 }
 
 /** "New folder..." inside a Move to folder menu: asks for a name, creates the folder and moves the design in. */
 export async function moveToNewFolderAction(design: DesignSummary): Promise<void> {
-  const name = await promptText({ title: "New folder", label: "Folder name", confirmLabel: "Create and move", placeholder: "Untitled folder" });
+  const name = await promptText({
+    title: m.dashboard.actions.newFolder,
+    label: m.dashboard.actions.folderName,
+    confirmLabel: m.dashboard.actions.createAndMove,
+    placeholder: m.dashboard.actions.untitledFolder,
+  });
   if (name === null) return;
   const made: { folder?: Folder } = {};
   const ok = await guard(async () => {
     made.folder = await createFolder(name);
     await moveToFolder(design.id, made.folder.id);
-  }, "Couldn't create the folder.");
-  if (ok && made.folder) toast.success(`Moved to “${made.folder.name}”`, { duration: 2800 });
+  }, m.dashboard.actions.createFolderFailed);
+  if (ok && made.folder) toast.success(m.dashboard.actions.movedTo(made.folder.name), { duration: 2800 });
 }
 
 /** Moves a design to the trash and offers to undo it. */
 export async function trashDesignAction(design: DesignSummary): Promise<void> {
-  const ok = await guard(() => moveToTrash(design.id), "Couldn't move the design to the trash.");
+  const ok = await guard(() => moveToTrash(design.id), m.dashboard.actions.trashFailed);
   if (!ok) return;
-  toast.info("Moved to trash", {
-    actionLabel: "Undo",
+  toast.info(m.dashboard.actions.movedToTrash, {
+    actionLabel: m.common.undo,
     duration: 6000,
-    onAction: () => void guard(() => restoreFromTrash(design.id), "Couldn't restore the design."),
+    onAction: () => void guard(() => restoreFromTrash(design.id), m.dashboard.actions.restoreFailed),
   });
 }
 
 export async function restoreDesignAction(design: DesignSummary): Promise<void> {
-  if (await guard(() => restoreFromTrash(design.id), "Couldn't restore the design.")) {
-    toast.success(`Restored “${design.title}”`, { actionLabel: "Open", onAction: () => openDesign(design) });
+  if (await guard(() => restoreFromTrash(design.id), m.dashboard.actions.restoreFailed)) {
+    toast.success(m.dashboard.actions.restored(design.title), { actionLabel: m.dashboard.shared.open, onAction: () => openDesign(design) });
   }
 }
 
 export async function deleteForeverAction(design: DesignSummary): Promise<void> {
   const ok = await confirm({
-    title: `Delete “${design.title}” forever?`,
-    message: "This removes the design and its version history from this device. You can't undo it.",
-    confirmLabel: "Delete forever",
+    title: m.dashboard.actions.deleteForeverTitle(design.title),
+    message: m.dashboard.actions.deleteForeverMessage,
+    confirmLabel: m.dashboard.shared.deleteForever,
     danger: true,
   });
   if (!ok) return;
-  if (await guard(() => deleteForever(design.id), "Couldn't delete the design.")) toast.success("Design deleted", { duration: 2600 });
+  if (await guard(() => deleteForever(design.id), m.dashboard.actions.deleteDesignFailed)) toast.success(m.dashboard.actions.designDeleted, { duration: 2600 });
 }
 
 export async function emptyTrashAction(count: number): Promise<void> {
   const ok = await confirm({
-    title: "Empty the trash?",
-    message: `${plural(count, "design")} will be deleted forever from this device. You can't undo it.`,
-    confirmLabel: "Empty trash",
+    title: m.dashboard.actions.emptyTrashTitle,
+    message: m.dashboard.actions.emptyTrashMessage(count),
+    confirmLabel: m.dashboard.actions.emptyTrash,
     danger: true,
   });
   if (!ok) return;
-  if (await guard(() => emptyTrash(), "Couldn't empty the trash.")) toast.success("Trash emptied", { duration: 2600 });
+  if (await guard(() => emptyTrash(), m.dashboard.actions.emptyTrashFailed)) toast.success(m.dashboard.actions.trashEmptied, { duration: 2600 });
 }
 
 /* ------------------------------------------------------------------ */
@@ -356,36 +372,45 @@ export async function emptyTrashAction(count: number): Promise<void> {
 
 /** Asks for a name and creates a folder. Resolves with the new folder, or null when cancelled / failed. */
 export async function createFolderAction(): Promise<Folder | null> {
-  const name = await promptText({ title: "Create folder", label: "Folder name", confirmLabel: "Create folder", placeholder: "Untitled folder" });
+  const name = await promptText({
+    title: m.dashboard.shared.createFolder,
+    label: m.dashboard.actions.folderName,
+    confirmLabel: m.dashboard.shared.createFolder,
+    placeholder: m.dashboard.actions.untitledFolder,
+  });
   if (name === null) return null;
   const made: { folder?: Folder } = {};
   const ok = await guard(async () => {
     made.folder = await createFolder(name);
-  }, "Couldn't create the folder.");
+  }, m.dashboard.actions.createFolderFailed);
   if (ok && made.folder) {
-    toast.success(`Created “${made.folder.name}”`, { duration: 2600 });
+    toast.success(m.dashboard.actions.folderCreated(made.folder.name), { duration: 2600 });
     return made.folder;
   }
   return null;
 }
 
 export async function renameFolderAction(folder: Folder): Promise<void> {
-  const name = await promptText({ title: "Rename folder", label: "Folder name", initialValue: folder.name, confirmLabel: "Rename" });
+  const name = await promptText({
+    title: m.dashboard.actions.renameFolder,
+    label: m.dashboard.actions.folderName,
+    initialValue: folder.name,
+    confirmLabel: m.dashboard.shared.rename,
+  });
   if (name === null || name === folder.name) return;
-  await guard(() => renameFolder(folder.id, name), "Couldn't rename the folder.");
+  await guard(() => renameFolder(folder.id, name), m.dashboard.actions.renameFolderFailed);
 }
 
 /** Deletes a folder after confirming; the designs inside return to Projects. Resolves true when it was deleted. */
 export async function deleteFolderAction(folder: Folder, designCount: number): Promise<boolean> {
   const ok = await confirm({
-    title: `Delete “${folder.name}”?`,
-    message:
-      designCount > 0 ? `The ${plural(designCount, "design")} inside will move back to Projects. Nothing else is deleted.` : "The folder is empty, so nothing else is affected.",
-    confirmLabel: "Delete folder",
+    title: m.dashboard.actions.deleteFolderTitle(folder.name),
+    message: designCount > 0 ? m.dashboard.actions.deleteFolderMessage(designCount) : m.dashboard.actions.deleteEmptyFolderMessage,
+    confirmLabel: m.dashboard.shared.deleteFolder,
     danger: true,
   });
   if (!ok) return false;
-  const deleted = await guard(() => deleteFolder(folder.id), "Couldn't delete the folder.");
-  if (deleted) toast.success("Folder deleted", { duration: 2600 });
+  const deleted = await guard(() => deleteFolder(folder.id), m.dashboard.actions.deleteFolderFailed);
+  if (deleted) toast.success(m.dashboard.actions.folderDeleted, { duration: 2600 });
   return deleted;
 }

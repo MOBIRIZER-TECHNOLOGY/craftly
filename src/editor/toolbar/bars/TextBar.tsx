@@ -10,6 +10,7 @@ import { useEffect, type CSSProperties } from "react";
 import { getActions, useEditor } from "@/core/store";
 import type { ListKind, TextAlign, TextCase, TextElement } from "@/core/types";
 import { isTyping } from "@/editor/canvas/controller";
+import { m } from "@/i18n";
 import { textEditing, useTextSelectionStyle, type InlineFormat } from "@/editor/canvas/textEditing";
 import {
   Divider,
@@ -37,18 +38,15 @@ import { MIXED_BAR_CSS, clampNumber, editElements, only, parasUniform, runsUnifo
 type Flag = "bold" | "italic" | "underline" | "strike";
 
 const CASES: TextCase[] = ["none", "upper", "lower", "title"];
-const CASE_NAME: Record<TextCase, string> = { none: "Normal case", upper: "Uppercase", lower: "Lowercase", title: "Title case" };
 const CASE_GLYPH: Record<TextCase, string> = { none: "aA", upper: "AA", lower: "aa", title: "Aa" };
 
 const ALIGNS: TextAlign[] = ["left", "center", "right", "justify"];
-const ALIGN_NAME: Record<TextAlign, string> = { left: "Left", center: "Center", right: "Right", justify: "Justified" };
 const ALIGN_ICON = { left: IconAlignLeft, center: IconAlignCenter, right: IconAlignRight, justify: IconAlignJustify } as const;
 
 /** pending "give the editor its focus back" after +/- presses (0 = none) */
 let refocusTimer = 0;
 
 const LISTS: Array<ListKind | null> = [null, "bullet", "number"];
-const LIST_NAME = { none: "No list", bullet: "Bulleted list", number: "Numbered list" } as const;
 
 /**
  * While a box is open in the text editor its paragraph blocks carry their own `data-list` / text-align
@@ -192,16 +190,16 @@ export function TextBar({ els, ids, copyEnabled }: BarProps<TextElement> & { cop
         variant="secondary"
         size="sm"
         className="cf-tb__font"
-        label={`Toggle font selector, current font: ${family.mixed ? "multiple fonts" : (family.value ?? "")}`}
-        tip="Font"
+        label={m.editor.textBar.fontButton(family.mixed ? null : (family.value ?? ""))}
+        tip={m.editor.textBar.font}
         iconRight={<IconChevronDown />}
         active={fontOpen}
         onClick={() => toggleContext({ kind: "font" })}
       >
-        {family.mixed ? "Multiple fonts" : (family.value ?? els[0].fontFamily)}
+        {family.mixed ? m.editor.textBar.multipleFonts : (family.value ?? els[0].fontFamily)}
       </TBText>
 
-      <Tooltip content="Font size" describe={false}>
+      <Tooltip content={m.editor.textBar.fontSize} describe={false}>
         <div
           className="cf-tb__size"
           // The number field cannot step from "mixed" (blank): step from the first size instead.
@@ -209,13 +207,14 @@ export function TextBar({ els, ids, copyEnabled }: BarProps<TextElement> & { cop
             const step = (e.target as HTMLElement).closest<HTMLElement>("button.cf-num__step");
             if (!step || !size.mixed || size.value === undefined) return;
             e.stopPropagation();
-            setSize(size.value + (step.getAttribute("aria-label")?.startsWith("Decrease") ? -1 : 1));
+            // the first of the two step buttons is the one that decreases
+            setSize(size.value + (e.currentTarget.querySelector("button.cf-num__step") === step ? -1 : 1));
           }}
         >
           <NumberField
             stepper
             size="sm"
-            aria-label="Font size"
+            aria-label={m.editor.textBar.fontSize}
             width={112}
             value={size.mixed ? Number.NaN : Math.round((size.value ?? 0) * 10) / 10}
             min={1}
@@ -227,28 +226,35 @@ export function TextBar({ els, ids, copyEnabled }: BarProps<TextElement> & { cop
       </Tooltip>
 
       <TBIcon
-        label="Text color"
-        tip={paint.kind === "mixed" ? "Text color (mixed)" : "Text color"}
+        label={m.editor.textBar.textColor}
+        tip={paint.kind === "mixed" ? m.editor.textBar.textColorMixed : m.editor.textBar.textColor}
         icon={<TextColorGlyph paint={paint} />}
         active={colorOpen}
         onClick={() => toggleContext({ kind: "color", target: "text" })}
       />
 
-      <TBIcon label="Bold" shortcut="Ctrl+B" icon={<IconBold />} active={!bold.mixed && !!bold.value} mixed={bold.mixed} onClick={() => toggle("bold")} />
-      <TBIcon label="Italic" shortcut="Ctrl+I" icon={<IconItalic />} active={!italic.mixed && !!italic.value} mixed={italic.mixed} onClick={() => toggle("italic")} />
+      <TBIcon label={m.editor.textBar.bold} shortcut="Ctrl+B" icon={<IconBold />} active={!bold.mixed && !!bold.value} mixed={bold.mixed} onClick={() => toggle("bold")} />
       <TBIcon
-        label="Underline"
+        label={m.editor.textBar.italic}
+        shortcut="Ctrl+I"
+        icon={<IconItalic />}
+        active={!italic.mixed && !!italic.value}
+        mixed={italic.mixed}
+        onClick={() => toggle("italic")}
+      />
+      <TBIcon
+        label={m.editor.textBar.underline}
         shortcut="Ctrl+U"
         icon={<IconUnderline />}
         active={!underline.mixed && !!underline.value}
         mixed={underline.mixed}
         onClick={() => toggle("underline")}
       />
-      <TBIcon label="Strikethrough" icon={<IconStrikethrough />} active={!strike.mixed && !!strike.value} mixed={strike.mixed} onClick={() => toggle("strike")} />
+      <TBIcon label={m.editor.textBar.strikethrough} icon={<IconStrikethrough />} active={!strike.mixed && !!strike.value} mixed={strike.mixed} onClick={() => toggle("strike")} />
 
       <TBIcon
-        label={`Text case: ${CASE_NAME[caseNow]}`}
-        tip={CASE_NAME[caseNext]}
+        label={m.editor.textBar.caseLabel(m.editor.textBar.cases[caseNow])}
+        tip={m.editor.textBar.cases[caseNext]}
         icon={<span className="cf-tb__case">{CASE_GLYPH[caseNow]}</span>}
         active={!textCase.mixed && caseNow !== "none"}
         mixed={textCase.mixed}
@@ -256,8 +262,8 @@ export function TextBar({ els, ids, copyEnabled }: BarProps<TextElement> & { cop
       />
 
       <TBIcon
-        label={`Toggle text alignment, current alignment: ${align.mixed ? "mixed" : ALIGN_NAME[alignNow]}`}
-        tip={`Align ${ALIGN_NAME[alignNext].toLowerCase()}`}
+        label={m.editor.textBar.alignLabel(align.mixed ? null : m.editor.textBar.aligns[alignNow])}
+        tip={m.editor.textBar.alignTips[alignNext]}
         icon={<AlignIcon />}
         mixed={align.mixed}
         onClick={() => {
@@ -273,8 +279,8 @@ export function TextBar({ els, ids, copyEnabled }: BarProps<TextElement> & { cop
       />
 
       <TBIcon
-        label={list.mixed ? "List (mixed)" : `List: ${LIST_NAME[listNow ?? "none"]}`}
-        tip={LIST_NAME[listNext ?? "none"]}
+        label={list.mixed ? m.editor.textBar.listMixed : m.editor.textBar.listLabel(m.editor.textBar.lists[listNow ?? "none"])}
+        tip={m.editor.textBar.lists[listNext ?? "none"]}
         icon={listNow === "number" ? <IconListOrdered /> : <IconList />}
         active={!list.mixed && listNow !== null}
         mixed={list.mixed}
@@ -290,11 +296,11 @@ export function TextBar({ els, ids, copyEnabled }: BarProps<TextElement> & { cop
         }}
       />
 
-      <PopoverButton label="Advanced settings" tip="Spacing" icon={<IconLetterSpacing />}>
+      <PopoverButton label={m.editor.textBar.advanced} tip={m.editor.textBar.spacing} icon={<IconLetterSpacing />}>
         {() => (
           <div className="cf-tbpop__stack">
             <SliderField
-              label="Letter spacing"
+              label={m.editor.textBar.letterSpacing}
               value={letter.value ?? 0}
               mixed={letter.mixed}
               min={-200}
@@ -303,7 +309,7 @@ export function TextBar({ els, ids, copyEnabled }: BarProps<TextElement> & { cop
               onChange={(v) => actions.setTextProps([...ids], { letterSpacing: v }, { coalesce: `letterSpacing:${idKey}` })}
             />
             <SliderField
-              label="Line spacing"
+              label={m.editor.textBar.lineSpacing}
               value={line.value ?? 1.25}
               mixed={line.mixed}
               min={0.8}

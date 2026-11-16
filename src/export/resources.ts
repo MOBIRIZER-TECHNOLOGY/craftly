@@ -6,6 +6,7 @@
  */
 import { getAsset } from "@/core/assets";
 import type { Page } from "@/core/types";
+import { m } from "@/i18n";
 import { loadImage, loadSvgImage } from "@/render/images";
 import { collectResources, preparePage } from "@/render/renderPage";
 import { nextMacrotask } from "./yield";
@@ -59,5 +60,5 @@ export async function requireExportImages(pages: readonly { page: Page; index: n
     }
     if (missing) affected.push(index + 1);
   }
-  if (affected.length) throw new ExportError("invalid-design", `Some images could not be loaded on page(s) ${affected.join(", ")}. Replace or remove them and try again.`);
+  if (affected.length) throw new ExportError("invalid-design", m.exporting.errors.imagesMissing(affected));
 }

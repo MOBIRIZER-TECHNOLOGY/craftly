@@ -112,7 +112,7 @@ function smallTeamsReport(): Template {
     head("02", W - M - 60, 1074, 60, 11, { align: "right", fontWeight: 700 }),
   );
   return template(
-    { slug: "small-teams-report", name: "State of Small Teams Research Report", category: "document", size: "document", tags: ["report", "research", "survey", "cover", "chart", "findings", "document", "a4", "violet", "data"], accent: VIOLET },
+    { slug: "small-teams-report", category: "document", size: "document", tags: ["report", "research", "survey", "cover", "chart", "findings", "document", "a4", "violet", "data"], accent: VIOLET },
     [pg(VIOLET, cover), pg("#faf9ff", inner)],
   );
 }
@@ -196,7 +196,7 @@ function teamNewsletter(): Template {
     body("Pinned up in the kitchen", 546, 1050, 200, 11.5, { align: "right", italic: true, color: GREY }),
   );
   return template(
-    { slug: "team-newsletter", name: "The Loop Team Newsletter", category: "document", size: "document", tags: ["newsletter", "team", "company", "internal", "staff", "news", "document", "a4", "one page", "friendly"], accent: TOMATO },
+    { slug: "team-newsletter", category: "document", size: "document", tags: ["newsletter", "team", "company", "internal", "staff", "news", "document", "a4", "one page", "friendly"], accent: TOMATO },
     [pg(PAPER, els)],
   );
 }
@@ -285,7 +285,7 @@ function onePageProposal(): Template {
     serif("Tobias Engel, Fernwood Landscapes", X + 254, 1030, 214, 11, { color: GREY }),
   );
   return template(
-    { slug: "one-page-proposal", name: "One-Page Garden Project Proposal", category: "document", size: "document", tags: ["proposal", "one page", "quote", "estimate", "pricing", "table", "freelance", "document", "a4", "yellow"], accent: YELLOW },
+    { slug: "one-page-proposal", category: "document", size: "document", tags: ["proposal", "one page", "quote", "estimate", "pricing", "table", "freelance", "document", "a4", "yellow"], accent: YELLOW },
     [pg("#ffffff", els)],
   );
 }

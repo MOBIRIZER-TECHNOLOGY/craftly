@@ -17,6 +17,7 @@ import {
   type CustomFamily,
 } from "@/core/customFonts";
 import { FONT_ACCEPT, cleanFamilyName, type FontFormat } from "@/core/fontFile";
+import { m, num } from "@/i18n";
 import { cssFontFamily, preloadFonts } from "@/render/fonts";
 import { Button, IconButton, IconTrash, IconUpload, TextField, confirm, toast } from "@/ui";
 import "./CustomFonts.css";
@@ -41,25 +42,13 @@ export function useCustomFamilies(): CustomFamily[] | null {
   return families;
 }
 
-const WEIGHT_NAMES: Record<number, string> = {
-  100: "Thin",
-  200: "Extra light",
-  300: "Light",
-  400: "Regular",
-  500: "Medium",
-  600: "Semibold",
-  700: "Bold",
-  800: "Extra bold",
-  900: "Black",
-};
-
 /** "Regular, Bold, Regular italic · 3 files" */
 function stylesOf(family: CustomFamily): string {
   const names = family.files.map((file) => {
-    const weight = file.maxWeight > file.weight ? `Every weight from ${file.weight} to ${file.maxWeight}` : (WEIGHT_NAMES[file.weight] ?? String(file.weight));
-    return file.italic ? `${weight} italic` : weight;
+    const weight = file.maxWeight > file.weight ? m.app.customFonts.everyWeight(file.weight, file.maxWeight) : (m.app.customFonts.weights[file.weight] ?? num(file.weight));
+    return file.italic ? m.app.customFonts.italic(weight) : weight;
   });
-  return `${[...new Set(names)].join(", ")} · ${family.files.length} ${family.files.length === 1 ? "file" : "files"}`;
+  return m.app.customFonts.styles([...new Set(names)].join(", "), family.files.length);
 }
 
 const isCompressed = (format: FontFormat) => format === "woff" || format === "woff2";
@@ -87,32 +76,31 @@ export function CustomFonts({ onUse }: CustomFontsProps) {
         added.push({ family: stored.family, format: stored.format });
       } catch (error) {
         // a refusal says why in words for the person; anything else is the storage
-        toast.error(error instanceof FontUploadError ? `${file.name}: ${error.message}` : `${file.name} could not be saved on this device.`);
+        toast.error(error instanceof FontUploadError ? m.app.customFonts.uploadRefused(file.name, error.message) : m.app.customFonts.notStored(file.name));
       }
     }
     setBusy(false);
     if (added.length === 1) {
       const [{ family, format }] = added;
-      toast.success(`${family} was added to your fonts.${isCompressed(format) ? " The name comes from the file name; rename it if it is not the font's name." : ""}`);
+      toast.success(isCompressed(format) ? m.app.customFonts.addedCompressed(family) : m.app.customFonts.added(family));
     } else if (added.length > 1) {
-      toast.success(`${added.length} font files were added to your fonts.`);
+      toast.success(m.app.customFonts.addedMany(added.length));
     }
   };
 
   const remove = async (family: string) => {
     const yes = await confirm({
-      title: `Delete ${family}?`,
-      message:
-        "The font is removed from this device. Text that uses it, in any design, is then shown in a substitute font. The designs themselves are not changed: upload the font again under the same name and they look as before.",
-      confirmLabel: "Delete font",
+      title: m.app.customFonts.deleteTitle(family),
+      message: m.app.customFonts.deleteMessage,
+      confirmLabel: m.app.customFonts.deleteConfirm,
       danger: true,
     });
     if (!yes) return;
     try {
       await deleteCustomFamily(family);
-      toast.info(`${family} was deleted.`);
+      toast.info(m.app.customFonts.deleted(family));
     } catch {
-      toast.error(`${family} could not be deleted.`);
+      toast.error(m.app.customFonts.deleteFailed(family));
     }
   };
 
@@ -122,16 +110,16 @@ export function CustomFonts({ onUse }: CustomFontsProps) {
     if (!asked || asked === from) return;
     try {
       const got = await renameCustomFamily(from, asked);
-      if (got !== asked) toast.info(`Craftly already has a font called ${asked}, so yours is called ${got}.`);
+      if (got !== asked) toast.info(m.app.customFonts.renamedOther(asked, got));
     } catch {
-      toast.error(`${from} could not be renamed.`);
+      toast.error(m.app.customFonts.renameFailed(from));
     }
   };
 
   return (
     <div className="cf-customfonts">
       {families === null ? null : families.length === 0 ? (
-        <p className="cf-customfonts__empty">No uploaded fonts yet.</p>
+        <p className="cf-customfonts__empty">{m.app.customFonts.empty}</p>
       ) : (
         <ul className="cf-customfonts__list">
           {families.map((family) => (
@@ -141,10 +129,10 @@ export function CustomFonts({ onUse }: CustomFontsProps) {
               ) : (
                 <>
                   <FamilyLabel family={family} onUse={onUse} />
-                  <Button size="sm" variant="ghost" aria-label={`Rename ${family.family}`} onClick={() => setRenaming(family.family)}>
-                    Rename
+                  <Button size="sm" variant="ghost" aria-label={m.app.customFonts.renameLabel(family.family)} onClick={() => setRenaming(family.family)}>
+                    {m.app.customFonts.rename}
                   </Button>
-                  <IconButton size="sm" label={`Delete ${family.family}`} icon={<IconTrash aria-hidden="true" />} onClick={() => void remove(family.family)} />
+                  <IconButton size="sm" label={m.app.customFonts.deleteLabel(family.family)} icon={<IconTrash aria-hidden="true" />} onClick={() => void remove(family.family)} />
                 </>
               )}
             </li>
@@ -152,10 +140,10 @@ export function CustomFonts({ onUse }: CustomFontsProps) {
         </ul>
       )}
       <Button variant="secondary" icon={<IconUpload aria-hidden="true" />} loading={busy} onClick={() => inputRef.current?.click()}>
-        Upload a font
+        {m.app.customFonts.upload}
       </Button>
-      <input ref={inputRef} type="file" accept={FONT_ACCEPT} multiple hidden aria-label="Font files to upload" onChange={(event) => void upload(event.target.files)} />
-      <p className="cf-customfonts__licence">Upload only fonts you have the right to use. TTF, OTF, WOFF or WOFF2 files, up to 10 MB each. They stay on this device.</p>
+      <input ref={inputRef} type="file" accept={FONT_ACCEPT} multiple hidden aria-label={m.app.customFonts.uploadInput} onChange={(event) => void upload(event.target.files)} />
+      <p className="cf-customfonts__licence">{m.app.customFonts.licence}</p>
     </div>
   );
 }
@@ -175,7 +163,7 @@ function FamilyLabel({ family, onUse }: { family: CustomFamily; onUse?: (family:
     </>
   );
   return onUse ? (
-    <button type="button" className="cf-customfonts__main cf-customfonts__main--button" aria-label={`Use ${family.family}`} onClick={() => onUse(family.family)}>
+    <button type="button" className="cf-customfonts__main cf-customfonts__main--button" aria-label={m.app.customFonts.use(family.family)} onClick={() => onUse(family.family)}>
       {label}
     </button>
   ) : (
@@ -198,21 +186,21 @@ function RenameForm({ family, onSave, onCancel }: { family: string; onSave: (nam
   return (
     <div className="cf-customfonts__rename">
       <TextField
-        label="Family name"
+        label={m.app.customFonts.familyName}
         size="sm"
         value={value}
         maxLength={60}
         autoFocus
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={onKeyDown}
-        hint={`Designs that already use ${family} keep that name and show a substitute font until you choose the font again.`}
+        hint={m.app.customFonts.renameHint(family)}
       />
       <div className="cf-customfonts__rename-actions">
         <Button size="sm" variant="secondary" onClick={onCancel}>
-          Cancel
+          {m.common.cancel}
         </Button>
         <Button size="sm" variant="primary" onClick={() => onSave(value)}>
-          Save
+          {m.common.save}
         </Button>
       </div>
     </div>

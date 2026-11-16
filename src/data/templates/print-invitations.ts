@@ -40,7 +40,7 @@ function weddingScript(): Template {
     serif("RSVP BY MAY 1  *  (845) 555-0116", 40, 616, 400, 11.5, { align: "center", textCase: "upper", letterSpacing: 200, fontWeight: 700, color: SAGE }),
   ];
   return template(
-    { slug: "wedding-script", name: "Eleanor and James Wedding Invitation", category: "invitation", size: "invitation", tags: ["wedding", "invitation", "script", "elegant", "botanical", "olive", "ivory", "romantic"], accent: GOLD },
+    { slug: "wedding-script", category: "invitation", size: "invitation", tags: ["wedding", "invitation", "script", "elegant", "botanical", "olive", "ivory", "romantic"], accent: GOLD },
     [pg(IVORY, els)],
   );
 }
@@ -90,7 +90,7 @@ function birthdayParty(): Template {
     sans("RSVP to Dana by March 10: (503) 555-0187", 40, 622, 400, 12.5, { align: "center", color: CREAM, fontWeight: 500 }),
   );
   return template(
-    { slug: "birthday-bash", name: "Birthday Bash Party Invitation", category: "invitation", size: "invitation", tags: ["birthday", "party", "invitation", "kids", "confetti", "fun", "navy", "colorful"], accent: PINK },
+    { slug: "birthday-bash", category: "invitation", size: "invitation", tags: ["birthday", "party", "invitation", "kids", "confetti", "fun", "navy", "colorful"], accent: PINK },
     [pg(patternBg("dots", "#2c2660", NAVY, 1.2), els)],
   );
 }
@@ -126,7 +126,7 @@ function babyShower(): Template {
     gxw("celebration-balloons", 362, 552, 88),
   ];
   return template(
-    { slug: "baby-shower", name: "Little Rainbow Baby Shower Invitation", category: "invitation", size: "invitation", tags: ["baby shower", "invitation", "baby", "pastel", "rainbow", "cute", "girl", "celebration"], accent: ROSE },
+    { slug: "baby-shower", category: "invitation", size: "invitation", tags: ["baby shower", "invitation", "baby", "pastel", "rainbow", "cute", "girl", "celebration"], accent: ROSE },
     [pg(CREAM, els)],
   );
 }
@@ -175,7 +175,7 @@ function corporateGala(): Template {
     sans("RSVP BY OCTOBER 22  *  events@meridianfoundation.org", 40, 610, 400, 11, { align: "center", letterSpacing: 140, fontWeight: 400 }),
   ];
   return template(
-    { slug: "corporate-gala", name: "Meridian Foundation Gala Invitation", category: "invitation", size: "invitation", tags: ["gala", "corporate", "invitation", "black tie", "formal", "fundraiser", "navy", "gold"], accent: GOLD },
+    { slug: "corporate-gala", category: "invitation", size: "invitation", tags: ["gala", "corporate", "invitation", "black tie", "formal", "fundraiser", "navy", "gold"], accent: GOLD },
     [pg(gradientBg(180, "#0b1530", "#101d42", "#0b1530"), els)],
   );
 }

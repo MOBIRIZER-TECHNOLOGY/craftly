@@ -21,6 +21,8 @@ import type {
   TemplateCategory,
   TextElement,
 } from "@/core/types";
+import { m } from "@/i18n";
+import { nameIn } from "../names";
 
 /** Canonical sizes (design px) and the design type id used when the template is opened. */
 export const SIZES = {
@@ -138,7 +140,11 @@ export function pg(background: Fill | Color, elements: DesignElement[], notes?: 
 export interface TemplateMeta {
   /** short slug, unique inside its category, e.g. "pitch-deck-violet" */
   slug: string;
-  name: string;
+  /**
+   * Only for a template that is not built in (a test, a page of src/dev). A built-in template has its name in the catalogs
+   * (`templates` in src/i18n/en/data.ts and the other languages), by its id.
+   */
+  name?: string;
   category: TemplateCategory;
   size: SizeKey;
   /** search keywords, lower case */
@@ -149,9 +155,10 @@ export interface TemplateMeta {
 
 export function template(meta: TemplateMeta, pages: Page[]): Template {
   const s = SIZES[meta.size];
+  const id = `${meta.category}-${meta.slug}`;
   return {
-    id: `${meta.category}-${meta.slug}`,
-    name: meta.name,
+    id,
+    name: meta.name ?? nameIn(m.data.templates, id),
     category: meta.category,
     typeId: s.typeId,
     width: s.width,

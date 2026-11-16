@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type Mo
 import { PageThumb } from "@/components/PageThumb";
 import { useEditor } from "@/core/store";
 import type { Page } from "@/core/types";
+import { m } from "@/i18n";
 import {
   Button,
   IconButton,
@@ -75,7 +76,7 @@ const Cell = memo(function Cell({
       <button
         type="button"
         className="cf-gridcell__thumb"
-        aria-label={`Page ${index + 1} of ${count}${page.name ? `, ${page.name}` : ""}. Double-click to edit.`}
+        aria-label={m.editorChrome.pages.gridCell(index + 1, count, page.name ?? "")}
         aria-current={active ? "true" : undefined}
         tabIndex={active ? 0 : -1}
         onClick={onSelect}
@@ -91,7 +92,7 @@ const Cell = memo(function Cell({
       <IconButton
         className="cf-gridcell__more"
         size="sm"
-        label={`Page ${index + 1} options`}
+        label={m.editorChrome.pages.options(index + 1)}
         icon={<IconMore aria-hidden="true" />}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
@@ -221,8 +222,8 @@ export function GridView() {
     ? pageMenuItems({ pageId: menuPage.id, index: menuIndex, count, hasName: !!menuPage.name, readOnly, onRename: () => setRenaming(menuPage.id) })
     : [];
   const addItems: MenuEntry[] = [
-    { id: "add", label: "Add page", icon: <IconPlus aria-hidden="true" />, disabled: readOnly, onSelect: () => actions.addPage() },
-    { id: "duplicate", label: "Duplicate this page", icon: <IconDuplicate aria-hidden="true" />, disabled: readOnly, onSelect: () => actions.duplicatePage() },
+    { id: "add", label: m.editorChrome.pages.addPage, icon: <IconPlus aria-hidden="true" />, disabled: readOnly, onSelect: () => actions.addPage() },
+    { id: "duplicate", label: m.editorChrome.pages.duplicateThis, icon: <IconDuplicate aria-hidden="true" />, disabled: readOnly, onSelect: () => actions.duplicatePage() },
   ];
 
   if (!pages) return null;
@@ -230,13 +231,18 @@ export function GridView() {
   return (
     <div ref={hostRef} className="cf-grid" onKeyDown={onKeyDown}>
       <div className="cf-grid__barwrap">
-        <div className="cf-grid__bar" role="toolbar" aria-label="Page actions">
-          <IconButton label="Add page" icon={<IconFilePlus aria-hidden="true" />} disabled={readOnly} onClick={() => actions.addPage()} />
-          <IconButton label="Duplicate page" icon={<IconDuplicate aria-hidden="true" />} disabled={readOnly} onClick={() => actions.duplicatePage()} />
-          <IconButton label="Delete page" icon={<IconTrash aria-hidden="true" />} disabled={readOnly || count <= 1} onClick={() => deletePageWithUndo(activeId)} />
+        <div className="cf-grid__bar" role="toolbar" aria-label={m.editorChrome.pages.pageActions}>
+          <IconButton label={m.editorChrome.pages.addPage} icon={<IconFilePlus aria-hidden="true" />} disabled={readOnly} onClick={() => actions.addPage()} />
+          <IconButton label={m.editorChrome.pages.duplicatePage} icon={<IconDuplicate aria-hidden="true" />} disabled={readOnly} onClick={() => actions.duplicatePage()} />
+          <IconButton
+            label={m.editorChrome.pages.deletePage}
+            icon={<IconTrash aria-hidden="true" />}
+            disabled={readOnly || count <= 1}
+            onClick={() => deletePageWithUndo(activeId)}
+          />
           <IconButton
             ref={setMoreBtn}
-            label="More page options"
+            label={m.editorChrome.pages.morePageOptions}
             icon={<IconMore aria-hidden="true" />}
             aria-haspopup="menu"
             aria-expanded={menu !== null && menu.anchor === moreBtn}
@@ -247,7 +253,7 @@ export function GridView() {
       <ul
         ref={listRef}
         className="cf-grid__list"
-        aria-label="All pages"
+        aria-label={m.editorChrome.pages.allPages}
         style={{ gridTemplateColumns: `repeat(${cols}, ${width}px)`, padding: `8px ${PAD}px ${PAD * 2}px`, gap: `${GAP}px` }}
       >
         {pages.map((page, index) => (
@@ -278,7 +284,7 @@ export function GridView() {
               variant="ghost"
               className="cf-gridcell__add-main"
               icon={<IconPlus aria-hidden="true" />}
-              aria-label="Add page"
+              aria-label={m.editorChrome.pages.addPage}
               disabled={readOnly}
               onClick={() => actions.addPage()}
             />
@@ -286,7 +292,7 @@ export function GridView() {
               variant="ghost"
               className="cf-gridcell__add-caret"
               icon={<IconChevronDown aria-hidden="true" />}
-              aria-label="Add page options"
+              aria-label={m.editorChrome.pages.addPageOptions}
               aria-haspopup="menu"
               aria-expanded={addMenu !== null}
               disabled={readOnly}
@@ -302,9 +308,16 @@ export function GridView() {
         onClose={() => setMenu(null)}
         items={menuItems}
         placement="bottom-start"
-        aria-label={menuIndex >= 0 ? `Page ${menuIndex + 1} options` : "Page options"}
+        aria-label={menuIndex >= 0 ? m.editorChrome.pages.options(menuIndex + 1) : m.editorChrome.pages.pageOptions}
       />
-      <MenuPopover open={addMenu !== null} anchor={addMenu} onClose={() => setAddMenu(null)} items={addItems} placement="bottom-end" aria-label="Add page options" />
+      <MenuPopover
+        open={addMenu !== null}
+        anchor={addMenu}
+        onClose={() => setAddMenu(null)}
+        items={addItems}
+        placement="bottom-end"
+        aria-label={m.editorChrome.pages.addPageOptions}
+      />
     </div>
   );
 }

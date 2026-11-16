@@ -5,6 +5,7 @@
  */
 import { parseColor } from "@/core/color";
 import type { Design, DesignElement, Page } from "@/core/types";
+import { m } from "@/i18n";
 import { estimateGifBytes, estimateWebmBytes, isAnimatedFormat, pageMotion, planAnimation, type AnimationPlan } from "./animated/frames";
 import type { ExportFormat, ExportOptions } from "./exporters";
 
@@ -86,7 +87,8 @@ export function formatScale(scale: number): string {
 /** Sentence telling the user a size was reduced. */
 export function clampNote(plan: RasterPlan): string | undefined {
   if (!plan.clamped) return undefined;
-  return `Scaled down to ${formatScale(plan.scale)} (${plan.width} x ${plan.height} px) instead of ${formatScale(plan.requested)} because exports are limited to ${MAX_EXPORT_SIDE} px on the longest side.`;
+  const round = (scale: number) => Math.round(scale * 100) / 100;
+  return m.exporting.errors.scaledDown(round(plan.scale), plan.width, plan.height, round(plan.requested), MAX_EXPORT_SIDE);
 }
 
 /** Pages up to this many pixels (4K UHD is 8.3 M) are painted in one pass, exactly like the editor canvas. */
@@ -196,13 +198,14 @@ export const pageFileName = (title: string, pageNumber: number, extension: strin
 /* Summaries and size estimate                                        */
 /* ------------------------------------------------------------------ */
 
-export const pagesLabel = (count: number) => `${count} ${count === 1 ? "page" : "pages"}`;
+export const pagesLabel = (count: number) => m.exporting.amounts.pages(count);
 
 export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  const { amounts } = m.exporting;
+  if (!Number.isFinite(bytes) || bytes <= 0) return amounts.kb(0);
+  if (bytes < 1024 * 1024) return amounts.kb(Math.max(1, Math.round(bytes / 1024)));
   const mb = bytes / (1024 * 1024);
-  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+  return mb < 10 ? amounts.mb(mb, true) : amounts.mb(Math.round(mb), false);
 }
 
 export interface PageWeight {

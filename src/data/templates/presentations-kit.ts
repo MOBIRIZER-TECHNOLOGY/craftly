@@ -5,7 +5,7 @@
  */
 import { rgba } from "@/core/color";
 import { parseViewBox } from "@/core/svg";
-import { getGraphic } from "@/data/graphics";
+import { englishGraphicName, getGraphic } from "@/data/graphics";
 import type { Color, DesignElement, Fill, GraphicElement, ImageElement, LinearGradientFill, Page, ShapeElement, TextElement, TextRun } from "@/core/types";
 import { C, F, G, P, R, T, pg, type TextOpts } from "./dsl";
 
@@ -182,7 +182,7 @@ export function gfx(id: string, x: number, y: number, w: number, o: Partial<Grap
   const svg = def?.svg ?? EMPTY_SVG;
   const vb = parseViewBox(svg) ?? { x: 0, y: 0, w: 10, h: 10 };
   const { h, ...rest } = o;
-  return G(svg, x, y, w, h ?? Math.round((w * vb.h) / vb.w), { name: def?.name ?? "Illustration", source: { kind: def?.kind === "sticker" ? "sticker" : "illustration", id }, ...rest });
+  return G(svg, x, y, w, h ?? Math.round((w * vb.h) / vb.w), { name: def ? englishGraphicName(id) : "Illustration", source: { kind: def?.kind === "sticker" ? "sticker" : "illustration", id }, ...rest });
 }
 
 /**

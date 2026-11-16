@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DesignElement, Design, Page, PageTransition } from "@/core/types";
 import { buildTimeline } from "@/core/transition";
+import { m } from "@/i18n";
 import { PlaybackRenderer } from "@/render/playback";
 import { preparePage } from "@/render/renderPage";
 import { IconButton, IconPlay } from "@/ui";
@@ -69,10 +70,10 @@ export function TransitionPreview({ design, from, to, transition }: { design: Pi
 
   return (
     <div className="cf-an__preview" style={{ aspectRatio: `${design.width} / ${design.height}` }}>
-      <canvas ref={ref} aria-label={transition ? "Preview of the transition" : "This page"} role="img" />
+      <canvas ref={ref} aria-label={transition ? m.panelsContext.transitionPreview.preview : m.panelsContext.transitionPreview.thisPage} role="img" />
       {transition ? (
         <span className="cf-an__replay">
-          <IconButton label="Replay" size="sm" icon={<IconPlay />} onClick={() => setReplay((n) => n + 1)} />
+          <IconButton label={m.panelsContext.transitionPreview.replay} size="sm" icon={<IconPlay />} onClick={() => setReplay((n) => n + 1)} />
         </span>
       ) : null}
     </div>

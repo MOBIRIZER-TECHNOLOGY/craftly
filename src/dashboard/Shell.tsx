@@ -1,4 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { languageMenuEntry } from "@/components/languageMenu";
+import { m } from "@/i18n";
 import { openProblemsDialog } from "@/components/problemsDialogState";
 import {
   Avatar,
@@ -33,7 +35,7 @@ import { pickFiles } from "./files";
 import "./Shell.css";
 
 // the backup code (the ZIP writer and reader, the library reader) is only loaded when someone opens the dialog
-const BackupDialog = lazy(() => import("./BackupDialog").then((m) => ({ default: m.BackupDialog })));
+const BackupDialog = lazy(() => import("./BackupDialog").then((mod) => ({ default: mod.BackupDialog })));
 
 type NavId = "home" | "projects" | "templates" | "brand" | "trash";
 
@@ -45,11 +47,11 @@ interface NavEntry {
 }
 
 const NAV: NavEntry[] = [
-  { id: "home", label: "Home", href: "#/", icon: <IconHome aria-hidden="true" /> },
-  { id: "projects", label: "Projects", href: "#/projects", icon: <IconFolder aria-hidden="true" /> },
-  { id: "templates", label: "Templates", href: "#/templates", icon: <IconTemplate aria-hidden="true" /> },
-  { id: "brand", label: "Brand", href: "#/brand", icon: <IconBrand aria-hidden="true" /> },
-  { id: "trash", label: "Trash", href: "#/trash", icon: <IconTrash aria-hidden="true" /> },
+  { id: "home", label: m.dashboard.shell.nav.home, href: "#/", icon: <IconHome aria-hidden="true" /> },
+  { id: "projects", label: m.dashboard.shell.nav.projects, href: "#/projects", icon: <IconFolder aria-hidden="true" /> },
+  { id: "templates", label: m.dashboard.shell.nav.templates, href: "#/templates", icon: <IconTemplate aria-hidden="true" /> },
+  { id: "brand", label: m.dashboard.shell.nav.brand, href: "#/brand", icon: <IconBrand aria-hidden="true" /> },
+  { id: "trash", label: m.dashboard.shell.nav.trash, href: "#/trash", icon: <IconTrash aria-hidden="true" /> },
 ];
 
 const TAB_BAR_LEFT: NavId[] = ["home", "projects"];
@@ -84,20 +86,17 @@ function importProject(): void {
       const design = await importProjectFile(file, report);
       // what could not be read, and what was taken out, is said: nothing is left out without a word
       const notes: string[] = [];
-      if (report.skipped)
-        notes.push(`${report.skipped === 1 ? "1 item" : `${report.skipped} items`} in the file could not be read and ${report.skipped === 1 ? "was" : "were"} left out.`);
-      if (report.remote)
-        notes.push(`${report.remote === 1 ? "1 picture" : `${report.remote} pictures`} that pointed to the web ${report.remote === 1 ? "was" : "were"} taken out.`);
-      if (report.comments)
-        notes.push(`${report.comments === 1 ? "1 comment" : `${report.comments} comments`} in the file could not be read and ${report.comments === 1 ? "was" : "were"} left out.`);
-      if (notes.length) toast.info(`Imported “${design.title}”. ${notes.join(" ")}`);
-      else toast.success(`Imported “${design.title}”`);
+      if (report.skipped) notes.push(m.dashboard.imported.skipped(report.skipped));
+      if (report.remote) notes.push(m.dashboard.imported.remote(report.remote));
+      if (report.comments) notes.push(m.dashboard.imported.comments(report.comments));
+      if (notes.length) toast.info(m.dashboard.imported.withNotes(design.title, notes.join(" ")));
+      else toast.success(m.dashboard.imported.done(design.title));
       navigate(designPath(design.id));
     } catch (error) {
       // a project file's own problems come with words for a person; anything else is the browser failing to store the design,
       // and its own text ("Failed to execute 'put' on 'IDBObjectStore'...") is no use to them
-      const detail = error instanceof ProjectFileError ? error.message : "It could not be saved on this device. Check that your browser has free storage and try again.";
-      toast.error(`Couldn't import that file. ${detail}`);
+      const detail = error instanceof ProjectFileError ? error.message : m.dashboard.importFailed.notStored;
+      toast.error(m.dashboard.importFailed.toast(detail));
     }
   });
 }
@@ -109,25 +108,27 @@ function useAccountMenu(includeTrash: boolean) {
   const [backupLoaded, setBackupLoaded] = useState(false);
 
   const items: MenuEntry[] = [
-    { type: "label", label: "On this device" },
-    { id: "import", label: "Import project file", icon: <IconUpload aria-hidden="true" />, onSelect: importProject },
+    { type: "label", label: m.dashboard.account.onThisDevice },
+    { id: "import", label: m.dashboard.account.importProject, icon: <IconUpload aria-hidden="true" />, onSelect: importProject },
     {
       id: "backup",
-      label: "Back up & restore",
+      label: m.dashboard.account.backup,
       icon: <IconArchive aria-hidden="true" />,
       onSelect: () => {
         setBackupLoaded(true);
         setBackupOpen(true);
       },
     },
-    ...(includeTrash ? [{ id: "trash", label: "Trash", icon: <IconTrash aria-hidden="true" />, onSelect: () => navigate("/trash") }] : []),
-    { id: "problems", label: "Report a problem", icon: <IconBug aria-hidden="true" />, onSelect: () => openProblemsDialog() },
-    { id: "about", label: "About Craftly", icon: <IconInfo aria-hidden="true" />, onSelect: () => setAboutOpen(true) },
+    ...(includeTrash ? [{ id: "trash", label: m.dashboard.account.trash, icon: <IconTrash aria-hidden="true" />, onSelect: () => navigate("/trash") }] : []),
+    { id: "problems", label: m.dashboard.account.reportProblem, icon: <IconBug aria-hidden="true" />, onSelect: () => openProblemsDialog() },
+    { id: "about", label: m.dashboard.account.about, icon: <IconInfo aria-hidden="true" />, onSelect: () => setAboutOpen(true) },
+    { type: "divider" },
+    languageMenuEntry(),
   ];
 
   const popover = (
     <>
-      <MenuPopover open={anchor !== null} anchor={anchor} onClose={() => setAnchor(null)} items={items} placement="top-start" aria-label="Account" />
+      <MenuPopover open={anchor !== null} anchor={anchor} onClose={() => setAnchor(null)} items={items} placement="top-start" aria-label={m.dashboard.account.menuLabel} />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       {backupLoaded ? (
         <Suspense fallback={null}>
@@ -171,11 +172,11 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   return (
     <div className={cx("cf-dash", expanded && "is-rail-expanded")} data-route={current}>
       {/* ---- left rail (desktop) ---- */}
-      <nav className={cx("cf-dnav", expanded && "is-expanded")} aria-label="Main" id="cf-dnav">
+      <nav className={cx("cf-dnav", expanded && "is-expanded")} aria-label={m.dashboard.shell.mainNav} id="cf-dnav">
         <div className="cf-dnav__top">
           <IconButton
             className="cf-dnav__toggle"
-            label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+            label={expanded ? m.dashboard.shell.collapseSidebar : m.dashboard.shell.expandSidebar}
             aria-expanded={expanded}
             aria-controls="cf-dnav"
             icon={expanded ? <IconPanelClose aria-hidden="true" /> : <IconPanelOpen aria-hidden="true" />}
@@ -191,13 +192,19 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
 
         {expanded ? (
           <Button className="cf-dnav__create-wide" variant="primary" size="lg" block icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()}>
-            Create a design
+            {m.dashboard.shared.createDesign}
           </Button>
         ) : (
           <div className="cf-dnav__create">
-            <IconButton className="cf-dnav__create-btn" size="lg" label="Create a design" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()} />
+            <IconButton
+              className="cf-dnav__create-btn"
+              size="lg"
+              label={m.dashboard.shared.createDesign}
+              icon={<IconPlus aria-hidden="true" />}
+              onClick={() => openCreateDialog()}
+            />
             <span className="cf-dnav__create-label" aria-hidden="true">
-              Create
+              {m.dashboard.shell.create}
             </span>
           </div>
         )}
@@ -219,20 +226,20 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
               className="cf-dnav__account-wide"
               variant="ghost"
               block
-              icon={<Avatar name="You" size={28} />}
+              icon={<Avatar name={m.dashboard.shell.you} size={28} />}
               iconRight={<IconChevronDown aria-hidden="true" />}
               aria-haspopup="menu"
               aria-expanded={desktopMenu.anchor !== null}
               onClick={(event) => desktopMenu.setAnchor(event.currentTarget)}
             >
-              You
+              {m.dashboard.shell.you}
             </Button>
           ) : (
             <IconButton
               className="cf-dnav__account"
               size="lg"
-              label="Account"
-              icon={<Avatar name="You" size={34} />}
+              label={m.dashboard.account.menuLabel}
+              icon={<Avatar name={m.dashboard.shell.you} size={34} />}
               aria-haspopup="menu"
               aria-expanded={desktopMenu.anchor !== null}
               onClick={(event) => desktopMenu.setAnchor(event.currentTarget)}
@@ -245,13 +252,13 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       {/* ---- content column ---- */}
       <div className="cf-dash__column">
         <header className="cf-dash__mobilebar">
-          <a className="cf-dash__logo" href="#/" aria-label="Craftly home">
+          <a className="cf-dash__logo" href="#/" aria-label={m.dashboard.shell.homeLink}>
             <BrandMark size={28} />
             <span>Craftly</span>
           </a>
           <IconButton
-            label="Account"
-            icon={<Avatar name="You" size={32} />}
+            label={m.dashboard.account.menuLabel}
+            icon={<Avatar name={m.dashboard.shell.you} size={32} />}
             aria-haspopup="menu"
             aria-expanded={mobileMenu.anchor !== null}
             onClick={(event) => mobileMenu.setAnchor(event.currentTarget)}
@@ -273,12 +280,18 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       ) : null}
 
       {/* ---- bottom tab bar (phones) ---- */}
-      <nav className="cf-dtabbar" aria-label="Main">
+      <nav className="cf-dtabbar" aria-label={m.dashboard.shell.mainNav}>
         {TAB_BAR_LEFT.map((id) => (
           <TabLink key={id} entry={byId(id)} active={current === id} />
         ))}
         <div className="cf-dtabbar__create">
-          <IconButton className="cf-dtabbar__create-btn" size="lg" label="Create a design" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()} />
+          <IconButton
+            className="cf-dtabbar__create-btn"
+            size="lg"
+            label={m.dashboard.shared.createDesign}
+            icon={<IconPlus aria-hidden="true" />}
+            onClick={() => openCreateDialog()}
+          />
         </div>
         {TAB_BAR_RIGHT.map((id) => (
           <TabLink key={id} entry={byId(id)} active={current === id} />

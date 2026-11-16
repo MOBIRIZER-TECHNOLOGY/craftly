@@ -19,6 +19,7 @@ import { getActions, getActivePage, useEditor, useSelectedElements } from "@/cor
 import { MAX_TRANSITION_DURATION, TRANSITION_PRESETS, defaultTransition, getTransitionPreset } from "@/core/transition";
 import type { AnimDirection, ElementAnimation, Page } from "@/core/types";
 import { previewEntrances, previewRange, startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
+import { m } from "@/i18n";
 import { Button, Checkbox, IconArrowDown, IconArrowLeft, IconArrowRight, IconArrowUp, IconButton, IconPause, IconPlay, IconSparkle, Segmented, Slider, Tabs, cx } from "@/ui";
 import { PanelEmpty, PanelShell, Section } from "./PanelShell";
 import { TransitionPreview } from "./TransitionPreview";
@@ -37,20 +38,26 @@ export function AnimatePanel({ tab }: { tab: "element" | "page" }) {
       variant="underline"
       fullWidth
       value={tab}
-      aria-label="What to animate"
+      aria-label={m.panelsContext.animate.whatToAnimate}
       onChange={(id) => getActions().openContext({ kind: "animate", tab: id === "page" ? "page" : "element" })}
       tabs={[
-        { id: "page", label: "Page animations" },
-        { id: "element", label: "Element animations" },
+        { id: "page", label: m.panelsContext.animate.pageAnimations },
+        { id: "element", label: m.panelsContext.animate.elementAnimations },
       ]}
     />
   );
   const playAll = () => (previewing ? stopPreview() : page && startPreview(0, pageDuration(page)));
   return (
     <PanelShell
-      title="Animate"
+      title={m.panelsContext.animate.title}
       tabs={tabs}
-      headerActions={<IconButton label={previewing ? "Stop preview" : "Play the page"} icon={previewing ? <IconPause /> : <IconPlay />} onClick={playAll} />}
+      headerActions={
+        <IconButton
+          label={previewing ? m.panelsContext.animate.stopPreview : m.panelsContext.animate.playPage}
+          icon={previewing ? <IconPause /> : <IconPlay />}
+          onClick={playAll}
+        />
+      }
     >
       {tab === "page" ? <PagePane /> : <ElementPane />}
     </PanelShell>
@@ -109,20 +116,20 @@ function Tile({
 }
 
 const DIRECTION_OPTIONS: Array<{ value: AnimDirection; title: string; icon: ReactNode }> = [
-  { value: "left", title: "Towards the left", icon: <IconArrowLeft /> },
-  { value: "right", title: "Towards the right", icon: <IconArrowRight /> },
-  { value: "up", title: "Upwards", icon: <IconArrowUp /> },
-  { value: "down", title: "Downwards", icon: <IconArrowDown /> },
+  { value: "left", title: m.panelsContext.animate.directions.left, icon: <IconArrowLeft /> },
+  { value: "right", title: m.panelsContext.animate.directions.right, icon: <IconArrowRight /> },
+  { value: "up", title: m.panelsContext.animate.directions.up, icon: <IconArrowUp /> },
+  { value: "down", title: m.panelsContext.animate.directions.down, icon: <IconArrowDown /> },
 ];
 
 function DirectionPicker({ value, directions, onChange }: { value: AnimDirection; directions: readonly AnimDirection[]; onChange: (d: AnimDirection) => void }) {
   return (
     <div className="cf-an__field">
-      <span className="cf-an__fieldlabel">Direction</span>
+      <span className="cf-an__fieldlabel">{m.panelsContext.animate.direction}</span>
       <Segmented<AnimDirection>
         fullWidth
         size="sm"
-        aria-label="Direction"
+        aria-label={m.panelsContext.animate.direction}
         value={value}
         onChange={onChange}
         options={DIRECTION_OPTIONS.filter((o) => directions.includes(o.value)).map(({ value: v, title, icon }) => ({ value: v, title, icon }))}
@@ -131,7 +138,7 @@ function DirectionPicker({ value, directions, onChange }: { value: AnimDirection
   );
 }
 
-const seconds = (v: number) => `${v.toFixed(1)} s`;
+const seconds = (v: number) => m.panelsContext.animate.seconds(v);
 
 /* ------------------------------------------------------------------ */
 /* element animations                                                  */
@@ -145,11 +152,11 @@ function ElementPane() {
     return (
       <PanelEmpty
         icon={<IconSparkle />}
-        title="Nothing selected"
-        text="Select text, a shape, an image or any other element to make it enter, leave or move. Or animate the whole page at once."
+        title={m.panelsContext.shared.nothingSelected}
+        text={m.panelsContext.animate.nothingSelectedText}
         action={
           <Button variant="secondary" size="sm" onClick={() => getActions().openContext({ kind: "animate", tab: "page" })}>
-            Page animations
+            {m.panelsContext.animate.pageAnimations}
           </Button>
         }
       />
@@ -158,20 +165,14 @@ function ElementPane() {
   const top = new Set(page.elements.map((e) => e.id));
   const targets = els.filter((e) => top.has(e.id) && !e.locked);
   if (!targets.length) {
-    return (
-      <PanelEmpty
-        icon={<IconSparkle />}
-        title="This can not be animated"
-        text="Elements inside a group move with the group, and locked elements can not be changed. Select the group, or unlock the element."
-      />
-    );
+    return <PanelEmpty icon={<IconSparkle />} title={m.panelsContext.animate.cannotAnimate} text={m.panelsContext.animate.cannotAnimateText} />;
   }
   const ids = targets.map((e) => e.id);
   return (
     <>
-      <PhaseSection phase="in" title="Entrance" hint="when the page starts" ids={ids} targets={targets} page={page} />
-      <PhaseSection phase="out" title="Exit" hint="at the end of the page" ids={ids} targets={targets} page={page} />
-      <PhaseSection phase="loop" title="Emphasis" hint="keeps repeating" ids={ids} targets={targets} page={page} />
+      <PhaseSection phase="in" title={m.panelsContext.animate.entrance} hint={m.panelsContext.animate.entranceHint} ids={ids} targets={targets} page={page} />
+      <PhaseSection phase="out" title={m.panelsContext.animate.exit} hint={m.panelsContext.animate.exitHint} ids={ids} targets={targets} page={page} />
+      <PhaseSection phase="loop" title={m.panelsContext.animate.emphasis} hint={m.panelsContext.animate.emphasisHint} ids={ids} targets={targets} page={page} />
       {targets.some(isAnimated) ? (
         <div className="cf-an__remove">
           <Button
@@ -183,7 +184,7 @@ function ElementPane() {
               stopPreview();
             }}
           >
-            Remove all animations
+            {m.panelsContext.animate.removeAll}
           </Button>
         </div>
       ) : null}
@@ -222,8 +223,8 @@ function PhaseSection({
 
   return (
     <Section title={title} aside={<span className="cf-an__hint">{hint}</span>}>
-      <div className="cf-an__grid" role="group" aria-label={`${title} animations`}>
-        <Tile kind="none" label="None" selected={same && current === null} onClick={() => choose(null)} />
+      <div className="cf-an__grid" role="group" aria-label={m.panelsContext.animate.phaseGroup(title)}>
+        <Tile kind="none" label={m.common.none} selected={same && current === null} onClick={() => choose(null)} />
         {presetsFor(phase).map((p) => (
           <Tile key={p.id} kind={p.id} phase={phase} label={p.label} selected={current === p.id} onClick={() => choose(p.id)} />
         ))}
@@ -254,7 +255,7 @@ function PhaseSettings({ phase, ids, anim, page }: { phase: AnimPhase; ids: stri
         />
       ) : null}
       <Slider
-        label={phase === "loop" ? "Cycle length" : "Duration"}
+        label={phase === "loop" ? m.panelsContext.animate.cycleLength : m.panelsContext.animate.duration}
         showValue
         format={seconds}
         min={0.2}
@@ -266,7 +267,7 @@ function PhaseSettings({ phase, ids, anim, page }: { phase: AnimPhase; ids: stri
       />
       {phase !== "loop" ? (
         <Slider
-          label={phase === "in" ? "Delay" : "Leave early"}
+          label={phase === "in" ? m.panelsContext.animate.delay : m.panelsContext.animate.leaveEarly}
           showValue
           format={seconds}
           min={0}
@@ -314,23 +315,21 @@ function PagePane() {
 
   return (
     <>
-      <Section title="Page animation" aside={<span className="cf-an__hint">every element at once</span>}>
-        <div className="cf-an__grid" role="group" aria-label="Page animations">
-          <Tile kind="none" label="None" selected={noEntrances} onClick={() => choosePage(null)} />
+      <Section title={m.panelsContext.animate.pageAnimation} aside={<span className="cf-an__hint">{m.panelsContext.animate.pageAnimationHint}</span>}>
+        <div className="cf-an__grid" role="group" aria-label={m.panelsContext.animate.pageAnimations}>
+          <Tile kind="none" label={m.common.none} selected={noEntrances} onClick={() => choosePage(null)} />
           {PAGE_ANIMATION_PRESETS.map((p) => (
             <Tile key={p.id} kind={p.kind} label={p.label} selected={active?.id === p.id} onClick={() => choosePage(p.id)} />
           ))}
         </div>
-        <p className="cf-an__note">
-          Elements enter one after another, bottom of the stack first. A picture or panel that covers the page stays still. Fine-tune each element on the next tab.
-        </p>
+        <p className="cf-an__note">{m.panelsContext.animate.pageAnimationNote}</p>
       </Section>
 
-      <Section title="Page timing" aside={<span className="cf-an__hint">in a presentation or an exported animation</span>}>
+      <Section title={m.panelsContext.animate.pageTiming} aside={<span className="cf-an__hint">{m.panelsContext.animate.pageTimingHint}</span>}>
         <Slider
-          label="Page duration"
+          label={m.panelsContext.animate.pageDuration}
           showValue
-          format={(v) => `${Math.round(v * 10) / 10} s`}
+          format={m.panelsContext.animate.pageSeconds}
           min={MIN_PAGE_DURATION}
           max={MAX_PAGE_DURATION}
           scale="log"
@@ -338,17 +337,17 @@ function PagePane() {
           value={pageDuration(page)}
           onChange={(v) => getActions().setPageDuration(v, allTiming ? "all" : "page")}
         />
-        <Checkbox checked={allTiming} onChange={setAllTiming} label="Apply to all pages" />
+        <Checkbox checked={allTiming} onChange={setAllTiming} label={m.panelsContext.shared.applyToAllPages} />
       </Section>
 
-      <Section title="Transition" aside={<span className="cf-an__hint">into this page</span>}>
+      <Section title={m.panelsContext.animate.transition} aside={<span className="cf-an__hint">{m.panelsContext.animate.transitionHint}</span>}>
         {index <= 0 ? (
-          <p className="cf-an__note">The first page has nothing to arrive from. Pick another page to set how the presentation moves to it.</p>
+          <p className="cf-an__note">{m.panelsContext.animate.firstPage}</p>
         ) : (
           <>
             <TransitionPreview design={design} from={design.pages[index - 1]} to={page} transition={transition} />
-            <div className="cf-an__grid" role="group" aria-label="Page transitions">
-              <Tile kind="none" label="None" transition selected={!transition} onClick={() => setTransition(null)} />
+            <div className="cf-an__grid" role="group" aria-label={m.panelsContext.animate.pageTransitions}>
+              <Tile kind="none" label={m.common.none} transition selected={!transition} onClick={() => setTransition(null)} />
               {TRANSITION_PRESETS.map((p) => (
                 <Tile key={p.id} kind={`t-${p.id}`} transition label={p.label} selected={transition?.kind === p.id} onClick={() => setTransition(p.id)} />
               ))}
@@ -363,7 +362,7 @@ function PagePane() {
                   />
                 ) : null}
                 <Slider
-                  label="Duration"
+                  label={m.panelsContext.animate.duration}
                   showValue
                   format={seconds}
                   min={0.2}
@@ -374,7 +373,7 @@ function PagePane() {
                 />
               </div>
             ) : null}
-            <Checkbox checked={allTransitions} onChange={setAllTransitions} label="Apply to all pages" />
+            <Checkbox checked={allTransitions} onChange={setAllTransitions} label={m.panelsContext.shared.applyToAllPages} />
           </>
         )}
       </Section>

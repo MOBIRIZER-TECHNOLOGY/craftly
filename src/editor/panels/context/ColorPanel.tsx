@@ -3,6 +3,7 @@ import { getActions, useActivePage, useEditor, useSelectedElements, type ColorTa
 import type { LinearGradientFill, PaintFill } from "@/core/types";
 import { DEFAULT_GRADIENTS, DEFAULT_SOLID_COLORS, searchColors } from "@/data/palettes";
 import { useTextSelectionStyle } from "@/editor/canvas/textEditing";
+import { m } from "@/i18n";
 import { Button, ColorPicker, ColorSwatch, IconBrand, IconEyedropper, IconPalette, IconPlus, IconTransparency, IconFile, Popover, SearchField } from "@/ui";
 import { applyGradient, applySolid, describeTarget, samePaint, solidPaint } from "./colorTargets";
 import { collectDocumentColors } from "./docColors";
@@ -104,8 +105,8 @@ export function ColorPanel({ target, colorKey }: { target: ColorTarget; colorKey
         <SearchField
           value={query}
           onChange={setQuery}
-          placeholder={"Try “blue” or “#00c4cc”"}
-          aria-label="Search colors"
+          placeholder={m.panelsContext.color.searchPlaceholder}
+          aria-label={m.panelsContext.color.searchLabel}
           onSubmit={(v) => {
             const first = searchColors(v)[0];
             if (first) pickSolid(first);
@@ -113,23 +114,23 @@ export function ColorPanel({ target, colorKey }: { target: ColorTarget; colorKey
         />
 
         {searching ? (
-          <Section title="Search results">
+          <Section title={m.panelsContext.color.searchResults}>
             {results.length ? (
               <div className="cf-color__grid cf-color__grid--7">{swatches(results)}</div>
             ) : (
-              <p className="cf-ctx__hint">No colors match “{query.trim()}”. Try a color name like “teal” or a hex code like #00c4cc.</p>
+              <p className="cf-ctx__hint">{m.panelsContext.color.noMatch(query.trim())}</p>
             )}
           </Section>
         ) : (
           <>
-            <Section title="Document colors" icon={<IconFile />}>
+            <Section title={m.panelsContext.color.documentColors} icon={<IconFile />}>
               <div className="cf-color__grid cf-color__grid--7">
                 <button
                   type="button"
                   className="cf-color__round cf-color__add"
                   style={{ backgroundImage: RAINBOW }}
-                  aria-label="Add a new color"
-                  title="Add a new color"
+                  aria-label={m.panelsContext.color.addColor}
+                  title={m.panelsContext.color.addColor}
                   aria-haspopup="dialog"
                   aria-expanded={!!addAnchor}
                   onClick={(e) => (addAnchor ? closeAdd() : openAdd(e.currentTarget))}
@@ -142,8 +143,8 @@ export function ColorPanel({ target, colorKey }: { target: ColorTarget; colorKey
                   <button
                     type="button"
                     className="cf-color__round cf-color__eye"
-                    aria-label="Pick a color from the screen"
-                    title="Pick a color from the screen"
+                    aria-label={m.panelsContext.color.pickFromScreen}
+                    title={m.panelsContext.color.pickFromScreen}
                     onClick={pickFromScreen}
                   >
                     <IconEyedropper aria-hidden="true" />
@@ -153,10 +154,10 @@ export function ColorPanel({ target, colorKey }: { target: ColorTarget; colorKey
               </div>
               {docColors.length > docSlots.length || showAllDoc ? (
                 <button type="button" className="cf-color__more" onClick={() => setShowAllDoc((v) => !v)}>
-                  {showAllDoc ? "Show less" : `Show all ${docColors.length} colors`}
+                  {showAllDoc ? m.panelsContext.shared.showLess : m.panelsContext.color.showAll(docColors.length)}
                 </button>
               ) : null}
-              <Popover open={!!addAnchor} anchor={addAnchor} onClose={closeAdd} placement="bottom-start" className="cf-color__pop" aria-label="Pick a custom color">
+              <Popover open={!!addAnchor} anchor={addAnchor} onClose={closeAdd} placement="bottom-start" className="cf-color__pop" aria-label={m.panelsContext.color.customColor}>
                 <div className="cf-color__pop-body">
                   <ColorPicker
                     value={picker}
@@ -174,11 +175,11 @@ export function ColorPanel({ target, colorKey }: { target: ColorTarget; colorKey
             </Section>
 
             <Section
-              title="Brand kit"
+              title={m.panelsContext.color.brandKit}
               icon={<IconBrand />}
               aside={
                 <button type="button" className="cf-ctx__link" onClick={() => actions.setLeftTab("brand")}>
-                  Edit
+                  {m.panelsContext.shared.edit}
                 </button>
               }
             >
@@ -186,28 +187,28 @@ export function ColorPanel({ target, colorKey }: { target: ColorTarget; colorKey
                 <div className="cf-color__grid cf-color__grid--7">{swatches(kit.colors)}</div>
               ) : (
                 <Button block variant="secondary" icon={<IconPlus />} onClick={() => actions.setLeftTab("brand")}>
-                  Add your brand colors
+                  {m.panelsContext.color.addBrandColors}
                 </Button>
               )}
             </Section>
 
             {recents.length ? (
-              <Section title="Recently used">
+              <Section title={m.panelsContext.color.recentlyUsed}>
                 <div className="cf-color__grid cf-color__grid--7">{swatches(recents)}</div>
               </Section>
             ) : null}
 
-            <Section title="Default solid colors" icon={<IconPalette />}>
+            <Section title={m.panelsContext.color.defaultSolid} icon={<IconPalette />}>
               <div className="cf-color__grid cf-color__grid--7">{swatches(DEFAULT_SOLID_COLORS)}</div>
             </Section>
 
             {model.gradients ? (
               <Section
-                title="Default gradient colors"
+                title={m.panelsContext.color.defaultGradient}
                 icon={<IconTransparency />}
                 aside={
                   <button type="button" className="cf-ctx__link" onClick={() => setShowAllGradients((v) => !v)}>
-                    {showAllGradients ? "Show less" : "See all"}
+                    {showAllGradients ? m.panelsContext.shared.showLess : m.panelsContext.shared.seeAll}
                   </button>
                 }
               >
@@ -217,7 +218,7 @@ export function ColorPanel({ target, colorKey }: { target: ColorTarget; colorKey
                       key={i}
                       color={paintCss(g)}
                       size={40}
-                      title={`Gradient ${g.stops.map((s) => s.color).join(" to ")}`}
+                      title={m.panelsContext.color.gradient(g.stops.map((s) => s.color))}
                       selected={samePaint(current, g)}
                       onClick={() => pickGradient(g)}
                     />

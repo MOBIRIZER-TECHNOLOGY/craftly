@@ -1,3 +1,4 @@
+import { m } from "@/i18n";
 import { cx } from "@/ui";
 import { describeSize, type DesignType } from "@/data/designTypes";
 import { DesignMock, mockForType, type MockSpec } from "./DesignMock";
@@ -35,11 +36,11 @@ interface CustomSizeTileProps {
 
 /** Tile for a size typed into a search box ("1200 x 628"). */
 export function CustomSizeTile({ width, height, onClick, size = "md", spec }: CustomSizeTileProps) {
-  const sizeText = `${width} × ${height} px`;
+  const sizeText = m.dashboard.shared.pxSize(width, height);
   return (
-    <button type="button" className={cx("cf-tile", `cf-tile--${size}`)} onClick={onClick} aria-label={`Custom size, ${sizeText}`}>
+    <button type="button" className={cx("cf-tile", `cf-tile--${size}`)} onClick={onClick} aria-label={m.dashboard.create.customSizeTile(sizeText)}>
       <DesignMock spec={spec} height={STAGE_HEIGHT[size]} className="cf-tile__art" />
-      <span className="cf-tile__name">Custom size</span>
+      <span className="cf-tile__name">{m.dashboard.shared.customSize}</span>
       <span className="cf-tile__size">{sizeText}</span>
     </button>
   );

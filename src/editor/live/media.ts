@@ -2,6 +2,7 @@ import { PermanentSendError } from "@/collab/live";
 import { cacheSharedAsset, getAsset, prepareAssetFromFile } from "@/core/assets";
 import type { Design, LiveLink } from "@/core/types";
 import { blobToDataUrl } from "@/export/encoding";
+import { m } from "@/i18n";
 import { collectAssetIds, dataUrlToBytes, extensionForMime } from "@/export/projectFormat";
 import { retryAssetImage } from "@/render/images";
 import { apiUrl } from "./links";
@@ -29,8 +30,8 @@ export function sharedMedia(link: LiveLink, request: typeof fetch = fetch) {
             uploaded.add(id);
             continue;
           }
-          if (refused(existing.status)) throw new PermanentSendError("An uploaded image is missing. Replace it to sync this design.");
-          throw new Error(`Could not check a shared image (server response ${existing.status}).`);
+          if (refused(existing.status)) throw new PermanentSendError(m.editor.live.media.missing);
+          throw new Error(m.editor.live.media.checkFailed(existing.status));
         }
         const url = await blobToDataUrl(asset.blob);
         const res = await request(assetPath(link, id), {
@@ -39,11 +40,8 @@ export function sharedMedia(link: LiveLink, request: typeof fetch = fetch) {
           body: JSON.stringify({ mime: asset.mime, base64: url.slice(url.indexOf(",") + 1) }),
           signal: AbortSignal.timeout(15000),
         });
-        if (refused(res.status))
-          throw new PermanentSendError(
-            `An uploaded image cannot be shared (server response ${res.status}). It may be too big for the server, or the shared design may hold as many images as it may.`,
-          );
-        if (!res.ok) throw new Error(`Could not share an uploaded image (server response ${res.status}). Check the image size and try again.`);
+        if (refused(res.status)) throw new PermanentSendError(m.editor.live.media.cannotShare(res.status));
+        if (!res.ok) throw new Error(m.editor.live.media.shareFailed(res.status));
         uploaded.add(id);
       }
     },
@@ -55,14 +53,14 @@ export function sharedMedia(link: LiveLink, request: typeof fetch = fetch) {
           if (!pending) {
             pending = (async () => {
               const res = await request(assetPath(link, id), { headers: { "x-craftly-key": link.key }, signal: AbortSignal.timeout(15000) });
-              if (!res.ok) throw new Error("A shared image could not be loaded.");
+              if (!res.ok) throw new Error(m.editor.live.media.loadFailed);
               const { mime, base64 } = (await res.json()) as { mime?: unknown; base64?: unknown };
               if (typeof mime !== "string" || !imageType.test(mime) || typeof base64 !== "string" || base64.length > 12 * 1024 * 1024) {
-                throw new Error("The server returned an unsupported image.");
+                throw new Error(m.editor.live.media.unsupported);
               }
               const decoded = dataUrlToBytes(`data:${mime};base64,${base64}`);
-              if (!decoded) throw new Error("The shared image is damaged.");
-              const file = new File([decoded.bytes as BlobPart], `Shared image.${extensionForMime(mime)}`, { type: mime });
+              if (!decoded) throw new Error(m.editor.live.media.damaged);
+              const file = new File([decoded.bytes as BlobPart], `${m.editor.live.media.fileName}.${extensionForMime(mime)}`, { type: mime });
               await cacheSharedAsset(await prepareAssetFromFile(file, id));
               uploaded.add(id);
               retryAssetImage(id);

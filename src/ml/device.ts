@@ -1,4 +1,5 @@
 /** Can this browser run the on-device models? Cheap checks first, so the graphics card is only woken when it matters. */
+import { m } from "@/i18n";
 
 export interface DeviceEnv {
   gpu?: { requestAdapter(): Promise<{ features?: ReadonlySet<string> } | null | undefined> };
@@ -18,25 +19,23 @@ export function browserEnv(): DeviceEnv {
 
 const no = (reason: Extract<Support, { ok: false }>["reason"], message: string): Support => ({ ok: false, reason, message });
 
-const FEATURE_WORDS: Record<string, string> = { "shader-f16": "half-precision maths" };
+const FEATURE_WORDS: Record<string, string> = { "shader-f16": m.ml.support.halfPrecision };
 
 /** `needs` lists WebGPU features the model's file requires of the graphics card. */
 export async function checkSupport(env: DeviceEnv = browserEnv(), needs: readonly string[] = []): Promise<Support> {
-  if (!env.hasWorker) return no("no-workers", "This browser can't run background tasks, which the model needs.");
-  if (!env.hasIndexedDb) return no("no-storage", "This browser has no storage for the model. Private windows often block it.");
-  if (!env.gpu) {
-    return no("no-webgpu", "This browser doesn't support WebGPU, which the model needs. Try Chrome or Edge 113 or newer, Safari 26 or newer, or Firefox 141 or newer on Windows.");
-  }
+  const words = m.ml.support;
+  if (!env.hasWorker) return no("no-workers", words.noWorkers);
+  if (!env.hasIndexedDb) return no("no-storage", words.noStorage);
+  if (!env.gpu) return no("no-webgpu", words.noWebgpu);
   try {
     const adapter = await env.gpu.requestAdapter();
     if (adapter) {
       const missing = needs.filter((feature) => !adapter.features?.has(feature));
       if (!missing.length) return { ok: true };
-      const words = missing.map((feature) => FEATURE_WORDS[feature] ?? feature).join(" and ");
-      return no("missing-feature", `This graphics card can't do ${words}, which the model needs. A newer graphics card or another browser may help.`);
+      return no("missing-feature", words.missingFeature(missing.map((feature) => FEATURE_WORDS[feature] ?? feature)));
     }
   } catch {
     /* handled below: a blocked request is the same as no adapter */
   }
-  return no("no-adapter", "WebGPU is available, but the browser found no graphics card to use. Check that hardware acceleration is switched on.");
+  return no("no-adapter", words.noAdapter);
 }

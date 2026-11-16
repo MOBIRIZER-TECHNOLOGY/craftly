@@ -4,6 +4,7 @@
  * (Create, template preview, name prompt).
  */
 import { useEffect, useRef, type ReactNode } from "react";
+import { m } from "@/i18n";
 import { useRoute } from "@/router";
 import { BackupReminderNotice } from "./BackupReminderNotice";
 import { BrandPage } from "./BrandPage";
@@ -21,12 +22,12 @@ import { TemplatesPage } from "./TemplatesPage";
 import { TrashPage } from "./TrashPage";
 
 const TITLES: Record<string, string> = {
-  projects: "Projects - Craftly",
-  templates: "Templates - Craftly",
-  brand: "Brand kit - Craftly",
-  trash: "Trash - Craftly",
+  projects: m.dashboard.pageTitles.projects,
+  templates: m.dashboard.pageTitles.templates,
+  brand: m.dashboard.pageTitles.brand,
+  trash: m.dashboard.pageTitles.trash,
 };
-const HOME_TITLE = "Craftly - Design anything";
+const HOME_TITLE = m.dashboard.pageTitles.home;
 
 export function Dashboard() {
   const route = useRoute();

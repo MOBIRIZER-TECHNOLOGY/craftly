@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { recordProblem } from "@/core/problems";
+import { m } from "@/i18n";
 import { Button, IconRefresh, IconWarning } from "@/ui";
 import { EmptyHint } from "./EmptyHint";
 
@@ -43,8 +44,8 @@ export class PanelBoundary extends Component<Props, State> {
       <div className="cf-panel" role="alert">
         <EmptyHint
           icon={<IconWarning />}
-          title={`The ${this.props.label} panel could not load`}
-          text="Everything else in the editor still works. Check your connection, then try again."
+          title={m.panelsTabs.panelBoundary.title(this.props.label)}
+          text={m.panelsTabs.panelBoundary.text}
           action={
             <Button
               variant="primary"
@@ -54,7 +55,7 @@ export class PanelBoundary extends Component<Props, State> {
                 this.setState({ error: null });
               }}
             >
-              Try again
+              {m.common.retry}
             </Button>
           }
         />

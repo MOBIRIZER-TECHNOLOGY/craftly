@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { getActivePage, useEditor } from "@/core/store";
+import { m } from "@/i18n";
 import { IconButton, IconClose } from "@/ui";
 import "./notes.css";
 
@@ -52,14 +53,14 @@ export function NotesPanel() {
   };
 
   return (
-    <section className="cf-notes" aria-label="Presenter notes">
+    <section className="cf-notes" aria-label={m.editorChrome.notes.region}>
       <header className="cf-notes__head">
-        <h2 className="cf-notes__title">Notes</h2>
-        <span className="cf-notes__page">Page {pageNumber}</span>
+        <h2 className="cf-notes__title">{m.editorChrome.notes.title}</h2>
+        <span className="cf-notes__page">{m.editorChrome.pages.page(pageNumber)}</span>
         <IconButton
           className="cf-notes__close"
           size="sm"
-          label="Close notes"
+          label={m.editorChrome.notes.close}
           icon={<IconClose aria-hidden="true" />}
           onClick={() => useEditor.getState().actions.toggle("notesOpen")}
         />
@@ -68,8 +69,8 @@ export function NotesPanel() {
         className="cf-notes__text"
         value={text}
         readOnly={readOnly}
-        aria-label={`Notes for page ${pageNumber}`}
-        placeholder="Add presenter notes for this page. Press N while presenting to see them."
+        aria-label={m.editorChrome.notes.notesFor(pageNumber)}
+        placeholder={m.editorChrome.notes.placeholder}
         onChange={onChange}
         onBlur={flush}
       />

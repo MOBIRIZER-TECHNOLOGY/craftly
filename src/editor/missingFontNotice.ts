@@ -10,6 +10,7 @@
 import { missingFontsOf, startCustomFonts } from "@/core/customFonts";
 import { useEditor } from "@/core/store";
 import type { Design } from "@/core/types";
+import { m } from "@/i18n";
 import { onFontsChange } from "@/render/fonts";
 import { toast } from "@/ui";
 
@@ -17,12 +18,7 @@ const quoted = (family: string) => `“${family}”`;
 
 /** The words of the notice for these fonts: up to three by name, the rest counted. */
 export function missingFontMessage(families: string[]): string {
-  const rest = "The design is not changed. If you have the font, upload it under Brand > Your fonts.";
-  if (families.length === 1) return `The font ${quoted(families[0])} is not on this device, so its text is shown in a substitute font. ${rest}`;
-  const named = families.slice(0, 3).map(quoted);
-  const more = families.length - named.length;
-  const list = more > 0 ? `${named.join(", ")} and ${more} more` : `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`;
-  return `The fonts ${list} are not on this device, so their text is shown in a substitute font. ${rest}`;
+  return m.editor.missingFonts(families.map(quoted));
 }
 
 /**

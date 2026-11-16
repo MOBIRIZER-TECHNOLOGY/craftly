@@ -1,4 +1,5 @@
 import { forwardRef, useRef, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { m } from "@/i18n";
 import "./NumberField.css";
 import { cx } from "./cx";
 import { useMergedRefs } from "./hooks";
@@ -218,7 +219,7 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
           type="button"
           tabIndex={-1}
           className="cf-num__step"
-          aria-label={`Decrease ${label ?? ariaLabel ?? "value"}`}
+          aria-label={m.ui.numberField.decrease(label ?? ariaLabel ?? m.ui.numberField.value)}
           disabled={disabled || (min !== undefined && value <= min)}
           // keep focus (and any typed draft) in the input while stepping with the mouse
           onPointerDown={(e) => e.preventDefault()}
@@ -258,7 +259,7 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
           type="button"
           tabIndex={-1}
           className="cf-num__step"
-          aria-label={`Increase ${label ?? ariaLabel ?? "value"}`}
+          aria-label={m.ui.numberField.increase(label ?? ariaLabel ?? m.ui.numberField.value)}
           disabled={disabled || (max !== undefined && value >= max)}
           onPointerDown={(e) => e.preventDefault()}
           onClick={(e) => stepBy(1, e)}

@@ -7,6 +7,7 @@
  * report has the fields of `Report` and no others: the error, the screen it happened on (never which design), the build, the
  * browser and the size of the window.
  */
+import { m } from "@/i18n";
 
 /** `screen`: the screen stopped. `panel`: a side panel stopped. `script`: an error nothing caught. `promise`: a failure nothing waited for. `save`: autosave failed. `load`: a part of Craftly could not be fetched. */
 export type ProblemKind = "screen" | "panel" | "script" | "promise" | "save" | "load";
@@ -35,14 +36,8 @@ const STACK_LIMIT = 1500;
 const SEND_TIMEOUT = 10_000;
 const UNKNOWN_MESSAGE = "Something failed without saying what.";
 
-export const PROBLEM_TITLES: Record<ProblemKind, string> = {
-  screen: "The screen stopped",
-  panel: "A panel stopped",
-  script: "Something failed",
-  promise: "Something failed in the background",
-  save: "Saving failed",
-  load: "A part of Craftly could not load",
-};
+/** The title a person reads for each kind of problem. (The message and the report stay as they were written: they are for whoever fixes it.) */
+export const PROBLEM_TITLES: Record<ProblemKind, string> = m.core.problems;
 
 /* ---------------- cleaning what is kept ---------------- */
 

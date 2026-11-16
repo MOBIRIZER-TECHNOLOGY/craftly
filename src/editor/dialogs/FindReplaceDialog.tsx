@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { locate } from "@/core/ops";
 import { getActivePage, useEditor } from "@/core/store";
 import { designToScreen, useView } from "@/editor/canvas/viewStore";
+import { m } from "@/i18n";
 import { Button, Checkbox, IconButton, IconChevronDown, IconChevronUp, IconClose, Popover, SearchField, TextField, toast, useLatest } from "@/ui";
 import { findMatches, isAfter, replaceInParagraphs, type TextMatch } from "./findReplace";
 import "./findReplaceDialog.css";
@@ -60,7 +61,7 @@ export function FindReplaceDialog({ open, onClose }: { open: boolean; onClose: (
     if (!list.length) return;
     const s = useEditor.getState();
     const activeIndex = Math.max(0, s.design?.pages.findIndex((p) => p.id === s.activePageId) ?? 0);
-    const first = list.findIndex((m) => m.pageIndex >= activeIndex);
+    const first = list.findIndex((match) => match.pageIndex >= activeIndex);
     const at = first < 0 ? 0 : first;
     setCursor(at);
     reveal(list[at]);
@@ -80,17 +81,17 @@ export function FindReplaceDialog({ open, onClose }: { open: boolean; onClose: (
     const actions = useEditor.getState().actions;
     const groups = new Map<string, { pageId: string; elementId: string; ranges: TextMatch[] }>();
     let skipped = 0;
-    for (const m of list) {
-      if (m.locked) {
+    for (const match of list) {
+      if (match.locked) {
         skipped++;
         continue;
       }
-      const key = `${m.pageId}\u0000${m.elementId}`;
-      const g = groups.get(key) ?? { pageId: m.pageId, elementId: m.elementId, ranges: [] };
-      g.ranges.push(m);
+      const key = `${match.pageId}\u0000${match.elementId}`;
+      const g = groups.get(key) ?? { pageId: match.pageId, elementId: match.elementId, ranges: [] };
+      g.ranges.push(match);
       groups.set(key, g);
     }
-    if (skipped) toast.info(skipped === 1 ? "One match is in a locked element and was left alone." : `${skipped} matches are in locked elements and were left alone.`);
+    if (skipped) toast.info(m.editorChrome.findReplace.lockedSkipped(skipped));
     if (!groups.size) return 0;
     const home = useEditor.getState().activePageId;
     const batch = groups.size > 1;
@@ -115,12 +116,12 @@ export function FindReplaceDialog({ open, onClose }: { open: boolean; onClose: (
 
   const replaceOne = () => {
     if (readOnly || index < 0) return;
-    const m = matches[index];
-    if (apply([m]) === 0) return;
+    const target = matches[index];
+    if (apply([target]) === 0) return;
     // the list shrinks by one; continue with the first match after the replaced text
     const s = useEditor.getState();
     const next = s.design ? findMatches(s.design, query, caseSensitive) : [];
-    const at = next.findIndex((x) => isAfter(x, m, replacement.length));
+    const at = next.findIndex((x) => isAfter(x, target, replacement.length));
     if (next.length) {
       const to = at < 0 ? 0 : at;
       setCursor(to);
@@ -132,7 +133,7 @@ export function FindReplaceDialog({ open, onClose }: { open: boolean; onClose: (
     if (readOnly || !matches.length) return;
     const n = apply(matches);
     setCursor(0);
-    if (n > 0) toast.success(`Replaced ${n} ${n === 1 ? "match" : "matches"}`);
+    if (n > 0) toast.success(m.editorChrome.findReplace.replaced(n));
   };
 
   const onFindKey = (e: KeyboardEvent<HTMLElement>) => {
@@ -146,7 +147,7 @@ export function FindReplaceDialog({ open, onClose }: { open: boolean; onClose: (
     }
   };
 
-  const counter = !query ? "" : matches.length ? `${index + 1} of ${matches.length}` : "No results";
+  const counter = !query ? "" : matches.length ? m.editorChrome.findReplace.counter(index + 1, matches.length) : m.editorChrome.findReplace.noResults;
 
   return (
     <Popover
@@ -158,13 +159,13 @@ export function FindReplaceDialog({ open, onClose }: { open: boolean; onClose: (
       trapFocus={false}
       closeOnOutsidePress={false}
       className="cf-find-pop"
-      aria-label="Find and replace"
+      aria-label={m.editorChrome.findReplace.title}
     >
       <div className="cf-find">
         {/* a div, not a header: inside a floating dialog a header would count as a second banner landmark of the page */}
         <div className="cf-find__head">
-          <h2 className="cf-find__title">Find and replace</h2>
-          <IconButton size="sm" label="Close" shortcut="Esc" icon={<IconClose aria-hidden="true" />} onClick={onClose} />
+          <h2 className="cf-find__title">{m.editorChrome.findReplace.title}</h2>
+          <IconButton size="sm" label={m.common.close} shortcut="Esc" icon={<IconClose aria-hidden="true" />} onClick={onClose} />
         </div>
         <div className="cf-find__row" onKeyDown={onFindKey}>
           <SearchField
@@ -174,25 +175,32 @@ export function FindReplaceDialog({ open, onClose }: { open: boolean; onClose: (
               setQuery(v);
               setCursor(0);
             }}
-            placeholder="Find"
-            aria-label="Find text"
+            placeholder={m.editorChrome.findReplace.findPlaceholder}
+            aria-label={m.editorChrome.findReplace.findLabel}
             trailing={counter ? <span className="cf-find__count">{counter}</span> : undefined}
           />
           <IconButton
             size="sm"
-            label="Previous match"
+            label={m.editorChrome.findReplace.previousMatch}
             shortcut="Shift+Enter"
             icon={<IconChevronUp aria-hidden="true" />}
             disabled={!matches.length}
             onClick={() => jump(index - 1)}
           />
-          <IconButton size="sm" label="Next match" shortcut="Enter" icon={<IconChevronDown aria-hidden="true" />} disabled={!matches.length} onClick={() => jump(index + 1)} />
+          <IconButton
+            size="sm"
+            label={m.editorChrome.findReplace.nextMatch}
+            shortcut="Enter"
+            icon={<IconChevronDown aria-hidden="true" />}
+            disabled={!matches.length}
+            onClick={() => jump(index + 1)}
+          />
         </div>
         <TextField
           value={replacement}
           onChange={(e) => setReplacement(e.target.value)}
-          placeholder="Replace with"
-          aria-label="Replacement text"
+          placeholder={m.editorChrome.findReplace.replacePlaceholder}
+          aria-label={m.editorChrome.findReplace.replaceLabel}
           disabled={readOnly}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -201,16 +209,16 @@ export function FindReplaceDialog({ open, onClose }: { open: boolean; onClose: (
             }
           }}
         />
-        <Checkbox checked={caseSensitive} onChange={setCaseSensitive} label="Match case" />
+        <Checkbox checked={caseSensitive} onChange={setCaseSensitive} label={m.editorChrome.findReplace.matchCase} />
         <div className="cf-find__actions">
           <Button variant="secondary" size="sm" disabled={readOnly || index < 0} onClick={replaceOne}>
-            Replace
+            {m.editorChrome.findReplace.replace}
           </Button>
           <Button variant="primary" size="sm" disabled={readOnly || !matches.length} onClick={replaceAll}>
-            {matches.length > 1 ? `Replace all (${matches.length})` : "Replace all"}
+            {matches.length > 1 ? m.editorChrome.findReplace.replaceAllCount(matches.length) : m.editorChrome.findReplace.replaceAll}
           </Button>
         </div>
-        {readOnly ? <p className="cf-find__note">Switch to Editing to replace text.</p> : null}
+        {readOnly ? <p className="cf-find__note">{m.editorChrome.findReplace.readOnlyNote}</p> : null}
       </div>
     </Popover>
   );

@@ -85,7 +85,7 @@ function editorialSerif(): Template {
   side("REFERENCES");
   els.push(sans("From my current head teacher and a former colleague, on request.", RX, ry, RW, 13.5, { lineHeight: 1.6 }));
   return template(
-    { slug: "editorial-serif", name: "Editorial Serif Teacher Resume", category: "resume", size: "resume", tags: ["resume", "cv", "editorial", "serif", "teacher", "education", "elegant", "two column", "warm"], accent: RUST },
+    { slug: "editorial-serif", category: "resume", size: "resume", tags: ["resume", "cv", "editorial", "serif", "teacher", "education", "elegant", "two column", "warm"], accent: RUST },
     [pg(PAPER, els)],
   );
 }
@@ -164,7 +164,7 @@ function bandedMonogram(): Template {
   els.push(sans("English and Igbo", RX, ry + 44, RW, 13.5));
   els.push(R(0, 1040, W, 16, TEAL));
   return template(
-    { slug: "banded-monogram", name: "Banded Monogram Nurse Resume", category: "resume", size: "resume", tags: ["resume", "cv", "nurse", "healthcare", "monogram", "header", "teal", "clean", "two column"], accent: TEAL },
+    { slug: "banded-monogram", category: "resume", size: "resume", tags: ["resume", "cv", "nurse", "healthcare", "monogram", "header", "teal", "clean", "two column"], accent: TEAL },
     [pg("#ffffff", els)],
   );
 }
@@ -238,7 +238,7 @@ function cardGrid(): Template {
     els.push(head(k, 592, y, 160, 14.5, { fontWeight: 600 }), body(v, 592, y + 24, 160, 13.5, { color: BODY, lineHeight: 1.5 }));
   });
   return template(
-    { slug: "card-grid-student", name: "Card Grid Student Resume", category: "resume", size: "resume", tags: ["resume", "cv", "student", "graduate", "entry level", "cards", "modern", "projects", "indigo", "friendly"], accent: INDIGO },
+    { slug: "card-grid-student", category: "resume", size: "resume", tags: ["resume", "cv", "student", "graduate", "entry level", "cards", "modern", "projects", "indigo", "friendly"], accent: INDIGO },
     [pg(BG, els)],
   );
 }

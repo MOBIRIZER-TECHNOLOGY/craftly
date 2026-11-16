@@ -19,7 +19,12 @@ const custom = { width: 400, height: 300, typeId: "custom" };
 describe("sizeChoices", () => {
   it("puts the size of the design first, under the name of its format", () => {
     const [first] = sizeChoices(story);
-    expect(first).toEqual({ id: CURRENT_SIZE_ID, name: "Instagram Story", width: 1080, height: 1920, current: true });
+    expect(first).toEqual({ id: CURRENT_SIZE_ID, name: "Instagram Story", fileName: "Instagram Story", width: 1080, height: 1920, current: true });
+  });
+
+  it("names the files in English whatever the language of the page, and shows the name of the page's language", () => {
+    const shown = { ...sizeChoices(story)[0], name: "इंस्टाग्राम स्टोरी" };
+    expect(multiSizeFileName("Menu", shown, null, "png")).toBe("Menu - Instagram Story 1080x1920.png");
   });
 
   it("calls a size that is no format the original size", () => {

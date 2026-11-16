@@ -6,7 +6,7 @@ import { describeSize, getDesignType } from "@/data/designTypes";
 import { TEMPLATE_CATEGORY_LABELS } from "@/data/templates";
 import { createFromTemplate } from "./actions";
 import { toggleFavouriteTemplate, useFavouriteTemplates } from "./data";
-import { plural } from "./format";
+import { m } from "@/i18n";
 import { closeTemplatePreview, usePreviewTemplate } from "./templatePreview";
 import "./TemplatePreviewModal.css";
 
@@ -24,7 +24,7 @@ export function TemplatePreviewHost() {
       size="xl"
       flush
       className="cf-tpreview-modal"
-      aria-label={view ? `Template preview: ${view.name}` : "Template preview"}
+      aria-label={view ? m.dashboard.templatePreview.labelFor(view.name) : m.dashboard.templatePreview.label}
     >
       {view ? <PreviewBody key={view.id} template={view} /> : null}
     </Modal>
@@ -64,7 +64,7 @@ function PreviewBody({ template }: { template: Template }) {
           <div
             className="cf-tpreview__strip"
             role="group"
-            aria-label="Pages"
+            aria-label={m.dashboard.templatePreview.pages}
             onKeyDown={(event) => {
               const last = template.pages.length - 1;
               const next =
@@ -89,7 +89,7 @@ function PreviewBody({ template }: { template: Template }) {
                 key={item.id}
                 type="button"
                 className={cx("cf-tpreview__thumb", index === pageIndex && "is-active")}
-                aria-label={`Page ${index + 1} of ${template.pages.length}`}
+                aria-label={m.dashboard.templatePreview.pageOf(index + 1, template.pages.length)}
                 aria-current={index === pageIndex ? "true" : undefined}
                 onClick={() => setPageIndex(index)}
               >
@@ -104,24 +104,24 @@ function PreviewBody({ template }: { template: Template }) {
       </div>
 
       <div className="cf-tpreview__info">
-        <p className="cf-tpreview__kicker">Template</p>
+        <p className="cf-tpreview__kicker">{m.dashboard.templatePreview.kicker}</p>
         <h2 className="cf-tpreview__name">{template.name}</h2>
         <dl className="cf-tpreview__facts">
           <div>
-            <dt>Category</dt>
+            <dt>{m.dashboard.templatePreview.category}</dt>
             <dd>{TEMPLATE_CATEGORY_LABELS[template.category] ?? template.category}</dd>
           </div>
           <div>
-            <dt>Size</dt>
+            <dt>{m.dashboard.templatePreview.size}</dt>
             <dd>{describeSize(template.width, template.height, type?.unit ?? "px")}</dd>
           </div>
           <div>
-            <dt>Pages</dt>
-            <dd>{plural(template.pages.length, "page")}</dd>
+            <dt>{m.dashboard.templatePreview.pages}</dt>
+            <dd>{m.dashboard.counts.pages(template.pages.length)}</dd>
           </div>
         </dl>
         {template.tags.length > 0 ? (
-          <ul className="cf-tpreview__tags" aria-label="Tags">
+          <ul className="cf-tpreview__tags" aria-label={m.dashboard.templatePreview.tags}>
             {template.tags.slice(0, 10).map((tag) => (
               <li key={tag}>
                 <Badge>{tag}</Badge>
@@ -131,7 +131,7 @@ function PreviewBody({ template }: { template: Template }) {
         ) : null}
         <div className="cf-tpreview__actions">
           <Button variant="primary" size="lg" block loading={busy} icon={<IconPen aria-hidden="true" />} onClick={() => void customize()} data-autofocus="">
-            Customize this template
+            {m.dashboard.shared.customize}
           </Button>
           <Button
             variant="secondary"
@@ -141,10 +141,10 @@ function PreviewBody({ template }: { template: Template }) {
             aria-pressed={isFavourite}
             onClick={() => void toggleFavouriteTemplate(template.id, template.name)}
           >
-            {isFavourite ? "In your favourites" : "Add to favourites"}
+            {isFavourite ? m.dashboard.templatePreview.inFavourites : m.dashboard.shared.addFavourite}
           </Button>
         </div>
-        <p className="cf-tpreview__note">Customizing makes a copy in your projects. The original template stays as it is.</p>
+        <p className="cf-tpreview__note">{m.dashboard.templatePreview.note}</p>
       </div>
     </div>
   );

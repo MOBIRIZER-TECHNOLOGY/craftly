@@ -2,48 +2,45 @@
 import { paragraphsToText } from "@/core/factory";
 import type { ChartKind, DesignElement, GraphicElement, ShapeElement } from "@/core/types";
 import { getPhotoDef } from "@/data/photos";
+import { m } from "@/i18n";
 import { getShape } from "@/render/shapePaths";
 
-const CHART_LABEL: Record<ChartKind, string> = { bar: "Bar", column: "Column", line: "Line", area: "Area", pie: "Pie", donut: "Donut" };
+const CHART_LABEL: Record<ChartKind, string> = m.panelsContext.chart.kinds;
 
-const GRAPHIC_LABEL: Record<NonNullable<GraphicElement["source"]>["kind"], string> = {
-  icon: "Icon",
-  illustration: "Illustration",
-  sticker: "Sticker",
-  qr: "QR code",
-  emoji: "Emoji",
-  other: "Graphic",
-};
+const GRAPHIC_LABEL: Record<NonNullable<GraphicElement["source"]>["kind"], string> = m.panelsContext.layerNames.graphics;
 
 const truncate = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
 
 /** "Rectangle" for a wide rect, "Circle" for a round ellipse: the catalogue's single name per shape reads wrong once the shape is stretched. */
 function shapeName(el: ShapeElement): string {
   const square = Math.abs(el.width - el.height) <= Math.max(el.width, el.height) * 0.08;
-  if (el.shape === "rect") return `${el.radius > 0 ? "Rounded " : ""}${square ? "square" : "rectangle"}`.replace(/^./, (c) => c.toUpperCase());
-  if (el.shape === "ellipse") return square ? "Circle" : "Ellipse";
-  return getShape(el.shape)?.name ?? "Shape";
+  if (el.shape === "rect") {
+    if (el.radius > 0) return square ? m.panelsContext.layerNames.roundedSquare : m.panelsContext.layerNames.roundedRectangle;
+    return square ? m.panelsContext.layerNames.square : m.panelsContext.layerNames.rectangle;
+  }
+  if (el.shape === "ellipse") return square ? m.panelsContext.layerNames.circle : m.panelsContext.layerNames.ellipse;
+  return getShape(el.shape)?.name ?? m.panelsContext.layerNames.shape;
 }
 
 /** A generic label for the element's type ("Text", "Image" ...). */
 export function layerKind(el: DesignElement): string {
   switch (el.type) {
     case "text":
-      return "Text";
+      return m.panelsContext.layerNames.text;
     case "shape":
-      return "Shape";
+      return m.panelsContext.layerNames.shape;
     case "line":
-      return "Line";
+      return m.panelsContext.layerNames.line;
     case "image":
-      return el.isFrame && !el.src ? "Frame" : "Image";
+      return el.isFrame && !el.src ? m.panelsContext.layerNames.frame : m.panelsContext.layerNames.image;
     case "graphic":
       return GRAPHIC_LABEL[el.source?.kind ?? "other"];
     case "group":
-      return "Group";
+      return m.panelsContext.layerNames.group;
     case "table":
-      return "Table";
+      return m.panelsContext.layerNames.table;
     case "chart":
-      return "Chart";
+      return m.panelsContext.layerNames.chart;
   }
 }
 
@@ -54,21 +51,21 @@ export function layerName(el: DesignElement): string {
   switch (el.type) {
     case "text": {
       const text = paragraphsToText(el.paragraphs).replace(/\s+/g, " ").trim();
-      return text ? truncate(text, 40) : "Empty text";
+      return text ? truncate(text, 40) : m.panelsContext.layerNames.emptyText;
     }
     case "shape":
       return shapeName(el);
     case "line":
-      return el.startArrow !== "none" || el.endArrow !== "none" ? "Arrow" : "Line";
+      return el.startArrow !== "none" || el.endArrow !== "none" ? m.panelsContext.layerNames.arrow : m.panelsContext.layerNames.line;
     case "image": {
-      if (el.isFrame && !el.src) return "Frame";
-      if (el.src?.startsWith("builtin:")) return getPhotoDef(el.src.slice(8))?.name ?? "Image";
-      return "Image";
+      if (el.isFrame && !el.src) return m.panelsContext.layerNames.frame;
+      if (el.src?.startsWith("builtin:")) return getPhotoDef(el.src.slice(8))?.name ?? m.panelsContext.layerNames.image;
+      return m.panelsContext.layerNames.image;
     }
     case "group":
-      return `Group (${el.children.length})`;
+      return m.panelsContext.layerNames.groupOf(el.children.length);
     case "chart":
-      return `${CHART_LABEL[el.chart]} chart`;
+      return CHART_LABEL[el.chart];
     default:
       return layerKind(el);
   }

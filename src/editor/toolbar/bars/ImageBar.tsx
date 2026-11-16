@@ -2,6 +2,7 @@
 import { getActions } from "@/core/store";
 import type { ImageElement } from "@/core/types";
 import { getCropScale, resetCrop, setCropScale } from "@/editor/canvas/CropOverlay";
+import { m } from "@/i18n";
 import { Divider, IconCrop, IconReplace, IconRotateLeft, IconUpload, IconZoomIn, IconZoomOut, Slider } from "@/ui";
 import {
   BorderPopover,
@@ -29,10 +30,10 @@ export function ImageBar({ els, ids, copyEnabled }: BarProps<ImageElement> & Ext
   const rounded = els.every((e) => (e.mask || "rect") === "rect");
   return (
     <>
-      <TBText tip="Filters and adjustments" active={filtersOpen} onClick={() => toggleContext({ kind: "filters", tab: "filters" })}>
-        Edit image
+      <TBText tip={m.editor.imageBar.editImageTip} active={filtersOpen} onClick={() => toggleContext({ kind: "filters", tab: "filters" })}>
+        {m.editor.imageBar.editImage}
       </TBText>
-      {single && <TBIcon label="Crop" tip="Crop" shortcut="Enter" icon={<IconCrop />} onClick={() => getActions().startCrop(single.id)} />}
+      {single && <TBIcon label={m.editor.imageBar.crop} tip={m.editor.imageBar.crop} shortcut="Enter" icon={<IconCrop />} onClick={() => getActions().startCrop(single.id)} />}
       <FlipMenu />
       {rounded && <RadiusPopover els={els} ids={ids} />}
       <BorderPopover els={els} ids={ids} />
@@ -41,8 +42,8 @@ export function ImageBar({ els, ids, copyEnabled }: BarProps<ImageElement> & Ext
       <AnimateButton />
       <PositionButton />
       {single && (
-        <TBText icon={<IconReplace />} tip="Choose another picture" onClick={() => pickImageFor(single.id)}>
-          Replace
+        <TBText icon={<IconReplace />} tip={m.editor.imageBar.replaceTip} onClick={() => pickImageFor(single.id)}>
+          {m.editor.imageBar.replace}
         </TBText>
       )}
       {ids.length > 1 && <MultiActions ids={ids} />}
@@ -57,8 +58,8 @@ export function ImageBar({ els, ids, copyEnabled }: BarProps<ImageElement> & Ext
 export function FrameBar({ el }: { el: ImageElement }) {
   return (
     <>
-      <TBText variant="soft" icon={<IconUpload />} tip="Upload a picture into this frame" onClick={() => pickImageFor(el.id)}>
-        Upload
+      <TBText variant="soft" icon={<IconUpload />} tip={m.editor.imageBar.uploadTip} onClick={() => pickImageFor(el.id)}>
+        {m.editor.imageBar.upload}
       </TBText>
       <Divider vertical className="cf-tb__div" />
       <AnimateButton />
@@ -73,21 +74,21 @@ export function CropBar({ el }: { el: ImageElement }) {
   const scale = getCropScale(el);
   return (
     <>
-      <span className="cf-tb__caption">Zoom</span>
+      <span className="cf-tb__caption">{m.editor.imageBar.zoom}</span>
       <IconZoomOut className="cf-tb__zoomicon" aria-hidden="true" />
       <div className="cf-tb__zoom">
-        <Slider value={clampNumber(scale, 1, 4)} min={1} max={4} step={0.01} aria-label="Crop zoom" onChange={(v) => setCropScale(el.id, v)} />
+        <Slider value={clampNumber(scale, 1, 4)} min={1} max={4} step={0.01} aria-label={m.editor.imageBar.cropZoom} onChange={(v) => setCropScale(el.id, v)} />
       </div>
       <IconZoomIn className="cf-tb__zoomicon" aria-hidden="true" />
       <span className="cf-tb__readout" aria-hidden="true">
         {Math.round(scale * 100)}%
       </span>
       <Divider vertical className="cf-tb__div" />
-      <TBText icon={<IconRotateLeft />} tip="Restore the original crop" onClick={() => resetCrop(el.id)}>
-        Reset crop
+      <TBText icon={<IconRotateLeft />} tip={m.editor.imageBar.resetCropTip} onClick={() => resetCrop(el.id)}>
+        {m.editor.imageBar.resetCrop}
       </TBText>
-      <TBText variant="primary" tip="Finish cropping" shortcut="Esc" onClick={() => getActions().endCrop()}>
-        Done
+      <TBText variant="primary" tip={m.editor.imageBar.finishCropTip} shortcut="Esc" onClick={() => getActions().endCrop()}>
+        {m.common.done}
       </TBText>
     </>
   );

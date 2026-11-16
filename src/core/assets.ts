@@ -2,6 +2,7 @@
  * Uploaded media (the "Uploads" tab). Files are stored as Blobs in IndexedDB
  * and referenced from documents as `asset:<id>`.
  */
+import { m } from "@/i18n";
 import { uid } from "./ids";
 import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany, wrap, writeTransaction } from "./persistence";
 import { parseViewBox } from "./svg";
@@ -20,7 +21,7 @@ const urlCache = new Map<string, string>();
 export const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml", "image/avif", "image/bmp"];
 
 /** An SVG that could not be kept and could not be drawn either is refused with these words. */
-export const UNDRAWABLE_SVG_MESSAGE = "This SVG has parts Craftly does not keep, and it could not be drawn as a picture. Try a different file.";
+export const UNDRAWABLE_SVG_MESSAGE = m.core.undrawableSvg;
 
 const SVG_TYPE = "image/svg+xml";
 /** The longest side, in pixels, of the picture an SVG is drawn as: twice its own size, but not under the first and not over the second. */
@@ -197,7 +198,7 @@ export async function getAssetUrl(id: string): Promise<string | null> {
 export const assetSrc = (id: string) => `asset:${id}`;
 
 /** Reads any image blob (e.g. from the clipboard or a drop) into the library. */
-export async function addAssetFromBlob(blob: Blob, name = "Pasted image"): Promise<Asset> {
+export async function addAssetFromBlob(blob: Blob, name = m.core.pastedImage): Promise<Asset> {
   const ext = blob.type.split("/")[1]?.replace("svg+xml", "svg") || "png";
   return addAssetFromFile(new File([blob], `${name}.${ext}`, { type: blob.type }));
 }

@@ -1,3 +1,5 @@
+import { m } from "@/i18n";
+
 export type MlErrorCode =
   | "aborted" // the person cancelled
   | "unsupported" // no WebGPU, no worker, no storage
@@ -20,35 +22,16 @@ export type MlErrorCode =
   | "too-large" // the enlarged picture would be more than the app can keep
   | "busy"; // another job is running
 
-const MESSAGES: Record<MlErrorCode, string> = {
-  aborted: "Cancelled.",
-  unsupported: "This browser can't run the model. Try the latest Chrome, Edge or Safari.",
-  "not-installed": "The model isn't on this device yet.",
-  engine: "The tool's engine could not be loaded. If you are offline, connect once so it can be stored.",
-  locked: "This photo is locked, or the design is view-only. Unlock it or switch to editing, then try again.",
-  offline: "You're offline and the model isn't on this device yet. Connect once to download it.",
-  network: "The download was interrupted. Check your connection and try again.",
-  http: "The model host didn't send the file. Try again in a moment.",
-  size: "The file is not the expected size, so it was not used.",
-  hash: "The file does not match the expected checksum, so it was not used.",
-  quota: "There isn't enough free space on this device to store the model.",
-  storage: "The browser would not store the model. Private windows often block this.",
-  runtime: "The model could not run on this device.",
-  "out-of-memory": "This device ran out of graphics memory. Close other tabs and try again.",
-  "worker-crashed": "The background process stopped unexpectedly. Try again.",
-  image: "That picture could not be read.",
-  stale: "The photo changed while it was being processed, so nothing was applied.",
-  "no-subject": "No subject was found in this photo.",
-  "too-large": "This picture is too large to enlarge: the result would be over 25 megapixels. Choose a smaller factor, or crop the picture first.",
-  busy: "Another photo is being processed. Wait for it to finish.",
-};
-
-/** An error whose message is fit to show to the person using the app. The technical cause rides along in `cause`. */
+/**
+ * An error whose message is fit to show to the person using the app, in the language of the page (`m.ml.errors`). The
+ * technical cause rides along in `cause`. Only the page makes these: the worker cannot read the catalog, so it sends just
+ * the code (engine.ts) and `client.ts` turns that into an MlError.
+ */
 export class MlError extends Error {
   readonly code: MlErrorCode;
 
   constructor(code: MlErrorCode, message?: string, options?: { cause?: unknown }) {
-    super(message ?? MESSAGES[code], options);
+    super(message ?? m.ml.errors[code], options);
     this.name = "MlError";
     this.code = code;
   }

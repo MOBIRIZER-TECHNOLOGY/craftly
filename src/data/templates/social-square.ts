@@ -35,7 +35,7 @@ function midnightSale(): Template {
   ]);
 
   return template(
-    { slug: "midnight-sale-burst", name: "Midnight Sale Burst", category: "social", size: "square", accent: "#17175f", tags: ["sale", "discount", "promo", "50% off", "burst", "navy", "retro", "shop", "square", "flash sale"] },
+    { slug: "midnight-sale-burst", category: "social", size: "square", accent: "#17175f", tags: ["sale", "discount", "promo", "50% off", "burst", "navy", "retro", "shop", "square", "flash sale"] },
     [page],
   );
 }
@@ -85,7 +85,7 @@ function popGiveaway(): Template {
   );
 
   return template(
-    { slug: "pop-giveaway", name: "Pop Giveaway", category: "social", size: "square", accent: "#9a33e0", tags: ["giveaway", "contest", "win", "prize", "follow", "engagement", "gift", "playful", "square", "purple"] },
+    { slug: "pop-giveaway", category: "social", size: "square", accent: "#9a33e0", tags: ["giveaway", "contest", "win", "prize", "follow", "engagement", "gift", "playful", "square", "purple"] },
     [pg(gradientBg(135, "#5b2bff", "#ff3d9a"), els)],
   );
 }
@@ -110,7 +110,7 @@ function grainQuote(): Template {
     T("@notesoncraft", 240, 958, 600, 28, { fontFamily: SANS, fontWeight: 500, letterSpacing: 120, color: "#4a453d", align: "center", name: "Handle" }),
   ]);
   return template(
-    { slug: "grain-minimal-quote", name: "Quiet Grain Quote", category: "social", size: "square", accent: "#d9d2c3", tags: ["quote", "minimal", "grain", "texture", "serif", "neutral", "quiet", "square", "aesthetic", "stone"] },
+    { slug: "grain-minimal-quote", category: "social", size: "square", accent: "#d9d2c3", tags: ["quote", "minimal", "grain", "texture", "serif", "neutral", "quiet", "square", "aesthetic", "stone"] },
     [page],
   );
 }
@@ -161,7 +161,7 @@ function scrapbookCollage(): Template {
   ]);
 
   return template(
-    { slug: "scrapbook-behind-the-scenes", name: "Scrapbook Behind the Scenes", category: "social", size: "square", accent: "#e9dcc3", tags: ["behind the scenes", "collage", "polaroid", "photo frames", "scrapbook", "handwritten", "bakery", "square", "team", "diary"] },
+    { slug: "scrapbook-behind-the-scenes", category: "social", size: "square", accent: "#e9dcc3", tags: ["behind the scenes", "collage", "polaroid", "photo frames", "scrapbook", "handwritten", "bakery", "square", "team", "diary"] },
     [page],
   );
 }

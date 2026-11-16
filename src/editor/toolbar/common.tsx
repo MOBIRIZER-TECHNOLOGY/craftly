@@ -32,6 +32,7 @@ import {
   type MenuEntry,
   type SelectOption,
 } from "@/ui";
+import { m } from "@/i18n";
 import { buildContextMenuItems } from "./contextMenuItems";
 import { IconBorderBox, IconChecker, IconStrokeStyle } from "./icons";
 import { MenuButton, PopLabel, PopoverButton, SliderField, TBIcon, TBText, toggleContext, useContextActive } from "./kit";
@@ -52,17 +53,20 @@ export function Swatch({ css, large, square }: { css: string; large?: boolean; s
 /* ------------------------------------------------------------------ */
 
 /** Normal, which is no mode and so is not stored, and then the modes in the order of a photo editor's list. */
-const BLEND_OPTIONS: SelectOption<string>[] = [{ value: "normal", label: "Normal" }, ...BLEND_MODES.map((mode) => ({ value: mode, label: blendLabel(mode) }))];
+const blendOptions = (): SelectOption<string>[] => [
+  { value: "normal", label: m.editor.toolbar.blendNormal },
+  ...BLEND_MODES.map((mode) => ({ value: mode, label: blendLabel(mode) })),
+];
 
 export function TransparencyButton({ els, ids }: BarProps) {
   const opacity = uniform(els, (e) => Math.round(e.opacity * 100));
   const mode = uniform(els, (e) => blendOf(e) ?? "normal");
   return (
-    <PopoverButton label="Transparency" tip="Transparency and blend mode" icon={<IconChecker />} panelClass="cf-tbpop--narrow">
+    <PopoverButton label={m.editor.toolbar.transparency} tip={m.editor.toolbar.transparencyTip} icon={<IconChecker />} panelClass="cf-tbpop--narrow">
       {() => (
         <div className="cf-tbpop__stack">
           <SliderField
-            label="Transparency"
+            label={m.editor.toolbar.transparency}
             value={opacity.value ?? 100}
             mixed={opacity.mixed}
             min={0}
@@ -79,13 +83,13 @@ export function TransparencyButton({ els, ids }: BarProps) {
             }
           />
           <div className="cf-tbpop__field">
-            <PopLabel>Blend mode</PopLabel>
+            <PopLabel>{m.editor.toolbar.blendMode}</PopLabel>
             <Select<string>
               size="sm"
-              aria-label="Blend mode"
+              aria-label={m.editor.toolbar.blendMode}
               value={mode.mixed ? null : (mode.value ?? "normal")}
-              placeholder="Mixed"
-              options={BLEND_OPTIONS}
+              placeholder={m.editor.toolbar.mixed}
+              options={blendOptions()}
               onChange={(chosen) =>
                 editElements(ids, (el) => {
                   if (chosen === "normal") delete el.blend;
@@ -103,8 +107,8 @@ export function TransparencyButton({ els, ids }: BarProps) {
 export function EffectsButton() {
   const active = useContextActive({ kind: "effects" });
   return (
-    <TBText tip="Shadows, glow and other effects" active={active} onClick={() => toggleContext({ kind: "effects" })}>
-      Effects
+    <TBText tip={m.editor.toolbar.effectsTip} active={active} onClick={() => toggleContext({ kind: "effects" })}>
+      {m.editor.toolbar.effects}
     </TBText>
   );
 }
@@ -112,8 +116,8 @@ export function EffectsButton() {
 export function AnimateButton({ tab = "element" }: { tab?: "element" | "page" }) {
   const active = useContextActive({ kind: "animate", tab });
   return (
-    <TBText tip={tab === "page" ? "Animate the page and set transitions" : "Make it enter, leave or move"} active={active} onClick={() => toggleContext({ kind: "animate", tab })}>
-      Animate
+    <TBText tip={tab === "page" ? m.editor.toolbar.animatePageTip : m.editor.toolbar.animateElementTip} active={active} onClick={() => toggleContext({ kind: "animate", tab })}>
+      {m.editor.toolbar.animate}
     </TBText>
   );
 }
@@ -121,8 +125,8 @@ export function AnimateButton({ tab = "element" }: { tab?: "element" | "page" })
 export function PositionButton() {
   const active = useContextActive({ kind: "position", tab: "arrange" });
   return (
-    <TBText tip="Arrange, align and resize" active={active} onClick={() => toggleContext({ kind: "position", tab: "arrange" })}>
-      Position
+    <TBText tip={m.editor.toolbar.positionTip} active={active} onClick={() => toggleContext({ kind: "position", tab: "arrange" })}>
+      {m.editor.toolbar.position}
     </TBText>
   );
 }
@@ -142,8 +146,8 @@ export function CopyStyleButton({ els, enabled = true }: { els: DesignElement[];
   if (!enabled || (els.length !== 1 && !armed)) return null;
   return (
     <TBIcon
-      label={armed ? "Paste style" : "Copy style"}
-      tip={armed ? "Paste style onto the selection" : "Copy style"}
+      label={armed ? m.editor.actions.pasteStyle : m.editor.actions.copyStyle}
+      tip={armed ? m.editor.toolbar.pasteStyleTip : m.editor.actions.copyStyle}
       shortcut={armed ? "Ctrl+Alt+V" : "Ctrl+Alt+C"}
       icon={<IconCopyStyle />}
       active={armed}
@@ -160,7 +164,15 @@ export function CopyStyleButton({ els, enabled = true }: { els: DesignElement[];
 
 /** The "..." button: same menu as a right-click on the selection. */
 export function MoreButton() {
-  return <MenuButton label="More actions" tip="More" icon={<IconMore />} placement="bottom-end" items={() => buildContextMenuItems(useEditor.getState())} />;
+  return (
+    <MenuButton
+      label={m.editor.toolbar.moreActions}
+      tip={m.editor.toolbar.more}
+      icon={<IconMore />}
+      placement="bottom-end"
+      items={() => buildContextMenuItems(useEditor.getState())}
+    />
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -172,10 +184,10 @@ export function FlipMenu() {
   // lucide 1.68 names its flip glyphs by the direction of the centre line: "FlipVertical2" (IconFlipV) has a
   // vertical line with triangles left and right - that is the picture of a horizontal flip, and vice versa.
   const items: MenuEntry[] = [
-    { id: "flip-h", label: "Flip horizontal", icon: <IconFlipV />, onSelect: () => a.flip("horizontal") },
-    { id: "flip-v", label: "Flip vertical", icon: <IconFlipH />, onSelect: () => a.flip("vertical") },
+    { id: "flip-h", label: m.editor.toolbar.flipHorizontal, icon: <IconFlipV />, onSelect: () => a.flip("horizontal") },
+    { id: "flip-v", label: m.editor.toolbar.flipVertical, icon: <IconFlipH />, onSelect: () => a.flip("vertical") },
   ];
-  return <MenuButton label="Flip" tip="Flip" icon={<IconFlipV />} items={items} />;
+  return <MenuButton label={m.editor.toolbar.flip} tip={m.editor.toolbar.flip} icon={<IconFlipV />} items={items} />;
 }
 
 /** Group + Align, offered whenever several elements are selected. */
@@ -189,17 +201,17 @@ export function MultiActions({ ids }: { ids: ID[] }) {
     onSelect: () => a.align(mode, "selection"),
   });
   const items: MenuEntry[] = [
-    align("left", "Left", <IconAlignObjLeft />),
-    align("center", "Center", <IconAlignObjCenter />),
-    align("right", "Right", <IconAlignObjRight />),
+    align("left", m.editor.align.left, <IconAlignObjLeft />),
+    align("center", m.editor.align.center, <IconAlignObjCenter />),
+    align("right", m.editor.align.right, <IconAlignObjRight />),
     { type: "divider" },
-    align("top", "Top", <IconAlignObjTop />),
-    align("middle", "Middle", <IconAlignObjMiddle />),
-    align("bottom", "Bottom", <IconAlignObjBottom />),
+    align("top", m.editor.align.top, <IconAlignObjTop />),
+    align("middle", m.editor.align.middle, <IconAlignObjMiddle />),
+    align("bottom", m.editor.align.bottom, <IconAlignObjBottom />),
     { type: "divider" },
     {
       id: "distribute-h",
-      label: "Distribute horizontally",
+      label: m.editor.toolbar.distributeHorizontally,
       icon: <IconDistributeH />,
       hint: ids.length < 3 ? "3+" : undefined,
       disabled: ids.length < 3,
@@ -207,7 +219,7 @@ export function MultiActions({ ids }: { ids: ID[] }) {
     },
     {
       id: "distribute-v",
-      label: "Distribute vertically",
+      label: m.editor.toolbar.distributeVertically,
       icon: <IconDistributeV />,
       hint: ids.length < 3 ? "3+" : undefined,
       disabled: ids.length < 3,
@@ -216,17 +228,20 @@ export function MultiActions({ ids }: { ids: ID[] }) {
   ];
   return (
     <>
-      <TBText icon={<IconGroup />} tip="Group the selected elements" shortcut="Ctrl+G" onClick={() => a.groupSelection()}>
-        Group
+      <TBText icon={<IconGroup />} tip={m.editor.toolbar.groupTip} shortcut="Ctrl+G" onClick={() => a.groupSelection()}>
+        {m.editor.actions.group}
       </TBText>
-      <MenuButton label="Align" tip="Align the selected elements to each other" icon={<IconAlignObjLeft />} iconRight={<IconChevronDown />} text="Align" items={items} />
+      <MenuButton
+        label={m.editor.toolbar.align}
+        tip={m.editor.toolbar.alignTip}
+        icon={<IconAlignObjLeft />}
+        iconRight={<IconChevronDown />}
+        text={m.editor.toolbar.align}
+        items={items}
+      />
       {canConnect && (
-        <TBText
-          icon={<IconConnect />}
-          tip="Draw an arrow from the first selected element to the second. It stays attached when they move."
-          onClick={() => a.connect(ids[0], ids[1])}
-        >
-          Connect
+        <TBText icon={<IconConnect />} tip={m.editor.toolbar.connectTip} onClick={() => a.connect(ids[0], ids[1])}>
+          {m.editor.actions.connect}
         </TBText>
       )}
     </>
@@ -239,12 +254,9 @@ export function MultiActions({ ids }: { ids: ID[] }) {
 
 type Bordered = ShapeElement | ImageElement;
 
-const STROKE_STYLES: Array<{ value: "none" | StrokeStyle; title: string }> = [
-  { value: "none", title: "No border" },
-  { value: "solid", title: "Solid" },
-  { value: "dashed", title: "Dashed" },
-  { value: "dotted", title: "Dotted" },
-];
+const STROKE_STYLES: Array<"none" | StrokeStyle> = ["none", "solid", "dashed", "dotted"];
+
+const strokeStyleName = (value: "none" | StrokeStyle): string => (value === "none" ? m.editor.toolbar.noBorder : m.editor.toolbar.strokeStyles[value]);
 
 /** Cap that makes each stroke style look right (dashes need butt caps, dots need round ones). */
 export function capFor(style: StrokeStyle, line: boolean): Stroke["cap"] {
@@ -297,24 +309,24 @@ export function BorderPopover({ els, ids }: { els: Bordered[]; ids: ID[] }) {
   const color = uniform(els, (e) => e.stroke?.color ?? DEFAULT_INK);
   const hasBorder = els.some((e) => e.stroke && e.stroke.width > 0);
   return (
-    <PopoverButton label="Border" tip="Border style and weight" icon={<IconBorderBox />} active={hasBorder}>
+    <PopoverButton label={m.editor.toolbar.border} tip={m.editor.toolbar.borderTip} icon={<IconBorderBox />} active={hasBorder}>
       {({ close }) => (
         <div className="cf-tbpop__stack">
           <div className="cf-tbpop__field">
-            <PopLabel>Border style</PopLabel>
+            <PopLabel>{m.editor.toolbar.borderStyle}</PopLabel>
             <Segmented
               size="sm"
               fullWidth
-              aria-label="Border style"
+              aria-label={m.editor.toolbar.borderStyle}
               // with mixed borders the first element's style shows (a group with nothing selected cannot be reached by keyboard)
               value={style.value ?? "none"}
               onChange={(v) => setBorderStyle(ids, v)}
-              options={STROKE_STYLES.map((s) => ({ value: s.value, title: s.title, icon: <IconStrokeStyle kind={s.value} /> }))}
+              options={STROKE_STYLES.map((s) => ({ value: s, title: strokeStyleName(s), icon: <IconStrokeStyle kind={s} /> }))}
             />
           </div>
-          <SliderField label="Border weight" value={width.value ?? 0} mixed={width.mixed} min={0} max={40} step={1} onChange={(v) => setBorderWeight(ids, v)} />
+          <SliderField label={m.editor.toolbar.borderWeight} value={width.value ?? 0} mixed={width.mixed} min={0} max={40} step={1} onChange={(v) => setBorderWeight(ids, v)} />
           <div className="cf-tbpop__split">
-            <PopLabel>Border color</PopLabel>
+            <PopLabel>{m.editor.toolbar.borderColor}</PopLabel>
             <Button
               variant="secondary"
               icon={<Swatch css={color.mixed ? MIXED_SWATCH_CSS : (color.value ?? DEFAULT_INK)} />}
@@ -325,7 +337,7 @@ export function BorderPopover({ els, ids }: { els: Bordered[]; ids: ID[] }) {
                 close();
               }}
             >
-              Color
+              {m.editor.toolbar.color}
             </Button>
           </div>
         </div>
@@ -339,10 +351,10 @@ export function RadiusPopover({ els, ids }: { els: Bordered[]; ids: ID[] }) {
   const radius = uniform(els, (e) => Math.round(e.radius));
   const max = Math.max(1, Math.floor(Math.min(...els.map((e) => Math.min(e.width, e.height) / 2))));
   return (
-    <PopoverButton label="Corner radius" tip="Round the corners" icon={<IconCornerRadius />} panelClass="cf-tbpop--narrow">
+    <PopoverButton label={m.editor.toolbar.cornerRadius} tip={m.editor.toolbar.cornerRadiusTip} icon={<IconCornerRadius />} panelClass="cf-tbpop--narrow">
       {() => (
         <SliderField
-          label="Corner radius"
+          label={m.editor.toolbar.cornerRadius}
           value={radius.value ?? 0}
           mixed={radius.mixed}
           min={0}
@@ -369,8 +381,8 @@ export function FillButton({ els }: { els: ShapeElement[] }) {
   const active = useContextActive({ kind: "color", target: "fill" });
   return (
     <TBIcon
-      label="Fill color"
-      tip={css.mixed ? "Fill color (mixed)" : "Fill color"}
+      label={m.editor.toolbar.fillColor}
+      tip={css.mixed ? m.editor.toolbar.fillColorMixed : m.editor.toolbar.fillColor}
       icon={<Swatch large css={css.mixed ? MIXED_SWATCH_CSS : (css.value ?? NO_FILL_CSS)} />}
       active={active}
       onClick={() => toggleContext({ kind: "color", target: "fill" })}

@@ -1,4 +1,5 @@
 import { Children, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { m } from "@/i18n";
 import { IconButton, IconChevronLeft, IconChevronRight, cx } from "@/ui";
 import "./Carousel.css";
 
@@ -52,14 +53,14 @@ export function Carousel({ label, children, className }: CarouselProps) {
       </div>
       <IconButton
         className="cf-carousel__arrow cf-carousel__arrow--prev"
-        label={`Previous ${label.toLowerCase()}`}
+        label={m.dashboard.carousel.previous(label)}
         icon={<IconChevronLeft aria-hidden="true" />}
         onClick={() => scroll(-1)}
         tabIndex={canPrev ? 0 : -1}
       />
       <IconButton
         className="cf-carousel__arrow cf-carousel__arrow--next"
-        label={`Next ${label.toLowerCase()}`}
+        label={m.dashboard.carousel.next(label)}
         icon={<IconChevronRight aria-hidden="true" />}
         onClick={() => scroll(1)}
         tabIndex={canNext ? 0 : -1}

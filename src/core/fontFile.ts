@@ -10,6 +10,7 @@
  * WOFF and WOFF2 are compressed, so their tables are not read here. For those the family, weight and style come from
  * the file name ("AcmeSans-BoldItalic.woff2"), and the person can rename the family afterwards.
  */
+import { m } from "@/i18n";
 
 export type FontFormat = "ttf" | "otf" | "woff" | "woff2";
 
@@ -40,11 +41,11 @@ export function sniffFontFormat(bytes: Uint8Array): FontFormat | "collection" | 
 
 /** Why these bytes are not taken as a font, in words for the person; null when nothing here speaks against them. */
 export function fontProblem(bytes: Uint8Array): string | null {
-  if (bytes.length === 0) return "This file is empty.";
-  if (bytes.length > MAX_FONT_BYTES) return "This font file is larger than 10 MB.";
+  if (bytes.length === 0) return m.core.fontFile.empty;
+  if (bytes.length > MAX_FONT_BYTES) return m.core.fontFile.tooLarge;
   const format = sniffFontFormat(bytes);
-  if (format === "collection") return "This file holds several fonts in one (a font collection). Upload each font as its own .ttf or .otf file.";
-  if (format === null) return "This is not a font file. Craftly takes .ttf, .otf, .woff and .woff2 files.";
+  if (format === "collection") return m.core.fontFile.collection;
+  if (format === null) return m.core.fontFile.notAFont;
   return null;
 }
 

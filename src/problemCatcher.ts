@@ -6,9 +6,10 @@
 import { openProblemsDialog } from "@/components/problemsDialogState";
 import { recordProblem, type Problem } from "@/core/problems";
 import { isCrashing } from "@/core/recovery";
+import { m } from "@/i18n";
 import { toast } from "@/ui";
 
-const NOTICE = "Something unexpected went wrong. If something does not work, reload the page.";
+const NOTICE = m.app.problemCatcher.notice;
 /** at least this long between two notices, and no more than three in a page's life: it is a hint, not an alarm */
 const NOTICE_GAP = 60_000;
 const NOTICE_LIMIT = 3;
@@ -23,7 +24,7 @@ export function installProblemCatcher(options: { now?: () => number } = {}): () 
     if (!problem || problem.count > 1 || isCrashing() || notices >= NOTICE_LIMIT || now() - lastNotice < NOTICE_GAP) return;
     lastNotice = now();
     notices += 1;
-    toast.error(NOTICE, { actionLabel: "Details", onAction: () => openProblemsDialog(problem.id), duration: 10_000 });
+    toast.error(NOTICE, { actionLabel: m.app.problemCatcher.details, onAction: () => openProblemsDialog(problem.id), duration: 10_000 });
   };
 
   const onError = (event: ErrorEvent) => tell(recordProblem("script", event.error ?? event.message, { source: event.filename, now: now() }));

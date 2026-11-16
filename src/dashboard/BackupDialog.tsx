@@ -16,6 +16,8 @@ import {
   type RestoreResult,
 } from "@/export/backup";
 import { downloadBlob } from "@/export/download";
+import { restoredCopyTitle } from "@/export/backupFormat";
+import { date, m } from "@/i18n";
 import { navigate } from "@/router";
 import { Button, IconAlert, IconDownload, IconSuccess, IconUpload, IconWarning, Modal, Progress, Segmented, Spinner } from "@/ui";
 import { BackupFileError, canKeepBackupFile, chooseBackupFile, forgetBackupFile, getKeptBackupFile, writeBackupFile, writePermission, type KeptBackupFile } from "./backupFile";
@@ -23,7 +25,7 @@ import type { ReminderInterval } from "./backupReminder";
 import { noteBackedUp, setReminderInterval, snoozeBackupReminder, useReminderState } from "./backupReminderState";
 import { useAssets, useDesigns, useFolders } from "./data";
 import { pickFiles } from "./files";
-import { formatBytes, formatRelative, plural } from "./format";
+import { formatBytes, formatRelative } from "./format";
 import "./BackupDialog.css";
 
 type Phase =
@@ -40,39 +42,42 @@ type Phase =
 const IDLE: Phase = { name: "idle" };
 const ACCEPT = ".zip,application/zip,application/x-zip-compressed";
 const REMINDER_OPTIONS: Array<{ value: ReminderInterval; label: string }> = [
-  { value: 7, label: "1 week" },
-  { value: 14, label: "2 weeks" },
-  { value: 30, label: "1 month" },
-  { value: 0, label: "Never" },
+  { value: 7, label: m.dashboard.backup.week },
+  { value: 14, label: m.dashboard.backup.twoWeeks },
+  { value: 30, label: m.dashboard.backup.month },
+  { value: 0, label: m.dashboard.backup.never },
 ];
 
 /* ------------------------------------------------------------------ */
 /* Words                                                              */
 /* ------------------------------------------------------------------ */
 
+const count = m.dashboard.counts;
+const words = m.dashboard.backup;
+
 /** "2 designs, 1 in the trash, 1 folder, 3 uploads, 4 saved versions": whatever is not zero. */
 function describeCounts(counts: BackupCounts): string {
   return [
-    counts.designs && plural(counts.designs, "design"),
-    counts.trashed && `${counts.trashed} in the trash`,
-    counts.folders && plural(counts.folders, "folder"),
-    counts.uploads && plural(counts.uploads, "upload"),
-    counts.fonts && plural(counts.fonts, "uploaded font"),
-    counts.versions && plural(counts.versions, "saved version"),
+    counts.designs && count.designs(counts.designs),
+    counts.trashed && words.inTrash(counts.trashed),
+    counts.folders && count.folders(counts.folders),
+    counts.uploads && count.uploads(counts.uploads),
+    counts.fonts && count.uploadedFonts(counts.fonts),
+    counts.versions && count.savedVersions(counts.versions),
   ]
     .filter(Boolean)
     .join(", ");
 }
 
-const brandKitWords = (action: BrandKitAction) => (action === "restore" ? "your brand kit" : action === "merge" ? "your brand kit, merged with the one here" : "");
+const brandKitWords = (action: BrandKitAction) => (action === "restore" ? words.yourBrandKit : action === "merge" ? words.brandKitMerged : "");
 
 function listOf(n: { designs: number; folders: number; uploads: number; fonts?: number; versions: number; brandKit: BrandKitAction }): string {
   return [
-    n.designs && plural(n.designs, "design"),
-    n.folders && plural(n.folders, "folder"),
-    n.uploads && plural(n.uploads, "upload"),
-    n.fonts && plural(n.fonts, "uploaded font"),
-    n.versions && plural(n.versions, "saved version"),
+    n.designs && count.designs(n.designs),
+    n.folders && count.folders(n.folders),
+    n.uploads && count.uploads(n.uploads),
+    n.fonts && count.uploadedFonts(n.fonts),
+    n.versions && count.savedVersions(n.versions),
     brandKitWords(n.brandKit),
   ]
     .filter(Boolean)
@@ -81,9 +86,12 @@ function listOf(n: { designs: number; folders: number; uploads: number; fonts?: 
 
 /** What is already in the library: designs, folders, uploads and uploaded fonts that need nothing. */
 const alreadyHere = (n: { designs: number; folders: number; uploads: number; fonts?: number }) =>
-  [n.designs && plural(n.designs, "design"), n.folders && plural(n.folders, "folder"), n.uploads && plural(n.uploads, "upload"), n.fonts && plural(n.fonts, "uploaded font")]
+  [n.designs && count.designs(n.designs), n.folders && count.folders(n.folders), n.uploads && count.uploads(n.uploads), n.fonts && count.uploadedFonts(n.fonts)]
     .filter(Boolean)
     .join(", ");
+
+/** The name a design that comes back as a copy is given, with "…" for its own title. */
+const copyName = restoredCopyTitle("…");
 
 function reviewFacts(plan: RestorePlan, skipped: number): string[] {
   const facts: string[] = [];
@@ -95,13 +103,12 @@ function reviewFacts(plan: RestorePlan, skipped: number): string[] {
     versions: plan.versions.add,
     brandKit: plan.brandKit,
   });
-  if (added) facts.push(`Will be added: ${added}.`);
+  if (added) facts.push(words.willBeAdded(added));
   const copies = plan.designs.copy;
-  if (copies === 1) facts.push("1 design has been edited since this backup. It comes back as a copy named “… (restored)”, so your edit stays.");
-  else if (copies > 1) facts.push(`${copies} designs have been edited since this backup. They come back as copies named “… (restored)”, so your edits stay.`);
+  if (copies > 0) facts.push(words.editedSince(copies, copyName));
   const here = alreadyHere({ designs: plan.designs.same, folders: plan.folders.same, uploads: plan.uploads.same, fonts: plan.fonts?.same });
-  if (here) facts.push(`Already here and left as they are: ${here}.`);
-  if (skipped) facts.push(`${plural(skipped, "item")} in the backup could not be used.`);
+  if (here) facts.push(words.alreadyHereLeft(here));
+  if (skipped) facts.push(words.unusable(skipped));
   return facts;
 }
 
@@ -115,36 +122,30 @@ function resultFacts(result: RestoreResult): string[] {
     versions: result.versions.added,
     brandKit: result.brandKit,
   });
-  if (added) facts.push(`Added: ${added}.`);
+  if (added) facts.push(words.added(added));
   const copies = result.designs.copied;
-  if (copies === 1) facts.push("1 design came back as a copy named “… (restored)”, because it was edited after the backup.");
-  else if (copies > 1) facts.push(`${copies} designs came back as copies named “… (restored)”, because they were edited after the backup.`);
+  if (copies > 0) facts.push(words.cameBackAsCopies(copies, copyName));
   const here = alreadyHere({ designs: result.designs.same, folders: 0, uploads: result.uploads.same, fonts: result.fonts?.same });
-  if (here) facts.push(`Already here: ${here}.`);
+  if (here) facts.push(words.alreadyHere(here));
   // (a font that turned out to be no font, or has the name of a bundled one, is counted here too)
   const unreadable = result.designs.damaged + result.uploads.damaged + result.versions.damaged + (result.fonts?.damaged ?? 0) + result.skipped;
-  if (unreadable) facts.push(`${plural(unreadable, "item")} could not be read, because the backup file is damaged.`);
-  if (result.newer) {
-    const be = result.newer === 1 ? "was" : "were";
-    facts.push(
-      `${plural(result.newer, "item")} ${be} made by a newer version of Craftly and ${be} left out. Reload the page to get the newest version, then restore this backup again.`,
-    );
-  }
+  if (unreadable) facts.push(words.damaged(unreadable));
+  if (result.newer) facts.push(words.newer(result.newer));
   return facts;
 }
 
 /** The first half of the bar is reading the library, the second half packing the file. */
 function backupBar(progress: BackupProgress | null): { text: string; value?: number } {
-  if (!progress) return { text: "Getting ready…" };
+  if (!progress) return { text: words.gettingReady };
   const share = progress.total > 0 ? progress.done / progress.total : 1;
   return progress.phase === "collecting"
-    ? { text: `Reading your library: ${progress.done} of ${progress.total}`, value: share / 2 }
-    : { text: `Packing the file: ${progress.done} of ${progress.total}`, value: 0.5 + share / 2 };
+    ? { text: words.readingLibrary(progress.done, progress.total), value: share / 2 }
+    : { text: words.packing(progress.done, progress.total), value: 0.5 + share / 2 };
 }
 
 function backupDate(exportedAt: string): string {
   const when = new Date(exportedAt);
-  return when.getTime() > 0 ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(when) : "";
+  return when.getTime() > 0 ? date(when, { dateStyle: "medium", timeStyle: "short" }) : "";
 }
 
 /* ------------------------------------------------------------------ */
@@ -255,8 +256,8 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
     } catch (error) {
       if (error instanceof BackupFileError) {
         if (error.code === "cancelled") setPhase(IDLE);
-        else setPhase({ name: "failed", title: "Couldn't write the backup file", message: error.message });
-      } else if (!fail(error, "Couldn't back up", "Something went wrong while making the backup. Nothing was changed.")) setPhase(IDLE);
+        else setPhase({ name: "failed", title: words.writeFailedTitle, message: error.message });
+      } else if (!fail(error, words.backupFailedTitle, words.backupFailed)) setPhase(IDLE);
     }
   };
 
@@ -269,9 +270,8 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
     const permission = await writePermission(target.handle, clicked);
     if (!visible.current) return;
     if (permission === "granted") await startBackup(target);
-    else if (permission === "denied")
-      setFileNote(`Your browser did not allow Craftly to write to “${target.name}”. Press “Back up now” to be asked again, or download the backup.`);
-    else setFileNote(`Press “Back up now” so that your browser lets Craftly write to “${target.name}”.`);
+    else if (permission === "denied") setFileNote(words.fileDenied(target.name));
+    else setFileNote(words.fileNeedsClick(target.name));
   };
 
   const chooseFileToKeep = async () => {
@@ -283,7 +283,7 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
       // the file the browser just made is empty: a first backup goes into it now, while the permission is fresh
       if (!cannotBackUp) await startBackup(chosen);
     } catch (error) {
-      setPhase({ name: "failed", title: "Couldn't use that file", message: error instanceof BackupFileError ? error.message : "Something went wrong with that file." });
+      setPhase({ name: "failed", title: words.useFileFailedTitle, message: error instanceof BackupFileError ? error.message : words.useFileFailed });
     }
   };
 
@@ -313,7 +313,7 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
       try {
         setPhase({ name: "review", file, found: await inspectBackup(file, { signal }) });
       } catch (error) {
-        if (!fail(error, "Couldn't read that file", "Something went wrong while reading that file.")) setPhase(IDLE);
+        if (!fail(error, words.readFailedTitle, words.readFailed)) setPhase(IDLE);
       }
     });
   };
@@ -327,7 +327,7 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
       // A browser that never made a backup has just been filled from one: "you have not backed up yet" can wait a week.
       if (lastBackup === null) void snoozeBackupReminder();
     } catch (error) {
-      if (!fail(error, "Couldn't restore", "Something went wrong while restoring. Anything restored before the problem is kept.")) setPhase({ name: "stopped" });
+      if (!fail(error, words.restoreFailedTitle, words.restoreFailed)) setPhase({ name: "stopped" });
     }
   };
 
@@ -339,27 +339,24 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
   };
 
   // while the chosen file is written there is nothing to count: the browser writes it in one piece
-  const bar = phase.name !== "backing-up" ? null : phase.writing ? { text: `Writing “${phase.writing}”…`, value: undefined } : backupBar(phase.progress);
+  const bar = phase.name !== "backing-up" ? null : phase.writing ? { text: words.writing(phase.writing), value: undefined } : backupBar(phase.progress);
   const restoreProgress = phase.name === "restoring" ? phase.progress : null;
   const nearlyFull = storage ? storageIsNearlyFull(storage) : false;
   const showStorage = storage !== null && (storage.usage !== undefined || storage.persisted !== undefined);
 
   return (
-    <Modal open={open} onClose={close} title="Back up & restore" size="md" className="cf-backup-modal" closeOnEscape={!busy} closeOnBackdrop={!busy}>
+    <Modal open={open} onClose={close} title={m.dashboard.account.backup} size="md" className="cf-backup-modal" closeOnEscape={!busy} closeOnBackdrop={!busy}>
       <div className="cf-backup" ref={body}>
         {phase.name === "idle" ? (
           <>
-            <p className="cf-backup__lead">
-              Your designs, uploads and brand kit live only in this browser. A backup is one file that holds all of it: keep a copy somewhere safe, or use it to move to another
-              browser or computer.
-            </p>
+            <p className="cf-backup__lead">{words.lead}</p>
 
             <section className="cf-backup__card" aria-labelledby={`${titleId}-backup`}>
               <h3 className="cf-backup__title" id={`${titleId}-backup`}>
-                Back up everything
+                {words.backUpEverything}
               </h3>
-              <p className="cf-backup__text">{nothingToBackUp ? "Nothing to back up yet." : describeCounts(live)}</p>
-              {lastBackup === undefined ? null : <p className="cf-backup__when">{lastBackup === null ? "No backup yet" : `Last backup: ${formatRelative(lastBackup)}`}</p>}
+              <p className="cf-backup__text">{nothingToBackUp ? words.nothingToBackUp : describeCounts(live)}</p>
+              {lastBackup === undefined ? null : <p className="cf-backup__when">{lastBackup === null ? words.noBackupYet : words.lastBackup(formatRelative(lastBackup))}</p>}
               <div className="cf-backup__actions">
                 <Button
                   variant={kept ? "secondary" : "primary"}
@@ -368,58 +365,50 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
                   onClick={() => void startBackup()}
                   data-autofocus={cannotBackUp || kept ? undefined : true}
                 >
-                  Download backup
+                  {words.download}
                 </Button>
               </div>
               <div className="cf-backup__remind">
                 <p className="cf-backup__remind-label" id={`${titleId}-remind`}>
-                  Remind me when my last backup is older than
+                  {words.remindWhen}
                 </p>
                 <Segmented
                   size="sm"
-                  aria-label="Remind me when my last backup is older than"
+                  aria-label={words.remindWhen}
                   value={reminder.settings.intervalDays}
                   options={REMINDER_OPTIONS}
                   onChange={(days) => void setReminderInterval(days)}
                 />
-                <p className="cf-backup__when">A quiet line on the dashboard, and only when designs changed since the last backup.</p>
+                <p className="cf-backup__when">{words.remindNote}</p>
               </div>
             </section>
 
             {canKeepFile ? (
               <section className="cf-backup__card" aria-labelledby={`${titleId}-keep`}>
                 <h3 className="cf-backup__title" id={`${titleId}-keep`}>
-                  Keep a backup file up to date
+                  {words.keepTitle}
                 </h3>
                 {kept ? (
                   <>
-                    <p className="cf-backup__text">
-                      “{kept.name}”, {kept.writtenAt === null ? "nothing written to it yet" : `last written ${formatRelative(kept.writtenAt)}`}.
-                    </p>
-                    <p className="cf-backup__when">
-                      “Back up now” replaces what is in the file with a new backup, with no download. Craftly writes when you press the button, not on its own, and your browser may
-                      ask you to allow it again.
-                    </p>
+                    <p className="cf-backup__text">{kept.writtenAt === null ? words.keptNothingYet(kept.name) : words.keptWritten(kept.name, formatRelative(kept.writtenAt))}</p>
+                    <p className="cf-backup__when">{words.keptNote}</p>
                   </>
                 ) : (
-                  <p className="cf-backup__text">
-                    Choose a file once, and “Back up now” writes each new backup into it, with no download to find and file away. Craftly writes when you press the button, not on
-                    its own: a browser lets a page write to your file only after a click.
-                  </p>
+                  <p className="cf-backup__text">{words.keepIntro}</p>
                 )}
                 <div role="status">{fileNote ? <p className="cf-backup__note">{fileNote}</p> : null}</div>
                 <div className="cf-backup__actions">
                   {kept ? (
                     <>
                       <Button variant="ghost" onClick={() => void stopUsingFile()}>
-                        Stop using this file
+                        {words.stopUsingFile}
                       </Button>
                       <Button variant="primary" disabled={cannotBackUp} onClick={() => void backUpToFile(kept, true)} data-autofocus={cannotBackUp ? undefined : true}>
-                        Back up now
+                        {m.dashboard.shared.backUpNow}
                       </Button>
                     </>
                   ) : (
-                    <Button onClick={() => void chooseFileToKeep()}>Choose a file to keep up to date</Button>
+                    <Button onClick={() => void chooseFileToKeep()}>{words.chooseFileToKeep}</Button>
                   )}
                 </div>
               </section>
@@ -427,12 +416,12 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
 
             <section className="cf-backup__card" aria-labelledby={`${titleId}-restore`}>
               <h3 className="cf-backup__title" id={`${titleId}-restore`}>
-                Restore from a backup
+                {words.restoreTitle}
               </h3>
-              <p className="cf-backup__text">Adds everything in a backup file that is not here yet. Nothing you have now is replaced or deleted.</p>
+              <p className="cf-backup__text">{words.restoreText}</p>
               <div className="cf-backup__actions">
                 <Button icon={<IconUpload aria-hidden="true" />} onClick={chooseFile} data-autofocus={cannotBackUp ? true : undefined}>
-                  Choose backup file
+                  {words.chooseBackupFile}
                 </Button>
               </div>
             </section>
@@ -444,19 +433,13 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
                 </span>
                 <div className="cf-backup__storage-text">
                   {storage.usage !== undefined && storage.quota !== undefined ? (
-                    <p className="cf-backup__storage-title">
-                      {formatBytes(storage.usage)} of {formatBytes(storage.quota)} used
-                    </p>
+                    <p className="cf-backup__storage-title">{words.storageUsed(formatBytes(storage.usage), formatBytes(storage.quota))}</p>
                   ) : null}
-                  {storage.persisted === undefined ? null : (
-                    <p className="cf-backup__storage-sub">
-                      {storage.persisted ? "Your browser will not clear it on its own." : "Your browser may clear it when the device is low on space."}
-                    </p>
-                  )}
+                  {storage.persisted === undefined ? null : <p className="cf-backup__storage-sub">{storage.persisted ? words.notCleared : m.dashboard.shared.mayClear}</p>}
                 </div>
                 {storage.persisted === false ? (
                   <Button size="sm" variant="soft" loading={asking} onClick={() => void protect()}>
-                    Protect
+                    {m.dashboard.shared.protect}
                   </Button>
                 ) : null}
               </div>
@@ -464,7 +447,7 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
             {nearlyFull && storage?.usage !== undefined && storage.quota ? (
               <p className="cf-backup__warning" role="status">
                 <IconWarning aria-hidden="true" />
-                <span>Storage is almost full ({Math.round((storage.usage / storage.quota) * 100)}%). Download a backup, then delete uploads or designs you no longer need.</span>
+                <span>{words.almostFull(Math.round((storage.usage / storage.quota) * 100))}</span>
               </p>
             ) : null}
           </>
@@ -473,13 +456,13 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
         {phase.name === "backing-up" && bar ? (
           <>
             <div role="status">
-              <h3 className="cf-backup__title">Backing up…</h3>
+              <h3 className="cf-backup__title">{words.backingUp}</h3>
             </div>
-            <Progress label="Backup progress" value={bar.value} />
+            <Progress label={words.backupProgress} value={bar.value} />
             <p className="cf-backup__text">{bar.text}</p>
             <div className="cf-backup__actions">
               <Button onClick={() => stopWork()} data-autofocus>
-                Cancel
+                {m.common.cancel}
               </Button>
             </div>
           </>
@@ -489,20 +472,16 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
           <>
             <div className="cf-backup__done" role="status">
               <IconSuccess className="cf-backup__done-icon" aria-hidden="true" />
-              <h3 className="cf-backup__title">{phase.savedTo === null ? "Backup downloaded" : "Backup saved"}</h3>
+              <h3 className="cf-backup__title">{phase.savedTo === null ? words.downloaded : words.saved}</h3>
             </div>
             <p className="cf-backup__text">
-              {phase.savedTo === null ? phase.fileName : `“${phase.savedTo}”`}, {formatBytes(phase.bytes)}. It holds {describeCounts(phase.counts) || "nothing"}.
+              {words.holdsSummary(phase.savedTo === null ? phase.fileName : `“${phase.savedTo}”`, formatBytes(phase.bytes), describeCounts(phase.counts) || words.nothing)}
             </p>
-            <p className="cf-backup__text">
-              {phase.savedTo === null
-                ? "Keep it somewhere safe, such as a cloud drive or an external disk. To get everything back, choose “Restore from a backup”."
-                : "It replaced the backup that was in the file before. A file on this computer is lost with the computer: keep it in a folder that a cloud drive copies, or on an external disk."}
-            </p>
+            <p className="cf-backup__text">{phase.savedTo === null ? words.keepSafeDownload : words.keepSafeFile}</p>
             <div className="cf-backup__actions">
-              <Button onClick={() => setPhase(IDLE)}>Make another backup</Button>
+              <Button onClick={() => setPhase(IDLE)}>{words.makeAnother}</Button>
               <Button variant="primary" onClick={close} data-autofocus>
-                Done
+                {m.common.done}
               </Button>
             </div>
           </>
@@ -512,11 +491,11 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
           <>
             <div className="cf-backup__reading" role="status">
               <Spinner size={18} />
-              <h3 className="cf-backup__title">Reading the backup…</h3>
+              <h3 className="cf-backup__title">{words.readingBackup}</h3>
             </div>
             <div className="cf-backup__actions">
               <Button onClick={() => stopWork()} data-autofocus>
-                Cancel
+                {m.common.cancel}
               </Button>
             </div>
           </>
@@ -524,12 +503,13 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
 
         {phase.name === "review" ? (
           <>
-            <h3 className="cf-backup__title">{phase.found.plan.nothingNew ? "Nothing to restore" : "Ready to restore"}</h3>
+            <h3 className="cf-backup__title">{phase.found.plan.nothingNew ? words.nothingToRestore : words.readyToRestore}</h3>
             <p className="cf-backup__text">
-              {backupDate(phase.found.exportedAt) ? `Backup from ${backupDate(phase.found.exportedAt)}. It holds` : "This backup holds"}{" "}
-              {describeCounts(phase.found.counts) || "nothing"}.
+              {backupDate(phase.found.exportedAt)
+                ? words.holdsFrom(backupDate(phase.found.exportedAt), describeCounts(phase.found.counts) || words.nothing)
+                : words.holds(describeCounts(phase.found.counts) || words.nothing)}
             </p>
-            {phase.found.plan.nothingNew ? <p className="cf-backup__text">Everything in this backup is already here.</p> : null}
+            {phase.found.plan.nothingNew ? <p className="cf-backup__text">{words.allHere}</p> : null}
             <ul className="cf-backup__facts">
               {reviewFacts(phase.found.plan, phase.found.skipped).map((fact) => (
                 <li key={fact}>{fact}</li>
@@ -538,16 +518,16 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
             <div className="cf-backup__actions">
               {phase.found.plan.nothingNew ? (
                 <>
-                  <Button onClick={() => setPhase(IDLE)}>Choose another file</Button>
+                  <Button onClick={() => setPhase(IDLE)}>{words.chooseAnother}</Button>
                   <Button variant="primary" onClick={close} data-autofocus>
-                    Done
+                    {m.common.done}
                   </Button>
                 </>
               ) : (
                 <>
-                  <Button onClick={() => setPhase(IDLE)}>Cancel</Button>
+                  <Button onClick={() => setPhase(IDLE)}>{m.common.cancel}</Button>
                   <Button variant="primary" onClick={() => void startRestore(phase.file)} data-autofocus>
-                    Restore
+                    {m.dashboard.shared.restore}
                   </Button>
                 </>
               )}
@@ -558,13 +538,13 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
         {phase.name === "restoring" ? (
           <>
             <div role="status">
-              <h3 className="cf-backup__title">Restoring…</h3>
+              <h3 className="cf-backup__title">{words.restoring}</h3>
             </div>
-            <Progress label="Restore progress" value={restoreProgress && restoreProgress.total > 0 ? restoreProgress.done / restoreProgress.total : undefined} />
-            <p className="cf-backup__text">{restoreProgress ? `Adding to your library: ${restoreProgress.done} of ${restoreProgress.total}` : "Getting ready…"}</p>
+            <Progress label={words.restoreProgress} value={restoreProgress && restoreProgress.total > 0 ? restoreProgress.done / restoreProgress.total : undefined} />
+            <p className="cf-backup__text">{restoreProgress ? words.adding(restoreProgress.done, restoreProgress.total) : words.gettingReady}</p>
             <div className="cf-backup__actions">
               <Button onClick={() => stopWork()} data-autofocus>
-                Stop
+                {words.stop}
               </Button>
             </div>
           </>
@@ -574,7 +554,7 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
           <>
             <div className="cf-backup__done" role="status">
               <IconSuccess className="cf-backup__done-icon" aria-hidden="true" />
-              <h3 className="cf-backup__title">Restore finished</h3>
+              <h3 className="cf-backup__title">{words.restoreFinished}</h3>
             </div>
             <ul className="cf-backup__facts">
               {resultFacts(phase.result).map((fact) => (
@@ -582,7 +562,7 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
               ))}
             </ul>
             <div className="cf-backup__actions">
-              <Button onClick={close}>Done</Button>
+              <Button onClick={close}>{m.common.done}</Button>
               <Button
                 variant="primary"
                 onClick={() => {
@@ -591,7 +571,7 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
                 }}
                 data-autofocus
               >
-                Open Projects
+                {words.openProjects}
               </Button>
             </div>
           </>
@@ -600,12 +580,12 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
         {phase.name === "stopped" ? (
           <>
             <div role="status">
-              <h3 className="cf-backup__title">Stopped</h3>
+              <h3 className="cf-backup__title">{words.stopped}</h3>
             </div>
-            <p className="cf-backup__text">What was restored until now is kept.</p>
+            <p className="cf-backup__text">{words.keptSoFar}</p>
             <div className="cf-backup__actions">
               <Button variant="primary" onClick={close} data-autofocus>
-                Done
+                {m.common.done}
               </Button>
             </div>
           </>
@@ -622,7 +602,7 @@ export function BackupDialog({ open, onClose, startNow = false }: { open: boolea
             </div>
             <div className="cf-backup__actions">
               <Button variant="primary" onClick={() => setPhase(IDLE)} data-autofocus>
-                Try again
+                {m.common.retry}
               </Button>
             </div>
           </>

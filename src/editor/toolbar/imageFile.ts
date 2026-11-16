@@ -2,12 +2,13 @@
 import { addAssetFromFile, assetSrc, isAcceptedImage } from "@/core/assets";
 import { getActions } from "@/core/store";
 import type { ID } from "@/core/types";
+import { m } from "@/i18n";
 import { toast } from "@/ui";
 
 /** Stores the file as an asset and puts it into the image element, keeping its box. */
 export async function replaceImageWithFile(id: ID, file: File): Promise<boolean> {
   if (!isAcceptedImage(file)) {
-    toast.error("That file is not a picture. Choose a PNG, JPG, WebP, GIF or SVG file.");
+    toast.error(m.editor.imageFile.notPicture);
     return false;
   }
   try {
@@ -15,7 +16,7 @@ export async function replaceImageWithFile(id: ID, file: File): Promise<boolean>
     getActions().replaceImage(id, assetSrc(asset.id), asset.width, asset.height);
     return true;
   } catch {
-    toast.error("Could not read that picture. Try a different file.");
+    toast.error(m.editor.imageFile.unreadable);
     return false;
   }
 }

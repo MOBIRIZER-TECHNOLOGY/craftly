@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { m } from "@/i18n";
 import { Kbd, Modal, SearchField, formatShortcut } from "@/ui";
 import "./shortcutsDialog.css";
 
@@ -15,133 +16,136 @@ interface Group {
   items: Shortcut[];
 }
 
-/** Everything in src/editor/hotkeys.ts, the canvas controller, the page strip and the presenter. */
+const s = m.editorChrome.shortcuts;
+const then = s.then;
+
+/** Everything in src/editor/hotkeys.ts, the canvas controller, the page strip and the presenter. The key names stay as they are. */
 const GROUPS: Group[] = [
   {
-    title: "General",
+    title: s.general.title,
     items: [
-      { label: "Undo", keys: ["Ctrl+Z"] },
-      { label: "Redo", keys: ["Ctrl+Shift+Z", "Ctrl+Y"] },
-      { label: "Save now", keys: ["Ctrl+S"] },
-      { label: "Find and replace text", keys: ["Ctrl+F"] },
-      { label: "Print the pages", keys: ["Ctrl+P"] },
-      { label: "Show keyboard shortcuts", keys: ["?"] },
-      { label: "Close a menu or dialog, stop editing text, deselect", keys: ["Esc"] },
+      { label: s.general.undo, keys: ["Ctrl+Z"] },
+      { label: s.general.redo, keys: ["Ctrl+Shift+Z", "Ctrl+Y"] },
+      { label: s.general.saveNow, keys: ["Ctrl+S"] },
+      { label: s.general.find, keys: ["Ctrl+F"] },
+      { label: s.general.print, keys: ["Ctrl+P"] },
+      { label: s.general.showShortcuts, keys: ["?"] },
+      { label: s.general.escape, keys: ["Esc"] },
     ],
   },
   {
-    title: "Edit and select",
+    title: s.edit.title,
     items: [
-      { label: "Copy", keys: ["Ctrl+C"] },
-      { label: "Cut", keys: ["Ctrl+X"] },
-      { label: "Paste (elements, images or plain text)", keys: ["Ctrl+V"] },
-      { label: "Duplicate", keys: ["Ctrl+D"] },
-      { label: "Delete the selection", keys: ["Delete", "Backspace"] },
-      { label: "Select everything on the page", keys: ["Ctrl+A"] },
-      { label: "Select the next or previous element", keys: ["Tab", "Shift+Tab"] },
-      { label: "Copy style", keys: ["Ctrl+Alt+C"] },
-      { label: "Paste style", keys: ["Ctrl+Alt+V"] },
-      { label: "Edit the selected text, crop the selected image, or edit the points of the selected path", keys: ["Enter"] },
-      { label: "Bold the selected text", keys: ["Ctrl+B"] },
-      { label: "Italic the selected text", keys: ["Ctrl+I"] },
-      { label: "Underline the selected text", keys: ["Ctrl+U"] },
-      { label: "Nudge the selection by 1 px", keys: ["Arrow Keys"] },
-      { label: "Nudge the selection by 10 px", keys: ["Shift+Arrow Keys"] },
+      { label: s.edit.copy, keys: ["Ctrl+C"] },
+      { label: s.edit.cut, keys: ["Ctrl+X"] },
+      { label: s.edit.paste, keys: ["Ctrl+V"] },
+      { label: s.edit.duplicate, keys: ["Ctrl+D"] },
+      { label: s.edit.deleteSelection, keys: ["Delete", "Backspace"] },
+      { label: s.edit.selectAll, keys: ["Ctrl+A"] },
+      { label: s.edit.selectNext, keys: ["Tab", "Shift+Tab"] },
+      { label: s.edit.copyStyle, keys: ["Ctrl+Alt+C"] },
+      { label: s.edit.pasteStyle, keys: ["Ctrl+Alt+V"] },
+      { label: s.edit.enter, keys: ["Enter"] },
+      { label: s.edit.bold, keys: ["Ctrl+B"] },
+      { label: s.edit.italic, keys: ["Ctrl+I"] },
+      { label: s.edit.underline, keys: ["Ctrl+U"] },
+      { label: s.edit.nudge, keys: ["Arrow Keys"] },
+      { label: s.edit.nudgeMore, keys: ["Shift+Arrow Keys"] },
     ],
   },
   {
-    title: "Arrange",
+    title: s.arrange.title,
     items: [
-      { label: "Group", keys: ["Ctrl+G"] },
-      { label: "Ungroup", keys: ["Ctrl+Shift+G"] },
-      { label: "Bring forward", keys: ["Ctrl+]"] },
-      { label: "Send backward", keys: ["Ctrl+["] },
-      { label: "Bring to front", keys: ["Ctrl+Alt+]", "Ctrl+Shift+]"] },
-      { label: "Send to back", keys: ["Ctrl+Alt+[", "Ctrl+Shift+["] },
-      { label: "Lock or unlock", keys: ["Alt+Shift+L"] },
+      { label: s.arrange.group, keys: ["Ctrl+G"] },
+      { label: s.arrange.ungroup, keys: ["Ctrl+Shift+G"] },
+      { label: s.arrange.forward, keys: ["Ctrl+]"] },
+      { label: s.arrange.backward, keys: ["Ctrl+["] },
+      { label: s.arrange.front, keys: ["Ctrl+Alt+]", "Ctrl+Shift+]"] },
+      { label: s.arrange.back, keys: ["Ctrl+Alt+[", "Ctrl+Shift+["] },
+      { label: s.arrange.lock, keys: ["Alt+Shift+L"] },
     ],
   },
   {
-    title: "Add to the page",
+    title: s.add.title,
     items: [
-      { label: "Text box", keys: ["T"] },
-      { label: "Rectangle", keys: ["R"] },
-      { label: "Circle", keys: ["C"] },
-      { label: "Line", keys: ["L"] },
-      { label: "Path with the Pen (points and curves)", keys: ["P"] },
-      { label: "Comment: click the page to pin a note there", keys: ["M"] },
+      { label: s.add.text, keys: ["T"] },
+      { label: s.add.rectangle, keys: ["R"] },
+      { label: s.add.circle, keys: ["C"] },
+      { label: s.add.line, keys: ["L"] },
+      { label: s.add.pen, keys: ["P"] },
+      { label: s.add.comment, keys: ["M"] },
     ],
   },
   {
-    title: "Pen and path points",
+    title: s.pen.title,
     items: [
-      { label: "Place a corner point", keys: [], then: "click" },
-      { label: "Place a smooth point and pull out its curve", keys: [], then: "click and drag" },
-      { label: "Keep a side at a multiple of 45 degrees", keys: ["Shift"], then: "click" },
-      { label: "Close the path", keys: [], then: "click the first point" },
-      { label: "Finish the path", keys: ["Enter", "Esc"], then: "or click the last point (Enter places a point while the keyboard point is shown)" },
-      { label: "Take the last point back", keys: ["Backspace", "Ctrl+Z"] },
-      { label: "Move the Pen's keyboard point by 1 px or 10 px", keys: ["Arrow Keys", "Shift+Arrow Keys"] },
-      { label: "Place a corner point at the keyboard point (on the first point: close the path, on the last: end it)", keys: ["Enter"] },
-      { label: "Place a smooth point at the keyboard point", keys: ["Shift+Enter"] },
-      { label: "Pull the curve of the last point by 1 px or 10 px", keys: ["Alt+Arrow Keys", "Alt+Shift+Arrow Keys"] },
-      { label: "Go to the first point, where Enter closes the path", keys: ["Home"] },
-      { label: "Add a point to a path", keys: [], then: "click the path while editing its points" },
-      { label: "Switch a point between corner and smooth", keys: [], then: "double-click it" },
-      { label: "Move a handle without turning the opposite one", keys: ["Alt"], then: "drag a handle" },
-      { label: "Select the next or previous point, and after the last one move on to the toolbar", keys: ["Tab", "Shift+Tab"] },
-      { label: "Move the selected points by 1 px or 10 px", keys: ["Arrow Keys", "Shift+Arrow Keys"] },
-      { label: "Delete the selected points", keys: ["Delete", "Backspace"] },
-      { label: "Finish editing points", keys: ["Enter", "Esc"] },
+      { label: s.pen.corner, keys: [], then: then.click },
+      { label: s.pen.smooth, keys: [], then: then.clickDrag },
+      { label: s.pen.angle, keys: ["Shift"], then: then.click },
+      { label: s.pen.close, keys: [], then: then.clickFirst },
+      { label: s.pen.finish, keys: ["Enter", "Esc"], then: then.orClickLast },
+      { label: s.pen.takeBack, keys: ["Backspace", "Ctrl+Z"] },
+      { label: s.pen.moveKeyboardPoint, keys: ["Arrow Keys", "Shift+Arrow Keys"] },
+      { label: s.pen.cornerAtKeyboard, keys: ["Enter"] },
+      { label: s.pen.smoothAtKeyboard, keys: ["Shift+Enter"] },
+      { label: s.pen.pullCurve, keys: ["Alt+Arrow Keys", "Alt+Shift+Arrow Keys"] },
+      { label: s.pen.firstPoint, keys: ["Home"] },
+      { label: s.pen.addPoint, keys: [], then: then.clickPath },
+      { label: s.pen.switchPoint, keys: [], then: then.doubleClickIt },
+      { label: s.pen.moveHandle, keys: ["Alt"], then: then.dragHandle },
+      { label: s.pen.selectPoint, keys: ["Tab", "Shift+Tab"] },
+      { label: s.pen.movePoints, keys: ["Arrow Keys", "Shift+Arrow Keys"] },
+      { label: s.pen.deletePoints, keys: ["Delete", "Backspace"] },
+      { label: s.pen.finishPoints, keys: ["Enter", "Esc"] },
     ],
   },
   {
-    title: "View",
+    title: s.view.title,
     items: [
-      { label: "Zoom in", keys: ["Ctrl+="] },
-      { label: "Zoom out", keys: ["Ctrl+-"] },
-      { label: "Fit the page in the window", keys: ["Ctrl+0"] },
-      { label: "Show or hide rulers", keys: ["Shift+R"] },
-      { label: "Zoom around the pointer", keys: ["Ctrl"], then: "scroll wheel" },
-      { label: "Pan the canvas", keys: ["Space"], then: "drag" },
-      { label: "Pan the canvas", keys: ["Middle mouse button"], then: "drag" },
+      { label: s.view.zoomIn, keys: ["Ctrl+="] },
+      { label: s.view.zoomOut, keys: ["Ctrl+-"] },
+      { label: s.view.fit, keys: ["Ctrl+0"] },
+      { label: s.view.rulers, keys: ["Shift+R"] },
+      { label: s.view.zoomPointer, keys: ["Ctrl"], then: then.scrollWheel },
+      { label: s.view.pan, keys: ["Space"], then: then.drag },
+      { label: s.view.pan, keys: ["Middle mouse button"], then: then.drag },
     ],
   },
   {
-    title: "Mouse and canvas gestures",
+    title: s.mouse.title,
     items: [
-      { label: "Keep a move on one axis", keys: ["Shift"], then: "drag an element" },
-      { label: "Toggle keeping proportions while resizing", keys: ["Shift"], then: "drag a corner handle" },
-      { label: "Resize from the centre", keys: ["Alt"], then: "drag a handle" },
-      { label: "Rotate in 15 degree steps", keys: ["Shift"], then: "drag the rotate handle" },
-      { label: "Turn off snapping", keys: ["Ctrl"], then: "drag" },
-      { label: "Add to or remove from the selection", keys: ["Shift", "Ctrl"], then: "click" },
-      { label: "Select several elements", keys: [], then: "drag on an empty part of the page" },
-      { label: "Edit text, crop an image, edit the points of a path or open a group", keys: [], then: "double-click" },
-      { label: "Open the context menu", keys: [], then: "right-click" },
+      { label: s.mouse.axis, keys: ["Shift"], then: then.dragElement },
+      { label: s.mouse.proportions, keys: ["Shift"], then: then.dragCorner },
+      { label: s.mouse.fromCentre, keys: ["Alt"], then: then.dragHandle },
+      { label: s.mouse.rotate, keys: ["Shift"], then: then.dragRotate },
+      { label: s.mouse.noSnap, keys: ["Ctrl"], then: then.drag },
+      { label: s.mouse.addRemove, keys: ["Shift", "Ctrl"], then: then.click },
+      { label: s.mouse.marquee, keys: [], then: then.dragEmpty },
+      { label: s.mouse.doubleClick, keys: [], then: then.doubleClick },
+      { label: s.mouse.contextMenu, keys: [], then: then.rightClick },
     ],
   },
   {
-    title: "Pages",
+    title: s.pages.title,
     items: [
-      { label: "Select the previous or next page (page strip)", keys: ["Left", "Right"] },
-      { label: "Move the page (page strip)", keys: ["Alt+Left", "Alt+Right"] },
-      { label: "Delete the page (page strip)", keys: ["Delete"] },
-      { label: "Open the page (grid view)", keys: ["Enter"] },
-      { label: "Leave grid view", keys: ["Esc"] },
-      { label: "Reorder pages", keys: [], then: "drag a thumbnail" },
+      { label: s.pages.select, keys: ["Left", "Right"] },
+      { label: s.pages.move, keys: ["Alt+Left", "Alt+Right"] },
+      { label: s.pages.delete, keys: ["Delete"] },
+      { label: s.pages.open, keys: ["Enter"] },
+      { label: s.pages.leaveGrid, keys: ["Esc"] },
+      { label: s.pages.reorder, keys: [], then: then.dragThumbnail },
     ],
   },
   {
-    title: "Presenting",
+    title: s.presenting.title,
     items: [
-      { label: "Next page", keys: ["Right", "Space", "Page Down"], then: "or click" },
-      { label: "Previous page", keys: ["Left", "Page Up"] },
-      { label: "First or last page", keys: ["Home", "End"] },
-      { label: "Play the show on its own, on or off", keys: ["P"] },
-      { label: "Show or hide speaker notes", keys: ["N"] },
-      { label: "Full screen on or off", keys: ["F"] },
-      { label: "Exit", keys: ["Esc"] },
+      { label: s.presenting.next, keys: ["Right", "Space", "Page Down"], then: then.orClick },
+      { label: s.presenting.previous, keys: ["Left", "Page Up"] },
+      { label: s.presenting.firstLast, keys: ["Home", "End"] },
+      { label: s.presenting.autoplay, keys: ["P"] },
+      { label: s.presenting.notes, keys: ["N"] },
+      { label: s.presenting.fullscreen, keys: ["F"] },
+      { label: s.presenting.exit, keys: ["Esc"] },
     ],
   },
 ];
@@ -163,7 +167,7 @@ function Keys({ item }: { item: Shortcut }) {
     <span className="cf-shortcuts__keys">
       {item.keys.map((k, i) => (
         <span key={k} className="cf-shortcuts__alt">
-          {i > 0 ? <span className="cf-shortcuts__or">or</span> : null}
+          {i > 0 ? <span className="cf-shortcuts__or">{m.editorChrome.shortcuts.or}</span> : null}
           <Kbd keys={k} />
         </span>
       ))}
@@ -188,11 +192,18 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
   }, [query]);
 
   return (
-    <Modal open={open} onClose={onClose} size="lg" title="Keyboard shortcuts" bodyClassName="cf-shortcuts__body">
-      <SearchField value={query} onChange={setQuery} placeholder="Search shortcuts" aria-label="Search shortcuts" autoFocus className="cf-shortcuts__search" />
+    <Modal open={open} onClose={onClose} size="lg" title={m.editorChrome.shortcuts.title} bodyClassName="cf-shortcuts__body">
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        placeholder={m.editorChrome.shortcuts.search}
+        aria-label={m.editorChrome.shortcuts.search}
+        autoFocus
+        className="cf-shortcuts__search"
+      />
       {/* the list scrolls: focusable (and named), so that a keyboard can scroll it */}
-      <div className="cf-shortcuts" role="region" aria-label="Shortcuts" tabIndex={0}>
-        {groups.length === 0 ? <p className="cf-shortcuts__empty">No shortcuts match &quot;{query}&quot;.</p> : null}
+      <div className="cf-shortcuts" role="region" aria-label={m.editorChrome.shortcuts.region} tabIndex={0}>
+        {groups.length === 0 ? <p className="cf-shortcuts__empty">{m.editorChrome.shortcuts.noMatch(query)}</p> : null}
         {splitColumns(groups).map((column, c) => (
           <div key={c} className="cf-shortcuts__col">
             {column.map((g) => (

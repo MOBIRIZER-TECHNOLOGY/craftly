@@ -8,23 +8,15 @@ import { combineShapes, combinedShape, makePath, shapeAsPath, shapesToCombine, t
 import { findElement } from "@/core/ops";
 import { getActions, getActivePage, pageOf, useEditor } from "@/core/store";
 import type { DesignElement, ID, Page, ShapeElement } from "@/core/types";
+import { m } from "@/i18n";
 import { IconExclude, IconIntersect, IconSubtract, IconUnion, toast, type MenuEntry } from "@/ui";
 
-const WAYS: Array<{ op: CombineOp; label: string; hint: string; icon: ComponentType }> = [
-  { op: "union", label: "Union", hint: "Join into one", icon: IconUnion },
-  { op: "subtract", label: "Subtract", hint: "Cut out the front", icon: IconSubtract },
-  { op: "intersect", label: "Intersect", hint: "Keep the overlap", icon: IconIntersect },
-  { op: "exclude", label: "Exclude", hint: "Remove the overlap", icon: IconExclude },
+const WAYS: Array<{ op: CombineOp; icon: ComponentType }> = [
+  { op: "union", icon: IconUnion },
+  { op: "subtract", icon: IconSubtract },
+  { op: "intersect", icon: IconIntersect },
+  { op: "exclude", icon: IconExclude },
 ];
-
-const NOTHING_LEFT: Record<CombineOp, string> = {
-  union: "These shapes have no outline to join.",
-  subtract: "Nothing is left of the shape behind once the others are cut out of it.",
-  intersect: "These shapes do not overlap, so there is nothing to keep.",
-  exclude: "Nothing is left: the shapes cover exactly the same area.",
-};
-
-const CHANGED = "The shapes changed in the meantime, so nothing was changed.";
 
 /** True while the page still holds these very shapes: an element that was edited since is another object. */
 function stillThere(pageId: ID, shapes: readonly DesignElement[]): boolean {
@@ -47,10 +39,10 @@ export function keepFocusInEditor(): void {
 /** The entries of the "Combine" menu. They are switched off unless `ids` are two or more shapes that can be combined. */
 export function combineMenuItems(page: Page | null, ids: readonly ID[]): MenuEntry[] {
   const possible = !!page && !!shapesToCombine(page, ids);
-  return WAYS.map(({ op, label, hint, icon }) => ({
+  return WAYS.map(({ op, icon }) => ({
     id: `combine-${op}`,
-    label,
-    hint,
+    label: m.editor.combine.ways[op].label,
+    hint: m.editor.combine.ways[op].hint,
     icon: createElement(icon),
     disabled: !possible,
     onSelect: () => void combineElements(op, ids),
@@ -69,15 +61,15 @@ export async function combineElements(op: CombineOp, ids: readonly ID[]): Promis
   try {
     geometry = await combineShapes(shapes, op);
   } catch {
-    toast.error("The shapes could not be combined. Check your connection and try again.");
+    toast.error(m.editor.combine.failed);
     return false;
   }
   if (!stillThere(page.id, shapes)) {
-    toast.info(CHANGED);
+    toast.info(m.editor.combine.changed);
     return false;
   }
   if (!geometry) {
-    toast.info(NOTHING_LEFT[op]);
+    toast.info(m.editor.combine.nothingLeft[op]);
     return false;
   }
   const id = getActions().replaceElements(
@@ -108,16 +100,16 @@ export async function convertToPath(ids: readonly ID[]): Promise<boolean> {
   try {
     paths = await Promise.all(shapes.map((shape) => shapeAsPath(shape)));
   } catch {
-    toast.error("The shapes could not be converted to paths. Check your connection and try again.");
+    toast.error(m.editor.combine.pathFailed);
     return false;
   }
   if (!stillThere(page.id, shapes)) {
-    toast.info(CHANGED);
+    toast.info(m.editor.combine.changed);
     return false;
   }
   const made = new Map(shapes.flatMap((shape, i) => (paths[i] ? [[shape.id, paths[i]] as const] : [])));
   if (!made.size) {
-    toast.info("These shapes have no outline to convert.");
+    toast.info(m.editor.combine.noOutline);
     return false;
   }
   // the ids are those of the shapes that were converted, so every element the recipe meets is one of them

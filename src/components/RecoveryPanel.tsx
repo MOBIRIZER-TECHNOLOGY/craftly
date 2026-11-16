@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 import { getDesign } from "@/core/library";
 import { earlierVersions, goBackToVersion, type EarlierVersion } from "@/core/recovery";
 import { downloadBlob } from "@/export/download";
+import { date, m } from "@/i18n";
 import { Button, toast } from "@/ui";
 import "./ErrorBoundary.css";
-
-const versionTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 interface Props {
   designId: string;
@@ -44,7 +43,7 @@ export function RecoveryPanel({ designId, open }: Props) {
       /* said below */
     }
     setBusy(null);
-    toast.error("That version could not be restored. Try another one.");
+    toast.error(m.app.recovery.restoreFailed);
   };
 
   const saveCopy = async () => {
@@ -54,9 +53,9 @@ export function RecoveryPanel({ designId, open }: Props) {
       if (!design) throw new Error("The design is not stored.");
       const { exportProjectFile, projectFileName } = await import("@/export/projectFile");
       downloadBlob(await exportProjectFile(design), projectFileName(design.title));
-      toast.success("Saved a copy of the design");
+      toast.success(m.app.recovery.copySaved);
     } catch {
-      toast.error("The copy could not be saved.");
+      toast.error(m.app.recovery.copyFailed);
     } finally {
       setBusy(null);
     }
@@ -64,27 +63,27 @@ export function RecoveryPanel({ designId, open }: Props) {
 
   return (
     <details className="cf-crash__more" open={open}>
-      <summary>Go back to an earlier version</summary>
+      <summary>{m.app.recovery.title}</summary>
       {versions === null ? (
-        <p>Looking for earlier versions…</p>
+        <p>{m.app.recovery.looking}</p>
       ) : versions.length === 0 ? (
-        <p>There are no earlier versions of this design yet.</p>
+        <p>{m.app.recovery.none}</p>
       ) : (
         <ul className="cf-crash__versions">
           {versions.map((version) => (
             <li key={version.id}>
               <span>
-                {versionTime.format(version.at)} · {version.label}
+                {date(version.at, { dateStyle: "medium", timeStyle: "short" })} · {version.label}
               </span>
               <Button size="sm" loading={busy === version.id} disabled={busy !== null} onClick={() => void goBack(version)}>
-                Use this version
+                {m.app.recovery.useVersion}
               </Button>
             </li>
           ))}
         </ul>
       )}
       <Button variant="secondary" size="sm" loading={busy === "copy"} disabled={busy !== null} onClick={() => void saveCopy()}>
-        Save a copy of the design to a file
+        {m.app.recovery.saveCopy}
       </Button>
     </details>
   );

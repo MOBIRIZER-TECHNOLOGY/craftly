@@ -32,7 +32,7 @@ function sugarFree(): Template {
     ),
   ]);
   return template(
-    { slug: "sugar-free-yellow", name: "Sugar Free Yellow Thumbnail", category: "social", size: "youtube", accent: "#ffe23a", tags: ["youtube", "thumbnail", "challenge", "30 days", "yellow", "arrow", "no sugar", "health", "bold", "vlog"] },
+    { slug: "sugar-free-yellow", category: "social", size: "youtube", accent: "#ffe23a", tags: ["youtube", "thumbnail", "challenge", "30 days", "yellow", "arrow", "no sugar", "health", "bold", "vlog"] },
     [page],
   );
 }
@@ -61,7 +61,7 @@ function glowUp(): Template {
     gfx("arrows-block-right", 520, 520, 240, { name: "Arrow", colors: { "#d63c43": "#e0a800", "#ff5a5f": YELLOW, "#ffb3b6": "#fff3a0" } }),
   ]);
   return template(
-    { slug: "room-glow-up", name: "Room Glow-Up Before After", category: "social", size: "youtube", accent: "#ff9a8a", tags: ["youtube", "thumbnail", "before after", "makeover", "diy", "home", "budget", "split", "arrow", "room"] },
+    { slug: "room-glow-up", category: "social", size: "youtube", accent: "#ff9a8a", tags: ["youtube", "thumbnail", "before after", "makeover", "diy", "home", "budget", "split", "arrow", "room"] },
     [page],
   );
 }
@@ -94,7 +94,7 @@ function learnToCode(): Template {
     sparkle(880, 600, 44, NEON, { name: "Sparkle" }),
   ]);
   return template(
-    { slug: "learn-code-neon", name: "Learn To Code Neon", category: "social", size: "youtube", accent: "#0a0a14", tags: ["youtube", "thumbnail", "coding", "tutorial", "tech", "neon", "programming", "beginner", "dark", "course"] },
+    { slug: "learn-code-neon", category: "social", size: "youtube", accent: "#0a0a14", tags: ["youtube", "thumbnail", "coding", "tutorial", "tech", "neon", "programming", "beginner", "dark", "course"] },
     [page],
   );
 }
@@ -127,7 +127,7 @@ function paradiseVlog(): Template {
     T("FULL ISLAND GUIDE", 92, 586, 520, 46, { fontFamily: FONT, fontWeight: 700, letterSpacing: 60, color: "#ffffff", lineHeight: 1.1, name: "Strip label" }),
   ]);
   return template(
-    { slug: "paradise-travel-vlog", name: "Paradise Travel Vlog", category: "social", size: "youtube", accent: "#1aa7b8", tags: ["youtube", "thumbnail", "travel", "vlog", "beach", "price", "island", "arrow", "outline text", "adventure"] },
+    { slug: "paradise-travel-vlog", category: "social", size: "youtube", accent: "#1aa7b8", tags: ["youtube", "thumbnail", "travel", "vlog", "beach", "price", "island", "arrow", "outline text", "adventure"] },
     [page],
   );
 }

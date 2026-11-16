@@ -226,7 +226,6 @@ const thanks = slide(
 export const BRUTALIST: Template = template(
   {
     slug: "neo-brutalist-roadmap",
-    name: "Neo-Brutalist Roadmap",
     category: "presentation",
     size: "presentation",
     tags: ["brutalist", "neo-brutalism", "roadmap", "bold", "mono", "stickers", "colourful", "startup", "product", "quarterly", "playful"],

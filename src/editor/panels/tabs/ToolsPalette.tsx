@@ -1,5 +1,6 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { useEditor, type ToolId } from "@/core/store";
+import { m } from "@/i18n";
 import { ColorPicker, ColorSwatch, IconBrush, IconButton, IconClose, IconComment, IconPenTool, IconSelect, IconShapes, IconText, Popover, Slider, Tooltip, cx } from "@/ui";
 import { autoDrawWidth, setDrawSettings, useDrawSettings } from "../shared/drawSettings";
 import { IconSlash } from "../shared/icons";
@@ -8,22 +9,22 @@ import "./ToolsPalette.css";
 
 /** The shapes offered by the Shape tool flyout (ids of the shape catalogue). */
 const TOOL_SHAPES: Array<{ id: string; name: string }> = [
-  { id: "rect", name: "Square" },
-  { id: "ellipse", name: "Circle" },
-  { id: "triangle", name: "Triangle" },
-  { id: "diamond", name: "Diamond" },
-  { id: "pentagon", name: "Pentagon" },
-  { id: "hexagon", name: "Hexagon" },
-  { id: "star", name: "Star" },
-  { id: "heart", name: "Heart" },
-  { id: "arrow-right", name: "Arrow" },
-  { id: "chevron", name: "Chevron" },
-  { id: "plus", name: "Plus" },
-  { id: "speech", name: "Speech bubble" },
-  { id: "cloud", name: "Cloud" },
-  { id: "lightning", name: "Lightning" },
-  { id: "burst", name: "Starburst" },
-  { id: "blob-1", name: "Blob" },
+  { id: "rect", name: m.panelsTabs.tools.shapes.square },
+  { id: "ellipse", name: m.panelsTabs.tools.shapes.circle },
+  { id: "triangle", name: m.panelsTabs.tools.shapes.triangle },
+  { id: "diamond", name: m.panelsTabs.tools.shapes.diamond },
+  { id: "pentagon", name: m.panelsTabs.tools.shapes.pentagon },
+  { id: "hexagon", name: m.panelsTabs.tools.shapes.hexagon },
+  { id: "star", name: m.panelsTabs.tools.shapes.star },
+  { id: "heart", name: m.panelsTabs.tools.shapes.heart },
+  { id: "arrow-right", name: m.panelsTabs.tools.shapes.arrow },
+  { id: "chevron", name: m.panelsTabs.tools.shapes.chevron },
+  { id: "plus", name: m.panelsTabs.tools.shapes.plus },
+  { id: "speech", name: m.panelsTabs.tools.shapes.speech },
+  { id: "cloud", name: m.panelsTabs.tools.shapes.cloud },
+  { id: "lightning", name: m.panelsTabs.tools.shapes.lightning },
+  { id: "burst", name: m.panelsTabs.tools.shapes.starburst },
+  { id: "blob-1", name: m.panelsTabs.tools.shapes.blob },
 ];
 
 const PEN_COLORS = ["#0e1318", "#e5484d", "#f59e0b", "#facc15", "#16a34a", "#12c2b9", "#3b82f6", "#7c3aed", "#ec4899", "#ffffff"];
@@ -41,14 +42,14 @@ interface ToolDef {
 }
 
 const TOOLS: ToolDef[] = [
-  { id: "select", label: "Select", icon: <IconSelect />, tint: "var(--c-ink-2)" },
-  { id: "draw", label: "Draw", icon: <IconBrush />, tint: "var(--c-danger)", flyout: "draw" },
-  { id: "pen", label: "Pen", shortcut: "P", icon: <IconPenTool />, tint: "var(--c-primary)", flyout: "pen" },
-  { id: "shape", label: "Shape", icon: <IconShapes />, tint: "var(--c-ink)", flyout: "shape" },
-  { id: "line", label: "Line", shortcut: "L", icon: <IconSlash />, tint: "var(--c-blue)" },
-  { id: "text", label: "Text", shortcut: "T", icon: <IconText />, tint: "var(--c-primary)" },
+  { id: "select", label: m.panelsTabs.tools.tools.select, icon: <IconSelect />, tint: "var(--c-ink-2)" },
+  { id: "draw", label: m.panelsTabs.tools.tools.draw, icon: <IconBrush />, tint: "var(--c-danger)", flyout: "draw" },
+  { id: "pen", label: m.panelsTabs.tools.tools.pen, shortcut: "P", icon: <IconPenTool />, tint: "var(--c-primary)", flyout: "pen" },
+  { id: "shape", label: m.panelsTabs.tools.tools.shape, icon: <IconShapes />, tint: "var(--c-ink)", flyout: "shape" },
+  { id: "line", label: m.panelsTabs.tools.tools.line, shortcut: "L", icon: <IconSlash />, tint: "var(--c-blue)" },
+  { id: "text", label: m.panelsTabs.tools.tools.text, shortcut: "T", icon: <IconText />, tint: "var(--c-primary)" },
   // a pin with a note where the page is clicked (src/editor/comments); last, so that the tools before it keep their places
-  { id: "comment", label: "Comment", shortcut: "M", icon: <IconComment />, tint: "var(--c-ink-2)" },
+  { id: "comment", label: m.panelsTabs.tools.tools.comment, shortcut: "M", icon: <IconComment />, tint: "var(--c-ink-2)" },
 ];
 
 /**
@@ -86,9 +87,9 @@ export function ToolsPalette({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="cf-tools" role="toolbar" aria-label="Tools" aria-orientation="vertical" onKeyDown={onKeyDown}>
-      <Tooltip content="Close tools" placement="right">
-        <button type="button" className="cf-tools__close" aria-label="Close tools" onClick={onClose}>
+    <div className="cf-tools" role="toolbar" aria-label={m.panelsTabs.tools.label} aria-orientation="vertical" onKeyDown={onKeyDown}>
+      <Tooltip content={m.panelsTabs.tools.close} placement="right">
+        <button type="button" className="cf-tools__close" aria-label={m.panelsTabs.tools.close} onClick={onClose}>
           <IconClose aria-hidden="true" />
         </button>
       </Tooltip>
@@ -119,7 +120,7 @@ export function ToolsPalette({ onClose }: { onClose: () => void }) {
         placement="right-start"
         offset={12}
         className="cf-tools__flyout"
-        aria-label="Choose a shape to draw"
+        aria-label={m.panelsTabs.tools.chooseShape}
       >
         <ShapeFlyout
           current={tool === "shape" ? toolShape : null}
@@ -137,9 +138,9 @@ export function ToolsPalette({ onClose }: { onClose: () => void }) {
         placement="right-start"
         offset={12}
         className="cf-tools__flyout cf-tools__flyout--pen"
-        aria-label="Draw options"
+        aria-label={m.panelsTabs.tools.drawOptions}
       >
-        <StrokeFlyout title="Draw" hint="Drag on the page to draw freehand." />
+        <StrokeFlyout title={m.panelsTabs.tools.tools.draw} hint={m.panelsTabs.tools.drawHint} />
       </Popover>
 
       <Popover
@@ -149,9 +150,9 @@ export function ToolsPalette({ onClose }: { onClose: () => void }) {
         placement="right-start"
         offset={12}
         className="cf-tools__flyout cf-tools__flyout--pen"
-        aria-label="Pen options"
+        aria-label={m.panelsTabs.tools.penOptions}
       >
-        <StrokeFlyout title="Pen" hint="Click to place a corner, drag to pull out a curve. Click the first point to close the path, and Enter to finish it." />
+        <StrokeFlyout title={m.panelsTabs.tools.tools.pen} hint={m.panelsTabs.tools.penHint} />
       </Popover>
     </div>
   );
@@ -164,9 +165,9 @@ export function ToolsPalette({ onClose }: { onClose: () => void }) {
 function ShapeFlyout({ current, onPick }: { current: string | null; onPick: (kind: string) => void }) {
   return (
     <div className="cf-flyout">
-      <p className="cf-flyout__title">Draw a shape</p>
-      <p className="cf-flyout__hint">Pick one, then drag on the page. Hold Shift for equal sides.</p>
-      <div className="cf-flyout__shapes" role="listbox" aria-label="Shapes">
+      <p className="cf-flyout__title">{m.panelsTabs.tools.drawShape}</p>
+      <p className="cf-flyout__hint">{m.panelsTabs.tools.shapeHint}</p>
+      <div className="cf-flyout__shapes" role="listbox" aria-label={m.panelsTabs.tools.shapesLabel}>
         {TOOL_SHAPES.map((s) => {
           const selected = current === s.id;
           return (
@@ -217,14 +218,14 @@ function StrokeFlyout({ title, hint }: { title: string; hint: string }) {
           />
         </svg>
       </div>
-      <div className="cf-flyout__colors" role="group" aria-label={`${title} colour`}>
+      <div className="cf-flyout__colors" role="group" aria-label={m.panelsTabs.tools.strokeColour(title)}>
         {PEN_COLORS.map((c) => (
           <ColorSwatch key={c} color={c} size={26} selected={settings.color.toLowerCase() === c} title={c} onClick={() => setDrawSettings({ color: c })} />
         ))}
         <button
           type="button"
           className={cx("cf-flyout__custom", (custom || !isPreset) && "is-selected")}
-          aria-label="Custom colour"
+          aria-label={m.panelsTabs.tools.customColour}
           aria-expanded={custom}
           onClick={() => setCustom((v) => !v)}
         >
@@ -232,7 +233,16 @@ function StrokeFlyout({ title, hint }: { title: string; hint: string }) {
         </button>
       </div>
       {custom ? <ColorPicker value={settings.color} onChange={(c) => setDrawSettings({ color: c })} className="cf-flyout__picker" /> : null}
-      <Slider label="Width" showValue format={(v) => `${Math.round(v)} px`} min={1} max={maxWidth} step={1} value={width} onChange={(v) => setDrawSettings({ width: v })} />
+      <Slider
+        label={m.panelsTabs.tools.width}
+        showValue
+        format={(v) => m.panelsTabs.tools.widthValue(Math.round(v))}
+        min={1}
+        max={maxWidth}
+        step={1}
+        value={width}
+        onChange={(v) => setDrawSettings({ width: v })}
+      />
     </div>
   );
 }

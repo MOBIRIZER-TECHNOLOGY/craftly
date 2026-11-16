@@ -4,6 +4,7 @@
  * share one definition.
  */
 import type { ShapeElement } from "@/core/types";
+import { m } from "@/i18n";
 
 export type ShapeGroup = "basic" | "polygons" | "stars" | "arrows" | "symbols" | "bubbles" | "blobs";
 
@@ -40,11 +41,11 @@ const ARGC: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4,
 export function scalePathData(d: string, sx: number, sy: number): string {
   const re = /([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)/g;
   let out = "";
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(d))) {
-    const cmd = m[1];
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(d))) {
+    const cmd = match[1];
     const up = cmd.toUpperCase();
-    const nums = (m[2].match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? []).map(parseFloat);
+    const nums = (match[2].match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? []).map(parseFloat);
     if (up === "Z") {
       out += "Z";
       continue;
@@ -123,12 +124,12 @@ function ellipsePath(w: number, h: number): string {
 /* catalogue                                                           */
 /* ------------------------------------------------------------------ */
 
-export const SHAPES: ShapeDef[] = [
-  { id: "rect", name: "Square", group: "basic", path: (w, h, _p, r) => roundedRect(w, h, r), hasRadius: true },
-  { id: "ellipse", name: "Circle", group: "basic", path: (w, h) => ellipsePath(w, h) },
+/** (the name a person reads is the catalog's, by id: m.core.shapes) */
+const DEFS: Array<Omit<ShapeDef, "name">> = [
+  { id: "rect", group: "basic", path: (w, h, _p, r) => roundedRect(w, h, r), hasRadius: true },
+  { id: "ellipse", group: "basic", path: (w, h) => ellipsePath(w, h) },
   {
     id: "triangle",
-    name: "Triangle",
     group: "basic",
     path: polygon([
       [0.5, 0],
@@ -139,7 +140,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "right-triangle",
-    name: "Right triangle",
     group: "basic",
     path: polygon([
       [0, 0],
@@ -149,7 +149,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "diamond",
-    name: "Diamond",
     group: "basic",
     path: polygon([
       [0.5, 0],
@@ -160,7 +159,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "trapezoid",
-    name: "Trapezoid",
     group: "basic",
     path: polygon([
       [0.2, 0],
@@ -172,7 +170,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "parallelogram",
-    name: "Parallelogram",
     group: "basic",
     path: polygon([
       [0.25, 0],
@@ -182,11 +179,10 @@ export const SHAPES: ShapeDef[] = [
     ]),
     aspect: 1.5,
   },
-  { id: "half-circle", name: "Half circle", group: "basic", path: (w, h) => `M0 ${f(h)}A${f(w / 2)} ${f(h)} 0 0 1 ${f(w)} ${f(h)}Z`, aspect: 2 },
-  { id: "quarter-circle", name: "Quarter circle", group: "basic", path: (w, h) => `M0 ${f(h)}V0A${f(w)} ${f(h)} 0 0 1 ${f(w)} ${f(h)}Z` },
+  { id: "half-circle", group: "basic", path: (w, h) => `M0 ${f(h)}A${f(w / 2)} ${f(h)} 0 0 1 ${f(w)} ${f(h)}Z`, aspect: 2 },
+  { id: "quarter-circle", group: "basic", path: (w, h) => `M0 ${f(h)}V0A${f(w)} ${f(h)} 0 0 1 ${f(w)} ${f(h)}Z` },
   {
     id: "arch",
-    name: "Arch",
     group: "basic",
     path: (w, h) => {
       const ry = Math.min(w / 2, h * 0.9);
@@ -196,7 +192,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "ring",
-    name: "Ring",
     group: "basic",
     fillRule: "evenodd",
     params: { inner: 0.62 },
@@ -208,19 +203,18 @@ export const SHAPES: ShapeDef[] = [
       return ellipsePath(w, h) + `M${f(ox)} ${f(h / 2)}A${f(iw / 2)} ${f(ih / 2)} 0 1 1 ${f(ox + iw)} ${f(h / 2)}A${f(iw / 2)} ${f(ih / 2)} 0 1 1 ${f(ox)} ${f(h / 2)}Z`;
     },
   },
-  { id: "pentagon", name: "Pentagon", group: "polygons", path: (w, h) => regularPolygon(w, h, 5) },
-  { id: "hexagon", name: "Hexagon", group: "polygons", path: (w, h) => regularPolygon(w, h, 6, 0), aspect: 1.15 },
-  { id: "octagon", name: "Octagon", group: "polygons", path: (w, h) => regularPolygon(w, h, 8, -22.5) },
-  { id: "polygon", name: "Polygon", group: "polygons", params: { sides: 7 }, path: (w, h, p) => regularPolygon(w, h, Math.max(3, Math.round(p.sides ?? 7))) },
-  { id: "star", name: "Star", group: "stars", params: { points: 5, inner: 0.42 }, path: (w, h, p) => starPath(w, h, Math.max(3, Math.round(p.points ?? 5)), p.inner ?? 0.42) },
-  { id: "star-4", name: "Sparkle", group: "stars", params: { points: 4, inner: 0.28 }, path: (w, h, p) => starPath(w, h, 4, p.inner ?? 0.28) },
-  { id: "star-6", name: "Hexagram", group: "stars", params: { points: 6, inner: 0.55 }, path: (w, h, p) => starPath(w, h, 6, p.inner ?? 0.55) },
-  { id: "burst", name: "Starburst", group: "stars", params: { points: 16, inner: 0.82 }, path: (w, h, p) => starPath(w, h, Math.round(p.points ?? 16), p.inner ?? 0.82) },
-  { id: "scallop", name: "Scallop badge", group: "stars", params: { lobes: 12, amp: 0.05 }, path: (w, h, p) => wavyCircle(w, h, Math.round(p.lobes ?? 12), p.amp ?? 0.05) },
-  { id: "flower", name: "Flower", group: "stars", params: { lobes: 8, amp: 0.2 }, path: (w, h, p) => wavyCircle(w, h, Math.round(p.lobes ?? 8), p.amp ?? 0.2) },
+  { id: "pentagon", group: "polygons", path: (w, h) => regularPolygon(w, h, 5) },
+  { id: "hexagon", group: "polygons", path: (w, h) => regularPolygon(w, h, 6, 0), aspect: 1.15 },
+  { id: "octagon", group: "polygons", path: (w, h) => regularPolygon(w, h, 8, -22.5) },
+  { id: "polygon", group: "polygons", params: { sides: 7 }, path: (w, h, p) => regularPolygon(w, h, Math.max(3, Math.round(p.sides ?? 7))) },
+  { id: "star", group: "stars", params: { points: 5, inner: 0.42 }, path: (w, h, p) => starPath(w, h, Math.max(3, Math.round(p.points ?? 5)), p.inner ?? 0.42) },
+  { id: "star-4", group: "stars", params: { points: 4, inner: 0.28 }, path: (w, h, p) => starPath(w, h, 4, p.inner ?? 0.28) },
+  { id: "star-6", group: "stars", params: { points: 6, inner: 0.55 }, path: (w, h, p) => starPath(w, h, 6, p.inner ?? 0.55) },
+  { id: "burst", group: "stars", params: { points: 16, inner: 0.82 }, path: (w, h, p) => starPath(w, h, Math.round(p.points ?? 16), p.inner ?? 0.82) },
+  { id: "scallop", group: "stars", params: { lobes: 12, amp: 0.05 }, path: (w, h, p) => wavyCircle(w, h, Math.round(p.lobes ?? 12), p.amp ?? 0.05) },
+  { id: "flower", group: "stars", params: { lobes: 8, amp: 0.2 }, path: (w, h, p) => wavyCircle(w, h, Math.round(p.lobes ?? 8), p.amp ?? 0.2) },
   {
     id: "arrow-right",
-    name: "Arrow",
     group: "arrows",
     aspect: 1.6,
     path: polygon([
@@ -235,7 +229,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "arrow-left",
-    name: "Arrow left",
     group: "arrows",
     aspect: 1.6,
     path: polygon([
@@ -250,7 +243,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "arrow-up",
-    name: "Arrow up",
     group: "arrows",
     aspect: 0.63,
     path: polygon([
@@ -265,7 +257,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "arrow-down",
-    name: "Arrow down",
     group: "arrows",
     aspect: 0.63,
     path: polygon([
@@ -280,7 +271,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "chevron",
-    name: "Chevron",
     group: "arrows",
     aspect: 1.3,
     path: polygon([
@@ -294,7 +284,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "double-arrow",
-    name: "Double arrow",
     group: "arrows",
     aspect: 2,
     path: polygon([
@@ -312,14 +301,12 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "heart",
-    name: "Heart",
     group: "symbols",
     aspect: 1.1,
     path: viewBoxPath("M50 100C12 70 0 48 0 30C0 12 14 0 30 0C40 0 47 5 50 16C53 5 60 0 70 0C86 0 100 12 100 30C100 48 88 70 50 100Z", 100, 100),
   },
   {
     id: "plus",
-    name: "Plus",
     group: "symbols",
     path: polygon([
       [0.35, 0],
@@ -338,7 +325,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "cross",
-    name: "Cross",
     group: "symbols",
     path: polygon([
       [0.2, 0],
@@ -357,7 +343,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "lightning",
-    name: "Lightning",
     group: "symbols",
     aspect: 0.7,
     path: polygon([
@@ -369,12 +354,11 @@ export const SHAPES: ShapeDef[] = [
       [0.56, 0.38],
     ]),
   },
-  { id: "moon", name: "Crescent", group: "symbols", path: viewBoxPath("M62 2A50 50 0 1 0 98 78A40 40 0 0 1 62 2Z", 100, 100) },
-  { id: "drop", name: "Teardrop", group: "symbols", aspect: 0.8, path: viewBoxPath("M50 0C50 0 100 52 100 70A50 50 0 0 1 0 70C0 52 50 0 50 0Z", 100, 120) },
-  { id: "cloud", name: "Cloud", group: "symbols", aspect: 1.6, path: viewBoxPath("M26 58C6 58 0 38 15 32C12 14 38 6 49 20C57 6 88 10 88 31C106 32 108 58 88 58Z", 108, 62) },
+  { id: "moon", group: "symbols", path: viewBoxPath("M62 2A50 50 0 1 0 98 78A40 40 0 0 1 62 2Z", 100, 100) },
+  { id: "drop", group: "symbols", aspect: 0.8, path: viewBoxPath("M50 0C50 0 100 52 100 70A50 50 0 0 1 0 70C0 52 50 0 50 0Z", 100, 120) },
+  { id: "cloud", group: "symbols", aspect: 1.6, path: viewBoxPath("M26 58C6 58 0 38 15 32C12 14 38 6 49 20C57 6 88 10 88 31C106 32 108 58 88 58Z", 108, 62) },
   {
     id: "tag",
-    name: "Tag",
     group: "symbols",
     aspect: 1.7,
     path: polygon([
@@ -387,7 +371,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "ribbon",
-    name: "Ribbon",
     group: "symbols",
     aspect: 2.4,
     path: polygon([
@@ -409,7 +392,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "cut-corner",
-    name: "Cut corner",
     group: "symbols",
     path: polygon([
       [0.18, 0],
@@ -422,7 +404,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "speech",
-    name: "Speech bubble",
     group: "bubbles",
     aspect: 1.35,
     path: (w, h) => {
@@ -433,7 +414,6 @@ export const SHAPES: ShapeDef[] = [
   },
   {
     id: "speech-round",
-    name: "Round bubble",
     group: "bubbles",
     aspect: 1.2,
     path: (w, h) => {
@@ -443,13 +423,15 @@ export const SHAPES: ShapeDef[] = [
       return `M${f(w * 0.3)} ${f(bh - ry * 0.05)}L${f(w * 0.18)} ${f(h)}L${f(w * 0.46)} ${f(bh)}A${f(rx)} ${f(ry)} 0 1 0 ${f(w * 0.3)} ${f(bh - ry * 0.05)}Z`;
     },
   },
-  { id: "blob-1", name: "Blob 1", group: "blobs", path: viewBoxPath("M52 4C74 2 96 20 97 46C98 72 78 96 50 97C24 98 3 78 3 52C3 26 28 6 52 4Z", 100, 100) },
-  { id: "blob-2", name: "Blob 2", group: "blobs", path: viewBoxPath("M30 10C52 -4 86 6 94 34C102 62 80 78 66 90C46 106 14 96 6 70C-2 46 12 22 30 10Z", 100, 100) },
-  { id: "blob-3", name: "Blob 3", group: "blobs", path: viewBoxPath("M60 3C84 8 99 30 94 54C90 78 66 98 42 94C16 90 2 66 8 42C14 18 38 -1 60 3Z", 100, 100) },
-  { id: "blob-4", name: "Blob 4", group: "blobs", path: viewBoxPath("M48 2C64 -2 74 12 88 22C102 34 100 56 92 72C82 90 60 100 42 96C20 92 4 76 2 54C0 32 18 8 48 2Z", 100, 100) },
-  { id: "blob-5", name: "Blob 5", group: "blobs", path: viewBoxPath("M70 6C90 14 100 36 94 58C88 80 68 98 44 96C20 94 2 76 4 52C6 30 20 20 34 12C46 6 56 0 70 6Z", 100, 100) },
-  { id: "blob-6", name: "Blob 6", group: "blobs", path: viewBoxPath("M26 8C46 -2 64 10 80 18C98 28 104 50 94 68C84 86 62 92 42 96C22 100 2 84 2 62C2 40 8 18 26 8Z", 100, 100) },
+  { id: "blob-1", group: "blobs", path: viewBoxPath("M52 4C74 2 96 20 97 46C98 72 78 96 50 97C24 98 3 78 3 52C3 26 28 6 52 4Z", 100, 100) },
+  { id: "blob-2", group: "blobs", path: viewBoxPath("M30 10C52 -4 86 6 94 34C102 62 80 78 66 90C46 106 14 96 6 70C-2 46 12 22 30 10Z", 100, 100) },
+  { id: "blob-3", group: "blobs", path: viewBoxPath("M60 3C84 8 99 30 94 54C90 78 66 98 42 94C16 90 2 66 8 42C14 18 38 -1 60 3Z", 100, 100) },
+  { id: "blob-4", group: "blobs", path: viewBoxPath("M48 2C64 -2 74 12 88 22C102 34 100 56 92 72C82 90 60 100 42 96C20 92 4 76 2 54C0 32 18 8 48 2Z", 100, 100) },
+  { id: "blob-5", group: "blobs", path: viewBoxPath("M70 6C90 14 100 36 94 58C88 80 68 98 44 96C20 94 2 76 4 52C6 30 20 20 34 12C46 6 56 0 70 6Z", 100, 100) },
+  { id: "blob-6", group: "blobs", path: viewBoxPath("M26 8C46 -2 64 10 80 18C98 28 104 50 94 68C84 86 62 92 42 96C22 100 2 84 2 62C2 40 8 18 26 8Z", 100, 100) },
 ];
+
+export const SHAPES: ShapeDef[] = DEFS.map(({ id, ...def }) => ({ id, name: (m.core.shapes as Record<string, string>)[id] ?? id, ...def }));
 
 const BY_ID = new Map(SHAPES.map((s) => [s.id, s]));
 

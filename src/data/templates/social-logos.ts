@@ -22,7 +22,7 @@ function hearthHoney(): Template {
     T("Small-batch bakery", 40, 394, 420, 20, { fontFamily: SANS, fontWeight: 700, letterSpacing: 300, textCase: "upper", color: BROWN, align: "center", lineHeight: 1.2, name: "Tagline" }),
   ]);
   return template(
-    { slug: "hearth-honey-wordmark", name: "Hearth and Honey Wordmark", category: "logo", size: "logo", accent: "#f3dcae", tags: ["logo", "wordmark", "bakery", "serif", "honey", "cafe", "food", "warm", "typographic", "small business"] },
+    { slug: "hearth-honey-wordmark", category: "logo", size: "logo", accent: "#f3dcae", tags: ["logo", "wordmark", "bakery", "serif", "honey", "cafe", "food", "warm", "typographic", "small business"] },
     [page],
   );
 }
@@ -45,7 +45,7 @@ function marloweMonogram(): Template {
     T("Est. 2009  ·  Lisbon", 30, 428, 440, 20, { fontFamily: FONT, fontWeight: 400, letterSpacing: 360, textCase: "upper", color: GOLD, align: "center", lineHeight: 1.2, name: "Descriptor" }),
   ]);
   return template(
-    { slug: "marlowe-monogram", name: "Atelier Marlowe Monogram", category: "logo", size: "logo", accent: "#0f1c36", tags: ["logo", "monogram", "initials", "luxury", "gold", "navy", "atelier", "fashion", "serif", "classic"] },
+    { slug: "marlowe-monogram", category: "logo", size: "logo", accent: "#0f1c36", tags: ["logo", "monogram", "initials", "luxury", "gold", "navy", "atelier", "fashion", "serif", "classic"] },
     [page],
   );
 }
@@ -72,7 +72,7 @@ function harborPineBadge(): Template {
     S("star", 428, 232, 26, 26, CREAM, { name: "Star" }),
   ]);
   return template(
-    { slug: "harbor-pine-badge", name: "Harbor and Pine Badge", category: "logo", size: "logo", accent: "#1f3d2f", tags: ["logo", "badge", "emblem", "coffee", "roaster", "round", "circular text", "forest", "vintage", "craft"] },
+    { slug: "harbor-pine-badge", category: "logo", size: "logo", accent: "#1f3d2f", tags: ["logo", "badge", "emblem", "coffee", "roaster", "round", "circular text", "forest", "vintage", "craft"] },
     [page],
   );
 }
@@ -94,7 +94,7 @@ function quadraMark(): Template {
     T("Design systems studio", 50, 396, 400, 22, { fontFamily: FONT, fontWeight: 500, letterSpacing: 200, textCase: "upper", color: "#6b6788", align: "center", lineHeight: 1.2, name: "Tagline" }),
   ]);
   return template(
-    { slug: "quadra-abstract-mark", name: "Quadra Abstract Mark", category: "logo", size: "logo", accent: "#e9e6f7", tags: ["logo", "abstract", "geometric", "bauhaus", "studio", "tech", "modern", "colorful", "icon", "design"] },
+    { slug: "quadra-abstract-mark", category: "logo", size: "logo", accent: "#e9e6f7", tags: ["logo", "abstract", "geometric", "bauhaus", "studio", "tech", "modern", "colorful", "icon", "design"] },
     [page],
   );
 }

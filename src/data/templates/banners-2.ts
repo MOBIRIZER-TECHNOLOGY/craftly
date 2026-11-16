@@ -21,7 +21,6 @@ function festivalBanner(): Template {
   return template(
     {
       slug: "reading-festival",
-      name: "Autumn Reading Festival Banner",
       category: "banner",
       size: "banner",
       tags: ["festival", "books", "reading", "library", "banner", "event", "autumn", "literature", "header", "cream", "green"],
@@ -64,7 +63,6 @@ function podcastBanner(): Template {
   return template(
     {
       slug: "podcast-cover",
-      name: "Field Notes Podcast Banner",
       category: "banner",
       size: "banner",
       tags: ["podcast", "channel", "cover", "banner", "audio", "show", "travel", "header", "dark", "teal", "orange"],

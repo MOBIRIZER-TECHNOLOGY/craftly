@@ -91,24 +91,24 @@ describe("the ML client", () => {
     expect(stages).toEqual(["runtime", "inference"]);
   });
 
-  it("fails with the worker's own code and sentence", async () => {
+  it("fails with the worker's code, put in words by the page (the worker sends no words)", async () => {
     const { client, workers } = setup();
     const promise = client.run(args());
-    workers[0]!.reply({ id: idOf(workers[0]!), type: "error", code: "out-of-memory", message: "Close other tabs." });
-    await expect(promise).rejects.toMatchObject({ code: "out-of-memory", message: "Close other tabs." });
+    workers[0]!.reply({ id: idOf(workers[0]!), type: "error", code: "out-of-memory" });
+    await expect(promise).rejects.toMatchObject({ code: "out-of-memory", message: "This device ran out of graphics memory. Close other tabs and try again." });
   });
 
   it("keeps the technical text as the cause, so a bug report can say why", async () => {
     const { client, workers } = setup();
     const promise = client.run(args());
-    workers[0]!.reply({ id: idOf(workers[0]!), type: "error", code: "runtime", message: "The model could not run on this device.", detail: "Error: shader-f16 is not supported" });
+    workers[0]!.reply({ id: idOf(workers[0]!), type: "error", code: "runtime", detail: "Error: shader-f16 is not supported" });
     await expect(promise).rejects.toMatchObject({ code: "runtime", message: "The model could not run on this device.", cause: "Error: shader-f16 is not supported" });
   });
 
   it.each(["runtime", "out-of-memory", "engine"] as const)("ends the worker after a '%s' failure: the runtime keeps its own failure and would repeat it", async (code) => {
     const { client, workers } = setup();
     const failed = client.run(args());
-    workers[0]!.reply({ id: idOf(workers[0]!), type: "error", code, message: "plain words" });
+    workers[0]!.reply({ id: idOf(workers[0]!), type: "error", code });
     expect(await codeOf(failed)).toBe(code);
     expect(workers[0]!.terminated).toBe(true);
     void client.run(args()).catch(() => undefined);
@@ -280,11 +280,15 @@ describe("tiles for a model that makes pictures larger", () => {
     expect(workers).toHaveLength(1);
   });
 
-  it("fails a tile with the worker's own code and sentence", async () => {
+  it("fails a tile with the worker's code, put in words by the page", async () => {
     const { client, workers } = setup();
     const promise = client.tile(tileArgs());
-    workers[0]!.reply({ id: idOf(workers[0]!), type: "error", code: "out-of-memory", message: "Close other tabs.", detail: "buffer too large" });
-    await expect(promise).rejects.toMatchObject({ code: "out-of-memory", message: "Close other tabs.", cause: "buffer too large" });
+    workers[0]!.reply({ id: idOf(workers[0]!), type: "error", code: "out-of-memory", detail: "buffer too large" });
+    await expect(promise).rejects.toMatchObject({
+      code: "out-of-memory",
+      message: "This device ran out of graphics memory. Close other tabs and try again.",
+      cause: "buffer too large",
+    });
     expect(workers[0]!.terminated).toBe(true);
   });
 

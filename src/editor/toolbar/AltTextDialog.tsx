@@ -2,6 +2,7 @@ import { useState } from "react";
 import { findElement } from "@/core/ops";
 import { getActivePage, useEditor } from "@/core/store";
 import type { ID } from "@/core/types";
+import { m } from "@/i18n";
 import { Button, Modal } from "@/ui";
 import { useAltTextDialog } from "./altText";
 import { editElements } from "./selection";
@@ -35,28 +36,28 @@ function AltTextModal({ id }: { id: ID }) {
     <Modal
       open
       onClose={close}
-      title="Alternative text"
+      title={m.editor.altText.title}
       size="sm"
       footer={
         <>
           <Button variant="ghost" onClick={close}>
-            Cancel
+            {m.common.cancel}
           </Button>
           <Button variant="primary" onClick={save}>
-            Save
+            {m.common.save}
           </Button>
         </>
       }
     >
-      <p className="cf-alt__hint">Describe this element for people who use a screen reader. It is also saved in SVG downloads.</p>
+      <p className="cf-alt__hint">{m.editor.altText.hint}</p>
       <textarea
         className="cf-alt__input"
         data-autofocus
         rows={4}
         maxLength={MAX}
         value={text}
-        placeholder="For example: a golden sunset over rolling hills"
-        aria-label="Alternative text"
+        placeholder={m.editor.altText.placeholder}
+        aria-label={m.editor.altText.title}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -66,7 +67,7 @@ function AltTextModal({ id }: { id: ID }) {
         }}
       />
       <div className="cf-alt__count" aria-live="polite">
-        {text.length} / {MAX}
+        {m.editor.altText.count(text.length, MAX)}
       </div>
     </Modal>
   );

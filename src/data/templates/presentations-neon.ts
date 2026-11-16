@@ -287,7 +287,6 @@ const closing = slide(
 export const NEON: Template = template(
   {
     slug: "tech-dark-neon-platform",
-    name: "Neon Tech Platform",
     category: "presentation",
     size: "presentation",
     tags: ["tech", "dark", "neon", "developer", "platform", "cloud", "saas", "cyber", "code", "startup", "futuristic", "api"],

@@ -8,21 +8,11 @@ import { getActions, useEditor, type ColorTarget } from "@/core/store";
 import { extractSvgColors } from "@/core/svg";
 import type { DesignElement, Fill, LinearGradientFill, PaintFill, Page, Stroke } from "@/core/types";
 import { textEditing } from "@/editor/canvas/textEditing";
+import { m } from "@/i18n";
 import { alphaOf, effectDefaults, SHADOW_PRESETS, shadowScale, toShadow, withAlpha } from "./effectModels";
 import { collectTexts, forEachText, supportsShadow, supportsStroke } from "./selectionKinds";
 
-export const TARGET_TITLES: Record<ColorTarget, string> = {
-  text: "Text color",
-  fill: "Fill color",
-  stroke: "Border color",
-  shadow: "Shadow color",
-  page: "Page color",
-  graphic: "Color",
-  effect: "Effect color",
-  table: "Table color",
-  chart: "Chart color",
-  highlight: "Highlight color",
-};
+export const TARGET_TITLES: Record<ColorTarget, string> = m.panelsContext.color.targets;
 
 export interface TargetModel {
   title: string;
@@ -68,18 +58,7 @@ const paletteIndex = (key: string | undefined) => {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 };
 
-const EMPTY = {
-  text: { title: "No text selected", text: "Select a text box to change its text color." },
-  fill: { title: "Nothing to fill", text: "Select a shape, table or chart to change its fill color." },
-  stroke: { title: "No border to color", text: "Select a shape, line or photo to change its border color." },
-  shadow: { title: "No shadow to color", text: "Select a shape, line, photo or graphic to change its shadow color." },
-  effect: { title: "No text selected", text: "Select a text box to change the color of its effect." },
-  highlight: { title: "No text selected", text: "Select a text box to highlight it." },
-  graphic: { title: "No graphic selected", text: "Select an icon or illustration to recolor it." },
-  table: { title: "No table selected", text: "Select a table to change its colors." },
-  chart: { title: "No chart selected", text: "Select a chart to change its colors." },
-  page: { title: "No page open", text: "Open a design to change the color of its pages." },
-};
+const EMPTY: Record<ColorTarget, { title: string; text: string }> = m.panelsContext.color.empty;
 
 export function describeTarget(target: ColorTarget, key: string | undefined, els: DesignElement[], page: Page | null): TargetModel {
   const texts = collectTexts(els);
@@ -171,8 +150,8 @@ const clone = <T>(v: T): T => structuredClone(v);
 
 function defaultStroke(color: string): Stroke {
   const design = useEditor.getState().design;
-  const m = design ? Math.min(design.width, design.height) : 1080;
-  return { color, width: Math.max(2, Math.round(m * 0.004)), style: "solid" };
+  const side = design ? Math.min(design.width, design.height) : 1080;
+  return { color, width: Math.max(2, Math.round(side * 0.004)), style: "solid" };
 }
 
 /** Writes a solid colour to every selected element the target applies to. Text uses the selected characters while editing. */

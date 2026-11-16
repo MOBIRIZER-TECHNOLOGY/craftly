@@ -6,6 +6,7 @@
  */
 import { COMMENT_COLORS } from "@/core/comments";
 import type { CommentAnchor, CommentAuthor, Design, DesignComment, ID } from "@/core/types";
+import { m } from "@/i18n";
 import { create } from "zustand";
 import { shownName, usePresence } from "../live/presence";
 
@@ -67,7 +68,7 @@ function nameIndex(name: string): number {
 export function myAuthor(): CommentAuthor {
   const { name, me } = usePresence.getState();
   if (me !== null) return { name: shownName(name, me), colorIndex: Math.abs(Math.trunc(me)) % COMMENT_COLORS };
-  const shown = name || "You";
+  const shown = name || m.editor.comments.you;
   return { name: shown, colorIndex: nameIndex(shown) };
 }
 
@@ -142,11 +143,11 @@ export function announceArrivals(before: Design | null, after: Design | null): v
   const said: string[] = [];
   const own = loadMine();
   for (const c of after?.comments ?? []) {
-    if (!known.has(c.id) && !own.has(c.id)) said.push(`New comment from ${c.author.name}: ${firstWords(c.text)}`);
-    for (const r of c.replies) if (!known.has(`${c.id}/${r.id}`) && !own.has(r.id) && known.has(c.id)) said.push(`New reply from ${r.author.name}: ${firstWords(r.text)}`);
+    if (!known.has(c.id) && !own.has(c.id)) said.push(m.editor.comments.newFrom(c.author.name, firstWords(c.text)));
+    for (const r of c.replies) if (!known.has(`${c.id}/${r.id}`) && !own.has(r.id) && known.has(c.id)) said.push(m.editor.comments.newReplyFrom(r.author.name, firstWords(r.text)));
   }
   if (!said.length) return;
-  announce(said.length > 3 ? `${said.length} new comments and replies.` : said.join(" "));
+  announce(said.length > 3 ? m.editor.comments.manyNew(said.length) : said.join(" "));
 }
 
 /**

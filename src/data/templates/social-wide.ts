@@ -38,7 +38,7 @@ function harbourListing(): Template {
   ]);
 
   return template(
-    { slug: "harbour-loft-listing", name: "Harbour Loft Listing", category: "social", size: "facebook", accent: "#14284f", tags: ["real estate", "listing", "just listed", "property", "open house", "navy", "gold", "facebook", "home", "agent"] },
+    { slug: "harbour-loft-listing", category: "social", size: "facebook", accent: "#14284f", tags: ["real estate", "listing", "just listed", "property", "open house", "navy", "gold", "facebook", "home", "agent"] },
     [page],
   );
 }
@@ -86,7 +86,7 @@ function staffPickBook(): Template {
   ]);
 
   return template(
-    { slug: "staff-pick-bookshop", name: "Staff Pick Bookshop", category: "social", size: "facebook", accent: "#e8d9bd", tags: ["book", "bookstore", "recommendation", "staff pick", "reading", "review", "burgundy", "facebook", "library", "novel"] },
+    { slug: "staff-pick-bookshop", category: "social", size: "facebook", accent: "#e8d9bd", tags: ["book", "bookstore", "recommendation", "staff pick", "reading", "review", "burgundy", "facebook", "library", "novel"] },
     [page],
   );
 }
@@ -127,7 +127,7 @@ function northwindHiring(): Template {
   els.push(gfx("business-rocket", 1010, 18, 150, { rotation: 14, name: "Rocket" }));
 
   return template(
-    { slug: "northwind-hiring", name: "Northwind Now Hiring", category: "social", size: "linkedin", accent: "#14295e", tags: ["hiring", "jobs", "careers", "recruitment", "linkedin", "we are hiring", "team", "navy", "announcement", "open roles"] },
+    { slug: "northwind-hiring", category: "social", size: "linkedin", accent: "#14295e", tags: ["hiring", "jobs", "careers", "recruitment", "linkedin", "we are hiring", "team", "navy", "announcement", "open roles"] },
     [pg(gradientBg(120, NAVY, "#14295e"), els)],
   );
 }
@@ -160,7 +160,7 @@ function insightStat(): Template {
   ]);
 
   return template(
-    { slug: "cold-email-insight", name: "Cold Email Insight Stat", category: "social", size: "linkedin", accent: "#efe3cd", tags: ["insight", "statistic", "data", "linkedin", "chart", "thought leadership", "marketing", "big number", "cream", "report"] },
+    { slug: "cold-email-insight", category: "social", size: "linkedin", accent: "#efe3cd", tags: ["insight", "statistic", "data", "linkedin", "chart", "thought leadership", "marketing", "big number", "cream", "report"] },
     [page],
   );
 }
@@ -200,7 +200,7 @@ function podcastEpisode(): Template {
   ]);
 
   return template(
-    { slug: "friction-files-podcast", name: "Friction Files Podcast Cover", category: "social", size: "twitter", accent: "#3b1177", tags: ["podcast", "episode", "audio", "waveform", "show", "twitter", "x post", "purple", "interview", "listen now"] },
+    { slug: "friction-files-podcast", category: "social", size: "twitter", accent: "#3b1177", tags: ["podcast", "episode", "audio", "waveform", "show", "twitter", "x post", "purple", "interview", "listen now"] },
     [page],
   );
 }
@@ -239,7 +239,7 @@ function pizzaPin(): Template {
   ]);
 
   return template(
-    { slug: "pizza-dough-pin", name: "Pizza Dough Recipe Pin", category: "social", size: "pinterest", accent: "#e63b1f", tags: ["pinterest", "recipe", "pizza", "food", "cooking", "pin", "tomato", "easy dinner", "baking", "kitchen"] },
+    { slug: "pizza-dough-pin", category: "social", size: "pinterest", accent: "#e63b1f", tags: ["pinterest", "recipe", "pizza", "food", "cooking", "pin", "tomato", "easy dinner", "baking", "kitchen"] },
     [page],
   );
 }

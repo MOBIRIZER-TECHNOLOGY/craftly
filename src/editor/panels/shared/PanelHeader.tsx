@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { m } from "@/i18n";
 import { IconArrowLeft, IconButton, IconClose, cx } from "@/ui";
 import "./PanelHeader.css";
 
@@ -18,7 +19,7 @@ export interface PanelHeaderProps {
 }
 
 /** Title row of a sub-page: optional back arrow, title (16px / 700), optional actions and close button. */
-export function PanelHeader({ title, subtitle, onBack, backLabel = "Back", onClose, closeLabel = "Close", actions, className }: PanelHeaderProps) {
+export function PanelHeader({ title, subtitle, onBack, backLabel = m.common.back, onClose, closeLabel = m.common.close, actions, className }: PanelHeaderProps) {
   return (
     <header className={cx("cf-pheader", className)}>
       {onBack ? <IconButton label={backLabel} icon={<IconArrowLeft />} onClick={onBack} className="cf-pheader__back" /> : null}

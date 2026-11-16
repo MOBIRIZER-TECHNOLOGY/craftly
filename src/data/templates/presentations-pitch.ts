@@ -274,7 +274,6 @@ const ask = slide(
 export const PITCH: Template = template(
   {
     slug: "startup-pitch-violet",
-    name: "Startup Pitch Deck",
     category: "presentation",
     size: "presentation",
     tags: ["pitch", "startup", "investor", "series a", "funding", "venture", "saas", "violet", "lime", "dark", "bold", "traction"],

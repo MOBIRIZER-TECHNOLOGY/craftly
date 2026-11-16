@@ -2,6 +2,7 @@
  * Constructors for every document object, with sensible defaults. Use these
  * instead of writing object literals so new fields get defaults everywhere.
  */
+import { m } from "@/i18n";
 import { cloneDeep } from "./clone";
 import { rebindClones } from "./connectors";
 import { uid } from "./ids";
@@ -273,7 +274,7 @@ export function createDesign(init: { title?: string; typeId?: string; width: num
   const now = Date.now();
   return {
     id: uid("d"),
-    title: init.title ?? "Untitled design",
+    title: init.title ?? m.core.untitledDesign,
     typeId: init.typeId ?? "custom",
     width: init.width,
     height: init.height,
@@ -315,8 +316,8 @@ export function clonePage(page: Page): Page {
 
 /** Preferred text sizes for "Add a heading / subheading / body" in a design of this size. */
 export function textPresetSizes(designWidth: number, designHeight: number) {
-  const m = Math.min(designWidth, designHeight);
-  return { heading: Math.round(m * 0.09), subheading: Math.round(m * 0.048), body: Math.round(m * 0.03) };
+  const side = Math.min(designWidth, designHeight);
+  return { heading: Math.round(side * 0.09), subheading: Math.round(side * 0.048), body: Math.round(side * 0.03) };
 }
 
 export { extractSvgColors };

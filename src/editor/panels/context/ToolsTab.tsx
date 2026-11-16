@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getActions } from "@/core/store";
 import type { ImageElement } from "@/core/types";
+import { m, num } from "@/i18n";
 import { askToDownload } from "@/ml/askToDownload";
 import { BLUR_STRENGTHS, type BlurStrength } from "@/ml/blur";
 import { POP_STYLES, type PopStyle } from "@/ml/colourPop";
@@ -20,8 +21,6 @@ import "./ToolsTab.css";
 /** A photo of this many pixels or more takes a minute or more on a laptop graphics card (about 30 seconds a megapixel). */
 const SLOW_PIXELS = 1_500_000;
 
-const pixels = (n: number) => n.toLocaleString("en-US");
-
 /** Photo tools that run an AI model on this device: Remove background, Blur background, Colour pop and Upscale. */
 export function ToolsTab({ photos }: { photos: ImageElement[] }) {
   const photo = photos.length === 1 ? photos[0]! : null;
@@ -40,10 +39,10 @@ export function ToolsTab({ photos }: { photos: ImageElement[] }) {
       <ColourPopTool photo={photo} browser={browser} />
       <UpscaleTool photo={photo} browser={browser} />
       <OriginalPhoto photo={photo} />
-      <Section title="On-device models">
-        <p className="cf-ctx__hint cf-tool__lede">Models stay on this device. See what is installed, free up space, or add a model from a file.</p>
+      <Section title={m.panelsContext.tools.models}>
+        <p className="cf-ctx__hint cf-tool__lede">{m.panelsContext.tools.modelsHint}</p>
         <Button size="sm" variant="secondary" onClick={() => getActions().openDialog("models")}>
-          Manage models
+          {m.panelsContext.tools.manageModels}
         </Button>
       </Section>
     </>
@@ -66,16 +65,16 @@ function Notices({ photo, browser }: { photo: ImageElement | null; browser: Supp
   return (
     <>
       {browser && !browser.ok ? warning(browser.message) : null}
-      {job && photo && job.elementId === photo.id ? <p className="cf-tool__note">A photo tool is working on this photo.</p> : null}
+      {job && photo && job.elementId === photo.id ? <p className="cf-tool__note">{m.panelsContext.tools.busyHere}</p> : null}
       {job && job.elementId !== photo?.id ? (
         <p className="cf-tool__note cf-tool__note--action">
-          <span>Another photo is being processed.</span>
+          <span>{m.panelsContext.tools.busyOther}</span>
           <Button size="sm" variant="secondary" onClick={() => job.cancel()}>
-            Cancel
+            {m.common.cancel}
           </Button>
         </p>
       ) : null}
-      {!photo ? <p className="cf-tool__note">Select one photo to use these tools.</p> : null}
+      {!photo ? <p className="cf-tool__note">{m.panelsContext.tools.selectOne}</p> : null}
     </>
   );
 }
@@ -105,7 +104,7 @@ function toolNote(tool: Tool, photo: ImageElement | null, locked: string): React
   if (tool.lacking) return warning(tool.lacking.message);
   if (photo?.locked) return <p className="cf-tool__note">{locked}</p>;
   if (photo && tool.status !== "ready" && tool.status !== "unknown") {
-    return <p className="cf-tool__note">One-time download of {formatBytes(tool.spec.bytes)}. After that it works offline.</p>;
+    return <p className="cf-tool__note">{m.panelsContext.tools.firstDownload(formatBytes(tool.spec.bytes))}</p>;
   }
   return null;
 }
@@ -121,13 +120,13 @@ function RemoveBackgroundTool({ photo, browser }: { photo: ImageElement | null; 
     try {
       const result = await removeBackground(photo.id, { askToDownload });
       if (!result.applied) {
-        toast.info("The whole photo looks like the subject, so nothing was removed.");
+        toast.info(m.panelsContext.tools.remove.nothing);
         return;
       }
       toast.show({
-        message: result.scaled ? "Background removed. The photo was reduced to 25 megapixels." : "Background removed.",
+        message: result.scaled ? m.panelsContext.tools.remove.doneScaled : m.panelsContext.tools.remove.done,
         kind: "success",
-        actionLabel: "Undo",
+        actionLabel: m.common.undo,
         onAction: () => getActions().undo(),
       });
     } catch (error) {
@@ -137,18 +136,18 @@ function RemoveBackgroundTool({ photo, browser }: { photo: ImageElement | null; 
   };
 
   return (
-    <Section title="Remove background" aside={<Badge tone="primary">On-device</Badge>}>
-      <p className="cf-ctx__hint cf-tool__lede">Cuts out the main subject of the photo. Everything happens on this device, and the photo is never uploaded.</p>
+    <Section title={m.panelsContext.tools.remove.title} aside={<Badge tone="primary">{m.panelsContext.tools.onDevice}</Badge>}>
+      <p className="cf-ctx__hint cf-tool__lede">{m.panelsContext.tools.remove.lede}</p>
       {install ? (
         <InstallProgress install={install} kind="remove-background" />
       ) : working && job ? (
-        <BusyBlock job={job} label="Removing background" />
+        <BusyBlock job={job} label={m.panelsContext.tools.remove.busy} />
       ) : (
         <>
           <Button variant="primary" block icon={<IconWand />} disabled={!canStart} data-focus-key="tool:remove-background" onClick={() => void run()}>
-            Remove background
+            {m.panelsContext.tools.remove.title}
           </Button>
-          {toolNote(tool, photo, "Unlock the photo to remove its background.")}
+          {toolNote(tool, photo, m.panelsContext.tools.remove.locked)}
         </>
       )}
     </Section>
@@ -170,7 +169,7 @@ function BusyBlock({ job, label }: { job: JobState; label: string }) {
           {STAGE_TEXT[job.kind][job.stage]}
         </span>
         <Button size="sm" variant="secondary" autoFocus data-focus-key={`tool:${job.kind}`} onClick={() => job.cancel()}>
-          Cancel
+          {m.common.cancel}
         </Button>
       </div>
       <Progress label={label} />
@@ -180,7 +179,7 @@ function BusyBlock({ job, label }: { job: JobState; label: string }) {
 
 /* ---------------- Blur background ---------------- */
 
-const STRENGTH_LABEL: Record<BlurStrength, string> = { light: "Light", medium: "Medium", strong: "Strong" };
+const STRENGTH_LABEL: Record<BlurStrength, string> = m.panelsContext.tools.blur.strengths;
 
 function BlurBackgroundTool({ photo, browser }: { photo: ImageElement | null; browser: Support | null }) {
   const tool = useTool("background-removal", "blur-background", photo, browser);
@@ -192,17 +191,13 @@ function BlurBackgroundTool({ photo, browser }: { photo: ImageElement | null; br
     try {
       const result = await blurBackground(photo.id, { strength, askToDownload });
       if (!result.applied) {
-        toast.info(
-          result.reason === "whole-photo"
-            ? "The whole photo looks like the subject, so there is no background to blur."
-            : "Everything around the subject is already transparent, so there is nothing to blur.",
-        );
+        toast.info(result.reason === "whole-photo" ? m.panelsContext.tools.blur.wholePhoto : m.panelsContext.tools.blur.transparent);
         return;
       }
       toast.show({
-        message: result.scaled ? "Background blurred. The photo was reduced to 25 megapixels." : "Background blurred.",
+        message: result.scaled ? m.panelsContext.tools.blur.doneScaled : m.panelsContext.tools.blur.done,
         kind: "success",
-        actionLabel: "Undo",
+        actionLabel: m.common.undo,
         onAction: () => getActions().undo(),
       });
     } catch (error) {
@@ -212,16 +207,16 @@ function BlurBackgroundTool({ photo, browser }: { photo: ImageElement | null; br
   };
 
   return (
-    <Section title="Blur background" aside={<Badge tone="primary">On-device</Badge>}>
-      <p className="cf-ctx__hint cf-tool__lede">Keeps the main subject sharp and blurs everything behind it. Everything happens on this device, and the photo is never uploaded.</p>
+    <Section title={m.panelsContext.tools.blur.title} aside={<Badge tone="primary">{m.panelsContext.tools.onDevice}</Badge>}>
+      <p className="cf-ctx__hint cf-tool__lede">{m.panelsContext.tools.blur.lede}</p>
       {install ? (
         <InstallProgress install={install} kind="blur-background" />
       ) : working && job ? (
-        <BusyBlock job={job} label="Blurring the background" />
+        <BusyBlock job={job} label={m.panelsContext.tools.blur.busy} />
       ) : (
         <>
           <Segmented
-            aria-label="Blur strength"
+            aria-label={m.panelsContext.tools.blur.strength}
             className="cf-tool__choice"
             fullWidth
             value={strength}
@@ -229,9 +224,9 @@ function BlurBackgroundTool({ photo, browser }: { photo: ImageElement | null; br
             options={BLUR_STRENGTHS.map((s) => ({ value: s, label: STRENGTH_LABEL[s] }))}
           />
           <Button variant="primary" block icon={<IconAperture />} disabled={!canStart} data-focus-key="tool:blur-background" onClick={() => void run()}>
-            Blur background
+            {m.panelsContext.tools.blur.title}
           </Button>
-          {toolNote(tool, photo, "Unlock the photo to blur its background.")}
+          {toolNote(tool, photo, m.panelsContext.tools.blur.locked)}
         </>
       )}
     </Section>
@@ -240,7 +235,7 @@ function BlurBackgroundTool({ photo, browser }: { photo: ImageElement | null; br
 
 /* ---------------- Colour pop ---------------- */
 
-const POP_STYLE_LABEL: Record<PopStyle, string> = { "black-and-white": "Black & white", faded: "Faded" };
+const POP_STYLE_LABEL: Record<PopStyle, string> = m.panelsContext.tools.pop.styles;
 
 function ColourPopTool({ photo, browser }: { photo: ImageElement | null; browser: Support | null }) {
   const tool = useTool("background-removal", "colour-pop", photo, browser);
@@ -252,17 +247,13 @@ function ColourPopTool({ photo, browser }: { photo: ImageElement | null; browser
     try {
       const result = await colourPop(photo.id, { style, askToDownload });
       if (!result.applied) {
-        toast.info(
-          result.reason === "whole-photo"
-            ? "The whole photo looks like the subject, so there is no background to change."
-            : "The background has no colour to take out: it is already black and white, or transparent.",
-        );
+        toast.info(result.reason === "whole-photo" ? m.panelsContext.tools.pop.wholePhoto : m.panelsContext.tools.pop.noColour);
         return;
       }
       toast.show({
-        message: result.scaled ? "Colour pop applied. The photo was reduced to 25 megapixels." : "Colour pop applied.",
+        message: result.scaled ? m.panelsContext.tools.pop.doneScaled : m.panelsContext.tools.pop.done,
         kind: "success",
-        actionLabel: "Undo",
+        actionLabel: m.common.undo,
         onAction: () => getActions().undo(),
       });
     } catch (error) {
@@ -272,18 +263,16 @@ function ColourPopTool({ photo, browser }: { photo: ImageElement | null; browser
   };
 
   return (
-    <Section title="Colour pop" aside={<Badge tone="primary">On-device</Badge>}>
-      <p className="cf-ctx__hint cf-tool__lede">
-        Keeps the main subject in colour and turns everything behind it black and white. Everything happens on this device, and the photo is never uploaded.
-      </p>
+    <Section title={m.panelsContext.tools.pop.title} aside={<Badge tone="primary">{m.panelsContext.tools.onDevice}</Badge>}>
+      <p className="cf-ctx__hint cf-tool__lede">{m.panelsContext.tools.pop.lede}</p>
       {install ? (
         <InstallProgress install={install} kind="colour-pop" />
       ) : working && job ? (
-        <BusyBlock job={job} label="Taking the colour out" />
+        <BusyBlock job={job} label={m.panelsContext.tools.pop.busy} />
       ) : (
         <>
           <Segmented
-            aria-label="Background style"
+            aria-label={m.panelsContext.tools.pop.style}
             className="cf-tool__choice"
             fullWidth
             value={style}
@@ -291,9 +280,9 @@ function ColourPopTool({ photo, browser }: { photo: ImageElement | null; browser
             options={POP_STYLES.map((s) => ({ value: s, label: POP_STYLE_LABEL[s] }))}
           />
           <Button variant="primary" block icon={<IconContrast />} disabled={!canStart} data-focus-key="tool:colour-pop" onClick={() => void run()}>
-            Colour pop
+            {m.panelsContext.tools.pop.title}
           </Button>
-          {toolNote(tool, photo, "Unlock the photo to take the colour out of its background.")}
+          {toolNote(tool, photo, m.panelsContext.tools.pop.locked)}
         </>
       )}
     </Section>
@@ -318,9 +307,9 @@ function UpscaleTool({ photo, browser }: { photo: ImageElement | null; browser: 
     try {
       const result = await upscale(photo.id, { factor: choice.factor, askToDownload });
       toast.show({
-        message: `Enlarged to ${pixels(result.width)} × ${pixels(result.height)} px.`,
+        message: m.panelsContext.tools.upscale.enlarged(result.width, result.height),
         kind: "success",
-        actionLabel: "Undo",
+        actionLabel: m.common.undo,
         onAction: () => getActions().undo(),
       });
     } catch (error) {
@@ -330,8 +319,8 @@ function UpscaleTool({ photo, browser }: { photo: ImageElement | null; browser: 
   };
 
   return (
-    <Section title="Upscale" aside={<Badge tone="primary">On-device</Badge>}>
-      <p className="cf-ctx__hint cf-tool__lede">Makes a small or soft photo larger and sharper. Everything happens on this device, and the photo is never uploaded.</p>
+    <Section title={m.panelsContext.tools.upscale.title} aside={<Badge tone="primary">{m.panelsContext.tools.onDevice}</Badge>}>
+      <p className="cf-ctx__hint cf-tool__lede">{m.panelsContext.tools.upscale.lede}</p>
       {install ? (
         <InstallProgress install={install} kind="upscale" />
       ) : working && job ? (
@@ -339,28 +328,22 @@ function UpscaleTool({ photo, browser }: { photo: ImageElement | null; browser: 
       ) : (
         <>
           <Segmented
-            aria-label="Enlarge by"
+            aria-label={m.panelsContext.tools.upscale.enlargeBy}
             fullWidth
             value={choice?.factor ?? wanted}
             onChange={setWanted}
-            options={UPSCALE_FACTORS.map((factor) => ({ value: factor, label: `${factor}×`, disabled: !choices.find((c) => c.factor === factor)?.fits }))}
+            options={UPSCALE_FACTORS.map((factor) => ({ value: factor, label: `${num(factor)}×`, disabled: !choices.find((c) => c.factor === factor)?.fits }))}
           />
           {photo && choice ? (
-            <span className="cf-tool__sizes cf-tool__sizes--line">
-              {pixels(photo.naturalWidth)} × {pixels(photo.naturalHeight)} px → {pixels(choice.width)} × {pixels(choice.height)} px
-            </span>
+            <span className="cf-tool__sizes cf-tool__sizes--line">{m.panelsContext.tools.upscale.sizes(photo.naturalWidth, photo.naturalHeight, choice.width, choice.height)}</span>
           ) : null}
           <Button variant="primary" block icon={<IconSparkle />} disabled={!canStart || !choice} data-focus-key="tool:upscale" onClick={() => void run()}>
-            Upscale
+            {m.panelsContext.tools.upscale.title}
           </Button>
-          {toolNote(tool, photo, "Unlock the photo to make it larger.")}
-          {photo && !choice ? <p className="cf-tool__note">This photo is too large to enlarge: the result would be over 25 megapixels. Crop it first.</p> : null}
-          {photo && choice && tooLarge.length ? (
-            <p className="cf-tool__note">{tooLarge.map((c) => `${c.factor}×`).join(" and ")} is not available: the result would be over 25 megapixels.</p>
-          ) : null}
-          {photo && choice && pixelCount >= SLOW_PIXELS ? (
-            <p className="cf-tool__note">A photo this size can take a minute or more on a laptop. You can cancel at any time.</p>
-          ) : null}
+          {toolNote(tool, photo, m.panelsContext.tools.upscale.locked)}
+          {photo && !choice ? <p className="cf-tool__note">{m.panelsContext.tools.upscale.tooLarge}</p> : null}
+          {photo && choice && tooLarge.length ? <p className="cf-tool__note">{m.panelsContext.tools.upscale.notAvailable(tooLarge.map((c) => c.factor))}</p> : null}
+          {photo && choice && pixelCount >= SLOW_PIXELS ? <p className="cf-tool__note">{m.panelsContext.tools.upscale.slow}</p> : null}
         </>
       )}
     </Section>
@@ -378,15 +361,11 @@ function UpscaleProgress({ job }: { job: JobState }) {
           {STAGE_TEXT[job.kind][job.stage]}
         </span>
         <Button size="sm" variant="secondary" autoFocus data-focus-key={`tool:${job.kind}`} onClick={() => job.cancel()}>
-          Cancel
+          {m.common.cancel}
         </Button>
       </div>
-      <Progress label="Making the photo larger" value={job.progress} />
-      {job.progress !== undefined ? (
-        <span className="cf-tool__sizes">
-          {Math.round(job.progress * 100)} % done{left ? `, ${left}` : ""}
-        </span>
-      ) : null}
+      <Progress label={m.panelsContext.tools.upscale.progress} value={job.progress} />
+      {job.progress !== undefined ? <span className="cf-tool__sizes">{m.panelsContext.tools.upscale.done(Math.round(job.progress * 100), left ?? "")}</span> : null}
     </div>
   );
 }
@@ -410,10 +389,10 @@ function OriginalPhoto({ photo }: { photo: ImageElement | null }) {
     <div className="cf-tool__done">
       <span className="cf-tool__done-text">
         <IconSuccess aria-hidden="true" />
-        Original photo kept
+        {m.panelsContext.tools.originalKept}
       </span>
       <Button size="sm" variant="secondary" icon={<IconRotateLeft />} disabled={!!job} onClick={() => void restore()}>
-        Restore original
+        {m.panelsContext.tools.restoreOriginal}
       </Button>
     </div>
   );
@@ -433,16 +412,12 @@ function InstallProgress({ install, kind }: { install: InstallState; kind: JobKi
         </span>
         {install.phase !== "saving" ? (
           <Button size="sm" variant="secondary" autoFocus data-focus-key={`tool:${kind}`} onClick={() => install.cancel()}>
-            Cancel
+            {m.common.cancel}
           </Button>
         ) : null}
       </div>
       <Progress label={INSTALL_TEXT.downloading} value={downloading ? install.received / install.total : undefined} />
-      {downloading ? (
-        <span className="cf-tool__sizes">
-          {formatBytes(install.received)} of {formatBytes(install.total)}
-        </span>
-      ) : null}
+      {downloading ? <span className="cf-tool__sizes">{m.panelsContext.tools.downloaded(formatBytes(install.received), formatBytes(install.total))}</span> : null}
     </div>
   );
 }

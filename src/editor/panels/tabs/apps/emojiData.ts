@@ -3,6 +3,7 @@
  * every current system font draws are included. Glyphs that need the emoji variation selector are written with
  * escapes (️) so they render in colour.
  */
+import { m } from "@/i18n";
 
 export interface EmojiCategory {
   id: string;
@@ -23,7 +24,7 @@ const parse = (lines: string[]) =>
 export const EMOJI_CATEGORIES: EmojiCategory[] = [
   {
     id: "smileys",
-    label: "Smileys",
+    label: m.panelsTabs.emoji.categories.smileys,
     icon: "😀",
     items: parse([
       "😀 grinning face happy smile",
@@ -128,7 +129,7 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = [
   },
   {
     id: "people",
-    label: "People",
+    label: m.panelsTabs.emoji.categories.people,
     icon: "👋",
     items: parse([
       "👋 waving hand hello goodbye",
@@ -183,7 +184,7 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = [
   },
   {
     id: "nature",
-    label: "Nature",
+    label: m.panelsTabs.emoji.categories.nature,
     icon: "🌿",
     items: parse([
       "🐶 dog face puppy pet",
@@ -265,7 +266,7 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = [
   },
   {
     id: "food",
-    label: "Food",
+    label: m.panelsTabs.emoji.categories.food,
     icon: "🍕",
     items: parse([
       "🍎 red apple fruit",
@@ -322,7 +323,7 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = [
   },
   {
     id: "travel",
-    label: "Travel",
+    label: m.panelsTabs.emoji.categories.travel,
     icon: `✈${VS}`,
     items: parse([
       "🚗 automobile car",
@@ -369,7 +370,7 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = [
   },
   {
     id: "activities",
-    label: "Activities",
+    label: m.panelsTabs.emoji.categories.activities,
     icon: "⚽",
     items: parse([
       "⚽ soccer ball football",
@@ -422,7 +423,7 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = [
   },
   {
     id: "objects",
-    label: "Objects",
+    label: m.panelsTabs.emoji.categories.objects,
     icon: "💡",
     items: parse([
       "⌚ watch time",
@@ -489,7 +490,7 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = [
   },
   {
     id: "symbols",
-    label: "Symbols",
+    label: m.panelsTabs.emoji.categories.symbols,
     icon: `❤${VS}`,
     items: parse([
       `❤${VS} red heart love`,

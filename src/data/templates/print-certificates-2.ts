@@ -48,7 +48,7 @@ function sidePanelAward(): Template {
   ];
   signers.forEach(([n, r, x]) => els.push(hr(x, 690, 250, CHAR, 1.5), sans(n, x, 700, 250, 14.5, { fontWeight: 700 }), sans(r, x, 722, 250, 12.5, { color: GREY })));
   return template(
-    { slug: "employee-of-the-year", name: "Employee of the Year Certificate", category: "certificate", size: "certificate", tags: ["certificate", "award", "employee", "recognition", "staff", "modern", "trophy", "corporate", "coral"], accent: CORAL },
+    { slug: "employee-of-the-year", category: "certificate", size: "certificate", tags: ["certificate", "award", "employee", "recognition", "staff", "modern", "trophy", "corporate", "coral"], accent: CORAL },
     [pg(PAPER, els)],
   );
 }
@@ -99,7 +99,7 @@ function starReader(): Template {
     sans("31 August 2027", W - 440, 682, 240, 14.5, { align: "center", fontWeight: 600, color: NAVY }),
   ];
   return template(
-    { slug: "star-reader-award", name: "Star Reader Award for Kids", category: "certificate", size: "certificate", tags: ["certificate", "kids", "children", "school", "reading", "award", "library", "playful", "stars", "colorful"], accent: BLUE },
+    { slug: "star-reader-award", category: "certificate", size: "certificate", tags: ["certificate", "kids", "children", "school", "reading", "award", "library", "playful", "stars", "colorful"], accent: BLUE },
     [pg(BLUE, els)],
   );
 }

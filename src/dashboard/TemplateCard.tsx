@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { Button, IconButton, IconEye, IconMore, IconStar, MenuPopover, cx, openContextMenu, type MenuEntry } from "@/ui";
 import type { Template } from "@/core/types";
 import { TemplateThumb } from "@/components/PageThumb";
+import { m } from "@/i18n";
 import { toggleFavouriteTemplate, useFavouriteTemplates } from "./data";
 import { templateMenuItems } from "./menus";
 import { openTemplatePreview } from "./templatePreview";
@@ -43,19 +44,19 @@ export const TemplateCard = memo(function TemplateCard({ template, width, height
         openContextMenu({ x: event.clientX, y: event.clientY, items: templateMenuItems(template, isFavourite) });
       }}
     >
-      <button type="button" className="cf-tcard__open" onClick={() => openTemplatePreview(template)} aria-label={`Preview template ${template.name}`}>
+      <button type="button" className="cf-tcard__open" onClick={() => openTemplatePreview(template)} aria-label={m.dashboard.cards.previewTemplate(template.name)}>
         <TemplateThumb template={template} width={cardWidth} className="cf-tcard__thumb" />
       </button>
 
       <div className="cf-tcard__actions">
         <Button className="cf-tcard__preview" size="sm" variant="secondary" icon={<IconEye aria-hidden="true" />} onClick={() => openTemplatePreview(template)}>
-          Preview
+          {m.dashboard.shared.preview}
         </Button>
         <span className="cf-tcard__tools">
           <IconButton
             className="cf-tcard__star"
             size="sm"
-            label={isFavourite ? "Remove from favourites" : "Add to favourites"}
+            label={isFavourite ? m.dashboard.shared.removeFavourite : m.dashboard.shared.addFavourite}
             active={isFavourite}
             icon={<IconStar aria-hidden="true" />}
             onClick={() => void toggleFavouriteTemplate(template.id, template.name)}
@@ -63,7 +64,7 @@ export const TemplateCard = memo(function TemplateCard({ template, width, height
           <IconButton
             className="cf-tcard__more"
             size="sm"
-            label="More actions"
+            label={m.dashboard.shared.moreActions}
             icon={<IconMore aria-hidden="true" />}
             aria-haspopup="menu"
             aria-expanded={menuAnchor !== null}
@@ -80,7 +81,7 @@ export const TemplateCard = memo(function TemplateCard({ template, width, height
         onClose={() => setMenuAnchor(null)}
         items={menuAnchor ? templateMenuItems(template, isFavourite) : NO_ITEMS}
         placement="bottom-end"
-        aria-label={`Actions for template ${template.name}`}
+        aria-label={m.dashboard.cards.actionsForTemplate(template.name)}
       />
     </article>
   );

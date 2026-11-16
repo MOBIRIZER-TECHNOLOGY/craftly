@@ -1,4 +1,5 @@
 import { forwardRef, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { m } from "@/i18n";
 import { IconClose, IconSearch, cx, useMergedRefs } from "@/ui";
 import "./PanelSearch.css";
 
@@ -51,7 +52,7 @@ export const PanelSearch = forwardRef<HTMLInputElement, PanelSearchProps>(functi
   return (
     <div className={cx("cf-psearch", className)} role="search">
       {onLeadingClick ? (
-        <button type="button" className="cf-psearch__lead is-button" aria-label={leadingLabel ?? "Search options"} onClick={onLeadingClick}>
+        <button type="button" className="cf-psearch__lead is-button" aria-label={leadingLabel ?? m.panelsTabs.shared.searchOptions} onClick={onLeadingClick}>
           {glyph}
         </button>
       ) : (
@@ -77,7 +78,7 @@ export const PanelSearch = forwardRef<HTMLInputElement, PanelSearchProps>(functi
         onKeyDown={onKeyDown}
       />
       {value ? (
-        <button type="button" className="cf-psearch__clear" aria-label="Clear search" onClick={clear}>
+        <button type="button" className="cf-psearch__clear" aria-label={m.panelsTabs.shared.clearSearch} onClick={clear}>
           <IconClose aria-hidden="true" />
         </button>
       ) : null}

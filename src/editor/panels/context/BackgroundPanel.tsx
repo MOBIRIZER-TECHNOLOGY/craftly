@@ -3,6 +3,7 @@ import { getActions, getActivePage, useActivePage, useEditor } from "@/core/stor
 import type { Fill, PatternFill } from "@/core/types";
 import { BACKGROUND_GROUPS, type BackgroundGroup, type BackgroundPreset } from "@/data/backgrounds";
 import { getPhotoDef } from "@/data/photos";
+import { m } from "@/i18n";
 import { Button, cx, IconBackground, IconCheck, IconChevronRight, IconLayers, Select, Slider } from "@/ui";
 import { samePaint } from "./colorTargets";
 import { ColorField } from "./ColorField";
@@ -15,9 +16,9 @@ import "./BackgroundPanel.css";
 const COLLAPSED: Record<string, number> = { solid: 18, gradient: 18, pattern: 12, photo: 6 };
 
 const FIT_OPTIONS = [
-  { value: "cover", label: "Fill the page" },
-  { value: "contain", label: "Fit inside the page" },
-  { value: "tile", label: "Tile" },
+  { value: "cover", label: m.panelsContext.background.fit.cover },
+  { value: "contain", label: m.panelsContext.background.fit.contain },
+  { value: "tile", label: m.panelsContext.background.fit.tile },
 ];
 
 /** Does the page background still match this preset? (patterns ignore the scale, which has its own slider) */
@@ -43,11 +44,11 @@ function describeFill(bg: Fill): string {
       return bg.color.toUpperCase();
     case "linear":
     case "radial":
-      return "Gradient";
+      return m.panelsContext.background.gradient;
     case "pattern":
-      return "Pattern";
+      return m.panelsContext.background.pattern;
     case "image":
-      return bg.src.startsWith("builtin:") ? (getPhotoDef(bg.src.slice(8))?.name ?? "Photo") : "Photo";
+      return bg.src.startsWith("builtin:") ? (getPhotoDef(bg.src.slice(8))?.name ?? m.panelsContext.background.photo) : m.panelsContext.background.photo;
   }
 }
 
@@ -63,8 +64,8 @@ export function BackgroundPanel() {
 
   if (!page) {
     return (
-      <PanelShell title="Background">
-        <PanelEmpty icon={<IconBackground />} title="No page open" text="Open a design to change the background of its pages." />
+      <PanelShell title={m.panelsContext.background.title}>
+        <PanelEmpty icon={<IconBackground />} title={m.panelsContext.shared.noPageOpen} text={m.panelsContext.background.noPageText} />
       </PanelShell>
     );
   }
@@ -100,11 +101,11 @@ export function BackgroundPanel() {
 
   return (
     <PanelShell
-      title="Background"
+      title={m.panelsContext.background.title}
       footer={
         pageCount > 1 ? (
           <Button block variant="secondary" icon={applied ? <IconCheck /> : <IconLayers />} onClick={applyToAll}>
-            {applied ? "Applied to all pages" : "Apply to all pages"}
+            {applied ? m.panelsContext.background.appliedToAll : m.panelsContext.shared.applyToAllPages}
           </Button>
         ) : undefined
       }
@@ -114,13 +115,13 @@ export function BackgroundPanel() {
           type="button"
           className="cf-bg__current"
           onClick={() => actions.openContext({ kind: "color", target: "page" })}
-          aria-label={`Page color: ${describeFill(bg)}. Open the color panel`}
+          aria-label={m.panelsContext.background.pageColorButton(describeFill(bg))}
         >
           <span className="cf-bg__current-swatch">
             <FillThumb fill={bg} />
           </span>
           <span className="cf-bg__current-text">
-            <span className="cf-bg__current-title">Page color</span>
+            <span className="cf-bg__current-title">{m.panelsContext.background.pageColor}</span>
             <span className="cf-bg__current-sub">{describeFill(bg)}</span>
           </span>
           <IconChevronRight className="cf-bg__current-chev" aria-hidden="true" />
@@ -131,10 +132,10 @@ export function BackgroundPanel() {
           <div className="cf-ctx__pinned">
             {bg.type === "pattern" ? (
               <>
-                <h3 className="cf-ctx__h">Pattern</h3>
+                <h3 className="cf-ctx__h">{m.panelsContext.background.pattern}</h3>
                 <div className="cf-ctx__rows">
                   <Slider
-                    label="Scale"
+                    label={m.panelsContext.background.scale}
                     showValue
                     min={0.4}
                     max={4}
@@ -146,35 +147,47 @@ export function BackgroundPanel() {
                   />
                   <div className="cf-bg__colors">
                     <div>
-                      <FieldLabel>Ink</FieldLabel>
-                      <ColorField label="Pattern ink color" value={bg.color} size={40} onChange={(c) => patchBackground({ color: c })} onCommit={() => batch.end()} />
+                      <FieldLabel>{m.panelsContext.background.ink}</FieldLabel>
+                      <ColorField
+                        label={m.panelsContext.background.inkColor}
+                        value={bg.color}
+                        size={40}
+                        onChange={(c) => patchBackground({ color: c })}
+                        onCommit={() => batch.end()}
+                      />
                     </div>
                     <div>
-                      <FieldLabel>Paper</FieldLabel>
-                      <ColorField label="Pattern paper color" value={bg.background} size={40} onChange={(c) => patchBackground({ background: c })} onCommit={() => batch.end()} />
+                      <FieldLabel>{m.panelsContext.background.paper}</FieldLabel>
+                      <ColorField
+                        label={m.panelsContext.background.paperColor}
+                        value={bg.background}
+                        size={40}
+                        onChange={(c) => patchBackground({ background: c })}
+                        onCommit={() => batch.end()}
+                      />
                     </div>
                   </div>
                 </div>
               </>
             ) : (
               <>
-                <h3 className="cf-ctx__h">Photo</h3>
+                <h3 className="cf-ctx__h">{m.panelsContext.background.photo}</h3>
                 <div className="cf-ctx__rows">
                   <Slider
-                    label="Dim"
+                    label={m.panelsContext.background.dim}
                     showValue
                     min={-90}
                     max={90}
                     step={1}
                     value={Math.round((bg.dim ?? 0) * 100)}
-                    format={(v) => (v === 0 ? "Off" : v > 0 ? `Dim ${v}%` : `Lighten ${-v}%`)}
+                    format={(v) => (v === 0 ? m.common.off : v > 0 ? m.panelsContext.background.dimBy(v) : m.panelsContext.background.lightenBy(-v))}
                     onChange={(v) => patchBackground({ dim: v / 100 })}
                     onChangeEnd={() => batch.end()}
                   />
                   <div>
-                    <FieldLabel>Fit</FieldLabel>
+                    <FieldLabel>{m.panelsContext.background.fitLabel}</FieldLabel>
                     <Select
-                      aria-label="Photo fit"
+                      aria-label={m.panelsContext.background.photoFit}
                       value={bg.fit}
                       options={FIT_OPTIONS}
                       onChange={(fit) => actions.setPageBackground({ ...bg, fit: fit as "cover" | "contain" | "tile" })}
@@ -223,7 +236,7 @@ function Group({
       aside={
         group.presets.length > limit ? (
           <button type="button" className="cf-ctx__link" onClick={onToggle}>
-            {open ? "Show less" : "See all"}
+            {open ? m.panelsContext.shared.showLess : m.panelsContext.shared.seeAll}
           </button>
         ) : undefined
       }

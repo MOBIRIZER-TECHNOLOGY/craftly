@@ -177,7 +177,17 @@ describe("<Shell>", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Import project file", "Back up & restore", "Report a problem", "About Craftly"]);
+      ).toEqual(["Import project file", "Back up & restore", "Report a problem", "About Craftly", "LanguageEnglish"]);
+    });
+
+    it("offers the languages of the interface, each in its own language, with the one in use checked", async () => {
+      const user = userEvent.setup();
+      mountShell();
+      await user.click(within(railNav()).getByRole("button", { name: "Account" }));
+      await user.click(screen.getByRole("menuitem", { name: /Language/ }));
+      const english = await screen.findByRole("menuitemcheckbox", { name: "English" });
+      expect(english.getAttribute("aria-checked")).toBe("true");
+      expect(screen.getByRole("menuitemcheckbox", { name: "हिन्दी" }).getAttribute("aria-checked")).toBe("false");
     });
 
     it("also offers Trash in the phone header, where the tab bar has no room for it", async () => {
@@ -190,7 +200,7 @@ describe("<Shell>", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Import project file", "Back up & restore", "Trash", "Report a problem", "About Craftly"]);
+      ).toEqual(["Import project file", "Back up & restore", "Trash", "Report a problem", "About Craftly", "LanguageEnglish"]);
       await user.click(within(menu).getByRole("menuitem", { name: "Trash" }));
       expect(window.location.hash).toBe("#/trash");
     });

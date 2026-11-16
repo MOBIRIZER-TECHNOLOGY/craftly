@@ -1,6 +1,7 @@
 import { useEffect, useRef, type CSSProperties } from "react";
 import { getActions } from "@/core/store";
 import type { TableElement, TextAlign } from "@/core/types";
+import { m } from "@/i18n";
 import { cx, IconAlignCenter, IconAlignLeft, IconAlignRight, IconButton, IconClose, IconPlus, NumberField, Button, Segmented, Switch } from "@/ui";
 import { addTableColumn, addTableRow, removeTableColumn, removeTableRow, tableSize } from "./dataEdit";
 import { ColorRow, TextCell } from "./DataControls";
@@ -10,9 +11,9 @@ import { Section } from "./PanelShell";
 import { useBatch } from "./useBatch";
 
 const ALIGN_OPTIONS = [
-  { value: "left", icon: <IconAlignLeft />, title: "Align left" },
-  { value: "center", icon: <IconAlignCenter />, title: "Align center" },
-  { value: "right", icon: <IconAlignRight />, title: "Align right" },
+  { value: "left", icon: <IconAlignLeft />, title: m.panelsContext.table.align.left },
+  { value: "center", icon: <IconAlignCenter />, title: m.panelsContext.table.align.center },
+  { value: "right", icon: <IconAlignRight />, title: m.panelsContext.table.align.right },
 ];
 
 const DEFAULT_STRIPE = "#f3f0ff";
@@ -46,13 +47,19 @@ export function TableEditor({ table, focusCell }: { table: TableElement; focusCe
 
   return (
     <div className="cf-data">
-      <Section title="Cells">
+      <Section title={m.panelsContext.table.cells}>
         <div className="cf-data__scroll">
           <div className="cf-data__grid" style={gridStyle} ref={grid}>
             {/* column remove buttons */}
             {Array.from({ length: cols }, (_, c) => (
               <span key={`rm${c}`} className="cf-data__colhead">
-                <IconButton size="sm" label={`Remove column ${c + 1}`} icon={<IconClose />} disabled={cols <= 1} onClick={() => edit((t) => removeTableColumn(t, c))} />
+                <IconButton
+                  size="sm"
+                  label={m.panelsContext.table.removeColumn(c + 1)}
+                  icon={<IconClose />}
+                  disabled={cols <= 1}
+                  onClick={() => edit((t) => removeTableColumn(t, c))}
+                />
               </span>
             ))}
             <span />
@@ -77,23 +84,23 @@ export function TableEditor({ table, focusCell }: { table: TableElement; focusCe
         </div>
         <div className="cf-data__actions">
           <Button block variant="secondary" icon={<IconPlus />} onClick={() => edit((t) => addTableRow(t))}>
-            Add row
+            {m.panelsContext.shared.addRow}
           </Button>
           <Button block variant="secondary" icon={<IconPlus />} onClick={() => edit((t) => addTableColumn(t))}>
-            Add column
+            {m.panelsContext.table.addColumn}
           </Button>
         </div>
       </Section>
 
-      <ImportData hint="The rows you import replace the cells of this table. Its colors and width stay." onImport={(text) => importTableData(table.id, text)} />
+      <ImportData hint={m.panelsContext.table.importHint} onImport={(text) => importTableData(table.id, text)} />
 
-      <Section title="Layout">
+      <Section title={m.panelsContext.table.layout}>
         <div className="cf-ctx__rows">
-          <Switch label="Header row" checked={table.headerRow} onChange={(on) => edit((t) => void (t.headerRow = on))} />
+          <Switch label={m.panelsContext.table.headerRow} checked={table.headerRow} onChange={(on) => edit((t) => void (t.headerRow = on))} />
           <div className="cf-data__inline">
-            <span className="cf-data__colorlabel">Font size</span>
+            <span className="cf-data__colorlabel">{m.panelsContext.table.fontSize}</span>
             <NumberField
-              aria-label="Font size"
+              aria-label={m.panelsContext.table.fontSize}
               value={table.fontSize}
               min={6}
               max={200}
@@ -105,25 +112,31 @@ export function TableEditor({ table, focusCell }: { table: TableElement; focusCe
             />
           </div>
           <div className="cf-data__inline">
-            <span className="cf-data__colorlabel">Alignment</span>
-            <Segmented aria-label="Text alignment" size="sm" value={table.align} options={ALIGN_OPTIONS} onChange={(v) => edit((t) => void (t.align = v as TextAlign))} />
+            <span className="cf-data__colorlabel">{m.panelsContext.table.alignment}</span>
+            <Segmented
+              aria-label={m.panelsContext.table.textAlignment}
+              size="sm"
+              value={table.align}
+              options={ALIGN_OPTIONS}
+              onChange={(v) => edit((t) => void (t.align = v as TextAlign))}
+            />
           </div>
         </div>
       </Section>
 
-      <Section title="Colors">
+      <Section title={m.panelsContext.table.colors}>
         <div className="cf-ctx__rows">
-          <ColorRow label="Header fill" value={table.headerFill} onChange={(c) => edit((t) => void (t.headerFill = c))} />
-          <ColorRow label="Header text" value={table.headerColor} onChange={(c) => edit((t) => void (t.headerColor = c))} />
-          <ColorRow label="Text" value={table.color} onChange={(c) => edit((t) => void (t.color = c))} />
+          <ColorRow label={m.panelsContext.table.headerFill} value={table.headerFill} onChange={(c) => edit((t) => void (t.headerFill = c))} />
+          <ColorRow label={m.panelsContext.table.headerText} value={table.headerColor} onChange={(c) => edit((t) => void (t.headerColor = c))} />
+          <ColorRow label={m.panelsContext.table.text} value={table.color} onChange={(c) => edit((t) => void (t.color = c))} />
           <div className={cx("cf-data__stripe", !table.stripeFill && "is-off")}>
-            <ColorRow label="Row stripes" value={table.stripeFill ?? DEFAULT_STRIPE} onChange={(c) => edit((t) => void (t.stripeFill = c))}>
-              <Switch aria-label="Row stripes" checked={!!table.stripeFill} onChange={(on) => edit((t) => void (t.stripeFill = on ? DEFAULT_STRIPE : null))} />
+            <ColorRow label={m.panelsContext.table.rowStripes} value={table.stripeFill ?? DEFAULT_STRIPE} onChange={(c) => edit((t) => void (t.stripeFill = c))}>
+              <Switch aria-label={m.panelsContext.table.rowStripes} checked={!!table.stripeFill} onChange={(on) => edit((t) => void (t.stripeFill = on ? DEFAULT_STRIPE : null))} />
             </ColorRow>
           </div>
-          <ColorRow label="Border" value={table.borderColor} onChange={(c) => edit((t) => void (t.borderColor = c))}>
+          <ColorRow label={m.panelsContext.table.border} value={table.borderColor} onChange={(c) => edit((t) => void (t.borderColor = c))}>
             <NumberField
-              aria-label="Border width"
+              aria-label={m.panelsContext.table.borderWidth}
               value={table.borderWidth}
               min={0}
               max={24}
@@ -164,13 +177,13 @@ function TableRow({
           key={c}
           className={header ? "is-header" : undefined}
           value={cell}
-          label={`Row ${r + 1}, column ${c + 1}`}
+          label={m.panelsContext.table.cell(r + 1, c + 1)}
           cellKey={`${r}:${c}`}
           onText={(value) => onText(c, value)}
           onPasteText={(text) => onPaste(c, text)}
         />
       ))}
-      <IconButton size="sm" label={`Remove row ${r + 1}`} icon={<IconClose />} disabled={!removable} onClick={onRemove} />
+      <IconButton size="sm" label={m.panelsContext.shared.removeRow(r + 1)} icon={<IconClose />} disabled={!removable} onClick={onRemove} />
     </>
   );
 }

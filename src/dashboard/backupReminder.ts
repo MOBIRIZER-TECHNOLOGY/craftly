@@ -11,6 +11,8 @@
  *     that someone started a minute ago is left alone.
  */
 
+import { m } from "@/i18n";
+
 const DAY_MS = 86_400_000;
 
 /** The intervals the dialog offers, in days. 0 turns reminders off. */
@@ -72,18 +74,15 @@ export function backupReminder({ now, lastBackupAt, designs, settings }: Reminde
 
 /** "13 days", "3 weeks", "6 months", "over a year": never more exact than a person would say it. */
 function ageWords(ms: number): string {
+  const words = m.dashboard.reminder;
   const days = Math.floor(ms / DAY_MS);
-  if (days < 14) return `${days} days`;
-  if (days < 60) return `${Math.floor(days / 7)} weeks`;
-  if (days < 365) return `${Math.floor(days / 30)} months`;
-  return "over a year";
+  if (days < 14) return words.days(days);
+  if (days < 60) return words.weeks(Math.floor(days / 7));
+  if (days < 365) return words.months(Math.floor(days / 30));
+  return words.overAYear;
 }
 
 export function reminderWords(reminder: BackupReminder, now: number): string {
-  if (reminder.kind === "never") {
-    const what = reminder.designs === 1 ? "Your design lives" : `Your ${reminder.designs} designs live`;
-    return `You have not backed up in this browser yet. ${what} only here.`;
-  }
-  const changed = reminder.changed === 1 ? "1 design" : `${reminder.changed} designs`;
-  return `Your last backup is ${ageWords(now - reminder.lastBackupAt)} old. ${changed} changed since.`;
+  if (reminder.kind === "never") return m.dashboard.reminder.never(reminder.designs);
+  return m.dashboard.reminder.old(ageWords(now - reminder.lastBackupAt), reminder.changed);
 }

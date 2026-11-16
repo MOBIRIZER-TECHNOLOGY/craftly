@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { DESIGN_TYPES, POPULAR_DESIGN_TYPES } from "@/data/designTypes";
+import { m } from "@/i18n";
 import { createBlankAndOpen } from "./actions";
 import { CategoryTile } from "./CategoryTile";
 import { Carousel } from "./Carousel";
@@ -31,7 +32,7 @@ export function Home() {
 
   return (
     <div className="cf-home">
-      <Hero title="What will you design today?" active="home">
+      <Hero title={m.dashboard.home.title} active="home">
         <HomeSearch />
       </Hero>
 
@@ -39,16 +40,16 @@ export function Home() {
         <ShortcutRow />
 
         {!ready ? (
-          <Section title="Recent designs">
-            <Carousel label="Recent designs">
+          <Section title={m.dashboard.home.recent}>
+            <Carousel label={m.dashboard.home.recent}>
               {Array.from({ length: 5 }, (_unused, index) => (
                 <DesignCardSkeleton key={index} layout="carousel" />
               ))}
             </Carousel>
           </Section>
         ) : recent.length > 0 ? (
-          <Section title="Recent designs" action={<SeeAll to="/projects" />}>
-            <Carousel label="Recent designs">
+          <Section title={m.dashboard.home.recent} action={<SeeAll to="/projects" />}>
+            <Carousel label={m.dashboard.home.recent}>
               {recent.map((design) => (
                 <DesignCard key={design.id} design={design} folders={folders} now={now} layout="carousel" />
               ))}
@@ -57,8 +58,8 @@ export function Home() {
         ) : null}
 
         {forYou.length > 0 ? (
-          <Section title="Templates for you" action={<SeeAll to="/templates" />}>
-            <Carousel label="Templates for you">
+          <Section title={m.dashboard.home.forYou} action={<SeeAll to="/templates" />}>
+            <Carousel label={m.dashboard.home.forYou}>
               {forYou.map((template) => (
                 <TemplateCard key={template.id} template={template} height={210} />
               ))}
@@ -67,8 +68,8 @@ export function Home() {
         ) : null}
 
         {categories.length > 0 ? (
-          <Section title="Browse template categories" action={<SeeAll to="/templates" />}>
-            <Carousel label="Template categories">
+          <Section title={m.dashboard.home.browseCategories} action={<SeeAll to="/templates" />}>
+            <Carousel label={m.dashboard.home.categories}>
               {categories.map((category) => (
                 <CategoryTile key={category.id} category={category.id} label={category.label} count={category.count} example={category.example} />
               ))}
@@ -76,16 +77,16 @@ export function Home() {
           </Section>
         ) : null}
 
-        <Section title="Popular on Craftly" action={<SeeAll onClick={() => openCreateDialog()} />}>
-          <Carousel label="Popular design types">
+        <Section title={m.dashboard.home.popular} action={<SeeAll onClick={() => openCreateDialog()} />}>
+          <Carousel label={m.dashboard.home.popularTypes}>
             {POPULAR_DESIGN_TYPES.map((type) => (
               <DesignTypeTile key={type.id} type={type} size="lg" className="cf-home__tile cf-home__tile--lg" onClick={() => void createBlankAndOpen(type)} />
             ))}
           </Carousel>
         </Section>
 
-        <Section title="Start from a size" action={<SeeAll onClick={() => openCreateDialog()} />}>
-          <Carousel label="More design sizes">
+        <Section title={m.dashboard.home.fromSize} action={<SeeAll onClick={() => openCreateDialog()} />}>
+          <Carousel label={m.dashboard.home.moreSizes}>
             {moreSizes.map((type) => (
               <DesignTypeTile key={type.id} type={type} size="sm" className="cf-home__tile cf-home__tile--sm" onClick={() => void createBlankAndOpen(type)} />
             ))}

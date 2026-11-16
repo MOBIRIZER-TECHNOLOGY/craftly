@@ -8,6 +8,7 @@ import { getAsset, prepareAssetFromFile } from "@/core/assets";
 import { uid } from "@/core/ids";
 import { saveDesign } from "@/core/library";
 import type { Asset, Design } from "@/core/types";
+import { m } from "@/i18n";
 import { ExportError } from "./errors";
 import { blobToDataUrl } from "./encoding";
 import { collectProjectFonts, readProjectFonts, storeProjectFonts } from "./projectFonts";
@@ -33,7 +34,7 @@ export async function exportProjectFile(design: Design): Promise<Blob> {
   const assets: Record<string, ProjectAsset> = {};
   for (const id of collectAssetIds(design)) {
     const asset = await getAsset(id);
-    if (!asset) throw new ExportError("invalid-design", "An uploaded image is missing. Replace the missing image before saving a project file.");
+    if (!asset) throw new ExportError("invalid-design", m.exporting.project.imageMissing);
     assets[id] = {
       name: asset.name,
       mime: asset.mime,
@@ -67,7 +68,7 @@ export async function importProjectFile(file: File, report?: ImportReport): Prom
     const asset = Object.hasOwn(project.assets, oldId) ? project.assets[oldId] : undefined;
     const decoded = asset && dataUrlToBytes(asset.dataUrl);
     if (!asset || !decoded) {
-      failed.push(asset?.name ?? "an image missing from the file");
+      failed.push(asset?.name ?? m.exporting.project.unnamedImage);
       continue;
     }
     const mime = mimeOfDataUrl(asset.dataUrl) || asset.mime;
@@ -81,11 +82,7 @@ export async function importProjectFile(file: File, report?: ImportReport): Prom
     }
   }
   if (failed.length) {
-    const examples = failed
-      .slice(0, 3)
-      .map((name) => `“${name}”`)
-      .join(", ");
-    throw new ProjectFileError(`Could not read ${failed.length} embedded image(s): ${examples}. Export a complete project file from the source design and try again.`);
+    throw new ProjectFileError(m.exporting.project.unreadImages(failed.length, failed.slice(0, 3)));
   }
 
   const design = prepareImportedDesign(remapAssetSources(project.design, idMap), uid("d"));

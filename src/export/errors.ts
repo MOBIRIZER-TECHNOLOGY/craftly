@@ -2,6 +2,7 @@
  * Errors thrown by the export package. Every error carries a stable `code` and a message that already
  * explains what happened and how to fix it, so the UI can show `error.message` as it is.
  */
+import { m } from "@/i18n";
 
 export type ExportErrorCode =
   /** nothing selected / the design has no such pages */
@@ -37,7 +38,7 @@ export function isCancelled(e: unknown): boolean {
 }
 
 export function cancelledError(): ExportError {
-  return new ExportError("cancelled", "The download was cancelled.");
+  return new ExportError("cancelled", m.exporting.errors.cancelled);
 }
 
 /** Throws a "cancelled" error when the signal has been aborted. */
@@ -51,22 +52,19 @@ export function throwIfAborted(signal?: AbortSignal): void {
  */
 export function describeExportError(e: unknown, ctx: { scale?: number } = {}): string {
   if (e instanceof ExportError) {
-    if (e.code === "too-large" && ctx.scale && ctx.scale > 1) {
-      return `This design is too large to export at ${formatScale(ctx.scale)} - try a smaller size.`;
-    }
+    if (e.code === "too-large" && ctx.scale && ctx.scale > 1) return m.exporting.errors.tooLargeAt(roundScale(ctx.scale));
     return e.message;
   }
   if (typeof e === "object" && e !== null && (e as { name?: string }).name === "QuotaExceededError") {
-    return "There is not enough free memory to export this design. Close other tabs or try a smaller size.";
+    return m.exporting.errors.noMemory;
   }
   if (e instanceof Error && /memory|allocation|too large/i.test(e.message)) {
-    return ctx.scale && ctx.scale > 1
-      ? `This design is too large to export at ${formatScale(ctx.scale)} - try a smaller size.`
-      : "This design is too large to export. Try fewer pages or a smaller size.";
+    return ctx.scale && ctx.scale > 1 ? m.exporting.errors.tooLargeAt(roundScale(ctx.scale)) : m.exporting.errors.tooLarge;
   }
-  return "Something went wrong while preparing the download. Please try again.";
+  return m.exporting.errors.generic;
 }
 
-function formatScale(scale: number): string {
-  return `${Number.isInteger(scale) ? scale : Math.round(scale * 100) / 100}x`;
+/** The size multiplier as the message names it: 4, 2.5, 1.33. */
+function roundScale(scale: number): number {
+  return Number.isInteger(scale) ? scale : Math.round(scale * 100) / 100;
 }
