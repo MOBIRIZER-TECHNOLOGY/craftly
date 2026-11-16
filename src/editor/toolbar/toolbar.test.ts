@@ -132,6 +132,8 @@ describe("buildContextMenuItems", () => {
       "Layer",
       "Align to page",
       "Group",
+      // a text can be turned into the outlines of its letters (text to points)
+      "Convert to shapes",
       "-",
       "Lock",
       "Hide",

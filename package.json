@@ -70,6 +70,7 @@
     "@fontsource/shadows-into-light": "^5.3.0",
     "@fontsource/space-mono": "^5.3.0",
     "@fontsource/yeseva-one": "^5.3.0",
+    "fontkit": "2.0.4",
     "immer": "^11.2.9",
     "lucide": "^1.68.0",
     "lucide-react": "^1.68.0",
@@ -91,6 +92,12 @@
     },
     "typescript-eslint": {
       "minimatch": "^11.0.5"
+    },
+    "fontkit": {
+      "@swc/helpers": {
+        ".": "0.5.23",
+        "tslib": "2.8.1"
+      }
     }
   },
   "devDependencies": {

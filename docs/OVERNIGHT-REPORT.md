@@ -104,7 +104,7 @@ images now) and flushes. This is the remaining cost under load.
 | B12 | Tables and charts from pasted or imported data | done | `66c149a` |
 | B13 | Download as a web page (a self-contained slideshow) | done | `384a1dc` |
 | B14 | The Pen from the keyboard | done | `1fa8fb0` |
-| B15 | Text to points | **not started** |  |
+| B15 | Text to points | done on 2026-11-15, after the night, with fontkit 2.0.4 | (see the log) |
 | B16 | 30 more templates (102 templates, 175 pages) | done | `f854df5` `30c5eba` `c1c98a8` |
 | B17 | Interface translation | **not started** | |
 | B18 | Journeys in Edge | done: all 234 pass, nothing had to be fixed | |

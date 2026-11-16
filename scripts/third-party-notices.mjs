@@ -15,27 +15,37 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rootPackage = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 
-function readPackage(name) {
-  const file = join(root, "node_modules", ...name.split("/"), "package.json");
-  if (!existsSync(file)) return null;
-  return { dir: dirname(file), json: JSON.parse(readFileSync(file, "utf8")) };
+/**
+ * The package `name` as the package in `from` finds it, the way Node looks: in `from`'s own node_modules first, then in
+ * those of the folders above it, up to the project's. A dependency that npm put under another package (two versions of one
+ * package, or a version an override pins) is found where it is.
+ */
+function readPackage(name, from = root) {
+  for (let dir = from; ; dir = dirname(dir)) {
+    const file = join(dir, "node_modules", ...name.split("/"), "package.json");
+    if (existsSync(file)) return { dir: dirname(file), json: JSON.parse(readFileSync(file, "utf8")) };
+    if (dir === root || dirname(dir) === dir) return null;
+  }
 }
 
-/** Everything the app ships: the runtime dependencies and, transitively, what they depend on. */
+/** Everything the app ships: the runtime dependencies and, transitively, what they depend on (one row a name and version). */
 function collect() {
   const found = new Map();
-  const queue = Object.keys(rootPackage.dependencies ?? {});
+  const seen = new Set();
+  const queue = Object.keys(rootPackage.dependencies ?? {}).map((name) => ({ name, from: root }));
   const missing = [];
   while (queue.length) {
-    const name = queue.shift();
-    if (found.has(name)) continue;
-    const pkg = readPackage(name);
+    const { name, from } = queue.shift();
+    const pkg = readPackage(name, from);
     if (!pkg) {
       missing.push(name);
       continue;
     }
-    found.set(name, pkg);
-    queue.push(...Object.keys(pkg.json.dependencies ?? {}));
+    if (seen.has(pkg.dir)) continue;
+    seen.add(pkg.dir);
+    const key = found.has(name) && found.get(name).json.version !== pkg.json.version ? `${name}@${pkg.json.version}` : name;
+    if (!found.has(key)) found.set(key, pkg);
+    queue.push(...Object.keys(pkg.json.dependencies ?? {}).map((dep) => ({ name: dep, from: pkg.dir })));
   }
   return { found, missing };
 }
@@ -57,7 +67,13 @@ function licenseText(dir) {
 
 const { found, missing } = collect();
 const rows = [...found.entries()]
-  .map(([name, { dir, json }]) => ({ name, version: json.version, license: declaredLicense(json), text: licenseText(dir), home: json.homepage ?? json.repository?.url ?? "" }))
+  .map(([name, { dir, json }]) => ({
+    name: json.name ?? name,
+    version: json.version,
+    license: declaredLicense(json),
+    text: licenseText(dir),
+    home: json.homepage ?? json.repository?.url ?? "",
+  }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
 // one section per distinct licence text

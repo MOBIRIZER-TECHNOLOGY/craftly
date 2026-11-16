@@ -432,6 +432,36 @@ export function isFontReady(family: string, weight = 400, italic = false): boole
   return settled.has(pickFace(entry, weight, italic));
 }
 
+/** The file a family is drawn with for a weight and style, as "Convert to shapes" for text reads its outlines (src/render/textOutline.ts). */
+export interface FaceFile {
+  data: ArrayBuffer;
+  /** the weight the text is drawn at: snapped to what the family has, and within the file's range for a variable file */
+  weight: number;
+  /** the file covers a range of weights (a `wght` axis to set) */
+  variable: boolean;
+  /** italic was asked for and this file is upright: the browser slants it, and so must whoever draws its outlines */
+  slanted: boolean;
+}
+
+/**
+ * The bytes of the face `ensureFont` would draw this family, weight and style with: the bundled woff2 file (fetched from the
+ * hashed asset the app ships, as the FontFace does) or the uploaded file. Null for a family Craftly has no file of (a system font).
+ * Rejects when the bundled file cannot be fetched.
+ */
+export async function faceFile(family: string, weight = 400, italic = false): Promise<FaceFile | null> {
+  if (customPending) await customPending;
+  const entry = entryOf(family);
+  if (!entry) return null;
+  const face = pickFace(entry, weight, italic);
+  const drawn = Math.min(face.maxWeight, Math.max(face.minWeight, snapWeight(entry.def, weight)));
+  const describe = (data: ArrayBuffer): FaceFile => ({ data, weight: drawn, variable: face.minWeight !== face.maxWeight, slanted: italic && !face.italic });
+  if (face.custom) return describe(face.custom.data);
+  const url = (await (face.load as FontFile)()).default;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`the font file of ${family} could not be fetched (${response.status})`);
+  return describe(await response.arrayBuffer());
+}
+
 /** Starts loading every face (all weights, upright and italic) of the given families, for the font picker. */
 export async function preloadFonts(families: string[]): Promise<void> {
   if (!canLoadFonts()) return;

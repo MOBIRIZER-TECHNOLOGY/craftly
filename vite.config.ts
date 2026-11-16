@@ -198,7 +198,7 @@ export default defineConfig({
   worker: { format: "es" },
   // the runtime finds its WebAssembly file next to its own script, which pre-bundling would move. Libraries that load on first
   // use are listed so that the dev server prepares them at the start: one that it finds while the page runs makes it reload the page.
-  optimizeDeps: { include: ["lucide", "qrcode-generator", "paper/dist/paper-core"], exclude: ["onnxruntime-web"] },
+  optimizeDeps: { include: ["lucide", "qrcode-generator", "paper/dist/paper-core", "fontkit"], exclude: ["onnxruntime-web"] },
   test: {
     // importing the renderer loads the whole font table, which is slow while many workers start at once
     testTimeout: 30_000,
