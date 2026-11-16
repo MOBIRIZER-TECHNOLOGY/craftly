@@ -70,7 +70,7 @@ Not shown by it: one person offline while the others stay connected (the tool th
 | --- | --- | --- | --- |
 | A1 | Admission control: slow reader, join bucket, byte bucket, limit before the key, connection caps, one id set per batch | done | `263438f` |
 | A2 | Storage: design stringified once, images out of the room record (old records are moved on their first save) | done | `e3bcc94` |
-| A2 | Storage: group commit and a bounded queue | done on 2026-11-15, after the night | (see the log) |
+| A2 | Storage: group commit and a bounded queue | done on 2026-11-15, after the night; a group too large is saved one edit at a time since 2026-11-16 | `302211a` `5bf1fc9` |
 | A3 | A slow upload cannot undo edits or bring back a deleted room | done | `581da9a` |
 | A4 | Origin checks; room creation limited per address; `TRUST_PROXY` | done | `5c88dfd` |
 | A5 | Expiry with `ROOM_TTL_DAYS` (off by default) | done | `10ac4dc` |
@@ -86,13 +86,17 @@ Not shown by it: one person offline while the others stay connected (the tool th
 agent could not prove it correct in the time and did not start it. Every edit still writes the whole design (without the
 images now) and flushes. This is the remaining cost under load.
 
+*Since then (2026-11-15 and 16):* group commit was built (`302211a`), and corrected the next day (`5bf1fc9`): the size limit
+was checked once for the whole group, so an edit that fit was refused when another came with it. A group refused for its
+size is now saved one edit at a time, and only the edit that does not fit is refused. It has still not been measured under load.
+
 ## Part B: features
 
 | # | Item | State | Commit |
 | --- | --- | --- | --- |
 | B1 | See the others: pointers, selections, names, a list of who is here | done | `ac7d991` |
 | B2 | Two people in one text box: one person at a time types (an advisory lock through presence) | done, as a lock, not a merge | `dc2a59c` |
-| B3 | Comments | **not started** | |
+| B3 | Comments | done on 2026-11-14, after the night | `dad4097` |
 | B4 | Pinch to zoom and two-finger pan | done | `4e29bcc` |
 | B5 | PDF with selectable, searchable text (an invisible layer over the page image) | done | `16dbcb2` |
 | B6 | Bleed and crop marks in the print PDF | done | `7b68e6f` |
@@ -104,12 +108,12 @@ images now) and flushes. This is the remaining cost under load.
 | B12 | Tables and charts from pasted or imported data | done | `66c149a` |
 | B13 | Download as a web page (a self-contained slideshow) | done | `384a1dc` |
 | B14 | The Pen from the keyboard | done | `1fa8fb0` |
-| B15 | Text to points | done on 2026-11-15, after the night, with fontkit 2.0.4 | (see the log) |
+| B15 | Text to points | done on 2026-11-15, after the night, with fontkit 2.0.4 (committed on 2026-11-16) | `4b16eb1` |
 | B16 | 30 more templates (102 templates, 175 pages) | done | `f854df5` `30c5eba` `c1c98a8` |
 | B17 | Interface translation | **not started** | |
 | B18 | Journeys in Edge | done: all 234 pass, nothing had to be fixed | |
 
-Why three were not started:
+Why three were not started in the night (B3 and B15 were built after it, see the table; B17 is the one still open):
 
 - **Comments (B3)** need a decision first. New kinds of operation are refused by an older server and end the session of an
   older browser; putting the comments through the existing "design" operation would lose comments made at the same moment.
@@ -192,3 +196,25 @@ this machine does not have:
 4. Still open after this night: group commit on the server, comments, text to points, translation, a merge (not a lock) for
    text edited by two people, CMYK, accounts and sync, real stock photos, Firefox and Safari, a load test, pushing to GitHub
    (this machine has no sign-in, and git has no name and email set: the commits use the author of the earlier ones).
+
+## Checked again on 2026-11-16, before the push
+
+Group commit, comments and text to points were done by then (see the tables), and `main` was pushed to GitHub on 2026-11-16
+(44 commits, ending at `5bf1fc9`). Run on `main` at that commit, on the same slowed laptop:
+
+| Check | Result |
+| --- | --- |
+| Types, lint, format | pass |
+| Unit tests, with `--maxWorkers=3 --testTimeout=300000 --hookTimeout=300000` | 9,423 of 9,423 in 405 files, in 17 minutes |
+| Build, `npm run server:smoke` | pass |
+| Browser journeys, dev server, Chrome | 232 of 234 |
+| Browser journeys, production build under the policy, `OFFLINE=1`, `LIVE_PORT=8788` | 248 of 250 |
+
+The four failed journey checks are the same two in both runs: the WebM download and Cancel of `animated-export.cjs`. Chrome
+157 on this laptop records nothing from a canvas: a page with only a coloured canvas and `MediaRecorder`, without Craftly,
+got no data and no error, headless and in a window. The video code has not changed since the first commit; CI is the next
+place to see these two pass. With the usual 30-second limits the unit suite still fails here on time alone.
+
+Still open: translation (B17), a merge (not a lock) for text edited by two people, CMYK, accounts and sync, real stock
+photos, Firefox and Safari, a load test of group commit, the video journey on a machine whose Chrome records, and for text to
+points a real uploaded font and a screen reader.
