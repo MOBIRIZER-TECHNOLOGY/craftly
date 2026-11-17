@@ -22,16 +22,27 @@ function findChrome() {
   return hit;
 }
 
+/**
+ * The engine the journeys run in: Chrome (the default, a local install), or `BROWSER=firefox` / `BROWSER=webkit` for the builds
+ * that `npx playwright-core install firefox webkit` downloads (WebKit is the engine of Safari, not Safari itself).
+ */
+const ENGINE = (process.env.BROWSER || "chromium").toLowerCase();
+if (!["chromium", "chrome", "firefox", "webkit"].includes(ENGINE)) throw new Error(`BROWSER=${ENGINE}: use chromium, firefox or webkit`);
+const isChromium = ENGINE === "chromium" || ENGINE === "chrome";
+
+function engine() {
+  const pw = require("playwright-core");
+  return isChromium ? pw.chromium : pw[ENGINE];
+}
+
 /** Launches the browser; set HEADED=1 to watch it. */
 async function launch() {
-  const { chromium } = require("playwright-core");
-  return chromium.launch({ executablePath: findChrome(), headless: !process.env.HEADED });
+  return engine().launch({ ...(isChromium ? { executablePath: findChrome() } : {}), headless: !process.env.HEADED });
 }
 
 /** Launches the browser with a profile folder that survives between runs (used when something big is worth keeping, like a downloaded model). */
 async function launchPersistent(userDataDir, options = {}) {
-  const { chromium } = require("playwright-core");
-  return chromium.launchPersistentContext(userDataDir, { executablePath: findChrome(), headless: !process.env.HEADED, ...options });
+  return engine().launchPersistentContext(userDataDir, { ...(isChromium ? { executablePath: findChrome() } : {}), headless: !process.env.HEADED, ...options });
 }
 
 /** A fresh folder (with trailing separator) for screenshots and downloads of one journey. */
@@ -64,4 +75,4 @@ async function joinIfAsked(page, ms = 10000) {
   return false;
 }
 
-module.exports = { launch, launchPersistent, outDir, joinIfAsked, BASE };
+module.exports = { launch, launchPersistent, outDir, joinIfAsked, BASE, ENGINE, isChromium };
