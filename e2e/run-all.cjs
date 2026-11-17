@@ -39,7 +39,10 @@ const journeys = [
     "textshapes.cjs",
     "Convert to shapes for a text box: one path per letter where the canvas draws it (read from the pixels), undo and redo, light and heavy weights, the refusals, effects and missing letters said, line breaks, SVG download, reload",
   ],
-  ["print.cjs", "a print PDF from the Download panel: bleed chosen by keyboard, crop and registration marks, CMYK, read back (boxes, the DeviceCMYK image, the marks, the text layer, the bleed filled)"],
+  [
+    "print.cjs",
+    "a print PDF from the Download panel: bleed chosen by keyboard, crop and registration marks, CMYK, read back (boxes, the DeviceCMYK image, the marks, the text layer, the bleed filled)",
+  ],
   ["animate.cjs", "element and page animations, timing, transitions, preview, motion templates"],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
   ["animated-export.cjs", "animated GIF and WebM downloads: structure, length, loop, decoded by the browser, cancel"],
