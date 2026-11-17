@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useEditor } from "@/core/store";
 import { resetEditor } from "@/test/helpers";
+import { setMedia } from "@/test/media";
 import { mountPanels } from "@/test/tabsHarness";
 import { RAIL_TABS } from "./LeftRail";
 
@@ -185,5 +186,59 @@ describe("<LeftRail>", () => {
     mountPanels();
     await user.hover(tab("Projects"));
     expect(state().leftTab).toBe("elements");
+  });
+
+  describe("as the tab bar of a narrow screen", () => {
+    beforeEach(() => setMedia("(max-width: 899px)", true));
+
+    const rail = () => screen.getByRole("navigation", { name: "Editor tools" });
+    const list = () => screen.getByRole("tablist");
+    /** gives the tab list a scrolling box: `width` px of `content` px of tabs, scrolled to `left` */
+    const size = (width: number, content: number, left = 0) => {
+      Object.defineProperty(list(), "clientWidth", { configurable: true, value: width });
+      Object.defineProperty(list(), "scrollWidth", { configurable: true, value: content });
+      list().scrollLeft = left;
+      fireEvent.scroll(list());
+    };
+
+    it("runs left to right, and the arrow keys follow it", () => {
+      mountPanels();
+      expect(list().getAttribute("aria-orientation")).toBe("horizontal");
+      tab("Elements").focus();
+      fireEvent.keyDown(tab("Elements"), { key: "ArrowRight" });
+      expect(document.activeElement).toBe(tab("Text"));
+      fireEvent.keyDown(tab("Text"), { key: "ArrowLeft" });
+      expect(document.activeElement).toBe(tab("Elements"));
+      fireEvent.keyDown(tab("Elements"), { key: "ArrowLeft" });
+      expect(document.activeElement).toBe(tab("Templates"));
+    });
+
+    it("says which sides have more tabs past them", () => {
+      mountPanels();
+      size(375, 520);
+      expect(rail().getAttribute("data-fade")).toBe("r");
+      size(375, 520, 70);
+      expect(rail().getAttribute("data-fade")).toBe("lr");
+      size(375, 520, 145);
+      expect(rail().getAttribute("data-fade")).toBe("l");
+      size(768, 768);
+      expect(rail().hasAttribute("data-fade")).toBe(false);
+    });
+
+    it("scrolls by most of its width when a chevron is tapped; the chevrons are hidden from the keyboard and screen readers", () => {
+      mountPanels();
+      size(375, 520);
+      const scrollTo = vi.fn();
+      list().scrollTo = scrollTo as unknown as HTMLElement["scrollTo"];
+      const [back, more] = Array.from(rail().querySelectorAll<HTMLButtonElement>(".cf-leftrail__more"));
+      for (const chevron of [back, more]) {
+        expect(chevron.getAttribute("aria-hidden")).toBe("true");
+        expect(chevron.tabIndex).toBe(-1);
+      }
+      fireEvent.click(more);
+      expect(scrollTo).toHaveBeenLastCalledWith({ left: 279, behavior: "smooth" });
+      fireEvent.click(back);
+      expect(scrollTo).toHaveBeenLastCalledWith({ left: -279, behavior: "smooth" });
+    });
   });
 });

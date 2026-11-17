@@ -390,17 +390,31 @@
     display: none;
   }
   .cf-topbar__btn.cf-btn {
-    padding: 0 6px;
+    padding: 0 4px;
+  }
+  .cf-topbar__resize.cf-btn {
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
   }
   .cf-topbar__mode.cf-btn {
     gap: 2px;
     padding: 0 4px 0 6px;
   }
+  /* a longer File label (Hindi: फ़ाइल) must still leave Share inside a 375 px screen: the end group packs tighter */
   .cf-topbar__split-main.cf-btn {
-    padding: 0 8px;
+    padding: 0 6px;
+  }
+  .cf-topbar__split-caret.cf-btn {
+    width: 24px;
+    min-width: 24px;
+  }
+  .cf-btn.cf-topbar__share {
+    width: 36px;
+    min-width: 36px;
   }
   .cf-topbar__group--end {
-    gap: 6px;
+    gap: 4px;
   }
 }
 

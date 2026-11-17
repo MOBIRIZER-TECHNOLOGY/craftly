@@ -43,6 +43,10 @@ const journeys = [
     "print.cjs",
     "a print PDF from the Download panel: bleed chosen by keyboard, crop and registration marks, CMYK, read back (boxes, the DeviceCMYK image, the marks, the text layer, the bleed filled)",
   ],
+  [
+    "mobile.cjs",
+    "a phone (375 x 812, touch) and a tablet, in English and Hindi: no sideways scroll, every tab reached by taps, top bar and toolbars fit, a text added and edited, menus and Share fit, a PNG downloaded, pages, Present",
+  ],
   ["animate.cjs", "element and page animations, timing, transitions, preview, motion templates"],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
   ["animated-export.cjs", "animated GIF and WebM downloads: structure, length, loop, decoded by the browser, cancel"],

@@ -26,12 +26,22 @@
   }
 }
 
-/* narrow screens: the rail is a tab bar along the bottom, so the palette rises above it */
+/*
+ * narrow screens: the rail is a tab bar along the bottom, so the palette rises above it and above the bottom bar (whose
+ * Notes button it would otherwise cover); on a short screen the card scrolls instead of running under the top bar
+ */
 @media (max-width: 899px) {
   .cf-tools {
     top: auto;
-    bottom: calc(100% + 12px);
+    bottom: calc(100% + var(--bottombar-h) + 8px);
     left: 12px;
+    max-height: calc(100dvh - var(--topbar-h) - var(--bottombar-h) - var(--cf-tabbar-h, 60px) - 24px);
+  }
+
+  .cf-tools__card {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
   }
 }
 

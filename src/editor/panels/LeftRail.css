@@ -111,6 +111,11 @@
   }
 }
 
+/* the chevrons that say more tabs lie past an edge: only for the tab bar of a narrow screen */
+.cf-leftrail__more {
+  display: none;
+}
+
 /* narrow screens: the editor shell lays the rail out as a tab bar along the bottom, so the divider moves to its top */
 @media (max-width: 899px) {
   .cf-leftrail,
@@ -120,5 +125,72 @@
 
   .cf-leftrail__tab {
     padding-top: 6px;
+  }
+
+  /*
+   * A phone has room for five or six of the eight tabs: the bar scrolls sideways. The side with more tabs fades out (as the
+   * context toolbar does) and shows a chevron, and the tab cut by the edge stays partly in view, so the bar reads as more.
+   */
+  .cf-leftrail__list {
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: 32px;
+  }
+
+  .cf-leftrail[data-fade="l"] .cf-leftrail__list {
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 40px);
+    mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 40px);
+  }
+
+  .cf-leftrail[data-fade="r"] .cf-leftrail__list {
+    -webkit-mask-image: linear-gradient(90deg, var(--c-ink) calc(100% - 40px), transparent 100%);
+    mask-image: linear-gradient(90deg, var(--c-ink) calc(100% - 40px), transparent 100%);
+  }
+
+  .cf-leftrail[data-fade="lr"] .cf-leftrail__list {
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 40px, var(--c-ink) calc(100% - 40px), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 40px, var(--c-ink) calc(100% - 40px), transparent 100%);
+  }
+
+  /* a small white disc level with the icons, so the chevron reads apart from the faded icon under it */
+  .cf-leftrail__more {
+    position: absolute;
+    top: 8px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--r-pill);
+    background: var(--c-bg);
+    color: var(--c-ink-2);
+    box-shadow: var(--sh-2);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+
+  .cf-leftrail__more--l {
+    left: 4px;
+  }
+
+  .cf-leftrail__more--r {
+    right: 4px;
+  }
+
+  .cf-leftrail__more svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2.25;
+  }
+
+  .cf-leftrail[data-fade*="l"] .cf-leftrail__more--l,
+  .cf-leftrail[data-fade*="r"] .cf-leftrail__more--r {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .cf-leftrail__more:hover {
+    color: var(--c-primary);
   }
 }
