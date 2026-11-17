@@ -46,7 +46,8 @@ describe("useDesigns", () => {
   it("follows the library as designs are saved, trashed and restored", async () => {
     const { result } = renderHook(() => useDesigns());
     await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(result.current.active).toEqual([]);
+    // as above: `ready` can come from a read that started before beforeEach emptied the library, so wait for the empty list
+    await waitFor(() => expect(result.current.active).toEqual([]));
     const design = await seedDesign({ title: "Fresh" });
     await waitFor(() => expect(result.current.active.map((item) => item.title)).toEqual(["Fresh"]));
     await moveToTrash(design.id);
