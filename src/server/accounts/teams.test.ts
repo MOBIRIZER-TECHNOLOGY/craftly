@@ -3,8 +3,10 @@
  * editor, a viewer and somebody outside), invites (shown once, uses, expiry, revoking, the cap), redeeming, roles and the last
  * owner, removing and leaving, deleting a team with its space, and the limits on teams and members.
  */
+import { request } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { boot, call, closeAll, design, HOUR, PASSWORD, PNG, signUp, type Booted } from "./testServer";
+import type { MemoryAccounts } from "./storage";
+import { boot, call, closeAll, design, HOUR, ORIGIN, PASSWORD, PNG, signUp, type Booted } from "./testServer";
 
 afterEach(closeAll);
 
@@ -145,7 +147,53 @@ describe("the role matrix over HTTP", () => {
     expect((await call(b, "GET", `${space}/designs/d1`, { token: editor.token })).status).toBe(404);
     expect((await call(b, "GET", "/api/me", { token: editor.token })).body.teams).toEqual([]);
   });
+
+  it("checks the role again when a write takes its turn: a member removed or lowered while the body was on its way writes nothing", async () => {
+    const b = await boot();
+    const { owner, team, members, space } = await teamWith(b, ["editor", "editor"]);
+    const [removed, lowered] = members;
+    const gone = await slowPut(b, `${space}/designs/d1`, removed.token, { baseRev: null, design: design("d1") }, async () => {
+      expect((await call(b, "DELETE", `/api/teams/${team.id}/members/${removed.user.id}`, { token: owner.token })).status).toBe(200);
+    });
+    expect(gone.status).toBe(404);
+    const down = await slowPut(b, `${space}/designs/d2`, lowered.token, { baseRev: null, design: design("d2") }, async () => {
+      expect((await call(b, "PUT", `/api/teams/${team.id}/members/${lowered.user.id}`, { token: owner.token, body: { role: "viewer" } })).status).toBe(200);
+    });
+    expect(down.status).toBe(403);
+    expect((await call(b, "GET", `${space}/changes`, { token: owner.token })).body.designs).toEqual([]);
+  });
+
+  it("leaves no file of a team deleted while a write of its was on its way", async () => {
+    const b = await boot();
+    const { owner, team, space } = await teamWith(b, []);
+    const late = await slowPut(b, `${space}/designs/d1`, owner.token, { baseRev: null, design: design("d1") }, async () => {
+      expect((await call(b, "DELETE", `/api/teams/${team.id}`, { token: owner.token })).status).toBe(200);
+    });
+    expect(late.status).toBe(404);
+    expect((b.storage as MemoryAccounts).rawKeys().filter((key) => key.includes(team.id))).toEqual([]);
+  });
 });
+
+/**
+ * A PUT whose body comes in two halves: `between` runs once the server has the first half (and has checked who asks, which it
+ * does before reading a body), then the rest is sent. The answer, as `call` gives it.
+ */
+function slowPut(b: Booted, path: string, token: string, body: unknown, between: () => Promise<void>): Promise<{ status: number; body: { code?: string } }> {
+  const text = JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const headers = { origin: ORIGIN, authorization: `Bearer ${token}`, "content-type": "application/json", "content-length": String(Buffer.byteLength(text)) };
+    const req = request(`${b.base}${path}`, { method: "PUT", headers }, (res) => {
+      let got = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk: string) => (got += chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: JSON.parse(got) as { code?: string } }));
+    });
+    req.on("error", reject);
+    const half = Math.floor(text.length / 2);
+    req.write(text.slice(0, half));
+    setTimeout(() => between().then(() => req.end(text.slice(half)), reject), 150);
+  });
+}
 
 describe("teams", () => {
   it("are made by anybody signed in, as their owner, with a name; at most maxTeamsPerPerson", async () => {
@@ -278,7 +326,7 @@ describe("invites", () => {
     expect((await make({ role: "viewer", uses: 1, hours: 1 })).status).toBe(201);
   });
 
-  it("keep a member's role when they redeem again, using nothing; a team is at most maxMembersPerTeam (409 full)", async () => {
+  it("keep a member's role when they redeem again, using nothing; a team is at most maxMembersPerTeam (409 team-full)", async () => {
     const b = await boot({ maxMembersPerTeam: 2 });
     const { owner, team } = await teamWith(b, []);
     const invite = await call(b, "POST", `/api/teams/${team.id}/invites`, { token: owner.token, body: { role: "viewer", uses: 3, hours: 1 } });
@@ -289,8 +337,37 @@ describe("invites", () => {
     const two = await signUp(b);
     const full = await call(b, "POST", "/api/invites/redeem", { token: two.token, body: { code: invite.body.code } });
     expect(full.status).toBe(409);
-    expect(full.body.code).toBe("full");
+    expect(full.body.code).toBe("team-full");
     expect((await call(b, "GET", `/api/teams/${team.id}/invites`, { token: owner.token })).body.invites[0].usesLeft).toBe(2);
+  });
+
+  it("make no account from an invite of a full team where sign-up needs a code (409 team-full), and keep its use", async () => {
+    const open = await boot({ maxMembersPerTeam: 1, limits: { signupPerAddress: 0 } });
+    const { owner, team } = await teamWith(open, []);
+    const code = (await call(open, "POST", `/api/teams/${team.id}/invites`, { token: owner.token, body: { role: "viewer", uses: 1, hours: 1 } })).body.code;
+    await closeAll();
+    // the same accounts, on a server that takes new accounts with a code only
+    const b = await boot({ signup: "invite", maxMembersPerTeam: 1, limits: { signupPerAddress: 0 } }, {}, { storage: open.storage, clock: open.clock });
+    for (let i = 0; i < 3; i++) {
+      const tried = await call(b, "POST", "/api/auth/signup", { body: { email: `p${i}@example.org`, password: PASSWORD, name: "P", code } });
+      expect(tried.status).toBe(409);
+      expect(tried.body.code).toBe("team-full");
+      expect((await call(b, "POST", "/api/auth/signin", { body: { email: `p${i}@example.org`, password: PASSWORD } })).status).toBe(401);
+    }
+    expect((await call(b, "GET", `/api/teams/${team.id}/invites`, { token: owner.token })).body.invites[0].usesLeft).toBe(1);
+  });
+
+  it("let two sign-ups with two invites into the last place of a team make one account between them", async () => {
+    const open = await boot({ maxMembersPerTeam: 2, limits: { signupPerAddress: 0 } });
+    const { owner, team } = await teamWith(open, []);
+    const invite = async () => (await call(open, "POST", `/api/teams/${team.id}/invites`, { token: owner.token, body: { role: "editor", uses: 1, hours: 1 } })).body.code;
+    const codes = [await invite(), await invite()];
+    await closeAll();
+    const b = await boot({ signup: "invite", maxMembersPerTeam: 2, limits: { signupPerAddress: 0 } }, {}, { storage: open.storage, clock: open.clock });
+    const answers = await Promise.all(codes.map((code, i) => call(b, "POST", "/api/auth/signup", { body: { email: `r${i}@example.org`, password: PASSWORD, name: "R", code } })));
+    expect(answers.map((a) => a.status).sort()).toEqual([201, 409]);
+    expect(answers.find((a) => a.status === 409)!.body.code).toBe("team-full");
+    expect((await call(b, "GET", `/api/teams/${team.id}`, { token: owner.token })).body.members).toHaveLength(2);
   });
 
   it("refuse codes that are not codes (400), need a session (401), and limit wrong codes to 20 an hour (429)", async () => {

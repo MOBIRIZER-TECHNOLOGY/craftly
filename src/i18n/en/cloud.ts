@@ -32,6 +32,8 @@ export const cloud = {
     "too-many-teams": "You are in as many teams as one may be.",
     "too-many-invites": "This team has as many open invites as it may. Revoke one first.",
     live: "This design is open live with your team right now.",
+    "team-full": "This team has as many members as it may. Ask one of its owners to make room.",
+    "not-live": "Nobody is editing this design live right now. You can open it from your team's designs.",
     "bad-answer": "The account server sent something Craftly cannot use. Nothing of it was kept.",
     unknown: "Something went wrong. Try again.",
   },

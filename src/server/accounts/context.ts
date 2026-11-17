@@ -80,8 +80,13 @@ export interface LiveHooks {
    * they edited, are closed.
    */
   recheck(scope: { space?: string; userId?: string }): void;
-  /** A space is gone (its team was deleted): its bound rooms are closed and forgotten, with nothing to write back to. */
-  spaceGone(space: string): void;
+  /**
+   * A space is gone (its team was deleted, or its person): its bound rooms are closed and forgotten, with nothing to write back
+   * to, those in memory and those kept on the disk (found by the ids of the designs the space held).
+   */
+  spaceGone(space: string, designIds: readonly string[]): void;
+  /** A design was deleted for good: a bound room of it kept on the disk is dropped (one in memory refused the deletion). */
+  designGone(space: string, designId: string): void;
 }
 
 /** What the server gives the accounts beyond their own options. */
@@ -251,14 +256,15 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
   };
 
   /** The person and session of a token's hash, by the rules of `authenticate`; null when it lets nobody in. Used as `authenticate` does. */
-  const sessionOf = async (tokenHash: string): Promise<Authed | null> => {
+  const sessionOf = async (tokenHash: string, use = true): Promise<Authed | null> => {
     let session = await storage.loadSession(tokenHash);
     if (!session) return null;
     const at = now();
     if (at >= session.expiresAt || at >= session.createdAt + SESSION_MAX_MS) return null;
     const user = SERVER_ID.test(session.userId) ? await storage.loadUser(session.userId) : null;
     if (!user || user.disabled || user.sessions[session.id] !== tokenHash) return null;
-    if (at - session.lastUsedAt >= SESSION_TOUCH_MS) {
+    // (`use` false: a look again at a session already let in, which is not a use of it and does not keep it alive)
+    if (use && at - session.lastUsedAt >= SESSION_TOUCH_MS) {
       session = { ...session, lastUsedAt: at, expiresAt: Math.min(session.createdAt + SESSION_MAX_MS, at + SESSION_IDLE_MS) };
       await storage.saveSession(tokenHash, session);
     }
@@ -269,9 +275,9 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
    * The role in a space of whoever holds the session of this token's hash: owner of their own space, their role in a team's;
    * null when the session lets nobody in or its person is not in the space. What a socket of a bound room is let in with (live.ts).
    */
-  const roleInSpace = async (tokenHash: string, space: string): Promise<{ userId: string; role: TeamRole } | null> => {
+  const roleInSpace = async (tokenHash: string, space: string, use = true): Promise<{ userId: string; role: TeamRole } | null> => {
     if (!SERVER_ID.test(space)) return null;
-    const authed = await sessionOf(tokenHash);
+    const authed = await sessionOf(tokenHash, use);
     if (!authed) return null;
     const { user } = authed;
     if (space === user.id) return { userId: user.id, role: "owner" };

@@ -28,6 +28,7 @@ import {
   putFolder,
   restoreVersion,
   writeBack,
+  type WriteBack,
 } from "./spaces";
 import type { TeamRole } from "./roles";
 import { createInvite, createTeam, deleteTeam, getTeam, listInvites, redeem, removeMember, renameTeam, revokeInvite, setRole } from "./teams";
@@ -101,10 +102,13 @@ export interface Accounts {
   admin(req: IncomingMessage, url: URL, res: ServerResponse): Promise<boolean>;
   /** What the rooms bound to designs of spaces ask of the accounts (live.ts). */
   bound: {
-    /** The person behind a session (the SHA-256 of its token, hex) and their role in a space; null when it lets nobody in there. */
-    roleInSpace(tokenHash: string, space: string): Promise<{ userId: string; role: TeamRole } | null>;
-    /** Writes a room's design back to its space as the next revision (`writeBack` in spaces.ts); throws when it cannot. */
-    writeBack(space: string, designId: string, design: Record<string, unknown>, startTitle: string | undefined): Promise<number>;
+    /**
+     * The person behind a session (the SHA-256 of its token, hex) and their role in a space; null when it lets nobody in there.
+     * `use` false looks again at a seat without counting it as a use of the session (which would keep it alive).
+     */
+    roleInSpace(tokenHash: string, space: string, use?: boolean): Promise<{ userId: string; role: TeamRole } | null>;
+    /** Writes a room's design back to its space (`writeBack` in spaces.ts), or as a copy when the space moved on past `baseRev`; throws when it cannot. */
+    writeBack(space: string, designId: string, design: Record<string, unknown>, startTitle: string | undefined, baseRev: number): Promise<WriteBack>;
   };
 }
 
@@ -167,8 +171,8 @@ export function createAccounts(options: AccountsOptions, server: ServerContext):
       return handled;
     },
     bound: {
-      roleInSpace: (tokenHash, space) => ctx.roleInSpace(tokenHash, space),
-      writeBack: (space, designId, design, startTitle) => writeBack(ctx, space, designId, design, startTitle),
+      roleInSpace: (tokenHash, space, use) => ctx.roleInSpace(tokenHash, space, use),
+      writeBack: (space, designId, design, startTitle, baseRev) => writeBack(ctx, space, designId, design, startTitle, baseRev),
     },
   };
 }

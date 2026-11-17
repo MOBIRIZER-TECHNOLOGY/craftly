@@ -92,6 +92,11 @@ export interface LiveServerOptions {
   roomTtlMs?: number;
   /** How often the storage is looked through for rooms that have expired (and once when the server starts to listen). */
   sweepEveryMs?: number;
+  /**
+   * How often every socket seated in a bound room with a session is looked up again (5 minutes unless set): one whose session
+   * ran out by its time, or that no longer lets its person in, is sent away (`no-access`, close 4003).
+   */
+  seatCheckEveryMs?: number;
   /** The most the images of one room may take in the storage, in bytes (they are kept as base64: 48 MiB hold 36 MiB of images). */
   maxRoomAssetBytes?: number;
   maxRooms?: number;
@@ -174,6 +179,7 @@ const DEFAULTS = {
   roomCreatePerHour: 10,
   wrongKeysPerHour: 10,
   sweepEveryMs: 60 * 60 * 1000,
+  seatCheckEveryMs: 5 * 60 * 1000,
   maxRoomAssetBytes: 48 * 1024 * 1024,
 };
 const DAY = 24 * 60 * 60 * 1000;
@@ -272,6 +278,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     trustProxy: options.trustProxy ?? false,
     roomTtlMs: options.roomTtlMs ?? 0,
     sweepEveryMs: options.sweepEveryMs ?? DEFAULTS.sweepEveryMs,
+    seatCheckEveryMs: options.seatCheckEveryMs ?? DEFAULTS.seatCheckEveryMs,
     maxRoomAssetBytes: options.maxRoomAssetBytes ?? DEFAULTS.maxRoomAssetBytes,
   };
   const now = options.now ?? Date.now;
@@ -294,7 +301,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     liveRoom: (space, designId) => liveRoom(space, designId),
     bind: (space, designId, current) => bind(space, designId, current),
     recheck: (scope) => recheck(scope),
-    spaceGone: (space) => spaceGone(space),
+    spaceGone: (space, designIds) => spaceGone(space, designIds),
+    designGone: (space, designId) => dropOnDisk(space, [designId]),
   };
   const accounts: Accounts | null = options.accounts
     ? createAccounts(options.accounts, { allowOrigin: o.allowOrigin, trustProxy: o.trustProxy, now, maxDesignBytes: o.maxDesignBytes, live: hooks })
@@ -434,11 +442,22 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     return job;
   };
 
+  /**
+   * Whether somebody keeps the room in memory: a request at work, or a connection, except one seated in a bound room to look
+   * (a viewer). A viewer is in a room that somebody who may edit opened, and does not keep it: while it is in memory its space
+   * refuses writes of the design, which is not a viewer's to cause. A connection that has not been seated yet keeps it.
+   */
+  const held = (l: Loaded) => {
+    if (l.pins) return true;
+    for (const ws of l.sockets) if (l.seats.get(ws)?.role !== "view") return true;
+    return false;
+  };
+
   const unloadLater = (l: Loaded) => {
-    if (closing || l.removed || l.sockets.size || l.pins || l.idleTimer) return;
+    if (closing || l.removed || held(l) || l.idleTimer) return;
     l.idleTimer = setTimeout(() => {
       l.idleTimer = null;
-      if (l.sockets.size || l.pins) return;
+      if (held(l)) return;
       void enqueue(l, () => leave(l));
     }, o.idleCloseMs);
   };
@@ -459,12 +478,12 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
    * connection that came in meanwhile keeps the room in memory, in step with its space.
    */
   const leave = async (l: Loaded) => {
-    if (l.sockets.size || l.pins || loaded.get(l.id) !== l) return;
+    if (held(l) || loaded.get(l.id) !== l) return;
     if (l.record.bound && !l.removed) {
       l.leaving = true;
       try {
         const inStep = await writeBack(l);
-        if (l.sockets.size || l.pins) return;
+        if (held(l)) return;
         if (inStep) {
           await o.storage.remove(l.id);
           l.removed = true;
@@ -476,13 +495,20 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       }
     }
     letGo(l);
+    // the viewers left in a bound room that nobody who may edit is in: the room is gone (and they may open the design from the space)
+    for (const s of l.sockets) {
+      send(s, { t: "denied", reason: "not-found" });
+      s.close(4004, "gone");
+    }
   };
 
   /**
    * Writes the design of a bound room back to its space as the next revision (accounts/spaces.ts `writeBack`: the space's queue,
    * its checks and its quota), when the room has changed since it was made or last written back. In the room's queue. True when
-   * the room and its space are in step afterwards; false when it could not be written: the room keeps its copy (in memory and in
-   * its record on the disk), the failure is counted and written to the log.
+   * the room and its space are in step afterwards, and the room may go: written back; or kept as a new design because the space
+   * moved on past the revision the room was made from (never over the newer revision); or there is nothing to write back to (its
+   * design or its space is gone: the room is dropped). False when it could not be written: the room keeps its copy (in memory and
+   * in its record on the disk), the failure is counted and written to the log.
    */
   const writeBack = async (l: Loaded): Promise<boolean> => {
     const bound = l.record.bound;
@@ -490,9 +516,19 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     try {
       if (!accounts) throw new Error("this server has no accounts (ACCOUNTS=1) to write the design back to");
       const design = l.record.design as unknown as Record<string, unknown>;
-      const rev = await accounts.bound.writeBack(bound.space, bound.designId, design, bound.title);
+      const done = await accounts.bound.writeBack(bound.space, bound.designId, design, bound.title, bound.rev);
+      if (done.gone) {
+        metrics.count("write_backs_dropped_total");
+        console.error(`Craftly dropped the live design of the room ${l.id}: its design or its space is gone`);
+        l.record = { ...l.record, bound: { ...bound, roomRev: l.record.rev } };
+        return true;
+      }
       metrics.count("write_backs_total");
-      l.record = { ...l.record, bound: { ...bound, rev, roomRev: l.record.rev, title: String(l.record.design.title) } };
+      if (done.copy) {
+        // the room's copy is a design of its own now; the room is no longer the design's (`rev` stays: anything more is a copy too)
+        metrics.count("write_back_copies_total");
+        l.record = { ...l.record, bound: { ...bound, roomRev: l.record.rev } };
+      } else l.record = { ...l.record, bound: { ...bound, rev: done.rev, roomRev: l.record.rev, title: String(l.record.design.title) } };
       return true;
     } catch (error) {
       metrics.count("write_back_failures_total");
@@ -604,8 +640,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     if (found) {
       const was = found.record.bound;
       if (!was) throw new Error(`the room ${id} has the id of a bound room and is not one`);
-      const clean = found.record.rev === was.roomRev;
-      if (!clean || found.sockets.size || found.pins) {
+      if (found.sockets.size || found.pins) {
         unloadLater(found);
         return id;
       }
@@ -614,10 +649,13 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         unloadLater(found);
         return id;
       }
-      // A room on the disk with nothing of its own, from before its space moved on (it was not removed when it went back, or
-      // the server stopped while it was being made): it goes, and the room is made again from the space.
+      // A room on the disk from before its space moved on: the server stopped while it was in use or being made, or it was kept
+      // because writing it back failed, and the space took writes meanwhile (only a room in memory holds them off). Its copy, if
+      // it has one of its own, never goes over the newer revision: writing back keeps it as a new design, "(edited live)". Then
+      // the room goes, and is made again from the space. (When writing back fails, the room as it is is opened.)
       await enqueue(found, async () => {
-        if (found.removed || found.sockets.size || found.pins || found.record.rev !== was.roomRev) return;
+        if (found.removed || found.sockets.size || found.pins || !(await writeBack(found))) return;
+        if (found.sockets.size || found.pins) return;
         await o.storage.remove(id);
         found.removed = true;
         letGo(found);
@@ -670,6 +708,16 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
    */
   const recheck = (scope: { space?: string; userId?: string }) => {
     accessChanges++;
+    lookAgain(scope);
+  };
+
+  /**
+   * Looks up again every seat in scope (`recheck`). Also every `seatCheckEveryMs` for all of them: a session that runs out by its
+   * time (30 days without use, 180 at most) changes nothing anybody could be told of, and a socket that came in with it goes then.
+   * Looking again is not a use of the session, which a browser's requests are (its sync, every minute): a socket alone does not
+   * keep a session alive.
+   */
+  const lookAgain = (scope: { space?: string; userId?: string }) => {
     if (!accounts) return;
     const bound = accounts.bound;
     for (const l of boundLoaded.values()) {
@@ -677,7 +725,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       if (scope.space !== undefined && space !== scope.space) continue;
       for (const [ws, seat] of l.seats) {
         if (scope.userId !== undefined && seat.userId !== scope.userId) continue;
-        bound.roleInSpace(seat.tokenHash, space).then(
+        bound.roleInSpace(seat.tokenHash, space, false).then(
           (found) => {
             if (!found || found.userId !== seat.userId || (seat.role === "edit" && roomRole(found.role) !== "edit")) revoke(l, ws);
           },
@@ -696,23 +744,45 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     deny(ws, "no-access");
   };
 
+  const seatChecker = setInterval(() => lookAgain({}), o.seatCheckEveryMs);
+  seatChecker.unref();
+
+  /** Removes a bound room without writing it back, in its queue, and sends away everybody in it (`no-access`, close 4003). */
+  const drop = (l: Loaded) =>
+    enqueue(l, async () => {
+      if (l.removed) return;
+      await o.storage.remove(l.id);
+      metrics.count("rooms_removed_total");
+      l.removed = true;
+      letGo(l);
+      for (const s of l.sockets) deny(s, "no-access");
+    }).catch((error: unknown) => console.error(`Craftly could not remove the room ${l.id} of a design or space that is gone`, error));
+
   /**
-   * A space is gone (its team was deleted, or its person): its bound rooms have nowhere to go back to. Everybody in them is sent
-   * away (`no-access`, close 4003) and they are removed, in their queues, without writing back.
+   * A space is gone (its team was deleted, or its person): its bound rooms have nowhere to go back to. Those in memory are
+   * dropped (`drop`), and so are those kept on the disk (`dropOnDisk`), which would otherwise count towards `maxRooms` for good.
    */
-  const spaceGone = (space: string) => {
+  const spaceGone = (space: string, designIds: readonly string[]) => {
     accessChanges++;
-    for (const l of [...boundLoaded.values()]) {
-      if ((l.record.bound as NonNullable<RoomRecord["bound"]>).space !== space) continue;
-      enqueue(l, async () => {
-        if (l.removed) return;
-        await o.storage.remove(l.id);
-        metrics.count("rooms_removed_total");
-        l.removed = true;
-        letGo(l);
-        for (const s of l.sockets) deny(s, "no-access");
-      }).catch((error: unknown) => console.error(`Craftly could not remove the room ${l.id} of a space that is gone`, error));
-    }
+    for (const l of [...boundLoaded.values()]) if ((l.record.bound as NonNullable<RoomRecord["bound"]>).space === space) void drop(l);
+    dropOnDisk(space, designIds);
+  };
+
+  /**
+   * Drops the bound rooms of these designs of a space that are on the disk and not in memory (kept because writing them back
+   * failed, or left by a server that stopped): their design was deleted for good, or their space is gone. A few are looked for by
+   * their ids; many, among the rooms the storage lists.
+   */
+  const dropOnDisk = (space: string, designIds: readonly string[]) => {
+    if (!designIds.length) return;
+    const wanted = new Set(designIds.map((designId) => boundRoomId(space, designId)));
+    void (async () => {
+      const ids = wanted.size <= 20 ? [...wanted] : (await o.storage.list()).map(({ id }) => id).filter((id) => wanted.has(id));
+      for (const id of ids) {
+        const l = await find(id);
+        if (l?.record.bound?.space === space) await drop(l);
+      }
+    })().catch((error: unknown) => console.error(`Craftly could not look for the rooms of designs of ${space} that are gone`, error));
   };
 
   /** Runs what an HTTP request does with a room, which stays in memory for as long as that takes and may leave it afterwards. */
@@ -1252,6 +1322,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         if (!admit(msg, role)) return;
         metrics.count("session_joins_total");
         l.seats.set(ws, { userId: found.userId, tokenHash, role });
+        // a viewer does not keep the room in memory (`held`): with nobody else in it, it leaves as an empty room does
+        if (role === "view") unloadLater(l);
         for (let i = 0; i < waiting.length; i++) {
           if (ws.readyState !== ws.OPEN) return;
           // (a second join with a session among them waits again, and what came after it with it)
@@ -1373,6 +1445,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       closing = true;
       clearInterval(heartbeat);
       clearInterval(sweeper);
+      clearInterval(seatChecker);
       await sweeping;
       for (const l of loaded.values()) if (l.idleTimer) clearTimeout(l.idleTimer);
       // a room's inbox job puts itself in the queue again while edits wait (`drain`); nothing new arrives now, so this ends

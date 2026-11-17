@@ -118,9 +118,18 @@ differs from the design above, and why:
   token that is not one, expired, signed out, revoked, or its person disabled), `wrong` (401), `forbidden` (403: a member whose
   role may not), `origin` (403), `not-found` (404, also for a space or team the person is not in), `deleted` (404 on reading a
   tombstone, 409 on writing one), `method` (405 with `Allow`), `rate` (429 with `Retry-After`), `busy` (503 with `Retry-After: 1`),
-  `server` (500), and the ones of the table: `signup-closed`, `code-wrong` (403), `email-taken`, `full` (403 for `MAX_ACCOUNTS`,
-  409 for a team's members), `newer` (400: a design from a newer Craftly, from `migrateDesign`), `conflict`, `exists`, `quota`,
-  `last-owner`, `too-many-teams`, `too-many-invites` (409).
+  `server` (500), and the ones of the table: `signup-closed`, `code-wrong` (403), `email-taken`, `full` (403, `MAX_ACCOUNTS`),
+  `team-full` (409, a team's members: redeeming an invite, or signing up with one), `newer` (400: a design from a newer Craftly,
+  from `migrateDesign`), `conflict`, `exists`, `quota`, `last-owner`, `too-many-teams`, `too-many-invites`, `live`, `not-live`
+  (409).
+- **Who asks is asked again when a write takes its turn.** A route checks the session and the role before it reads a body (up
+  to 16 MB, which may take minutes), and every change of a space checks them again first thing in the space's queue (`stillMay`
+  in `spaces.ts`), without counting it as a use of the session. So a member removed or lowered, a session ended, or a team
+  deleted while a body was on its way writes nothing (401 `session`, 404 `not-found` or 403 `forbidden`), and a team's deletion,
+  whose space is removed in that same queue, leaves no file of the space behind.
+- **A sign-up with an invite of a full team makes no account** (409 `team-full`): the team's place is checked in the team's
+  queue before the account is made, and the queue is held until the person is in the team, so two sign-ups with two invites
+  never both take the last place, and an invite's use is spent by every account it makes.
 - **The routes are asked before the rooms' Origin check, not just before the final 404**, so that the accounts refuse a page of
   another origin themselves, for every method including GET (a person's own data), with the code `origin`. The rooms answer as
   before. The preflight names `authorization` and `PATCH` only when accounts are on.
@@ -178,13 +187,20 @@ differs from the design above, and why:
 `src/server/live.ts` (bound rooms, the join with a session, writing back, sending people away), `accounts/spaces.ts`
 (`openLive`, `writeBack`, `notLive`), `accounts/context.ts` (`LiveHooks`, `sessionOf`, `roleInSpace`, `recheck`), the calls of
 `recheck` and `spaceGone` in `teams.ts`, `auth.ts`, `admin.ts` and `endSessions`, and the join in `src/collab/protocol.ts`
-(`JoinMsg`, `joinCredential`, `SESSION_TOKEN`). Tests: `accounts/bound.test.ts` (17, real sockets). Where it differs from the
+(`JoinMsg`, `joinCredential`, `SESSION_TOKEN`). Tests: `accounts/bound.test.ts` (24, real sockets). Where it differs from the
 design above, or says more:
 
 - **`POST /api/spaces/:s/designs/:id/live`** (anybody in the space: owner, editor, viewer; no body, or `{}`) answers
   `200 {room, ws: "/ws?room=<room>", role: "edit" | "view"}`. `ws` is the socket's path on the server that answered, which the
   client makes into an address the way it makes a link's (`websocketUrl`). No key is ever in an answer. 404 `not-found` for a
   design that is not there or a space the person is not in, 404 `deleted` for a tombstone, 503 `full` at `MAX_ROOMS`.
+- **Only those who may write make the room; a viewer joins one that is open.** While a bound room is in memory its space
+  refuses writes of the design, which a viewer must not be able to cause. So a viewer's `POST …/live` answers the room only while
+  it is in memory or being made (somebody who may edit opened it), and 409 `not-live` otherwise (the client shows the space's
+  copy). And a viewer's seat does not keep the room in memory: when nobody but viewers is left (a socket not seated yet counts
+  as somebody), it leaves after `idleCloseMs` as an empty room does, is written back, and the viewers are sent `denied
+  not-found` and closed with 4004; asking again then answers `not-live`. This was chosen over keeping viewers' rooms apart:
+  it is one rule (`held` in live.ts), and nothing a viewer does can hold up an editor's sync.
 - **The room's id is derived, not random**: base64url of SHA-256 of `"craftly bound room\n<space>\n<designId>"`. So the same
   design always finds the same room, also after a restart and also when its record was kept because writing back failed (below).
   The id is no secret here: getting in takes a member's session. Its `editHash` and `viewHash` are of random keys that are made,
@@ -206,19 +222,28 @@ design above, or says more:
 - **While the room is in memory, or being made,** the space answers `PUT`, `POST …/restore` and `DELETE` of that design with
   409 `live {room}` (the check runs in the space's queue, and the binding reads the design's revision through that queue after
   it is marked, so no write slips in between). `PATCH …/meta` works. Restore and delete are refused too because the write-back
-  would otherwise put the room's design over them; trashing is a detail and works.
+  would otherwise put the room's design over them; trashing is a detail and works. A room's record kept on the disk and not in
+  memory (writing it back failed, or the server stopped without closing) does not hold the space's writes off: that would let a
+  record nobody opens again pin its design for good, and cost a look at the disk at every write; instead it can never write over
+  what the space took meanwhile (below).
 - **Writing back** happens when the room leaves memory (`idleCloseMs` after the last person leaves) and when the server stops:
   through the space's queue, checked as a `PUT` is (`checkDesign`, `migrateDesign`, the size, the quota; a `live` field is
   dropped), as the next revision, with the comments the design carries. Nothing is written when the room did not change, or
   when its content is the current revision's. The details stay the manifest's, except the title when it was changed in the
   room; the thumbnail is the one of the revision before (the server cannot draw one). Then the room's record is removed, and the
-  next `POST …/live` makes it again from the space. When writing back fails (a full space, a refused design, a design or space
-  gone), the room's record stays on the disk with its copy, the failure is counted and logged, and the space takes writes again;
-  the next `POST …/live` finds that record and opens it (its copy is newer), and it is written back when it next leaves memory.
-  If the space has moved on meanwhile, the room's copy is written over it as the next revision (the space's is kept in the
-  revisions). Expiry (`ROOM_TTL_DAYS`) never removes a bound room: the sweep loads it, and leaving memory writes it back. A
-  record on the disk that has nothing of its own and is older than the space (the server stopped while it was being made) is
-  dropped and made again.
+  next `POST …/live` makes it again from the space. When writing back fails (a full space, a refused design), the room's record
+  stays on the disk with its copy, the failure is counted and logged, and the space takes writes again; the next `POST …/live`
+  finds that record and opens it when the space is still at the revision it was made from (its copy is newer), and it is
+  written back when it next leaves memory.
+- **A room never writes over a newer revision.** `bound.rev` is the revision the room was made from or last written back as.
+  When the space has moved on past it (it took writes while the room's record was only on the disk), the room's design is kept
+  as a new design of the space instead, with a new id and the title "Title (edited live)" (the server's English, as a browser's
+  conflict copy is "Title (edited on Device)"), in the design's folder, and the room is removed; nothing is written when its
+  content is the space's already. `POST …/live` does this before opening such a record, so the room people join is made from
+  the space's newer revision. A record whose design is gone (deleted for good, or not in the space) or whose space is gone is
+  dropped without writing back (`write_backs_dropped_total`), never tried again for ever; deleting a design for good, a team or
+  an account also drops its rooms kept on the disk, so they no longer count towards `MAX_ROOMS`. Expiry (`ROOM_TTL_DAYS`) never
+  removes a bound room: the sweep loads it, and leaving memory writes it back.
 - **Sending people away**: removing a member, lowering them to viewer, ending a session (sign-out, `DELETE /api/me/sessions/:id`),
   a reset or a new password (which end sessions), and disabling or deleting an account look up again every socket of that person
   (or every socket of that space) that came in with a session; one whose session no longer lets them in, or that edited and may
@@ -226,15 +251,18 @@ design above, or says more:
   room (`src/collab/room.ts`) keeps a member's role from their join and has no way to change it, and a socket that keeps an
   edit role it no longer has is the one thing this must never allow; the browser joins again and is welcomed as a viewer. A
   raise sends nobody away. A lookup that fails sends the socket away too. Deleting a team (or an account with its own space)
-  sends everybody in the space's bound rooms away the same way and removes the rooms without writing back. Not checked while a
-  socket stays: a session that runs out by its time (30 days without use) does not close a socket that came in before.
+  sends everybody in the space's bound rooms away the same way and removes the rooms without writing back. A session that runs
+  out by its time (30 days without use, 180 at most) is found by looking every seat up again every `seatCheckEveryMs` (5
+  minutes), and its socket is sent away the same way. Looking again is not a use of the session (a browser's own requests are,
+  its sync every minute), so a socket alone does not keep a session alive.
 - **Metrics** (`craftly_live_`): `bound_rooms_made_total`, `session_joins_total`, `session_joins_refused_total`,
-  `write_backs_total`, `write_back_failures_total`, the gauge `bound_rooms_in_memory`, and the reason `revoked` of
-  `connections_closed_total`.
+  `write_backs_total`, `write_back_failures_total`, `write_back_copies_total`, `write_backs_dropped_total`, the gauge
+  `bound_rooms_in_memory`, and the reason `revoked` of `connections_closed_total`.
 - **Not built**: the client (joining with the session, "Edit live with your team", the viewer's read-only mode, asking again
   after `no-access` and after a room that went away between `POST …/live` and the join, which answers `not-found`). A bound room
-  removed by the operator (`DELETE /api/admin/rooms/:id`) is not written back. A bound room whose write-back failed and whose
-  team was deleted afterwards stays on the disk until the operator removes it.
+  removed by the operator (`DELETE /api/admin/rooms/:id`) is not written back. A room kept on the disk whose design or space went
+  while the server was not running (no hook told it) counts towards `MAX_ROOMS` until it is next loaded (a join, `POST …/live`,
+  the sweep) and dropped.
 
 ## As built (steps 8–13, 15)
 
@@ -367,7 +395,8 @@ account's designs are removed from the device (the default, for shared computers
 - Server, real sockets (`boot()` as in `comments.test.ts`): `accounts.test.ts`, `spaces.test.ts`, `teams.test.ts`, `bound.test.ts`
   (team designs live: joining by session as editor and viewer, the refusals, keys in a bound room and sessions in a link's, 409
   `live`, writing back with comments and after a restart with `FileAccounts`, a failed write-back kept, removal, role changes, a
-  deleted team, a disabled account, a reset, a new password, two members at once).
+  deleted team, a disabled account, a reset, a new password, two members at once, a room kept on the disk after its space moved
+  on or its design or team went, a viewer with no editor, a session that runs out while seated).
 - DOM: the step-2 migration, `src/cloud/sync.dom.test.ts` (fake IndexedDB against a real server on port 0), the screens,
   `Shell.test.tsx`, and that a backup leaves out `cloudSession` and `sync`.
 - `e2e/accounts.cjs`: two devices of one person and a second person, from moving local designs in to conflicts, a team, an

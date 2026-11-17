@@ -11,7 +11,7 @@ import { reply, sha256Hex } from "../http";
 import { passwordProblem } from "./passwords";
 import { badRequest, exactly, newServerId, readCode, readDevice, readEmail, readJson, readName, refuse, RESET_CODE_MS, secret, tooMany, type Ctx } from "./context";
 import { SERVER_ID, type CodeRecord, type UserRecord } from "./storage";
-import { joinByInvite, liveInvite } from "./teams";
+import { hasPlace, joinInQueue, liveInvite, teamFull } from "./teams";
 
 /** A small body: an email, a password of 256 characters at most, a name, a code. */
 const SMALL_BODY = 8 * 1024;
@@ -60,12 +60,10 @@ export async function signup(ctx: Ctx, req: IncomingMessage, res: ServerResponse
   const pw = await ctx.hasher.hash(password);
   const recoveryCode = secret(16);
 
-  /** Makes the account; inside the queue of its code, so that a code of one use makes one account. */
-  const make = async (): Promise<{ user: UserRecord; team?: { id: string; name: string; role: string } }> => {
-    const found = code ? await usableSignupCode(ctx, code) : null;
-    if (code && !found) throw wrongCode();
+  /** The account itself: the person, then their email. */
+  const makeUser = () =>
     // one at a time, so that the count of accounts is exact at the limit
-    const user = await ctx.serial("signup", async () => {
+    ctx.serial("signup", async () => {
       if (ctx.o.maxAccounts && (await ctx.storage.listUsers()).length >= ctx.o.maxAccounts) throw refuse(403, "full", "this server holds as many accounts as it may");
       const made: UserRecord = { id: newServerId(), email, name, pw, recoveryHash: sha256Hex(recoveryCode), disabled: false, createdAt: ctx.now(), sessions: {}, teams: [] };
       // The person first and then the email, which the file system gives to one account only: a crash between the two leaves a
@@ -77,17 +75,30 @@ export async function signup(ctx: Ctx, req: IncomingMessage, res: ServerResponse
       }
       return made;
     });
-    if (!found) return { user };
-    if (found.record.kind === "signup") {
+  /** Makes the account; inside the queue of its code, so that a code of one use makes one account. */
+  const make = async (): Promise<{ user: UserRecord; team?: { id: string; name: string; role: string } }> => {
+    const found = code ? await usableSignupCode(ctx, code) : null;
+    if (code && !found) throw wrongCode();
+    if (found?.record.kind === "invite") {
+      const invite = found.record;
+      // In the team's queue from the check to the join: a full team makes no account (whose invite would never be used, so one
+      // invite could make accounts without end), and two sign-ups with two invites cannot both take its last place.
+      return ctx.serial(`team:${invite.teamId}`, async () => {
+        const live = await liveInvite(ctx, invite);
+        if (!live) throw wrongCode();
+        if (!hasPlace(ctx, live.team)) throw teamFull();
+        const user = await makeUser();
+        const joined = await joinInQueue(ctx, found.hash, invite, user.id).catch(() => null);
+        return { user, team: joined ? { id: joined.team.id, name: joined.team.name, role: joined.role } : undefined };
+      });
+    }
+    const user = await makeUser();
+    if (found?.record.kind === "signup") {
       const left = found.record.usesLeft - 1;
       if (left > 0) await ctx.storage.saveCode(found.hash, { ...found.record, usesLeft: left });
       else await ctx.storage.removeCode(found.hash);
-      return { user };
     }
-    if (found.record.kind !== "invite") return { user };
-    // the account is made; an invite that stopped being good in this moment leaves a person without the team, not without an account
-    const joined = await joinByInvite(ctx, found.hash, found.record, user.id).catch(() => null);
-    return { user, team: joined ? { id: joined.team.id, name: joined.team.name, role: joined.role } : undefined };
+    return { user };
   };
   const made = code ? await ctx.serial(`code:${sha256Hex(code)}`, make) : await make();
   const token = await ctx.startSession(made.user.id, "");

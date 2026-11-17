@@ -11,10 +11,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 import { joinCredential, SESSION_TOKEN, type ServerMsg } from "@/collab/protocol";
+import { createPage, createShape } from "@/core/factory";
 import type { DesignComment } from "@/core/types";
 import { parseMetrics } from "../metricsText";
 import { FileStorage, MemoryStorage, ROOM_ID, type LiveStorage } from "../storage";
-import { FileAccounts } from "./storage";
+import { FileAccounts, MemoryAccounts } from "./storage";
 import { boot, call, closeAll, DAY, design, ORIGIN, PASSWORD, signUp, type Booted } from "./testServer";
 
 const sockets: WebSocket[] = [];
@@ -125,6 +126,8 @@ const comment = (id: string): DesignComment => ({
 });
 
 const xOf = (d: { pages: { elements: { id: string; x: number }[] }[] }) => d.pages[0].elements.find((e) => e.id === "a")?.x;
+/** The design of 	eamWith with its shape at x. */
+const withX = (x: number) => design("d1", "Poster", { pages: [createPage({ id: "p", elements: [createShape("rect", { id: "a", x })] })] });
 
 async function metrics(b: Booted) {
   const res = await fetch(`${b.base}/metrics`, { headers: { authorization: `Bearer ${METRICS_KEY}` } });
@@ -415,6 +418,161 @@ describe("who may stay", () => {
     const elsewhere = await call(b, "POST", "/api/auth/signin", { body: { email: members[2].email, password: PASSWORD } });
     expect((await call(b, "POST", "/api/me/password", { token: elsewhere.body.token, body: { old: PASSWORD, new: "another long password" } })).status).toBe(200);
     await until("the old session to be sent away", () => changed.closed() === 4003);
+    expect(own.closed()).toBeNull();
+  });
+});
+
+describe("a bound room left on the disk", () => {
+  /**
+   * A team's design opened live and edited (x = 77), and a server started again on what the disk held at that moment: the room's
+   * record with its copy (not written back: the server stopped without closing) and the space still at revision 1.
+   */
+  async function crashed() {
+    const accounts = new MemoryAccounts();
+    const rooms = new MemoryStorage();
+    const first = await boot({}, { storage: rooms, idleCloseMs: 60_000 }, { storage: accounts });
+    const { owner, teamId } = await teamWith(first);
+    const { room } = (await openLive(first, owner.token, teamId)).body;
+    const s = await member(first, room, owner.token, "owner");
+    expect((await edit(s, moveA(77))).t).toBe("ack");
+    const record = structuredClone(await rooms.load(room));
+    const accountsThen = new MemoryAccounts();
+    for (const key of accounts.rawKeys()) accountsThen.setRawText(key, accounts.rawText(key)!);
+    s.ws.terminate();
+    await closeAll();
+    const roomsThen = new MemoryStorage();
+    await roomsThen.save(room, record!);
+    const b = await boot({}, { storage: roomsThen, idleCloseMs: IDLE }, { storage: accountsThen, clock: first.clock });
+    return { b, owner, teamId, room, rooms: roomsThen, path: `/api/spaces/${teamId}/designs/d1` };
+  }
+  /** The copy that a room whose space moved on was kept as: "Poster (edited live)", read from the space. */
+  async function liveCopy(b: Booted, token: string, space: string) {
+    const feed = (await call(b, "GET", `/api/spaces/${space}/changes`, { token })).body;
+    const found = feed.designs.find((d: { title: string }) => d.title === "Poster (edited live)");
+    expect(found, JSON.stringify(feed.designs.map((d: { title: string }) => d.title))).toBeTruthy();
+    return (await call(b, "GET", `/api/spaces/${space}/designs/${found.id}`, { token })).body;
+  }
+
+  it("never overwrites a newer revision: opened again, the room is made from the space, and its copy is kept as a new design", async () => {
+    const { b, owner, teamId, room, path } = await crashed();
+    // a browser's sync: the room is not in memory, so the space takes the write
+    expect((await call(b, "PUT", path, { token: owner.token, body: { baseRev: 1, design: withX(5) } })).body).toEqual({ rev: 2 });
+    expect((await openLive(b, owner.token, teamId)).body.room).toBe(room);
+    const t = await member(b, room, owner.token, "owner");
+    expect(xOf(t.welcome()!.design as never)).toBe(5);
+    t.ws.close();
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+    const now = (await call(b, "GET", path, { token: owner.token })).body;
+    expect(now.rev).toBe(2);
+    expect(xOf(now.design)).toBe(5);
+    expect(xOf((await liveCopy(b, owner.token, teamId)).design)).toBe(77);
+  });
+
+  it("joined straight by its id after its space moved on, writes its copy back as a new design, not over the newer revision", async () => {
+    const { b, owner, teamId, room, path, rooms } = await crashed();
+    expect((await call(b, "PUT", path, { token: owner.token, body: { baseRev: 1, design: withX(5) } })).body).toEqual({ rev: 2 });
+    const t = await member(b, room, owner.token, "owner");
+    expect(xOf(t.welcome()!.design as never)).toBe(77);
+    expect((await edit(t, moveA(88))).t).toBe("ack");
+    t.ws.close();
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+    const now = (await call(b, "GET", path, { token: owner.token })).body;
+    expect(now.rev).toBe(2);
+    expect(xOf(now.design)).toBe(5);
+    expect(xOf((await liveCopy(b, owner.token, teamId)).design)).toBe(88);
+    expect(await rooms.load(room)).toBeNull();
+  });
+
+  /** A room whose write-back failed (the space is full), kept on the disk with its copy. */
+  async function keptOnDisk(b: Booted, rooms: LiveStorage, token: string, teamId: string, id = "d1") {
+    const { room } = (await openLive(b, token, teamId, id)).body;
+    const s = await member(b, room, token, "owner");
+    expect((await edit(s, [{ k: "el.set", page: "p", id: "a", set: { name: "n".repeat(50_000) } }])).t).toBe("ack");
+    s.ws.close();
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+    expect(await rooms.load(room)).not.toBeNull();
+    return room;
+  }
+
+  it("is dropped when its design is deleted, and no longer counts towards the rooms a server may hold", async () => {
+    const rooms = new MemoryStorage();
+    const b = await boot({ spaceQuotaBytes: 40_000 }, { idleCloseMs: IDLE, storage: rooms, maxRooms: 1 });
+    const { owner, teamId } = await teamWith(b);
+    const room = await keptOnDisk(b, rooms, owner.token, teamId);
+    expect((await call(b, "DELETE", `/api/spaces/${teamId}/designs/d1`, { token: owner.token })).status).toBe(200);
+    await until("the room to be dropped", async () => (await rooms.load(room)) === null);
+    expect((await call(b, "PUT", `/api/spaces/${teamId}/designs/d2`, { token: owner.token, body: { baseRev: null, design: design("d2") } })).status).toBe(201);
+    expect((await openLive(b, owner.token, teamId, "d2")).status).toBe(200);
+  });
+
+  it("is dropped when its team is deleted, and no longer counts towards the rooms a server may hold", async () => {
+    const rooms = new MemoryStorage();
+    const b = await boot({ spaceQuotaBytes: 40_000 }, { idleCloseMs: IDLE, storage: rooms, maxRooms: 1 });
+    const { owner, teamId } = await teamWith(b);
+    const room = await keptOnDisk(b, rooms, owner.token, teamId);
+    expect((await call(b, "DELETE", `/api/teams/${teamId}`, { token: owner.token })).status).toBe(200);
+    await until("the room to be dropped", async () => (await rooms.load(room)) === null);
+    const other = await teamWith(b);
+    expect((await openLive(b, other.owner.token, other.teamId)).status).toBe(200);
+  });
+
+  it("is dropped, not kept for ever, when it leaves memory and its design is gone", async () => {
+    const { b, owner, teamId, room, rooms } = await crashed();
+    // the design deleted for good on a server that did not know of the room (no hook told it): the room has nowhere to go
+    const m = JSON.parse((b.storage as MemoryAccounts).rawText(`spaces/${teamId}/manifest.json`) ?? "null");
+    expect(m, "the manifest's key").not.toBeNull();
+    m.designs.d1.deletedAt = b.clock.now();
+    (b.storage as MemoryAccounts).setRawText(`spaces/${teamId}/manifest.json`, JSON.stringify(m));
+    const t = await member(b, room, owner.token, "owner");
+    expect((await edit(t, moveA(3))).t).toBe("ack");
+    t.ws.close();
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+    expect(await rooms.load(room)).toBeNull();
+  });
+});
+
+describe("a viewer", () => {
+  it("cannot open a design live that no editor has open, and their seat does not keep the room in memory", async () => {
+    const b = await boot({}, { idleCloseMs: IDLE });
+    const { owner, teamId, members } = await teamWith(b, ["viewer"]);
+    const alone = await openLive(b, members[0].token, teamId);
+    expect(alone.status).toBe(409);
+    expect(alone.body.code).toBe("not-live");
+    expect(b.server.rooms()).toBe(0);
+    const path = `/api/spaces/${teamId}/designs/d1`;
+    expect((await call(b, "PUT", path, { token: owner.token, body: { baseRev: 1, design: withX(1) } })).status).toBe(200);
+    const { room } = (await openLive(b, owner.token, teamId)).body;
+    const ed = await member(b, room, owner.token, "own");
+    expect((await openLive(b, members[0].token, teamId)).body).toMatchObject({ room, role: "view" });
+    const vee = await member(b, room, members[0].token, "vee");
+    expect((await edit(ed, moveA(31))).t).toBe("ack");
+    ed.ws.close();
+    // the editors are gone: the room goes back to its space, and the viewer with it
+    await until("the viewer to be sent away", () => vee.closed() !== null);
+    expect(vee.closed()).toBe(4004);
+    expect(vee.denied()?.reason).toBe("not-found");
+    await until("the design to be written back", async () => (await call(b, "GET", path, { token: owner.token })).body.rev === 3);
+    expect((await call(b, "PUT", path, { token: owner.token, body: { baseRev: 3, design: withX(2) } })).status).toBe(200);
+  });
+});
+
+describe("a session that runs out by its time", () => {
+  it("sends its socket away from a bound room; a session in use stays, and looking it up again does not keep it alive", async () => {
+    const b = await boot({}, { seatCheckEveryMs: 40 });
+    const { owner, teamId, members } = await teamWith(b, ["editor"]);
+    const { room } = (await openLive(b, owner.token, teamId)).body;
+    const ed = await member(b, room, members[0].token, "ed");
+    const own = await member(b, room, owner.token, "own");
+    b.clock.advance(29 * DAY);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(ed.closed()).toBeNull();
+    // the owner's browser is used meanwhile (sync), the editor's is not
+    expect((await call(b, "GET", "/api/me", { token: owner.token })).status).toBe(200);
+    b.clock.advance(2 * DAY);
+    await until("the expired session to be sent away", () => ed.closed() !== null);
+    expect(ed.closed()).toBe(4003);
+    expect(ed.denied()?.reason).toBe("no-access");
+    await new Promise((r) => setTimeout(r, 200));
     expect(own.closed()).toBeNull();
   });
 });

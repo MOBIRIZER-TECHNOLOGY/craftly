@@ -19,6 +19,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { checkDesign } from "@/collab/protocol";
+import { uid } from "@/core/ids";
 import { MigrationError } from "@/core/schema/migrator";
 import { migrateDesign } from "@/core/schema/design";
 import { svgProblem } from "@/core/svgSafety";
@@ -39,15 +40,41 @@ const SMALL_BODY = 16 * 1024;
 
 /* ---------------- who may ---------------- */
 
+/** Who asks and for what: asked again when a change takes its turn in the space's queue (`change`). */
+interface Asker {
+  tokenHash: string;
+  userId: string;
+  action: Action;
+}
+
+/** A person's role in a space: owner of their own, their role in a team's; null when they are not in it (or it is not there). */
+async function roleIn(ctx: Ctx, user: UserRecord, spaceId: string): Promise<TeamRole | null> {
+  if (!SERVER_ID.test(spaceId)) return null;
+  if (spaceId === user.id) return "owner";
+  const team = await ctx.storage.loadTeam(spaceId);
+  return team && Object.hasOwn(team.members, user.id) ? team.members[user.id] : null;
+}
+
 /** The person and their role in a space, or 404 for a space they are not in (or that is not there); 403 when the role may not. */
-async function access(ctx: Ctx, req: IncomingMessage, spaceId: string, action: Action): Promise<{ user: UserRecord; role: TeamRole }> {
-  const { user } = await ctx.authenticate(req);
-  if (!SERVER_ID.test(spaceId)) throw notFound("no such space");
-  const team = spaceId === user.id ? null : await ctx.storage.loadTeam(spaceId);
-  const role: TeamRole | null = spaceId === user.id ? "owner" : team && Object.hasOwn(team.members, user.id) ? team.members[user.id] : null;
+async function access(ctx: Ctx, req: IncomingMessage, spaceId: string, action: Action): Promise<{ user: UserRecord; role: TeamRole; asker: Asker }> {
+  const { user, tokenHash } = await ctx.authenticate(req);
+  const role = await roleIn(ctx, user, spaceId);
   if (!role) throw notFound("no such space");
   if (!can(role, action)) throw refuse(403, "forbidden", `a ${role} cannot do this here`);
-  return { user, role };
+  return { user, role, asker: { tokenHash, userId: user.id, action } };
+}
+
+/**
+ * Asks again, in the space's queue, what `access` asked before the body was read (which can take minutes for 16 MB): a member
+ * removed or lowered meanwhile, a session ended, or a team deleted (whose space is then removed in this same queue) writes
+ * nothing. The session is not noted as used for this: the request was, already.
+ */
+async function stillMay(ctx: Ctx, space: string, asker: Asker): Promise<void> {
+  const authed = await ctx.sessionOf(asker.tokenHash, false);
+  if (!authed || authed.user.id !== asker.userId) throw refuse(401, "session", "sign in again");
+  const role = await roleIn(ctx, authed.user, space);
+  if (!role) throw notFound("no such space");
+  if (!can(role, asker.action)) throw refuse(403, "forbidden", `a ${role} cannot do this here`);
 }
 
 const readId = (raw: string, pattern: RegExp, what: string) => {
@@ -82,9 +109,13 @@ async function purge(ctx: Ctx, space: string, m: Manifest): Promise<void> {
   for (const [id, folder] of Object.entries(m.folders)) if (folder.deletedAt !== undefined && folder.deletedAt <= before) delete m.folders[id];
 }
 
-/** Runs a change of a space in its queue: the manifest as it is (purged), and it is saved when the work says it changed. */
-function change<T>(ctx: Ctx, space: string, work: (m: Manifest) => Promise<{ value: T; changed: boolean }>): Promise<T> {
+/**
+ * Runs a change of a space in its queue: who asks is asked again first (`stillMay`; null for the server's own write-back of a
+ * room, whose people were let in by their sessions), then the manifest as it is (purged), saved when the work says it changed.
+ */
+function change<T>(ctx: Ctx, space: string, asker: Asker | null, work: (m: Manifest) => Promise<{ value: T; changed: boolean }>): Promise<T> {
   return ctx.serial(`space:${space}`, async () => {
+    if (asker) await stillMay(ctx, space, asker);
     const m = await ctx.storage.loadManifest(space);
     const count = Object.keys(m.designs).length + Object.keys(m.folders).length;
     await purge(ctx, space, m);
@@ -190,7 +221,7 @@ const sameContent = async (ctx: Ctx, space: string, id: string, rev: number, jso
 };
 
 export async function putDesign(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
-  await access(ctx, req, space, "write");
+  const { asker } = await access(ctx, req, space, "write");
   const id = readId(rawId, SAFE_ID, "a design");
   const body = await readJson(req, ctx.o.maxDesignBytes + MAX_THUMBNAIL + 16 * 1024);
   exactly(body, ["baseRev", "design"], ["thumbnail"]);
@@ -200,7 +231,7 @@ export async function putDesign(ctx: Ctx, req: IncomingMessage, res: ServerRespo
   const { design, json } = readDesign(ctx, body.design, id);
   const content = { thumbnail: readThumbnail(body.thumbnail), json };
 
-  const answer = await change<{ status: number; rev: number; dropped: { rev: number }[] }>(ctx, space, async (m) => {
+  const answer = await change<{ status: number; rev: number; dropped: { rev: number }[] }>(ctx, space, asker, async (m) => {
     notLive(ctx, space, id);
     const entry = designIn(m, id);
     if (entry?.deletedAt !== undefined) throw refuse(409, "deleted", "this design was deleted; it can be restored or sent as a new design", { rev: entry.rev });
@@ -250,9 +281,12 @@ export async function getDesign(ctx: Ctx, req: IncomingMessage, res: ServerRespo
 
 /**
  * `POST …/designs/:id/live`: the room bound to a design, made from its current revision when there is none in memory (or kept on
- * the disk because writing it back failed: its copy is the newer). For anybody in the space (a viewer too). The answer is what a
- * browser joins with: the room, the socket's address on this server (as the address of a link's socket is made from the server's),
- * and the role the member's session will get there. No key: a bound room is joined with the session (protocol.ts, `join`).
+ * the disk because writing it back failed: its copy is the newer). Making it is for those who may write (owner, editor): while
+ * it is in memory the space refuses writes of the design, which is not a viewer's to cause. A viewer is given the room only while
+ * it is in memory or being made (somebody who may edit opened it), and 409 `not-live` otherwise; their seat does not keep it in
+ * memory either (live.ts). The answer is what a browser joins with: the room, the socket's address on this server (as the address
+ * of a link's socket is made from the server's), and the role the member's session will get there. No key: a bound room is
+ * joined with the session (protocol.ts, `join`).
  */
 export async function openLive(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
   const { role } = await access(ctx, req, space, "read");
@@ -263,6 +297,11 @@ export async function openLive(ctx: Ctx, req: IncomingMessage, res: ServerRespon
   if (text.trim() && text.trim() !== "{}") throw badRequest("this takes no body");
   const live = ctx.server.live;
   if (!live) throw notFound("this server has no rooms");
+  if (!can(role, "write")) {
+    const open = live.liveRoom(space, id);
+    if (!open) throw refuse(409, "not-live", "nobody is editing this design live: open it from the space");
+    return reply(res, 200, { room: open, ws: `/ws?room=${open}`, role: "view" });
+  }
   const room = await live.bind(space, id, () =>
     // in the space's queue, after any write that was there first: from here on a write is refused with `live` (notLive)
     ctx.serial(`space:${space}`, async () => {
@@ -274,40 +313,68 @@ export async function openLive(ctx: Ctx, req: IncomingMessage, res: ServerRespon
       return { design: withDetails(stored, entry), rev: entry.rev };
     }),
   );
-  reply(res, 200, { room, ws: `/ws?room=${room}`, role: can(role, "write") ? "edit" : "view" });
+  reply(res, 200, { room, ws: `/ws?room=${room}`, role: "edit" });
+}
+
+/** What writing a room back did: the revision the space is at, and the id of the copy it made instead (or null); or its design is gone. */
+export type WriteBack = { gone: false; rev: number; copy: string | null } | { gone: true };
+
+/** What the title of the copy of a room ends with, when its space moved on and the room's design is kept as a design of its own. */
+export const LIVE_COPY = " (edited live)";
+
+/** Whether the space is still somebody's: its team, or its person. */
+async function spaceIsThere(ctx: Ctx, space: string): Promise<boolean> {
+  if (!SERVER_ID.test(space)) return false;
+  return !!((await ctx.storage.loadTeam(space)) ?? (await ctx.storage.loadUser(space)));
 }
 
 /**
  * Writes the design of a bound room back to its space as the next revision, when the room leaves memory (live.ts): through the
  * space's queue, checked as a `PUT` is (`checkDesign`, the format, the size) and within the quota. Nothing is written when the
  * content is the current revision's. The details stay the manifest's, except the title when the people in the room changed it
- * (`startTitle` is the title the room was made with). Gives the revision the space is at; throws when it cannot be written (a
- * refusal, a full space, a design deleted or a space gone), and the caller keeps the room's copy.
+ * (`startTitle` is the title the room was made with).
+ *
+ * `baseRev` is the revision the room was made from (or last written back as). When the space has moved on since (the room was
+ * kept on the disk and the space took writes meanwhile), the room's design never goes over the newer revision: it is kept as a
+ * new design, "Title (edited live)", as a browser keeps the loser of a conflict ("Title (edited on Device)"), unless it is the
+ * current content already. When the design (or the space) is gone, nothing is written and the room has nowhere to go (`gone`).
+ * Throws when it cannot be written (a refusal, a full space), and the caller keeps the room's copy.
  */
-export async function writeBack(ctx: Ctx, space: string, id: string, given: Record<string, unknown>, startTitle: string | undefined): Promise<number> {
+export async function writeBack(ctx: Ctx, space: string, id: string, given: Record<string, unknown>, startTitle: string | undefined, baseRev: number): Promise<WriteBack> {
   const { live: _live, ...content } = given;
   const { design, json } = readDesign(ctx, { ...content, id }, id);
-  const answer = await change(ctx, space, async (m) => {
+  const answer = await change<WriteBack & { dropped?: { rev: number }[] }>(ctx, space, null, async (m) => {
     const entry = designIn(m, id);
-    if (!entry) throw notFound("no such design");
-    if (entry.deletedAt !== undefined) throw refuse(409, "deleted", "this design was deleted");
+    if (!entry || entry.deletedAt !== undefined || !(await spaceIsThere(ctx, space))) return { value: { gone: true }, changed: false };
+    if (entry.rev !== baseRev) {
+      if (await sameContent(ctx, space, id, entry.rev, json)) return { value: { gone: false, rev: entry.rev, copy: null }, changed: false };
+      if (liveDesigns(m) >= ctx.o.maxDesignsPerSpace) throw quota();
+      const copyId = uid("d");
+      const base = typeof design.title === "string" ? design.title : entry.title;
+      const title = `${base.slice(0, MAX_TITLE - LIVE_COPY.length)}${LIVE_COPY}`;
+      const copy = readDesign(ctx, { ...design, id: copyId, title }, copyId);
+      const details = { ...detailsOf(m, copy.design), folderId: entry.folderId, metaSeq: m.seq + 1 };
+      await writeRevision(ctx, space, m, copyId, undefined, { thumbnail: null, json: copy.json }, details);
+      return { value: { gone: false, rev: entry.rev, copy: copyId }, changed: true };
+    }
     const title = typeof design.title === "string" ? design.title.slice(0, MAX_TITLE) : entry.title;
     const retitled = startTitle !== undefined && title !== startTitle && title !== entry.title;
     if (retitled) {
       entry.title = title;
       entry.metaSeq = entry.seq = ++m.seq;
     }
-    if (await sameContent(ctx, space, id, entry.rev, json)) return { value: { rev: entry.rev, dropped: [] as { rev: number }[] }, changed: retitled };
+    if (await sameContent(ctx, space, id, entry.rev, json)) return { value: { gone: false, rev: entry.rev, copy: null }, changed: retitled };
     const kept = await ctx.storage.loadVersion(space, id, entry.rev);
-    const written = await writeRevision(ctx, space, m, id, entry, { thumbnail: kept?.thumbnail ?? null, json }, entry);
-    return { value: written, changed: true };
+    const { rev, dropped } = await writeRevision(ctx, space, m, id, entry, { thumbnail: kept?.thumbnail ?? null, json }, entry);
+    return { value: { gone: false, rev, copy: null, dropped }, changed: true };
   });
-  if (answer.dropped.length) await ctx.serial(`space:${space}`, () => dropVersions(ctx, space, id, answer.dropped));
-  return answer.rev;
+  const { dropped, ...done } = answer;
+  if (dropped?.length) await ctx.serial(`space:${space}`, () => dropVersions(ctx, space, id, dropped));
+  return done;
 }
 
 export async function patchMeta(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
-  await access(ctx, req, space, "write");
+  const { asker } = await access(ctx, req, space, "write");
   const id = readId(rawId, SAFE_ID, "a design");
   const body = await readJson(req, SMALL_BODY);
   exactly(body, [], ["title", "folderId", "starred", "trashedAt"]);
@@ -318,7 +385,7 @@ export async function patchMeta(ctx: Ctx, req: IncomingMessage, res: ServerRespo
   if ("starred" in body && typeof body.starred !== "boolean") throw badRequest("starred is true or false");
   const trashed = body.trashedAt;
   if ("trashedAt" in body && trashed !== null && (typeof trashed !== "number" || !Number.isFinite(trashed) || trashed < 0)) throw badRequest("trashedAt is a time or null");
-  const seq = await change(ctx, space, async (m) => {
+  const seq = await change(ctx, space, asker, async (m) => {
     const entry = designIn(m, id);
     if (!entry || entry.deletedAt !== undefined) throw notFound("no such design");
     if ("folderId" in body && body.folderId !== null && !liveFolder(m, body.folderId)) throw refuse(404, "not-found", "no such folder");
@@ -336,9 +403,9 @@ export async function patchMeta(ctx: Ctx, req: IncomingMessage, res: ServerRespo
 
 /** Deletes a design for good: a tombstone that the feed carries; the revisions stay 90 days, for a restore. */
 export async function deleteDesign(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
-  await access(ctx, req, space, "deleteForever");
+  const { asker } = await access(ctx, req, space, "deleteForever");
   const id = readId(rawId, SAFE_ID, "a design");
-  await change(ctx, space, async (m) => {
+  await change(ctx, space, asker, async (m) => {
     const entry = designIn(m, id);
     if (!entry) throw notFound("no such design");
     if (entry.deletedAt !== undefined) return { value: null, changed: false };
@@ -349,6 +416,8 @@ export async function deleteDesign(ctx: Ctx, req: IncomingMessage, res: ServerRe
     entry.seq = m.seq;
     return { value: null, changed: true };
   });
+  // a room of the design kept on the disk (its write-back failed) has nowhere to go now: it is dropped
+  ctx.server.live?.designGone(space, id);
   reply(res, 200, { ok: true });
 }
 
@@ -363,13 +432,13 @@ export async function listVersions(ctx: Ctx, req: IncomingMessage, res: ServerRe
 
 /** Makes a kept revision the current one, as a new revision; a deleted design comes back with it. */
 export async function restoreVersion(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
-  await access(ctx, req, space, "write");
+  const { asker } = await access(ctx, req, space, "write");
   const id = readId(rawId, SAFE_ID, "a design");
   const body = await readJson(req, SMALL_BODY);
   exactly(body, ["rev"]);
   const wanted = body.rev;
   if (typeof wanted !== "number" || !Number.isSafeInteger(wanted) || wanted < 1) throw badRequest("rev is a revision");
-  const answer = await change(ctx, space, async (m) => {
+  const answer = await change(ctx, space, asker, async (m) => {
     notLive(ctx, space, id);
     const entry = designIn(m, id);
     if (!entry) throw notFound("no such design");
@@ -390,7 +459,7 @@ export async function restoreVersion(ctx: Ctx, req: IncomingMessage, res: Server
 /* ---------------- folders ---------------- */
 
 export async function putFolder(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
-  await access(ctx, req, space, "folders");
+  const { asker } = await access(ctx, req, space, "folders");
   const id = readId(rawId, SAFE_ID, "a folder");
   const body = await readJson(req, SMALL_BODY);
   exactly(body, ["name", "parentId"]);
@@ -398,7 +467,7 @@ export async function putFolder(ctx: Ctx, req: IncomingMessage, res: ServerRespo
   if (!name || [...name].length > MAX_TITLE || /\p{Cc}/u.test(name)) throw badRequest(`a folder's name is text of 1 to ${MAX_TITLE} characters`);
   const parentId = body.parentId;
   if (parentId !== null && (typeof parentId !== "string" || !SAFE_ID.test(parentId))) throw badRequest("a parent is the id of a folder, or null");
-  const status = await change(ctx, space, async (m) => {
+  const status = await change(ctx, space, asker, async (m) => {
     const was = Object.hasOwn(m.folders, id) ? m.folders[id] : undefined;
     const isNew = !was || was.deletedAt !== undefined;
     if (isNew && Object.values(m.folders).filter((f) => f.deletedAt === undefined).length >= ctx.o.maxFolders) throw quota();
@@ -418,9 +487,9 @@ export async function putFolder(ctx: Ctx, req: IncomingMessage, res: ServerRespo
 
 /** Removes a folder (a tombstone); what was in it, designs and folders, is then at the top. */
 export async function deleteFolder(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
-  await access(ctx, req, space, "folders");
+  const { asker } = await access(ctx, req, space, "folders");
   const id = readId(rawId, SAFE_ID, "a folder");
-  await change(ctx, space, async (m) => {
+  await change(ctx, space, asker, async (m) => {
     const folder = Object.hasOwn(m.folders, id) ? m.folders[id] : undefined;
     if (!folder) throw notFound("no such folder");
     if (folder.deletedAt !== undefined) return { value: null, changed: false };
@@ -466,7 +535,7 @@ export function looksLike(mime: string, bytes: Buffer): boolean {
 }
 
 export async function putAsset(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
-  await access(ctx, req, space, "upload");
+  const { asker } = await access(ctx, req, space, "upload");
   const id = readId(rawId, ASSET_ID, "an upload");
   const text = await readBody(req, ASSET_LIMIT + 100);
   if (text === null) throw new BodyTooBig();
@@ -487,7 +556,7 @@ export async function putAsset(ctx: Ctx, req: IncomingMessage, res: ServerRespon
     const problem = svgProblem(bytes.toString("utf8"));
     if (problem) throw badRequest(`this drawing cannot be kept: ${problem}`);
   } else if (!looksLike(asset.mime, bytes)) throw badRequest(`this is not a ${asset.mime} picture`);
-  const status = await change(ctx, space, async (m) => {
+  const status = await change(ctx, space, asker, async (m) => {
     if (Object.hasOwn(m.assets, id)) {
       const have = await ctx.storage.loadAsset(space, id);
       if (have && have.mime === asset.mime && have.base64 === asset.base64) return { value: 200, changed: false };

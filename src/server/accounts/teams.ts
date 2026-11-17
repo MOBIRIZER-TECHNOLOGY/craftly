@@ -54,30 +54,49 @@ export async function liveInvite(ctx: Ctx, record: Extract<CodeRecord, { kind: "
  * Puts a person into the team of an invite and uses one use of it. Somebody who is in the team already keeps their role and uses
  * nothing. The caller holds the queue of the code. The person's list of teams is written before the team (see `UserRecord.teams`).
  */
-export async function joinByInvite(ctx: Ctx, codeHash: string, record: Extract<CodeRecord, { kind: "invite" }>, userId: string): Promise<{ team: TeamRecord; role: TeamRole }> {
-  return ctx.serial(`team:${record.teamId}`, async () => {
-    const found = await liveInvite(ctx, record);
-    if (!found) throw refuse(403, "code-wrong", "that invite is not good (any more)");
-    const { team, invite } = found;
-    const already = roleIn(team, userId);
-    if (already) return { team, role: already };
-    if (Object.keys(team.members).length >= ctx.o.maxMembersPerTeam) throw refuse(409, "full", "this team has as many members as it may");
-    await ctx.serial(`user:${userId}`, async () => {
-      const user = await ctx.storage.loadUser(userId);
-      if (!user) throw refuse(401, "session", "sign in again");
-      if ((await ctx.teamsOf(user)).length >= ctx.o.maxTeamsPerPerson) throw refuse(409, "too-many-teams", "you are in as many teams as one may be");
-      if (!user.teams.includes(team.id)) {
-        user.teams.push(team.id);
-        await ctx.storage.saveUser(user);
-      }
-    });
-    team.members[userId] = invite.role;
-    invite.usesLeft--;
-    if (invite.usesLeft <= 0) team.invites = team.invites.filter((one) => one !== invite);
-    await ctx.storage.saveTeam(team);
-    if (invite.usesLeft <= 0) await ctx.storage.removeCode(codeHash);
-    return { team, role: invite.role };
+export function joinByInvite(ctx: Ctx, codeHash: string, record: Extract<CodeRecord, { kind: "invite" }>, userId: string): Promise<{ team: TeamRecord; role: TeamRole }> {
+  return ctx.serial(`team:${record.teamId}`, () => joinInQueue(ctx, codeHash, record, userId));
+}
+
+/** 409 `team-full`: a team with as many members as it may (`maxMembersPerTeam`). */
+export const teamFull = () => refuse(409, "team-full", "this team has as many members as it may");
+
+/**
+ * Whether a team has a place for one more person. A sign-up with an invite asks it before it makes the account, in the team's
+ * queue, which it then holds until the person is in: so two sign-ups never both take the last place.
+ */
+export const hasPlace = (ctx: Ctx, team: TeamRecord) => Object.keys(team.members).length < ctx.o.maxMembersPerTeam;
+
+/** `joinByInvite` for a caller that holds the team's queue already (a sign-up with an invite, auth.ts). */
+export async function joinInQueue(ctx: Ctx, codeHash: string, record: Extract<CodeRecord, { kind: "invite" }>, userId: string): Promise<{ team: TeamRecord; role: TeamRole }> {
+  const found = await liveInvite(ctx, record);
+  if (!found) throw refuse(403, "code-wrong", "that invite is not good (any more)");
+  const { team, invite } = found;
+  const already = roleIn(team, userId);
+  if (already) return { team, role: already };
+  if (!hasPlace(ctx, team)) throw teamFull();
+  await ctx.serial(`user:${userId}`, async () => {
+    const user = await ctx.storage.loadUser(userId);
+    if (!user) throw refuse(401, "session", "sign in again");
+    if ((await ctx.teamsOf(user)).length >= ctx.o.maxTeamsPerPerson) throw refuse(409, "too-many-teams", "you are in as many teams as one may be");
+    if (!user.teams.includes(team.id)) {
+      user.teams.push(team.id);
+      await ctx.storage.saveUser(user);
+    }
   });
+  team.members[userId] = invite.role;
+  invite.usesLeft--;
+  if (invite.usesLeft <= 0) team.invites = team.invites.filter((one) => one !== invite);
+  await ctx.storage.saveTeam(team);
+  if (invite.usesLeft <= 0) await ctx.storage.removeCode(codeHash);
+  return { team, role: invite.role };
+}
+
+/** Removes a space with everything in it, and gives the ids of the designs it held (whose bound rooms go too). In the space's queue. */
+export async function removeSpace(ctx: Ctx, space: string): Promise<string[]> {
+  const ids = Object.keys((await ctx.storage.loadManifest(space)).designs);
+  await ctx.storage.removeSpace(space);
+  return ids;
 }
 
 /** Takes a team off a person's list; the team's own record no longer names them already. */
@@ -137,16 +156,16 @@ export async function renameTeam(ctx: Ctx, req: IncomingMessage, res: ServerResp
 /** Deletes a team, its space with every design and upload in it, and its invites. Its members are told by the team being gone. */
 export async function deleteTeam(ctx: Ctx, req: IncomingMessage, res: ServerResponse, teamId: string) {
   const { user } = await ctx.authenticate(req);
-  const team = await ctx.serial(`team:${teamId}`, async () => {
+  const { team, designIds } = await ctx.serial(`team:${teamId}`, async () => {
     const { team: found } = await teamFor(ctx, teamId, user.id, "deleteTeam");
     // the team first: from then on nobody is in it, and what is left of its space and codes is nobody's
     await ctx.storage.removeTeam(teamId);
     for (const invite of found.invites) await ctx.storage.removeCode(invite.hash);
-    await ctx.serial(`space:${teamId}`, () => ctx.storage.removeSpace(teamId));
-    return found;
+    const ids = await ctx.serial(`space:${teamId}`, () => removeSpace(ctx, teamId));
+    return { team: found, designIds: ids };
   });
-  // its bound rooms have no space to go back to: everybody in them is sent away and they are forgotten
-  ctx.server.live?.spaceGone(teamId);
+  // its bound rooms have no space to go back to: everybody in them is sent away and they are forgotten, on the disk too
+  ctx.server.live?.spaceGone(teamId, designIds);
   for (const memberId of Object.keys(team.members)) if (SERVER_ID.test(memberId)) await forgetTeam(ctx, memberId, teamId);
   reply(res, 200, { ok: true });
 }
