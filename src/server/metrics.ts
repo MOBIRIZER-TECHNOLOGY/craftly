@@ -24,14 +24,19 @@ const COUNTERS = {
   rooms_removed_total: "Rooms removed by their owner (stop sharing) or by the operator.",
   rooms_expired_total: "Rooms removed because nobody used them for longer than rooms may live.",
   presence_dropped_total: "Presence messages (pointers, selections) that were not passed on because a connection sent them faster than it may.",
+  bound_rooms_made_total: "Rooms made for a design of a space, to be edited live by the members of its team without a link (POST .../live).",
+  session_joins_total: "Joins of a bound room with an account's session that were let in.",
+  session_joins_refused_total: "Joins with a session that were refused: the session lets nobody in, its person is not in the space, or the room is not bound.",
+  write_backs_total: "Designs of bound rooms written back to their space when the room left memory or the server stopped (also when nothing had changed).",
+  write_back_failures_total: "Designs of bound rooms that could not be written back; the room keeps its copy and is tried again.",
 } as const;
 
 /** Counters with one label, and every value that label can have. */
 const LABELLED = {
   connections_closed_total: {
-    help: "WebSocket connections the server closed for a limit: a reader that was too slow, too many messages or bytes, too many joins, a message that was too big, no answer to pings, too many waiting at a room, too many edits waiting to be saved in a room.",
+    help: "WebSocket connections the server closed for a limit: a reader that was too slow, too many messages or bytes, too many joins, a message that was too big, no answer to pings, too many waiting at a room, too many edits waiting to be saved in a room; or, in a bound room, a session that no longer lets its person in or lets them only look (revoked).",
     label: "reason",
-    values: ["slow_reader", "rate", "join_rate", "size", "silent", "waiting", "queue"],
+    values: ["slow_reader", "rate", "join_rate", "size", "silent", "waiting", "queue", "revoked"],
   },
   upgrades_refused_total: {
     help: "WebSocket connections refused before they were made: too many connections, or a page of an origin that is not allowed.",
@@ -52,6 +57,7 @@ const GAUGES = {
   rooms_stored: "Rooms in the storage (counted at most every few seconds).",
   connections: "WebSocket connections that are open now.",
   peers_joined: "Connections that have shown a key and are in a room now.",
+  bound_rooms_in_memory: "Rooms bound to a design of a space that are in memory now.",
 } as const;
 
 export type CounterName = keyof typeof COUNTERS;

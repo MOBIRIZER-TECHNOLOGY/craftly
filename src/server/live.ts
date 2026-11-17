@@ -21,20 +21,30 @@
  * /api/teams, /api/invites/ and /api/spaces/ (src/server/accounts, docs/ACCOUNTS.md), and the operator's under /api/admin/accounts.
  * WebSocket: /ws?room=<id>               then a join with the key as the first message, then the rest of src/collab/protocol.ts
  *
+ * A room can also be BOUND to a design of a space (a team's design, opened live by its members without a link): made by
+ * `POST /api/spaces/:s/designs/:id/live` (accounts/spaces.ts, `bind` below) from the design's current revision, joined with the
+ * member's session instead of a key (the role in the team decides: owner and editor edit, a viewer looks), and written back to
+ * the space as the next revision when it leaves memory or the server stops. Its id is derived from the space and the design, so
+ * that the same design always finds the same room; its keys are random and never handed out, and a key is never taken in it.
+ * While it is in memory the space refuses writes of that design's content (409 `live`). Removing a member, lowering them to a
+ * viewer, deleting the team, disabling the person or ending their sessions sends their sockets away (close 4003).
+ *
  * The keys are random and only their hashes are stored. The room's id is random too: a link with an id and a key is all it takes to
  * get in, so a link is a secret. The key is never in an address, which every server and proxy that it passes writes in a log: a browser
  * shows it in its first message, soon after it has connected, and a connection that does not is sent away.
  */
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
-import { checkDesign, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
+import { checkDesign, joinCredential, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type JoinMsg, type Role, type ServerMsg } from "@/collab/protocol";
 import { DesignTooLarge, Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
-import { ACCOUNT_CORS, createAccounts, type Accounts, type AccountsOptions } from "./accounts";
+import { ACCOUNT_CORS, createAccounts, type Accounts, type AccountsOptions, type LiveHooks } from "./accounts";
+import { refuse } from "./accounts/context";
+import type { TeamRole } from "./accounts/roles";
 import { clientAddress, hourlyLimit } from "./address";
-import { ASSET_ID, ASSET_LIMIT, checkAsset, cors, foreign, readBody, reply, replyTooBig, requestTarget, sameSecret, sha256 } from "./http";
+import { ASSET_ID, ASSET_LIMIT, checkAsset, cors, foreign, readBody, reply, replyTooBig, requestTarget, sameSecret, sha256, sha256Hex } from "./http";
 import { createMetrics, METRICS_CONTENT_TYPE, type LabelOf } from "./metrics";
 import { ROOM_ID, type LiveStorage, type RoomRecord } from "./storage";
 
@@ -213,7 +223,27 @@ interface Loaded {
   draining: boolean;
   removed: boolean;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  /** A bound room that is being written back to its space and let go: whoever looks for it waits for that (`find`). */
+  leaving: boolean;
+  /** In a bound room, the connections that came in with a session: whose it is (the hash of its token), and the role it gave. */
+  seats: Map<WebSocket, Seat>;
 }
+
+interface Seat {
+  userId: string;
+  tokenHash: string;
+  role: Role;
+}
+
+/** What a role in a team allows in a room: owners and editors edit, viewers look. */
+const roomRole = (role: TeamRole): Role => (role === "viewer" ? "view" : "edit");
+/** The id of the room bound to a design of a space: the same every time, so that the design always finds its room (also after a restart). */
+const boundRoomId = (space: string, designId: string) => createHash("sha256").update(`craftly bound room\n${space}\n${designId}`).digest("base64url");
+const boundKey = (space: string, designId: string) => `${space}\n${designId}`;
+/** How often a join with a session looks the person up again when who may be in bound rooms changed while it looked. */
+const SEAT_TRIES = 5;
+/** The most messages that may wait for the answer to a join with a session (a browser sends a few at most before its welcome). */
+const PENDING_MAX = 64;
 
 export function createLiveServer(options: LiveServerOptions): LiveServer {
   const o = {
@@ -255,8 +285,19 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const loaded = new Map<string, Loaded>();
   const loading = new Map<string, Promise<Loaded | null>>();
   const sockets = new Set<WebSocket>();
+  /** The bound rooms in memory, by space and design (`boundKey`); and the bindings at work, which count as live already. */
+  const boundLoaded = new Map<string, Loaded>();
+  const binding = new Map<string, Promise<string>>();
+  /** Goes up whenever who may be in bound rooms may have changed: a join that looked somebody up meanwhile looks again. */
+  let accessChanges = 0;
+  const hooks: LiveHooks = {
+    liveRoom: (space, designId) => liveRoom(space, designId),
+    bind: (space, designId, current) => bind(space, designId, current),
+    recheck: (scope) => recheck(scope),
+    spaceGone: (space) => spaceGone(space),
+  };
   const accounts: Accounts | null = options.accounts
-    ? createAccounts(options.accounts, { allowOrigin: o.allowOrigin, trustProxy: o.trustProxy, now, maxDesignBytes: o.maxDesignBytes })
+    ? createAccounts(options.accounts, { allowOrigin: o.allowOrigin, trustProxy: o.trustProxy, now, maxDesignBytes: o.maxDesignBytes, live: hooks })
     : null;
 
   let roomCreation = Promise.resolve();
@@ -351,7 +392,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       draining: false,
       removed: false,
       idleTimer: null,
+      leaving: false,
+      seats: new Map(),
     };
+    if (record.bound) boundLoaded.set(boundKey(record.bound.space, record.bound.designId), l);
     l.room.commit = async (design, rev, seqs, memory) => {
       // the design is turned into text once: to be measured here, and the same text is what the storage writes
       const designJson = JSON.stringify(design);
@@ -370,6 +414,11 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const find = async (id: string): Promise<Loaded | null> => {
     if (!ROOM_ID.test(id)) return null;
     const have = loaded.get(id);
+    if (have?.leaving) {
+      // a bound room on its way back to its space: once it is there, the room is looked for again (on the disk, or gone)
+      await have.work;
+      return find(id);
+    }
     if (have) {
       if (have.idleTimer) clearTimeout(have.idleTimer);
       have.idleTimer = null;
@@ -390,10 +439,66 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     l.idleTimer = setTimeout(() => {
       l.idleTimer = null;
       if (l.sockets.size || l.pins) return;
-      void enqueue(l, () => {
-        if (!l.sockets.size && !l.pins && loaded.get(l.id) === l) loaded.delete(l.id);
-      });
+      void enqueue(l, () => leave(l));
     }, o.idleCloseMs);
+  };
+
+  /** Takes a room out of memory (and out of the bound rooms): the next visitor reads it again, or finds it gone. */
+  const letGo = (l: Loaded) => {
+    if (l.idleTimer) clearTimeout(l.idleTimer);
+    l.idleTimer = null;
+    if (loaded.get(l.id) === l) loaded.delete(l.id);
+    const bound = l.record.bound;
+    if (bound && boundLoaded.get(boundKey(bound.space, bound.designId)) === l) boundLoaded.delete(boundKey(bound.space, bound.designId));
+  };
+
+  /**
+   * A room that nobody is at leaves memory, in its queue. A bound room is first written back to its space; once its design is
+   * there, its record is removed (the next `POST …/live` makes it again from the space). When writing back fails, the record
+   * stays on the disk with the room's copy, which is written back the next time the room leaves memory: nothing is lost. A
+   * connection that came in meanwhile keeps the room in memory, in step with its space.
+   */
+  const leave = async (l: Loaded) => {
+    if (l.sockets.size || l.pins || loaded.get(l.id) !== l) return;
+    if (l.record.bound && !l.removed) {
+      l.leaving = true;
+      try {
+        const inStep = await writeBack(l);
+        if (l.sockets.size || l.pins) return;
+        if (inStep) {
+          await o.storage.remove(l.id);
+          l.removed = true;
+        }
+      } catch (error) {
+        console.error(`Craftly wrote the live design of the room ${l.id} back to its space, and could not remove the room`, error);
+      } finally {
+        l.leaving = false;
+      }
+    }
+    letGo(l);
+  };
+
+  /**
+   * Writes the design of a bound room back to its space as the next revision (accounts/spaces.ts `writeBack`: the space's queue,
+   * its checks and its quota), when the room has changed since it was made or last written back. In the room's queue. True when
+   * the room and its space are in step afterwards; false when it could not be written: the room keeps its copy (in memory and in
+   * its record on the disk), the failure is counted and written to the log.
+   */
+  const writeBack = async (l: Loaded): Promise<boolean> => {
+    const bound = l.record.bound;
+    if (!bound || l.record.rev === bound.roomRev) return true;
+    try {
+      if (!accounts) throw new Error("this server has no accounts (ACCOUNTS=1) to write the design back to");
+      const design = l.record.design as unknown as Record<string, unknown>;
+      const rev = await accounts.bound.writeBack(bound.space, bound.designId, design, bound.title);
+      metrics.count("write_backs_total");
+      l.record = { ...l.record, bound: { ...bound, rev, roomRev: l.record.rev, title: String(l.record.design.title) } };
+      return true;
+    } catch (error) {
+      metrics.count("write_back_failures_total");
+      console.error(`Craftly could not write the live design of the room ${l.id} back to its space; the room keeps it and tries again when it next leaves memory`, error);
+      return false;
+    }
   };
 
   /**
@@ -416,8 +521,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     await o.storage.remove(l.id);
     metrics.count(why);
     l.removed = true;
-    if (l.idleTimer) clearTimeout(l.idleTimer);
-    loaded.delete(l.id);
+    letGo(l);
     for (const s of l.sockets) {
       send(s, { t: "denied", reason: "not-found" });
       s.close(4004, "gone");
@@ -446,7 +550,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           if (l.sockets.size || l.pins) {
             l.usedAt = now();
             await o.storage.touch(id, l.usedAt);
-          } else await forget(l, "rooms_expired_total");
+          } else if (!l.record.bound) await forget(l, "rooms_expired_total");
+          // A bound room on the disk is one whose design could not be written back to its space: it does not expire, it is
+          // let go below (`unloadLater`), which tries to write it back once more and removes it when that works.
         });
         unloadLater(l);
       } catch (error) {
@@ -465,6 +571,149 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   };
   const sweeper = setInterval(sweepNow, o.sweepEveryMs);
   sweeper.unref();
+
+  /* ---------------- rooms bound to designs of spaces ---------------- */
+
+  /** The room bound to a design while it is in memory or being made: the space refuses to write the design meanwhile. */
+  const liveRoom = (space: string, designId: string): string | null => {
+    const key = boundKey(space, designId);
+    return boundLoaded.has(key) || binding.has(key) ? boundRoomId(space, designId) : null;
+  };
+
+  /** The room bound to a design, made when needed; one binding of a design at a time, and a second asker gets the same answer. */
+  const bind = (space: string, designId: string, current: () => Promise<{ design: Record<string, unknown>; rev: number }>): Promise<string> => {
+    const key = boundKey(space, designId);
+    const running = binding.get(key);
+    if (running) return running;
+    const job = makeBound(space, designId, current).finally(() => binding.delete(key));
+    binding.set(key, job);
+    return job;
+  };
+
+  /**
+   * The room of a design: the one in memory (waiting while it leaves, and looking again); else the one on the disk (whose design
+   * could not be written back, and is newer than the space's); else a new one, made from the design as the space holds it now,
+   * which `current` reads in the space's queue after whatever write was there first (from the start of the binding the space
+   * refuses new ones: `liveRoom`). The room then waits `idleCloseMs` for its first visitor, as any room with nobody in it does.
+   */
+  const makeBound = async (space: string, designId: string, current: () => Promise<{ design: Record<string, unknown>; rev: number }>): Promise<string> => {
+    const id = boundRoomId(space, designId);
+    if (closing) throw refuse(503, "busy", "the server is stopping; try again in a moment");
+    let fresh: { design: Record<string, unknown>; rev: number } | null = null;
+    const found = await find(id);
+    if (found) {
+      const was = found.record.bound;
+      if (!was) throw new Error(`the room ${id} has the id of a bound room and is not one`);
+      const clean = found.record.rev === was.roomRev;
+      if (!clean || found.sockets.size || found.pins) {
+        unloadLater(found);
+        return id;
+      }
+      fresh = await current();
+      if (fresh.rev === was.rev) {
+        unloadLater(found);
+        return id;
+      }
+      // A room on the disk with nothing of its own, from before its space moved on (it was not removed when it went back, or
+      // the server stopped while it was being made): it goes, and the room is made again from the space.
+      await enqueue(found, async () => {
+        if (found.removed || found.sockets.size || found.pins || found.record.rev !== was.roomRev) return;
+        await o.storage.remove(id);
+        found.removed = true;
+        letGo(found);
+      });
+      if (!found.removed) {
+        unloadLater(found);
+        return id;
+      }
+    }
+    fresh ??= await current();
+    const { live: _live, ...design } = fresh.design;
+    // one room made at a time, as by `createRoom`, so that the count of rooms is exact at the limit
+    const previous = roomCreation;
+    let release!: () => void;
+    roomCreation = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      if (closing) throw refuse(503, "busy", "the server is stopping; try again in a moment");
+      if ((await o.storage.count()) >= o.maxRooms) throw refuse(503, "full", "this server holds as many shared designs as it may");
+      const at = now();
+      // keys of nobody: they are made, hashed and forgotten, so that no key ever lets anybody into this room
+      await saveRecord(id, {
+        design: design as unknown as Design,
+        rev: 0,
+        seqs: {},
+        editHash: sha256(token()).toString("hex"),
+        viewHash: sha256(token()).toString("hex"),
+        createdAt: at,
+        updatedAt: at,
+        bound: { space, designId, rev: fresh.rev, roomRev: 0, title: String(design.title) },
+      });
+      metrics.count("bound_rooms_made_total");
+    } finally {
+      release();
+    }
+    const made = await find(id);
+    if (!made) throw new Error(`the bound room ${id} was made and is not there`);
+    unloadLater(made);
+    return id;
+  };
+
+  /**
+   * Who may be in bound rooms may have changed (accounts: a role, a removal, a session ended, a person disabled). Every socket
+   * that came in with a session and is in scope is looked up again; one whose session no longer lets its person into the space,
+   * or lets them only look where they edited, is sent away with `no-access` and close 4003. (A browser then asks again, and one
+   * that may still look comes back as a viewer: the room cannot change the role of somebody who is in it.) One that now may do
+   * more is left as it is. A lookup that fails sends the socket away too: when in doubt, nobody stays.
+   */
+  const recheck = (scope: { space?: string; userId?: string }) => {
+    accessChanges++;
+    if (!accounts) return;
+    const bound = accounts.bound;
+    for (const l of boundLoaded.values()) {
+      const space = (l.record.bound as NonNullable<RoomRecord["bound"]>).space;
+      if (scope.space !== undefined && space !== scope.space) continue;
+      for (const [ws, seat] of l.seats) {
+        if (scope.userId !== undefined && seat.userId !== scope.userId) continue;
+        bound.roleInSpace(seat.tokenHash, space).then(
+          (found) => {
+            if (!found || found.userId !== seat.userId || (seat.role === "edit" && roomRole(found.role) !== "edit")) revoke(l, ws);
+          },
+          (error: unknown) => {
+            console.error(`Craftly could not look up a person in the room ${l.id} again, and sends them away`, error);
+            revoke(l, ws);
+          },
+        );
+      }
+    }
+  };
+
+  const revoke = (l: Loaded, ws: WebSocket) => {
+    if (!l.seats.delete(ws)) return;
+    metrics.countBy("connections_closed_total", "revoked");
+    deny(ws, "no-access");
+  };
+
+  /**
+   * A space is gone (its team was deleted, or its person): its bound rooms have nowhere to go back to. Everybody in them is sent
+   * away (`no-access`, close 4003) and they are removed, in their queues, without writing back.
+   */
+  const spaceGone = (space: string) => {
+    accessChanges++;
+    for (const l of [...boundLoaded.values()]) {
+      if ((l.record.bound as NonNullable<RoomRecord["bound"]>).space !== space) continue;
+      enqueue(l, async () => {
+        if (l.removed) return;
+        await o.storage.remove(l.id);
+        metrics.count("rooms_removed_total");
+        l.removed = true;
+        letGo(l);
+        for (const s of l.sockets) deny(s, "no-access");
+      }).catch((error: unknown) => console.error(`Craftly could not remove the room ${l.id} of a space that is gone`, error));
+    }
+  };
 
   /** Runs what an HTTP request does with a room, which stays in memory for as long as that takes and may leave it afterwards. */
   const pinned = async (l: Loaded, work: () => Promise<void>) => {
@@ -567,7 +816,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
 
   const roomAssetIn = async (l: Loaded, assetId: string, req: IncomingMessage, res: ServerResponse) => {
     const id = l.id;
-    const role = roleOf(l, req.headers["x-craftly-key"]);
+    // a bound room's pictures are for the members of its space, with their session as for any request of theirs; a link's, for its key
+    const role = l.record.bound ? await sessionRole(l, req.headers.authorization) : roleOf(l, req.headers["x-craftly-key"]);
     if (!role || (req.method === "PUT" && role !== "edit")) return reply(res, 403, { error: "this link cannot access the requested image" });
     if (!ASSET_ID.test(assetId)) return reply(res, 400, { error: "invalid image id" });
     // an image is beside the record of its room, or still inside the record of a room that an older server saved
@@ -746,6 +996,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       rooms_stored: await roomsStored(),
       connections: sockets.size,
       peers_joined: joined,
+      bound_rooms_in_memory: boundLoaded.size,
     });
     res.statusCode = 200;
     res.setHeader("content-type", METRICS_CONTENT_TYPE);
@@ -860,6 +1111,15 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     return sameHash(l.record.editHash, key) ? "edit" : sameHash(l.record.viewHash, key) ? "view" : null;
   };
 
+  /** What a session shown as a bearer token allows in a bound room: its person's role in the room's space, or nothing. */
+  const sessionRole = async (l: Loaded, authorization: string | undefined): Promise<Role | null> => {
+    const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(authorization ?? "")?.[1];
+    const bound = l.record.bound;
+    if (!token || !bound || !accounts) return null;
+    const found = await accounts.bound.roleInSpace(sha256Hex(token), bound.space);
+    return found ? roomRole(found.role) : null;
+  };
+
   const connection = async (ws: WebSocket, roomId: string) => {
     sockets.add(ws);
     ws.on("close", () => sockets.delete(ws));
@@ -927,8 +1187,123 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       l.room.leave(peer);
       l.sockets.delete(ws);
       l.members.delete(ws);
+      l.seats.delete(ws);
       unloadLater(l);
     });
+    /**
+     * What arrived while a session was being looked up (a join of a bound room): handled in order once it is answered, so that
+     * nothing a browser sends right after its join is lost or overtakes it. Bounded: a connection that sends more meanwhile is closed.
+     */
+    let pending: { msg: ClientMsg; bytes: number }[] | null = null;
+
+    /** Lets the connection in with a role (its key or session was good): its place in the room, and the design. False when it was turned away. */
+    const admit = (msg: JoinMsg, role: Role): boolean => {
+      if (typeof msg.client !== "string" || !CLIENT_NAME.test(msg.client)) {
+        deny(ws, "bad-request");
+        return false;
+      }
+      if (!l.members.has(ws)) {
+        if (l.members.size >= o.maxPeersPerRoom) {
+          deny(ws, "server-full");
+          return false;
+        }
+        l.members.add(ws);
+        shownKey = true;
+        clearTimeout(silent);
+        if (now() - l.usedAt >= noteUseEvery) noteUse(l);
+      }
+      // what the browser understands beyond what every version does (a join from before features names none)
+      for (const old of l.room.join(peer, msg.client, role, joinFeatures(msg))) {
+        const other = peerSockets.get(old);
+        if (other && other !== ws) other.close(4000, "replaced");
+      }
+      peerSockets.set(peer, ws);
+      return true;
+    };
+
+    /**
+     * A join of a bound room with a session: the person's role in the room's space decides (owner and editor edit, a viewer
+     * looks), as the accounts say now. When who may be in bound rooms changed while the person was looked up, they are looked up
+     * again (`accessChanges`), so that a removal that comes in the middle is never missed; from the last answer to the seat the
+     * code does not wait, so nothing can come in between.
+     */
+    const joinBySession = async (msg: JoinMsg, session: string, space: string) => {
+      pending = [];
+      try {
+        const tokenHash = sha256Hex(session);
+        let found: { userId: string; role: TeamRole } | null = null;
+        for (let tries = 0; ; tries++) {
+          const before = accessChanges;
+          found = await (accounts as Accounts).bound.roleInSpace(tokenHash, space);
+          if (before === accessChanges) break;
+          if (tries + 1 >= SEAT_TRIES) {
+            found = null;
+            break;
+          }
+        }
+        const waiting: { msg: ClientMsg; bytes: number }[] = pending ?? [];
+        pending = null;
+        if (l.removed || closing || ws.readyState !== ws.OPEN) return;
+        if (!found) {
+          metrics.count("session_joins_refused_total");
+          return void deny(ws, "no-access");
+        }
+        const role = roomRole(found.role);
+        if (!admit(msg, role)) return;
+        metrics.count("session_joins_total");
+        l.seats.set(ws, { userId: found.userId, tokenHash, role });
+        for (let i = 0; i < waiting.length; i++) {
+          if (ws.readyState !== ws.OPEN) return;
+          // (a second join with a session among them waits again, and what came after it with it)
+          if (pending) return void (pending as { msg: ClientMsg; bytes: number }[]).push(...waiting.slice(i));
+          dispatch(waiting[i].msg, waiting[i].bytes);
+        }
+      } catch (error) {
+        pending = null;
+        console.error(`Craftly could not look up a session for the room ${l.id}`, error);
+        deny(ws, "server-error");
+      }
+    };
+
+    /** What a message of a connection does, once it has been counted and read (`handle`). */
+    const dispatch = (msg: ClientMsg, size: number) => {
+      if (l.removed || closing || ws.readyState !== ws.OPEN) return;
+      if (msg.t === "join") {
+        const shown = joinCredential(msg);
+        if (!shown) return void deny(ws, "no-access");
+        const bound = l.record.bound;
+        if ("session" in shown) {
+          // a session is for a bound room only, and only with accounts on: never a way into a room of a link
+          if (!bound || !accounts) {
+            metrics.count("session_joins_refused_total");
+            return void deny(ws, "no-access");
+          }
+          return void joinBySession(msg, shown.session, bound.space);
+        }
+        // a bound room's keys were never handed out: no key lets anybody in, whatever it is
+        if (bound) return void deny(ws, "no-access");
+        const role = roleOf(l, shown.key);
+        if (!role) return void deny(ws, "no-access");
+        admit(msg, role);
+      } else if (msg.t === "ops" && l.members.has(ws)) {
+        // saved with whatever else arrives meanwhile, in one write (`accept`); a room that cannot keep up sends the sender away for a moment
+        if (!accept(l, peer, msg, size)) {
+          metrics.countBy("connections_closed_total", "queue");
+          return void ws.close(1013, "try again later");
+        }
+      } else if (msg.t === "presence" && l.members.has(ws)) {
+        // Where a person is (src/collab/presence.ts) is said many times a second by a pointer that moves, and none of it
+        // matters for long. It has an allowance of its own. Within it a presence message does not count as a message at all
+        // (the count taken above is given back), so that moving the pointer never uses up what a person may send in edits.
+        // Over it the message is dropped without a word, the connection stays, and the message does count: a connection
+        // that floods presence is closed by `rate` like any other that floods. Its bytes always count (`byteRate`); a
+        // presence message is small. Nothing is saved and nothing waits, so this does not go through the room's queue.
+        if (presences < 1) return void metrics.count("presence_dropped_total");
+        presences--;
+        tokens++;
+        void l.room.receive(peer, msg);
+      } else if (msg.t === "ping") void l.room.receive(peer, msg);
+    };
 
     handle = (data) => {
       if (l.removed || closing || ws.readyState !== ws.OPEN) return;
@@ -956,40 +1331,16 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           metrics.countBy("connections_closed_total", "join_rate");
           return void ws.close(1008, "slow down");
         }
-        const role = roleOf(l, msg.key);
-        if (!role) return void deny(ws, "no-access");
-        if (typeof msg.client !== "string" || !CLIENT_NAME.test(msg.client)) return void deny(ws, "bad-request");
-        if (!l.members.has(ws)) {
-          if (l.members.size >= o.maxPeersPerRoom) return void deny(ws, "server-full");
-          l.members.add(ws);
-          shownKey = true;
-          clearTimeout(silent);
-          if (now() - l.usedAt >= noteUseEvery) noteUse(l);
+      }
+      if (pending) {
+        // a session is being looked up: this waits for the answer (`joinBySession`), and only so much may wait
+        if (pending.length >= PENDING_MAX) {
+          metrics.countBy("connections_closed_total", "rate");
+          return void ws.close(1008, "slow down");
         }
-        // what the browser understands beyond what every version does (a join from before features names none)
-        for (const old of l.room.join(peer, msg.client, role, joinFeatures(msg))) {
-          const other = peerSockets.get(old);
-          if (other && other !== ws) other.close(4000, "replaced");
-        }
-        peerSockets.set(peer, ws);
-      } else if (msg.t === "ops" && l.members.has(ws)) {
-        // saved with whatever else arrives meanwhile, in one write (`accept`); a room that cannot keep up sends the sender away for a moment
-        if (!accept(l, peer, msg, sizeOf(data))) {
-          metrics.countBy("connections_closed_total", "queue");
-          return void ws.close(1013, "try again later");
-        }
-      } else if (msg.t === "presence" && l.members.has(ws)) {
-        // Where a person is (src/collab/presence.ts) is said many times a second by a pointer that moves, and none of it
-        // matters for long. It has an allowance of its own. Within it a presence message does not count as a message at all
-        // (the count taken above is given back), so that moving the pointer never uses up what a person may send in edits.
-        // Over it the message is dropped without a word, the connection stays, and the message does count: a connection
-        // that floods presence is closed by `rate` like any other that floods. Its bytes always count (`byteRate`); a
-        // presence message is small. Nothing is saved and nothing waits, so this does not go through the room's queue.
-        if (presences < 1) return void metrics.count("presence_dropped_total");
-        presences--;
-        tokens++;
-        void l.room.receive(peer, msg);
-      } else if (msg.t === "ping") void l.room.receive(peer, msg);
+        return void pending.push({ msg, bytes: sizeOf(data) });
+      }
+      dispatch(msg, sizeOf(data));
     };
     for (const data of early.splice(0)) handle(data);
   };
@@ -1028,7 +1379,16 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       do await Promise.all([roomCreation, ...[...loaded.values()].map((l) => l.work)]);
       while ([...loaded.values()].some((l) => l.draining));
       for (const ws of sockets) ws.close(1001, "the server is going away");
-      await new Promise<void>((resolve) => wss.close(() => resolve()));
+      // every bound room goes back to its space, as when it leaves memory; one that cannot keeps its copy on the disk
+      await Promise.all(
+        [...boundLoaded.values()].map((l) =>
+          enqueue(l, async () => {
+            if (l.removed || !(await writeBack(l))) return;
+            await o.storage.remove(l.id);
+            l.removed = true;
+          }).catch((error: unknown) => console.error(`Craftly wrote the live design of the room ${l.id} back to its space, and could not remove the room`, error)),
+        ),
+      );
       await new Promise<void>((resolve) => http.close(() => resolve()));
     },
     rooms: () => loaded.size,

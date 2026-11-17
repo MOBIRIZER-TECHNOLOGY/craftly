@@ -34,10 +34,25 @@ export interface RoomRecord {
   editHash: string;
   /** hex SHA-256 of the key that lets a person look */
   viewHash: string;
-  /** Older rooms have no owner credential. */
+  /** Older rooms have no owner credential. A bound room has none either: nobody stops it, it is written back when it leaves memory. */
   ownerHash?: string;
   createdAt: number;
   updatedAt: number;
+  /**
+   * Only in a room bound to a design of a space (a team's design opened live by its members, docs/ACCOUNTS.md): which design,
+   * the revision of the space the room's design was taken from or last written back as (`rev`), the revision of the room at that
+   * moment (`roomRev`: the room has something to write back when its revision is past it), and the title it had then. Such a room
+   * is joined with a session and never with a key: its key hashes are of random keys that were never handed out.
+   */
+  bound?: BoundTo;
+}
+
+export interface BoundTo {
+  space: string;
+  designId: string;
+  rev: number;
+  roomRev: number;
+  title?: string;
 }
 
 /** A room that is kept, and when it was last used: saved, or noted as used with `touch`. */

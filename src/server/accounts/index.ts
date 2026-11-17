@@ -13,10 +13,26 @@ import { adminRoute } from "./admin";
 import { changePassword, endSession, listSessions, me, reset, signin, signout, signup } from "./auth";
 import { BodyTooBig, createContext, Refusal, refuse, type AccountsOptions, type Ctx, type ServerContext } from "./context";
 import { HashBusy } from "./passwords";
-import { changes, deleteDesign, deleteFolder, getAsset, getDesign, listVersions, missingAssets, patchMeta, putAsset, putDesign, putFolder, restoreVersion } from "./spaces";
+import {
+  changes,
+  deleteDesign,
+  deleteFolder,
+  getAsset,
+  getDesign,
+  listVersions,
+  missingAssets,
+  openLive,
+  patchMeta,
+  putAsset,
+  putDesign,
+  putFolder,
+  restoreVersion,
+  writeBack,
+} from "./spaces";
+import type { TeamRole } from "./roles";
 import { createInvite, createTeam, deleteTeam, getTeam, listInvites, redeem, removeMember, renameTeam, revokeInvite, setRole } from "./teams";
 
-export type { AccountsOptions, SignupMode } from "./context";
+export type { AccountsOptions, LiveHooks, SignupMode } from "./context";
 export { SIGNUP_MODES } from "./context";
 
 /** What a preflight is told when accounts are on: PATCH, and the `authorization` header that carries the token. */
@@ -60,6 +76,7 @@ const ROUTES: Route[] = [
   { path: at("/api/spaces/:p/designs/:p/meta"), methods: { PATCH: (c, q, r, [s, d]) => patchMeta(c, q, r, s, d) } },
   { path: at("/api/spaces/:p/designs/:p/versions"), methods: { GET: (c, q, r, [s, d]) => listVersions(c, q, r, s, d) } },
   { path: at("/api/spaces/:p/designs/:p/restore"), methods: { POST: (c, q, r, [s, d]) => restoreVersion(c, q, r, s, d) } },
+  { path: at("/api/spaces/:p/designs/:p/live"), methods: { POST: (c, q, r, [s, d]) => openLive(c, q, r, s, d) } },
   { path: at("/api/spaces/:p/assets/missing"), methods: { POST: (c, q, r, [s]) => missingAssets(c, q, r, s) } },
   { path: at("/api/spaces/:p/assets/:p"), methods: { GET: (c, q, r, [s, a]) => getAsset(c, q, r, s, a), PUT: (c, q, r, [s, a]) => putAsset(c, q, r, s, a) } },
   { path: at("/api/spaces/:p/folders/:p"), methods: { PUT: (c, q, r, [s, f]) => putFolder(c, q, r, s, f), DELETE: (c, q, r, [s, f]) => deleteFolder(c, q, r, s, f) } },
@@ -82,6 +99,13 @@ export interface Accounts {
   routes(req: IncomingMessage, url: URL, res: ServerResponse): Promise<boolean>;
   /** Answers an operator's request under /api/admin/accounts (the caller checked the key); false for any other address. */
   admin(req: IncomingMessage, url: URL, res: ServerResponse): Promise<boolean>;
+  /** What the rooms bound to designs of spaces ask of the accounts (live.ts). */
+  bound: {
+    /** The person behind a session (the SHA-256 of its token, hex) and their role in a space; null when it lets nobody in there. */
+    roleInSpace(tokenHash: string, space: string): Promise<{ userId: string; role: TeamRole } | null>;
+    /** Writes a room's design back to its space as the next revision (`writeBack` in spaces.ts); throws when it cannot. */
+    writeBack(space: string, designId: string, design: Record<string, unknown>, startTitle: string | undefined): Promise<number>;
+  };
 }
 
 export function createAccounts(options: AccountsOptions, server: ServerContext): Accounts {
@@ -141,6 +165,10 @@ export function createAccounts(options: AccountsOptions, server: ServerContext):
         handled = await adminRoute(ctx, req, url, res);
       });
       return handled;
+    },
+    bound: {
+      roleInSpace: (tokenHash, space) => ctx.roleInSpace(tokenHash, space),
+      writeBack: (space, designId, design, startTitle) => writeBack(ctx, space, designId, design, startTitle),
     },
   };
 }

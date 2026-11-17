@@ -7,7 +7,9 @@ fully offline and without any server: none of the account code is loaded, and no
 Status: being built on the branch `multi-user`, in the order of [Build order](#build-order). This page is updated as each step lands.
 Steps 1 to 7 (the server: HTTP helpers, passwords, storage, sign-up and sessions, codes and the operator's script, spaces, teams)
 are built and tested (2026-11-17); where the code differs from the first design it says so in [As built](#as-built-steps-1-to-7).
-Steps 8 to 15 (the client, and team designs live in rooms) are not started.
+Step 14 on the server (team designs live: bound rooms, joining with a session, writing back, removal) is built and tested
+(2026-11-17), see [As built (step 14, server)](#as-built-step-14-server); its client side is not. Steps 8 to 13 and 15 (the
+client) are being built separately.
 
 ## Server
 
@@ -167,10 +169,71 @@ differs from the design above, and why:
   not open `DATA_DIR`: its changes then take their turn in the same queues as people's requests (a reset never meets a sign-in
   writing the same file), and it works where the operator has no shell on the data's volume. `delete` is refused while the
   account is the last owner of a team with other members, and names the teams.
-- **Not built yet**: `POST …/designs/:id/live`, 409 `live`, joining a room with a session, and closing a removed member's sockets
-  (step 14). `RoomRecord` is unchanged; `bound` is to be an optional field on it. A session that ends by its time keeps its file
-  (it lets nobody in) until its person signs in with 20 sessions listed and it is cut; nothing sweeps such files yet, nor the files
-  of sign-up and reset codes past their time.
+- **Not built yet**: a session that ends by its time keeps its file (it lets nobody in) until its person signs in with 20
+  sessions listed and it is cut; nothing sweeps such files yet, nor the files of sign-up and reset codes past their time.
+
+## As built (step 14, server)
+
+`src/server/live.ts` (bound rooms, the join with a session, writing back, sending people away), `accounts/spaces.ts`
+(`openLive`, `writeBack`, `notLive`), `accounts/context.ts` (`LiveHooks`, `sessionOf`, `roleInSpace`, `recheck`), the calls of
+`recheck` and `spaceGone` in `teams.ts`, `auth.ts`, `admin.ts` and `endSessions`, and the join in `src/collab/protocol.ts`
+(`JoinMsg`, `joinCredential`, `SESSION_TOKEN`). Tests: `accounts/bound.test.ts` (17, real sockets). Where it differs from the
+design above, or says more:
+
+- **`POST /api/spaces/:s/designs/:id/live`** (anybody in the space: owner, editor, viewer; no body, or `{}`) answers
+  `200 {room, ws: "/ws?room=<room>", role: "edit" | "view"}`. `ws` is the socket's path on the server that answered, which the
+  client makes into an address the way it makes a link's (`websocketUrl`). No key is ever in an answer. 404 `not-found` for a
+  design that is not there or a space the person is not in, 404 `deleted` for a tombstone, 503 `full` at `MAX_ROOMS`.
+- **The room's id is derived, not random**: base64url of SHA-256 of `"craftly bound room\n<space>\n<designId>"`. So the same
+  design always finds the same room, also after a restart and also when its record was kept because writing back failed (below).
+  The id is no secret here: getting in takes a member's session. Its `editHash` and `viewHash` are of random keys that are made,
+  hashed and forgotten, it has no `ownerHash` (nobody "stops sharing" it), and a join with a key is refused in a bound room before
+  the key is even compared. A join with a session is refused in a room of a link. Both are `denied no-access`, close 4003.
+- **`RoomRecord.bound = {space, designId, rev, roomRev, title}`**: beside the space and design, the revision of the space the room
+  was made from or last written back as, the room's revision at that moment (the room has something to write back when its
+  revision is past `roomRev`), and its title then. The room's design keeps the design's id (not the room's) and its details from
+  the manifest.
+- **The join** is `{t: "join", client, session, features?}`, the token as it is sent in `authorization`, never in an address.
+  `joinCredential` (protocol.ts) reads a join strictly: a `key` (text of 1 to 200 characters) or a `session` (43 characters of
+  base64url) and then no `key` field at all; anything else, `session: null` included, is no credential (`no-access`). A join
+  without `session` is read exactly as before. The server looks the person up as `authenticate` does (the session there, not
+  past its time, still listed, the person not disabled) and takes their role in the room's space now: owner and editor edit,
+  viewer views, anybody else is refused as a wrong key is. What the browser sends while it is looked up waits (64 messages at
+  most) and is handled in order after the welcome. If who may be in bound rooms changes while a join looks somebody up, it looks
+  again (five times at most, then refuses), so a removal in the middle is never missed. A room's pictures
+  (`/api/rooms/:id/assets/:asset`) take the session as `Authorization: Bearer` in a bound room, and never `x-craftly-key`.
+- **While the room is in memory, or being made,** the space answers `PUT`, `POST …/restore` and `DELETE` of that design with
+  409 `live {room}` (the check runs in the space's queue, and the binding reads the design's revision through that queue after
+  it is marked, so no write slips in between). `PATCH …/meta` works. Restore and delete are refused too because the write-back
+  would otherwise put the room's design over them; trashing is a detail and works.
+- **Writing back** happens when the room leaves memory (`idleCloseMs` after the last person leaves) and when the server stops:
+  through the space's queue, checked as a `PUT` is (`checkDesign`, `migrateDesign`, the size, the quota; a `live` field is
+  dropped), as the next revision, with the comments the design carries. Nothing is written when the room did not change, or
+  when its content is the current revision's. The details stay the manifest's, except the title when it was changed in the
+  room; the thumbnail is the one of the revision before (the server cannot draw one). Then the room's record is removed, and the
+  next `POST …/live` makes it again from the space. When writing back fails (a full space, a refused design, a design or space
+  gone), the room's record stays on the disk with its copy, the failure is counted and logged, and the space takes writes again;
+  the next `POST …/live` finds that record and opens it (its copy is newer), and it is written back when it next leaves memory.
+  If the space has moved on meanwhile, the room's copy is written over it as the next revision (the space's is kept in the
+  revisions). Expiry (`ROOM_TTL_DAYS`) never removes a bound room: the sweep loads it, and leaving memory writes it back. A
+  record on the disk that has nothing of its own and is older than the space (the server stopped while it was being made) is
+  dropped and made again.
+- **Sending people away**: removing a member, lowering them to viewer, ending a session (sign-out, `DELETE /api/me/sessions/:id`),
+  a reset or a new password (which end sessions), and disabling or deleting an account look up again every socket of that person
+  (or every socket of that space) that came in with a session; one whose session no longer lets them in, or that edited and may
+  now only look, is sent `denied no-access` and closed with 4003. **Closing was chosen over downgrading** an editor to view: the
+  room (`src/collab/room.ts`) keeps a member's role from their join and has no way to change it, and a socket that keeps an
+  edit role it no longer has is the one thing this must never allow; the browser joins again and is welcomed as a viewer. A
+  raise sends nobody away. A lookup that fails sends the socket away too. Deleting a team (or an account with its own space)
+  sends everybody in the space's bound rooms away the same way and removes the rooms without writing back. Not checked while a
+  socket stays: a session that runs out by its time (30 days without use) does not close a socket that came in before.
+- **Metrics** (`craftly_live_`): `bound_rooms_made_total`, `session_joins_total`, `session_joins_refused_total`,
+  `write_backs_total`, `write_back_failures_total`, the gauge `bound_rooms_in_memory`, and the reason `revoked` of
+  `connections_closed_total`.
+- **Not built**: the client (joining with the session, "Edit live with your team", the viewer's read-only mode, asking again
+  after `no-access` and after a room that went away between `POST …/live` and the join, which answers `not-found`). A bound room
+  removed by the operator (`DELETE /api/admin/rooms/:id`) is not written back. A bound room whose write-back failed and whose
+  team was deleted afterwards stays on the disk until the operator removes it.
 
 ## Sync
 
@@ -240,7 +303,10 @@ account's designs are removed from the device (the default, for shared computers
 - Logic: `accounts/passwords.test.ts`, `accounts/storage.test.ts` (memory and file, the race for one email, damaged files),
   `accounts/roles.test.ts`, `src/cloud/syncPlan.test.ts` (local clean, dirty, deleted against remote same, changed, tombstone,
   conflict), `validate.test.ts` (hostile answers).
-- Server, real sockets (`boot()` as in `comments.test.ts`): `accounts.test.ts`, `spaces.test.ts`, `teams.test.ts`.
+- Server, real sockets (`boot()` as in `comments.test.ts`): `accounts.test.ts`, `spaces.test.ts`, `teams.test.ts`, `bound.test.ts`
+  (team designs live: joining by session as editor and viewer, the refusals, keys in a bound room and sessions in a link's, 409
+  `live`, writing back with comments and after a restart with `FileAccounts`, a failed write-back kept, removal, role changes, a
+  deleted team, a disabled account, a reset, a new password, two members at once).
 - DOM: the step-2 migration, `src/cloud/sync.dom.test.ts` (fake IndexedDB against a real server on port 0), the screens,
   `Shell.test.tsx`, and that a backup leaves out `cloudSession` and `sync`.
 - `e2e/accounts.cjs`: two devices of one person and a second person, from moving local designs in to conflicts, a team, an

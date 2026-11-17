@@ -108,6 +108,7 @@ async function remove(ctx: Ctx, req: IncomingMessage, res: ServerResponse) {
         await ctx.storage.removeTeam(team.id);
         for (const invite of fresh.invites) await ctx.storage.removeCode(invite.hash);
         await ctx.serial(`space:${team.id}`, () => ctx.storage.removeSpace(team.id));
+        ctx.server.live?.spaceGone(team.id);
       } else {
         delete fresh.members[user.id];
         await ctx.storage.saveTeam(fresh);
@@ -120,6 +121,7 @@ async function remove(ctx: Ctx, req: IncomingMessage, res: ServerResponse) {
     // the sessions first, so that nothing is done in the name of an account that is half gone
     await ctx.endSessions(fresh);
     await ctx.serial(`space:${user.id}`, () => ctx.storage.removeSpace(user.id));
+    ctx.server.live?.spaceGone(user.id);
     await ctx.storage.releaseEmail(fresh.email);
     await ctx.storage.removeUser(user.id);
   });

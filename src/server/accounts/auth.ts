@@ -131,6 +131,7 @@ export async function signout(ctx: Ctx, req: IncomingMessage, res: ServerRespons
     await ctx.storage.saveUser(fresh);
     if (hash) await ctx.storage.removeSession(hash);
   });
+  ctx.recheck({ userId: user.id });
   reply(res, 200, { ok: true });
 }
 
@@ -169,6 +170,7 @@ export async function endSession(ctx: Ctx, req: IncomingMessage, res: ServerResp
     return true;
   });
   if (!ended) throw refuse(404, "not-found", "no such session");
+  ctx.recheck({ userId: user.id });
   reply(res, 200, { ok: true });
 }
 

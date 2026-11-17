@@ -43,12 +43,33 @@ export const COMMENTS = "comments";
 export const FEATURES = [COMMENTS] as const;
 export type Feature = (typeof FEATURES)[number];
 
+/** A session of an account on the server (docs/ACCOUNTS.md): 32 random bytes in base64url. */
+export const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+
 /**
  * `join` shows the key, in the first message of every connection and never in an address, which every server and proxy that it passes writes in a log.
+ * In a room bound to a design of a space (a team's design opened live, docs/ACCOUNTS.md) it shows the member's `session` instead,
+ * and the member's role in the team decides; never both. A join from before accounts has a key and no session.
  * `features` says what this browser understands beyond what every version does; a browser from before features sends none.
  * `presence` says where this person is (presence.ts); it is passed on to the others and kept nowhere.
  */
-export type ClientMsg = { t: "join"; client: string; key: string; features?: Feature[] } | { t: "ops"; seq: number; ops: Op[] } | { t: "ping" } | PresenceSaid;
+export type JoinMsg = { t: "join"; client: string; features?: Feature[] } & ({ key: string; session?: undefined } | { session: string; key?: undefined });
+export type ClientMsg = JoinMsg | { t: "ops"; seq: number; ops: Op[] } | { t: "ping" } | PresenceSaid;
+
+/**
+ * What a join shows to be let in: a key of a link (text of 1 to `MAX_KEY_LENGTH` characters), or a session (`SESSION_TOKEN`, and
+ * then no key at all). Null for anything else: no key, a key or a session that is not text of that form, or both at once. The
+ * server reads this; which of the two a room takes is the server's (a room bound to a design takes sessions only).
+ */
+export function joinCredential(msg: unknown): { key: string } | { session: string } | null {
+  if (!isObject(msg)) return null;
+  if (Object.hasOwn(msg, "session")) {
+    const session = msg.session;
+    return !Object.hasOwn(msg, "key") && typeof session === "string" && SESSION_TOKEN.test(session) ? { session } : null;
+  }
+  const key = msg.key;
+  return typeof key === "string" && key.length > 0 && key.length <= MAX_KEY_LENGTH ? { key } : null;
+}
 
 /**
  * `peer` in a welcome is the number the server gave this connection, under which the others hear of this person. A server from

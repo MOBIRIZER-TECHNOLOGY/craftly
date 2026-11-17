@@ -173,6 +173,16 @@ const dropVersions = async (ctx: Ctx, space: string, id: string, dropped: { rev:
   for (const { rev } of dropped) await ctx.storage.removeVersion(space, id, rev);
 };
 
+/**
+ * Refuses a change of a design's content while a room bound to it is in memory (409 `live` with the room): the room's design is
+ * the design until it is written back, and a browser joins the room instead. Asked in the space's queue, which the binding of a
+ * room also waits for (live.ts), so that no write slips in between the revision a room is made from and the room.
+ */
+function notLive(ctx: Ctx, space: string, id: string) {
+  const room = ctx.server.live?.liveRoom(space, id);
+  if (room) throw refuse(409, "live", "this design is open live: join its room", { room });
+}
+
 /** The content of a revision as text, to compare it with what was sent. */
 const sameContent = async (ctx: Ctx, space: string, id: string, rev: number, json: string) => {
   const kept = await ctx.storage.loadVersion(space, id, rev);
@@ -191,6 +201,7 @@ export async function putDesign(ctx: Ctx, req: IncomingMessage, res: ServerRespo
   const content = { thumbnail: readThumbnail(body.thumbnail), json };
 
   const answer = await change<{ status: number; rev: number; dropped: { rev: number }[] }>(ctx, space, async (m) => {
+    notLive(ctx, space, id);
     const entry = designIn(m, id);
     if (entry?.deletedAt !== undefined) throw refuse(409, "deleted", "this design was deleted; it can be restored or sent as a new design", { rev: entry.rev });
     if (baseRev === null) {
@@ -237,6 +248,64 @@ export async function getDesign(ctx: Ctx, req: IncomingMessage, res: ServerRespo
   reply(res, 200, { design: withDetails(stored, entry), rev: entry.rev, thumbnail: stored.thumbnail });
 }
 
+/**
+ * `POST …/designs/:id/live`: the room bound to a design, made from its current revision when there is none in memory (or kept on
+ * the disk because writing it back failed: its copy is the newer). For anybody in the space (a viewer too). The answer is what a
+ * browser joins with: the room, the socket's address on this server (as the address of a link's socket is made from the server's),
+ * and the role the member's session will get there. No key: a bound room is joined with the session (protocol.ts, `join`).
+ */
+export async function openLive(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
+  const { role } = await access(ctx, req, space, "read");
+  const id = readId(rawId, SAFE_ID, "a design");
+  // nothing to say: the body is empty or {}
+  const text = await readBody(req, SMALL_BODY);
+  if (text === null) throw new BodyTooBig();
+  if (text.trim() && text.trim() !== "{}") throw badRequest("this takes no body");
+  const live = ctx.server.live;
+  if (!live) throw notFound("this server has no rooms");
+  const room = await live.bind(space, id, () =>
+    // in the space's queue, after any write that was there first: from here on a write is refused with `live` (notLive)
+    ctx.serial(`space:${space}`, async () => {
+      const entry = designIn(await ctx.storage.loadManifest(space), id);
+      if (!entry) throw notFound("no such design");
+      if (entry.deletedAt !== undefined) throw refuse(404, "deleted", "this design was deleted");
+      const stored = await ctx.storage.loadVersion(space, id, entry.rev);
+      if (!stored) throw new Error(`the manifest of ${space} names revision ${entry.rev} of a design, and it is not there`);
+      return { design: withDetails(stored, entry), rev: entry.rev };
+    }),
+  );
+  reply(res, 200, { room, ws: `/ws?room=${room}`, role: can(role, "write") ? "edit" : "view" });
+}
+
+/**
+ * Writes the design of a bound room back to its space as the next revision, when the room leaves memory (live.ts): through the
+ * space's queue, checked as a `PUT` is (`checkDesign`, the format, the size) and within the quota. Nothing is written when the
+ * content is the current revision's. The details stay the manifest's, except the title when the people in the room changed it
+ * (`startTitle` is the title the room was made with). Gives the revision the space is at; throws when it cannot be written (a
+ * refusal, a full space, a design deleted or a space gone), and the caller keeps the room's copy.
+ */
+export async function writeBack(ctx: Ctx, space: string, id: string, given: Record<string, unknown>, startTitle: string | undefined): Promise<number> {
+  const { live: _live, ...content } = given;
+  const { design, json } = readDesign(ctx, { ...content, id }, id);
+  const answer = await change(ctx, space, async (m) => {
+    const entry = designIn(m, id);
+    if (!entry) throw notFound("no such design");
+    if (entry.deletedAt !== undefined) throw refuse(409, "deleted", "this design was deleted");
+    const title = typeof design.title === "string" ? design.title.slice(0, MAX_TITLE) : entry.title;
+    const retitled = startTitle !== undefined && title !== startTitle && title !== entry.title;
+    if (retitled) {
+      entry.title = title;
+      entry.metaSeq = entry.seq = ++m.seq;
+    }
+    if (await sameContent(ctx, space, id, entry.rev, json)) return { value: { rev: entry.rev, dropped: [] as { rev: number }[] }, changed: retitled };
+    const kept = await ctx.storage.loadVersion(space, id, entry.rev);
+    const written = await writeRevision(ctx, space, m, id, entry, { thumbnail: kept?.thumbnail ?? null, json }, entry);
+    return { value: written, changed: true };
+  });
+  if (answer.dropped.length) await ctx.serial(`space:${space}`, () => dropVersions(ctx, space, id, answer.dropped));
+  return answer.rev;
+}
+
 export async function patchMeta(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
   await access(ctx, req, space, "write");
   const id = readId(rawId, SAFE_ID, "a design");
@@ -273,6 +342,8 @@ export async function deleteDesign(ctx: Ctx, req: IncomingMessage, res: ServerRe
     const entry = designIn(m, id);
     if (!entry) throw notFound("no such design");
     if (entry.deletedAt !== undefined) return { value: null, changed: false };
+    // (the people in its room would write it back over the tombstone: it is deleted once they are done; trashing it is a detail and works)
+    notLive(ctx, space, id);
     m.seq++;
     entry.deletedAt = ctx.now();
     entry.seq = m.seq;
@@ -299,6 +370,7 @@ export async function restoreVersion(ctx: Ctx, req: IncomingMessage, res: Server
   const wanted = body.rev;
   if (typeof wanted !== "number" || !Number.isSafeInteger(wanted) || wanted < 1) throw badRequest("rev is a revision");
   const answer = await change(ctx, space, async (m) => {
+    notLive(ctx, space, id);
     const entry = designIn(m, id);
     if (!entry) throw notFound("no such design");
     if (wanted !== entry.rev && !entry.versions.some((v) => v.rev === wanted)) throw refuse(404, "not-found", "that revision is not kept");

@@ -145,6 +145,8 @@ export async function deleteTeam(ctx: Ctx, req: IncomingMessage, res: ServerResp
     await ctx.serial(`space:${teamId}`, () => ctx.storage.removeSpace(teamId));
     return found;
   });
+  // its bound rooms have no space to go back to: everybody in them is sent away and they are forgotten
+  ctx.server.live?.spaceGone(teamId);
   for (const memberId of Object.keys(team.members)) if (SERVER_ID.test(memberId)) await forgetTeam(ctx, memberId, teamId);
   reply(res, 200, { ok: true });
 }
@@ -165,6 +167,8 @@ export async function setRole(ctx: Ctx, req: IncomingMessage, res: ServerRespons
     team.members[memberId] = role;
     await ctx.storage.saveTeam(team);
   });
+  // one who edited live and may now only look is sent out of the team's bound rooms (and comes back to look)
+  ctx.recheck({ space: teamId, userId: memberId });
   reply(res, 200, { ok: true, role });
 }
 
@@ -180,6 +184,8 @@ export async function removeMember(ctx: Ctx, req: IncomingMessage, res: ServerRe
     delete team.members[memberId];
     await ctx.storage.saveTeam(team);
   });
+  // removal is immediate, sockets in the team's bound rooms too
+  ctx.recheck({ space: teamId, userId: memberId });
   if (SERVER_ID.test(memberId)) await forgetTeam(ctx, memberId, teamId);
   reply(res, 200, { ok: true });
 }

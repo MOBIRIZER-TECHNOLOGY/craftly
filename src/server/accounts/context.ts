@@ -65,12 +65,33 @@ export const TOMBSTONE_MS = 90 * DAY;
 export const RESET_CODE_MS = DAY;
 export const MIB = 1024 * 1024;
 
+/**
+ * What the live server does for the accounts: the rooms bound to designs of spaces (a team's design opened live by its members,
+ * without a link; live.ts). The accounts ask it, and tell it when who may be in such a room may have changed.
+ */
+export interface LiveHooks {
+  /** The id of the room bound to this design while it is in memory (or being made): its design is the room's until written back. */
+  liveRoom(space: string, designId: string): string | null;
+  /** The room bound to this design, made from `current` (the design as the space holds it now) when there is none. */
+  bind(space: string, designId: string, current: () => Promise<{ design: Record<string, unknown>; rev: number }>): Promise<string>;
+  /**
+   * Who may be in bound rooms may have changed: a member's role in a space (`space` and `userId`), every member of a space
+   * (`space`), or a person's sessions (`userId`). Sockets whose session no longer lets them in, or now lets them only look where
+   * they edited, are closed.
+   */
+  recheck(scope: { space?: string; userId?: string }): void;
+  /** A space is gone (its team was deleted): its bound rooms are closed and forgotten, with nothing to write back to. */
+  spaceGone(space: string): void;
+}
+
 /** What the server gives the accounts beyond their own options. */
 export interface ServerContext {
   allowOrigin: string | string[] | undefined;
   trustProxy: boolean;
   now: () => number;
   maxDesignBytes: number;
+  /** The live server's rooms bound to designs; none in a server without rooms (a test of the accounts alone). */
+  live?: LiveHooks;
 }
 
 /** A request that is refused: its status, a code the client turns into words, a sentence for whoever reads the raw answer. */
@@ -223,22 +244,43 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
    * again. A session in use is noted as used at most once an hour, which slides its end on.
    */
   const authenticate = async (req: IncomingMessage): Promise<Authed> => {
-    const gone = () => refuse(401, "session", "sign in again");
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1];
-    if (!token) throw gone();
-    const tokenHash = sha256Hex(token);
+    const authed = token ? await sessionOf(sha256Hex(token)) : null;
+    if (!authed) throw refuse(401, "session", "sign in again");
+    return authed;
+  };
+
+  /** The person and session of a token's hash, by the rules of `authenticate`; null when it lets nobody in. Used as `authenticate` does. */
+  const sessionOf = async (tokenHash: string): Promise<Authed | null> => {
     let session = await storage.loadSession(tokenHash);
-    if (!session) throw gone();
+    if (!session) return null;
     const at = now();
-    if (at >= session.expiresAt || at >= session.createdAt + SESSION_MAX_MS) throw gone();
+    if (at >= session.expiresAt || at >= session.createdAt + SESSION_MAX_MS) return null;
     const user = SERVER_ID.test(session.userId) ? await storage.loadUser(session.userId) : null;
-    if (!user || user.disabled || user.sessions[session.id] !== tokenHash) throw gone();
+    if (!user || user.disabled || user.sessions[session.id] !== tokenHash) return null;
     if (at - session.lastUsedAt >= SESSION_TOUCH_MS) {
       session = { ...session, lastUsedAt: at, expiresAt: Math.min(session.createdAt + SESSION_MAX_MS, at + SESSION_IDLE_MS) };
       await storage.saveSession(tokenHash, session);
     }
     return { user, session, tokenHash };
   };
+
+  /**
+   * The role in a space of whoever holds the session of this token's hash: owner of their own space, their role in a team's;
+   * null when the session lets nobody in or its person is not in the space. What a socket of a bound room is let in with (live.ts).
+   */
+  const roleInSpace = async (tokenHash: string, space: string): Promise<{ userId: string; role: TeamRole } | null> => {
+    if (!SERVER_ID.test(space)) return null;
+    const authed = await sessionOf(tokenHash);
+    if (!authed) return null;
+    const { user } = authed;
+    if (space === user.id) return { userId: user.id, role: "owner" };
+    const team = await storage.loadTeam(space);
+    return team && Object.hasOwn(team.members, user.id) ? { userId: user.id, role: team.members[user.id] } : null;
+  };
+
+  /** Tells the live server that who may be in its bound rooms may have changed (see `LiveHooks.recheck`). */
+  const recheck = (scope: { space?: string; userId?: string }) => server.live?.recheck(scope);
 
   /**
    * Starts a session for a person and gives its token, which is kept nowhere: the server keeps its SHA-256. A person has at most
@@ -280,6 +322,8 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
     for (const [id] of ending) delete user.sessions[id];
     await storage.saveUser(user);
     for (const [, hash] of ending) await storage.removeSession(hash);
+    // a socket in a bound room that came in with one of them goes too (a reset, a new password, a disabled account)
+    recheck({ userId: user.id });
   };
 
   /** The teams a person is in, from the teams themselves: the person's own list is an index that may name one they left. */
@@ -296,7 +340,7 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
   /** What a person may see of themselves and of other members. */
   const publicUser = (user: UserRecord) => ({ id: user.id, email: user.email, name: user.name, createdAt: user.createdAt });
 
-  return { storage, now, o, hasher, limiters, serial, addressOf, waitOf, authenticate, startSession, endSessions, teamsOf, publicUser, server };
+  return { storage, now, o, hasher, limiters, serial, addressOf, waitOf, authenticate, sessionOf, roleInSpace, recheck, startSession, endSessions, teamsOf, publicUser, server };
 }
 
 /** Turns what a route threw into an answer: a refusal as itself, a body too long as 413, a busy hasher as 503; anything else is not answered here. */
