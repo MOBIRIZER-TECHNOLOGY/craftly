@@ -45,15 +45,21 @@ const results = [];
       .getByRole("button", { name: /Customize|Use this template|Start|Create/i })
       .first()
       .click();
+    // customize step, when there is one: confirm. A slower engine (WebKit) can still show the closing preview dialog at this point
+    // and then go to the editor by itself, so the dialog is asked again until the editor is open.
     await wait(1500);
-    // customize step: confirm
     const dlg2 = page.getByRole("dialog");
-    if (await dlg2.isVisible().catch(() => false)) {
-      await shot("customize");
-      await dlg2
-        .getByRole("button", { name: /Customize|Create|Start|Use|Open/i })
-        .last()
-        .click();
+    const end = Date.now() + 15000;
+    while (!/#\/design\//.test(page.url()) && Date.now() < end) {
+      if (await dlg2.isVisible().catch(() => false)) {
+        await shot("customize");
+        await dlg2
+          .getByRole("button", { name: /Customize|Create|Start|Use|Open/i })
+          .last()
+          .click({ timeout: 2000 })
+          .catch(() => {});
+      }
+      await wait(300);
     }
     await page.waitForURL(/#\/design\//, { timeout: 15000 });
     await page.locator(".cf-workspace").waitFor({ timeout: 20000 });
@@ -168,8 +174,13 @@ const results = [];
     await page.getByRole("button", { name: "File" }).first().click();
     await page.getByRole("menuitem", { name: /^Help/ }).click();
     await page.getByRole("menuitem", { name: /Keyboard shortcuts/ }).click();
-    await page.getByRole("dialog", { name: "Keyboard shortcuts" }).waitFor({ timeout: 8000 });
+    const shortcuts = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+    await shortcuts.waitFor({ timeout: 8000 });
+    // the dialog takes the keyboard a moment after it shows; a slower engine (WebKit) can get the Escape before that
+    await shortcuts.locator("input").first().waitFor({ timeout: 5000 });
+    await page.waitForFunction(() => document.activeElement?.closest("[role=dialog]"), null, { timeout: 5000 }).catch(() => undefined);
     await page.keyboard.press("Escape");
+    await shortcuts.waitFor({ state: "detached", timeout: 5000 });
     await page.getByRole("tab", { name: "Brand", exact: true }).click();
     await wait(600);
     await page.evaluate(() => {

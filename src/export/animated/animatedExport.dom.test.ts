@@ -225,10 +225,19 @@ describe("exporting a WebM video", () => {
     expect(progress).not.toHaveBeenCalled();
   });
 
-  it("says so when it can record, but not WebM", async () => {
+  it("says so when it can record, but neither WebM nor MP4", async () => {
     browser = installRecordingBrowser();
     FakeRecorder.supported = [];
-    await expect(run(designOf(), webm())).rejects.toMatchObject({ code: "unsupported", message: expect.stringContaining("cannot record WebM video") });
+    await expect(run(designOf(), webm())).rejects.toMatchObject({ code: "unsupported", message: expect.stringContaining("cannot record video as WebM or MP4") });
+  });
+
+  it("records an MP4, named so and with no WebM header written into it, in a browser that records no WebM (Safari)", async () => {
+    browser = installRecordingBrowser();
+    FakeRecorder.supported = ["video/mp4"];
+    const file = await run(designOf(1, 1), webm({ pages: [0] }));
+    expect(FakeRecorder.instances[0].options.mimeType).toBe("video/mp4");
+    expect(file.name).toBe("Loop one.mp4");
+    expect(file.blob.type).toBe("video/mp4");
   });
 
   it("records the animation in real time and returns the video", async () => {

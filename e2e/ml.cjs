@@ -491,7 +491,8 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
       const out = await page.evaluate(
         async ({ base64, sha256, io }) => {
           const [{ useEditor }, factory, assets, service, state, store] = await Promise.all([
-            import("/src/core/store.ts"),
+            // the store the app runs on: an import of it can be a second copy on a dev server that has hot-reloaded a module it uses
+            Promise.resolve({ useEditor: window.__editor }),
             import("/src/core/factory.ts"),
             import("/src/core/assets.ts"),
             import("/src/ml/service.ts"),
@@ -616,7 +617,8 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
       const out = await page.evaluate(
         async ({ base64, sha256, io }) => {
           const [{ useEditor }, factory, assets, service, state] = await Promise.all([
-            import("/src/core/store.ts"),
+            // the store the app runs on: an import of it can be a second copy on a dev server that has hot-reloaded a module it uses
+            Promise.resolve({ useEditor: window.__editor }),
             import("/src/core/factory.ts"),
             import("/src/core/assets.ts"),
             import("/src/ml/service.ts"),
@@ -786,7 +788,8 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
         const out = await page.evaluate(
           async ({ base64, sha256, io }) => {
             const [{ useEditor }, factory, assets, service, state] = await Promise.all([
-              import("/src/core/store.ts"),
+              // the store the app runs on: an import of it can be a second copy on a dev server that has hot-reloaded a module it uses
+              Promise.resolve({ useEditor: window.__editor }),
               import("/src/core/factory.ts"),
               import("/src/core/assets.ts"),
               import("/src/ml/service.ts"),
@@ -957,7 +960,8 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
       const out = await page.evaluate(
         async ({ base64, sha256, io }) => {
           const [{ useEditor }, factory, assets, service, state] = await Promise.all([
-            import("/src/core/store.ts"),
+            // the store the app runs on: an import of it can be a second copy on a dev server that has hot-reloaded a module it uses
+            Promise.resolve({ useEditor: window.__editor }),
             import("/src/core/factory.ts"),
             import("/src/core/assets.ts"),
             import("/src/ml/service.ts"),

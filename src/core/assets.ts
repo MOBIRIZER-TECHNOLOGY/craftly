@@ -4,7 +4,7 @@
  */
 import { m } from "@/i18n";
 import { uid } from "./ids";
-import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany, wrap, writeTransaction } from "./persistence";
+import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany, openDb, wrap, writeTransaction } from "./persistence";
 import { parseViewBox } from "./svg";
 import { svgProblem } from "./svgSafety";
 import type { Asset } from "./types";
@@ -116,6 +116,70 @@ export async function checkUpload(blob: Blob, name = ""): Promise<CheckedUpload>
   return { blob: drawn.blob, kind: "image", mime: "image/png", drawn: { width: drawn.width, height: drawn.height } };
 }
 
+/**
+ * The bytes of an upload as they are stored by a browser whose database will not keep a Blob: WebKit in a private window (and
+ * Playwright's WebKit) refuses one with "Error preparing Blob/File data to be stored in object store", but keeps an ArrayBuffer.
+ */
+interface StoredBytes {
+  bytes: ArrayBuffer;
+  type: string;
+}
+/** An upload as it is in the "assets" store: with a Blob, or with its bytes (`StoredBytes`). */
+export type StoredAsset = Omit<Asset, "blob"> & { blob: Blob | StoredBytes };
+
+const PROBE_ID = "\u0000blob-probe";
+let blobsKept: Promise<boolean> | null = null;
+
+/**
+ * Whether this browser's database keeps a Blob, asked once by writing one and taking the write back (the transaction is given
+ * up either way, so nothing of it is ever stored).
+ */
+function databaseKeepsBlobs(): Promise<boolean> {
+  blobsKept ??= openDb()
+    .then(
+      (db) =>
+        new Promise<boolean>((resolve) => {
+          const tx = db.transaction("assets", "readwrite");
+          const settle = (kept: boolean) => {
+            resolve(kept);
+            try {
+              tx.abort();
+            } catch {
+              // the transaction has already ended
+            }
+          };
+          try {
+            const request = tx.objectStore("assets").put({ id: PROBE_ID, blob: new Blob(["probe"]) });
+            request.onsuccess = () => settle(true);
+            request.onerror = (event) => {
+              event.preventDefault();
+              settle(false);
+            };
+          } catch {
+            settle(false);
+          }
+        }),
+    )
+    .catch(() => {
+      blobsKept = null;
+      return true;
+    });
+  return blobsKept;
+}
+
+/** The upload as it can be stored here: as it is, or with its bytes in place of the Blob when the database will not keep one. */
+export async function storableAsset(asset: Asset): Promise<StoredAsset> {
+  if (await databaseKeepsBlobs()) return asset;
+  return { ...asset, blob: { bytes: await asset.blob.arrayBuffer(), type: asset.blob.type || asset.mime } };
+}
+
+/** The upload as it was stored, with a Blob again. */
+export function storedAsset(stored: StoredAsset): Asset {
+  const { blob } = stored;
+  if (blob instanceof Blob || !blob || typeof blob !== "object" || !("bytes" in blob)) return stored as Asset;
+  return { ...stored, blob: new Blob([blob.bytes], { type: blob.type || stored.mime }) };
+}
+
 export function isAcceptedImage(file: File): boolean {
   return file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|avif|bmp)$/i.test(file.name);
 }
@@ -138,7 +202,7 @@ export async function prepareAssetFromFile(file: File, id = uid("a")): Promise<A
 
 export async function addAssetFromFile(file: File): Promise<Asset> {
   const asset = await prepareAssetFromFile(file);
-  await dbPut("assets", asset);
+  await dbPut("assets", await storableAsset(asset));
   emit();
   return asset;
 }
@@ -146,31 +210,33 @@ export async function addAssetFromFile(file: File): Promise<Asset> {
 /** Stores uploads from a backup as they are (ids kept) in one transaction and tells subscribers once. */
 export async function restoreAssets(assets: Asset[]): Promise<void> {
   if (!assets.length) return;
-  await dbPutMany(assets.map((value) => ({ store: "assets" as const, value })));
+  const stored = await Promise.all(assets.map(storableAsset));
+  await dbPutMany(stored.map((value) => ({ store: "assets" as const, value })));
   emit();
 }
 
 /** Cache a collaborator's image without replacing a local upload with the same id. */
 export async function cacheSharedAsset(asset: Asset): Promise<void> {
+  const stored = await storableAsset(asset);
   const added = await writeTransaction(["assets"], async (tx) => {
     const store = tx.objectStore("assets");
     if ((await wrap(store.getKey(asset.id))) !== undefined) return false;
-    store.add(asset);
+    store.add(stored);
     return true;
   });
   if (added) emit();
 }
 
 export async function listAssets(): Promise<Asset[]> {
-  return (await dbGetAll<Asset>("assets")).sort((a, b) => b.createdAt - a.createdAt);
+  return (await dbGetAll<StoredAsset>("assets")).map(storedAsset).sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export const getAsset = (id: string) => dbGet<Asset>("assets", id).then((a) => a ?? null);
+export const getAsset = (id: string) => dbGet<StoredAsset>("assets", id).then((a) => (a ? storedAsset(a) : null));
 
 export async function renameAsset(id: string, name: string): Promise<void> {
   const a = await getAsset(id);
   if (!a) return;
-  await dbPut("assets", { ...a, name: name.trim() || a.name });
+  await dbPut("assets", await storableAsset({ ...a, name: name.trim() || a.name }));
   emit();
 }
 

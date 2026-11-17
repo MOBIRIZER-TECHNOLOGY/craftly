@@ -352,3 +352,58 @@ describe("object addresses", () => {
     expect(await listAssets()).toEqual([]);
   });
 });
+
+describe("a browser whose database will not keep a Blob (WebKit in a private window)", () => {
+  /** Makes the database refuse every value that holds a Blob, as WebKit does, and gives a fresh copy of the uploads module. */
+  async function refusingBlobs() {
+    const refuse = (value: unknown) => {
+      if (value && typeof value === "object" && (value as { blob?: unknown }).blob instanceof Blob)
+        throw new DOMException("Error preparing Blob/File data to be stored in object store", "UnknownError");
+    };
+    const put = IDBObjectStore.prototype.put;
+    const add = IDBObjectStore.prototype.add;
+    vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+      refuse(value);
+      return put.call(this, value, key);
+    });
+    vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+      refuse(value);
+      return add.call(this, value, key);
+    });
+    vi.resetModules();
+    return import("./assets");
+  }
+
+  it("stores the bytes of an upload instead, and gives a Blob of the same bytes and type back", async () => {
+    const fresh = await refusingBlobs();
+    const asset = await fresh.addAssetFromFile(fakeFile("logo.png", "image/png", "12345"));
+    const stored = await fresh.getAsset(asset.id);
+    expect(stored!.blob).toBeInstanceOf(Blob);
+    expect(stored!.blob.type).toBe("image/png");
+    expect(await stored!.blob.text()).toBe("12345");
+    const [listed] = await fresh.listAssets();
+    expect(await listed.blob.text()).toBe("12345");
+    await fresh.renameAsset(asset.id, "Logo");
+    expect((await fresh.getAsset(asset.id))!.name).toBe("Logo");
+    expect(await (await fresh.getAsset(asset.id))!.blob.text()).toBe("12345");
+  });
+
+  it("keeps a restored or shared upload the same way", async () => {
+    const fresh = await refusingBlobs();
+    const asset = { ...(await fresh.prepareAssetFromFile(fakeFile("a.png", "image/png", "abc"), "a_restored")) };
+    await fresh.restoreAssets([asset]);
+    await fresh.cacheSharedAsset({ ...asset, id: "a_shared" });
+    expect(await (await fresh.getAsset("a_restored"))!.blob.text()).toBe("abc");
+    expect(await (await fresh.getAsset("a_shared"))!.blob.text()).toBe("abc");
+  });
+});
+
+describe("asking the database whether it keeps a Blob", () => {
+  it("leaves nothing behind in a browser that keeps one: the upload is the only record", async () => {
+    vi.resetModules();
+    const fresh = await import("./assets");
+    const file = fakeFile("a.png", "image/png");
+    const asset = await fresh.addAssetFromFile(file);
+    expect((await fresh.listAssets()).map((a) => a.id)).toEqual([asset.id]);
+  });
+});

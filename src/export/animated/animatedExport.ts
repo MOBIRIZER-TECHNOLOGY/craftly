@@ -5,7 +5,8 @@
  *   GIF   frame `i` is painted at `i / fps`, quantised and handed to the `GifEncoder` straight away, as fast as the
  *         computer can go. The thread is given back to the browser after every frame, so progress is shown and
  *         Cancel works; only the latest frame and the bytes produced so far are ever in memory.
- *   WebM  the playback is painted onto a canvas in real time while `MediaRecorder` records it (see video.ts).
+ *   WebM  the playback is painted onto a canvas in real time while `MediaRecorder` records it (see video.ts); a browser
+ *         that records no WebM (Safari) records an MP4 the same way.
  *
  * Pictures are flattened onto white: neither format has an alpha channel worth using, and a page with a
  * see-through background would otherwise come out black in the video.
@@ -23,7 +24,7 @@ import { nextMacrotask } from "../yield";
 import { VIDEO_FPS, animationProblem, frameDelays, frameTime, paletteSampleFrames, planFrames, videoBitrate, type AnimationPlan, type FramePlan } from "./frames";
 import { GifEncoder } from "./gif";
 import { ColorHistogram, buildPalette } from "./palette";
-import { detectVideoSupport, recordCanvas } from "./video";
+import { detectVideoSupport, recordCanvas, videoContainer } from "./video";
 
 /** Pictures with more pixels than this are counted every other pixel when choosing the palette. */
 const PALETTE_FULL_PIXELS = 1_200_000;
@@ -211,7 +212,7 @@ async function exportWebm(design: Design, plan: AnimationPlan, onProgress: Expor
       signal,
     });
     onProgress?.(plan.frames, plan.frames);
-    return { name: exportFileName(design.title, "webm"), blob: result.blob, note: result.stalled ? STALLED_NOTE : undefined };
+    return { name: exportFileName(design.title, videoContainer(support.mimeType)), blob: result.blob, note: result.stalled ? STALLED_NOTE : undefined };
   } finally {
     source.dispose();
   }

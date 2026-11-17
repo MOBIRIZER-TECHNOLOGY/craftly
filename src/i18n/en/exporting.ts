@@ -28,6 +28,8 @@ export const exporting = {
       gif: "Animated GIF",
       gifHint: "Plays on any device",
       video: "Video (WebM)",
+      /** the same choice in a browser that records MP4 and no WebM (Safari) */
+      videoMp4: "Video (MP4)",
       videoHint: "Smooth, small files",
       videoUnsupported: "Not supported in this browser",
       sizes: "Several sizes",
@@ -177,7 +179,7 @@ export const exporting = {
     gifTooBig: (mb: number) => `This GIF is getting too big (over ${plain(mb)} MB). Try a lower resolution or frame rate, or fewer pages.`,
     cannotRecord: "Your browser cannot record video.",
     noRecorder: "Your browser cannot record video. Try Chrome, Edge or Firefox, or download an animated GIF instead.",
-    noWebm: "This browser cannot record WebM video. Try Chrome, Edge or Firefox, or download an animated GIF instead.",
+    noWebm: "This browser cannot record video as WebM or MP4. Try Chrome, Edge, Firefox or Safari, or download an animated GIF instead.",
     recordFailed: "The video could not be recorded. Please try again.",
     cannotStart: "Your browser could not start recording video. Download an animated GIF instead.",
   },

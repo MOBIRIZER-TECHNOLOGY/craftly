@@ -1,6 +1,6 @@
 /* Animated export: a GIF and a WebM made through the Download panel, read byte by byte and decoded by the browser itself. */
 const fs = require("node:fs");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, BASE, isChromium } = require("./lib.cjs");
 
 const OUT = outDir("animated-export");
 const results = [];
@@ -193,23 +193,55 @@ function parseGif(buf) {
     return `${name} ${(buf.length / 1024).toFixed(0)} KB, ${g.width}x${g.height}, ${g.frames} frames, ${g.seconds} s`;
   });
 
-  await step("download a WebM video (480p): a real video of the same length, first frame page 1, last frame page 2", async () => {
+  /*
+   * What this browser records, as the panel says it: "Video (WebM)" (Chrome, Firefox), "Video (MP4)" (Safari, whose recorder
+   * writes MP4), or the option switched off with the reason (Playwright's WebKit build on Windows has no MediaRecorder at all).
+   */
+  let video = { kind: "webm", hint: "" };
+  await step("the panel names the video this browser records, or switches it off and says why", async () => {
+    await page.getByRole("button", { name: "Share", exact: true }).first().click();
+    await page.getByRole("button", { name: "Download", exact: true }).first().click();
+    await dl.waitFor({ timeout: 5000 });
+    await page.getByLabel("File type").click();
+    const option = page.getByRole("option", { name: /^Video/ }).first();
+    const text = (await option.innerText()).replace(/\s+/g, " ").trim();
+    const off = (await option.getAttribute("aria-disabled")) === "true";
+    await page.keyboard.press("Escape");
+    await closeDownload();
+    if (off) {
+      if (isChromium) throw new Error("Chrome records WebM, but the panel says: " + text);
+      if (!/Not supported in this browser/.test(text)) throw new Error("the option is off without a reason: " + text);
+      video = { kind: null, hint: text };
+    } else if (/MP4/.test(text)) video = { kind: "mp4", hint: text };
+    else if (!/WebM/.test(text)) throw new Error("the option names no format: " + text);
+    return text;
+  });
+
+  /** A step that records a video: skipped, and said so, where the browser records none. */
+  const videoStep = (name, fn) => (video.kind ? step(name, fn) : Promise.resolve(results.push(`SKIP ${name}  (this browser records no video; the panel says "${video.hint}")`)));
+
+  await videoStep(`download a ${video.kind === "mp4" ? "MP4" : "WebM"} video (480p): a real video of the same length, first frame page 1, last frame page 2`, async () => {
     await openDownload("Video");
     await dl.getByText("480p", { exact: true }).click();
     await shot("panel-webm");
     const { name, buf } = await download();
-    if (!name.endsWith(".webm")) throw new Error("file name " + name);
-    if (!(buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3))
+    if (!name.endsWith("." + video.kind)) throw new Error("file name " + name);
+    if (video.kind === "mp4") {
+      if (buf.subarray(4, 8).toString("latin1") !== "ftyp") throw new Error("no MP4 ftyp box: " + buf.subarray(0, 8).toString("hex"));
+    } else if (!(buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3))
       throw new Error("no EBML header: " + [...buf.subarray(0, 4)].map((b) => b.toString(16)).join(" "));
     if (buf.length < 4000) throw new Error("only " + buf.length + " bytes");
-    const seen = await page.evaluate(async (b64) => {
+    // the type of the container, then the bytes
+    const payload = `video/${video.kind},${buf.toString("base64")}`;
+    const seen = await page.evaluate(async (payload) => {
+      const [type, b64] = payload.split(",");
       const bin = atob(b64);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const video = document.createElement("video");
       video.muted = true;
       video.preload = "auto";
-      video.src = URL.createObjectURL(new Blob([bytes], { type: "video/webm" }));
+      video.src = URL.createObjectURL(new Blob([bytes], { type }));
       await new Promise((ok, no) => {
         video.onloadedmetadata = ok;
         video.onerror = () => no(new Error("the video would not load"));
@@ -254,7 +286,7 @@ function parseGif(buf) {
       }
       URL.revokeObjectURL(video.src);
       return out;
-    }, buf.toString("base64"));
+    }, payload);
     if (!Number.isFinite(seen.duration)) throw new Error("the video reports an endless duration (" + seen.duration + ")");
     if (Math.abs(seen.duration - 3) > 1) throw new Error("duration " + seen.duration);
     if (seen.h !== 480 || Math.abs(seen.w / seen.h - 16 / 9) > 0.01) throw new Error(`video size ${seen.w}x${seen.h}`);
@@ -264,7 +296,7 @@ function parseGif(buf) {
     return `${name} ${(buf.length / 1024).toFixed(0)} KB, ${seen.w}x${seen.h}, ${seen.duration.toFixed(2)} s`;
   });
 
-  await step("Cancel stops a video while it records and nothing is downloaded", async () => {
+  await videoStep("Cancel stops a video while it records and nothing is downloaded", async () => {
     await openDownload("Video");
     let saved = false;
     page.once("download", () => {

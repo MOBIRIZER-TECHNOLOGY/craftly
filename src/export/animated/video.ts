@@ -32,8 +32,14 @@ export interface VideoSupport {
   reason: string | null;
 }
 
-/** In order of preference: VP9 is the smallest, VP8 the most widely recordable, plain `video/webm` lets the browser choose. */
-export const VIDEO_MIME_TYPES: readonly string[] = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+/**
+ * In order of preference: VP9 is the smallest, VP8 the most widely recordable, plain `video/webm` lets the browser choose. A
+ * browser that records no WebM (Safari records MP4 with H.264) gets an MP4 instead.
+ */
+export const VIDEO_MIME_TYPES: readonly string[] = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4;codecs=avc1", "video/mp4"];
+
+/** The container a recorder type writes: "mp4" or "webm". */
+export const videoContainer = (mimeType: string | null): "mp4" | "webm" => (mimeType?.startsWith("video/mp4") ? "mp4" : "webm");
 
 const NO_RECORDER = m.exporting.animation.noRecorder;
 
@@ -153,7 +159,7 @@ function waitFor(until: Promise<unknown>, ms: number): Promise<void> {
   });
 }
 
-/** Records `canvas` while `paint` animates it for `seconds` and returns the WebM, with its duration filled in. */
+/** Records `canvas` while `paint` animates it for `seconds` and returns the WebM (with its duration filled in) or the MP4. */
 export async function recordCanvas(options: RecordOptions): Promise<RecordResult> {
   const { canvas, paint, seconds, signal } = options;
   const fps = options.fps ?? VIDEO_FPS;
@@ -247,9 +253,10 @@ export async function recordCanvas(options: RecordOptions): Promise<RecordResult
 
   if (state.cancelled) throw cancelledError();
   if (state.failure) throw state.failure;
-  const raw = new Blob(chunks, { type: "video/webm" });
+  const container = videoContainer(options.mimeType);
+  const raw = new Blob(chunks, { type: `video/${container}` });
   if (raw.size === 0) throw new ExportError("encode-failed", SAVE_FAILED);
-  // the recorder cannot write the length of a file it is still producing; the clock knows it
-  const blob = await withWebmDuration(raw, Math.max(seconds, clock.recordedSeconds));
+  // a WebM recorder cannot write the length of a file it is still producing; the clock knows it (an MP4 has it at its end)
+  const blob = container === "webm" ? await withWebmDuration(raw, Math.max(seconds, clock.recordedSeconds)) : raw;
   return { blob, stalled: clock.stalled };
 }

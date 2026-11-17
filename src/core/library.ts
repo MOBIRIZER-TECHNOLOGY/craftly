@@ -6,6 +6,7 @@
 import { m } from "@/i18n";
 import { createDesign, createPage, solid } from "./factory";
 import { uid } from "./ids";
+import { storableAsset } from "./assets";
 import { dbDelete, dbGet, dbGetAll, dbPut, dbPutMany, metaGet, metaSet, openDb, wrap, writeTransaction, type StoreName } from "./persistence";
 import { clonePageWithIds } from "./ops";
 import { commentsForCopy } from "./comments";
@@ -81,6 +82,7 @@ export async function getDesignForEditing(id: string): Promise<{ design: Design;
 export async function saveDesign(design: Design, thumbnail?: string, expectedRevision?: string | null, assets: Asset[] = []): Promise<string> {
   const stores: StoreName[] = ["designs", "summaries", "versions"];
   if (assets.length) stores.push("assets");
+  const storedAssets = await Promise.all(assets.map(storableAsset));
   const revision = await writeTransaction(stores, async (tx) => {
     const summaries = tx.objectStore("summaries");
     const designs = tx.objectStore("designs");
@@ -98,7 +100,7 @@ export async function saveDesign(design: Design, thumbnail?: string, expectedRev
       }
     }
     const summary = { ...summarize(design, thumbnail, prev), revision: uid("revision") };
-    for (const asset of assets) tx.objectStore("assets").add(asset);
+    for (const asset of storedAssets) tx.objectStore("assets").add(asset);
     designs.put(design);
     summaries.put(summary);
     return summary.revision;

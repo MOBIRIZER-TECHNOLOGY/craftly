@@ -140,8 +140,8 @@ const INK = "#0e1318";
       { bytes: Array.from(png), zoom, region: [x0, y0, x1, y1] },
     );
   };
-  /** how much of two masks of the same part of the page lands on the other one, a pixel of slack allowed (the smaller of both ways) */
-  const overlap = (a, b) => {
+  /** how much of two masks of the same part of the page lands on the other one, `slack` pixels allowed (the smaller of both ways) */
+  const overlap = (a, b, slack = 1) => {
     const share = (p, q) => {
       let hit = 0;
       let all = 0;
@@ -150,8 +150,8 @@ const INK = "#0e1318";
           if (p.mask[y * p.w + x] !== "1") continue;
           all++;
           let found = false;
-          for (let dy = -1; dy <= 1 && !found; dy++)
-            for (let dx = -1; dx <= 1 && !found; dx++) {
+          for (let dy = -slack; dy <= slack && !found; dy++)
+            for (let dx = -slack; dx <= slack && !found; dx++) {
               const yy = y + dy;
               const xx = x + dx;
               if (yy >= 0 && yy < q.h && xx >= 0 && xx < q.w && q.mask[yy * q.w + xx] === "1") found = true;
@@ -162,6 +162,47 @@ const INK = "#0e1318";
     };
     return Math.min(share(a, b), share(b, a));
   };
+  /**
+   * Whether this browser draws the letters of a variable font at the weight they are asked in. Playwright's WebKit build on
+   * Windows does not: it lays the text out with the advances of that weight (measureText gives Chrome's widths to the hundredth),
+   * but draws every letter with the outline of the font's default instance, on the canvas and in the page alike (Inter "Shape" at
+   * 200px: 27,384 / 27,288 / 27,391 ink pixels at weights 200 / 400 / 900, against Chrome's 14,786 / 27,594 / 51,529). The
+   * letters Convert to shapes makes are those of the weight asked for, so there the text and its shapes cannot agree exactly.
+   * Safari (Core Text) applies the weight axis. Asked once a family, by drawing an H light and heavy.
+   */
+  const weightsDrawn = {};
+  const drawsWeightsOf = async (family) => {
+    if (weightsDrawn[family] === undefined)
+      weightsDrawn[family] = await page.evaluate(async (family) => {
+        const face = [...document.fonts].find((f) => f.family.replace(/"/g, "") === family + " Variable" && f.status === "loaded");
+        if (!face) return true; // not a variable font: every weight is a file of its own
+        const ink = (weight) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 200;
+          canvas.height = 150;
+          const g = canvas.getContext("2d", { willReadFrequently: true });
+          g.font = `${weight} 100px "${family} Variable"`;
+          g.fillText("H", 20, 120);
+          const d = g.getImageData(0, 0, 200, 150).data;
+          let n = 0;
+          for (let i = 3; i < d.length; i += 4) if (d[i] > 127) n++;
+          return n;
+        };
+        return ink(800) > ink(200) * 1.5;
+      }, family);
+    return weightsDrawn[family];
+  };
+  /**
+   * How closely the ink of a text and of its shapes must agree: one pixel of slack, 95% of the ink, a box within `box` screen px
+   * and as many pixels within 10%; or, where the browser draws a variable font at one weight only (`drawsWeightsOf`), a slack of
+   * LOOSE screen px each way, which is half the difference in stem width between the weights 400 and 900 of Inter at this size
+   * (an "l" at 200px is 17 design px wide at 400 and 39 at 900: 11 px a side, 6 screen px at the zoom of 0.55 the page opens at),
+   * and no count of pixels (the weights have different amounts of ink by design; the weight step below checks the shapes' own).
+   * The layout itself agrees in both engines (the same advances), so the strict check at Inter 400 runs in every engine.
+   */
+  const LOOSE = 6;
+  const agreement = async (family, box = 2) =>
+    (await drawsWeightsOf(family)) ? { slack: 1, share: 0.95, box, count: true } : { slack: LOOSE, share: 0.95, box: LOOSE + box, count: false };
   const pct = (v) => Math.round(v * 100) + "%";
   const boxText = (b) => `${b[0]},${b[1]} to ${b[2]},${b[3]}`;
   const near = (a, b, tolerance) => Math.abs(a - b) <= tolerance;
@@ -279,7 +320,7 @@ const INK = "#0e1318";
     if (s.sel.length !== 1 || s.sel[0] !== group.id) throw new Error("selection " + s.sel);
     // the box of the group is the box of the ink, inside the text box
     const g = [group.x, group.y, group.x + group.width, group.y + group.height];
-    const tol = 3 / before.zoom; // three screen pixels
+    const tol = (await agreement(text.fontFamily, 3)).box / before.zoom; // three screen pixels (where the weight is drawn)
     if (!g.every((v, i) => near(v, before.box[i], tol))) throw new Error(`the group is at ${boxText(g.map(Math.round))}, the letters were drawn at ${boxText(before.box)}`);
     if (g[0] < text.x - 1 || g[1] < text.y - 1 || g[2] > text.x + text.width + 1 || g[3] > text.y + text.height + 1)
       throw new Error("the group is outside the text box: " + boxText(g.map(Math.round)));
@@ -294,14 +335,15 @@ const INK = "#0e1318";
   await step("the pixels: the ink of the shapes lands where the ink of the text was", async () => {
     const after = await inkIn(REGION);
     if (!after.box) throw new Error("nothing is drawn");
-    const tol = 2 / after.zoom;
+    const a = await agreement(text.fontFamily);
+    const tol = a.box / after.zoom;
     if (!after.box.every((v, i) => near(v, before.box[i], tol))) throw new Error(`ink at ${boxText(after.box)}, was at ${boxText(before.box)}`);
-    const same = overlap(before, after);
-    if (same < 0.95) throw new Error(`only ${pct(same)} of the ink is in the same place`);
+    const same = overlap(before, after, a.slack);
+    if (same < a.share) throw new Error(`only ${pct(same)} of the ink is in the same place (${a.slack} px of slack)`);
     const ratio = after.count / before.count;
-    if (ratio < 0.9 || ratio > 1.1) throw new Error(`${after.count} ink pixels, ${before.count} before`);
+    if (a.count && (ratio < 0.9 || ratio > 1.1)) throw new Error(`${after.count} ink pixels, ${before.count} before`);
     await shot("converted-drawn");
-    return `ink ${boxText(after.box)} (was ${boxText(before.box)}), ${pct(same)} in the same place, ${after.count} / ${before.count} pixels`;
+    return `ink ${boxText(after.box)} (was ${boxText(before.box)}), ${pct(same)} in the same place (${a.slack} px of slack; ${pct(overlap(before, after))} with 1), ${after.count} / ${before.count} pixels`;
   });
 
   await step("one Ctrl+Z gives the text back exactly, Ctrl+Shift+Z converts it again", async () => {
@@ -334,15 +376,33 @@ const INK = "#0e1318";
       const els = await convertedFrom(id);
       groupOfPaths(els, 5);
       const now = await inkIn(REGION);
-      const same = overlap(was, now);
-      if (same < 0.95) throw new Error(`only ${pct(same)} of the ink is in the same place`);
+      const a = await agreement("Inter");
+      const same = overlap(was, now, a.slack);
+      if (same < a.share) throw new Error(`only ${pct(same)} of the ink is in the same place (${a.slack} px of slack)`);
       const ratio = now.count / was.count;
-      if (ratio < 0.9 || ratio > 1.1) throw new Error(`${now.count} ink pixels, ${was.count} as text`);
+      if (a.count && (ratio < 0.9 || ratio > 1.1)) throw new Error(`${now.count} ink pixels, ${was.count} as text`);
       weights[weight] = now.count;
       await shot("inter-" + weight);
-      return `${pct(same)} in the same place, ${now.count} / ${was.count} pixels`;
+      return `${pct(same)} in the same place (${a.slack} px of slack; ${pct(overlap(was, now))} with 1), ${now.count} / ${was.count} pixels`;
     });
   }
+  // the weight of Inter's default instance, which every engine draws as asked (see drawsWeightsOf): held to one pixel everywhere
+  await step("Inter at weight 400 converts exactly as every engine draws it: 95% of the ink within a pixel, as many pixels", async () => {
+    const id = await setUpText("Shape", { fontFamily: "Inter", fontWeight: 400, fontSize: 200, x: 300, y: 300 });
+    await settle();
+    const t = (await state()).els[0];
+    const was = await inkIn(REGION);
+    await convertByToolbar(t);
+    groupOfPaths(await convertedFrom(id), 5);
+    const now = await inkIn(REGION);
+    const same = overlap(was, now);
+    if (same < 0.95) throw new Error(`only ${pct(same)} of the ink is in the same place`);
+    const ratio = now.count / was.count;
+    if (ratio < 0.9 || ratio > 1.1) throw new Error(`${now.count} ink pixels, ${was.count} as text`);
+    if (!now.box.every((v, i) => near(v, was.box[i], 2 / now.zoom))) throw new Error(`ink at ${boxText(now.box)}, was at ${boxText(was.box)}`);
+    return `${pct(same)} in the same place, ${now.count} / ${was.count} pixels at a zoom of ${now.zoom.toFixed(2)}`;
+  });
+
   await step("the weight is the one the text had: the heavy letters have far more ink than the light ones", async () => {
     if (!weights[200] || !weights[900]) throw new Error("a weight did not convert");
     const ratio = weights[900] / weights[200];
@@ -434,15 +494,16 @@ const INK = "#0e1318";
     const els = await convertedFrom(id);
     groupOfPaths(els, 23);
     const now = await inkIn(region);
-    const tol = 2 / now.zoom;
+    const a = await agreement(t.fontFamily);
+    const tol = a.box / now.zoom;
     if (now.bands.length !== was.bands.length)
       throw new Error(`${now.bands.length} lines of ink, ${was.bands.length} as text: ${JSON.stringify(now.bands)} / ${JSON.stringify(was.bands)}`);
     if (now.bands.some((b, i) => !near(b[0], was.bands[i][0], tol) || !near(b[1], was.bands[i][1], tol)))
       throw new Error(`the lines are at ${JSON.stringify(now.bands)}, were at ${JSON.stringify(was.bands)}`);
-    const same = overlap(was, now);
-    if (same < 0.95) throw new Error(`only ${pct(same)} of the ink is in the same place`);
+    const same = overlap(was, now, a.slack);
+    if (same < a.share) throw new Error(`only ${pct(same)} of the ink is in the same place (${a.slack} px of slack)`);
     await shot("wrapped");
-    return `${now.bands.length} lines at ${now.bands.map((b) => b[0] + "-" + b[1]).join(", ")}, ${pct(same)} in the same place`;
+    return `${now.bands.length} lines at ${now.bands.map((b) => b[0] + "-" + b[1]).join(", ")}, ${pct(same)} in the same place (${a.slack} px of slack)`;
   });
 
   /* ---------------- SVG ---------------- */

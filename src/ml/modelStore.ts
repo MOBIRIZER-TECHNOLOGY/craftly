@@ -55,9 +55,29 @@ async function run<T>(mode: IDBTransactionMode, make: (store: IDBObjectStore) =>
   }
 }
 
+/**
+ * The bytes of a model as they are stored by a browser whose database will not keep a Blob: WebKit in a private window refuses
+ * one ("Error preparing Blob/File data to be stored in object store"), but keeps an ArrayBuffer.
+ */
+interface StoredBytes {
+  data: ArrayBuffer;
+  type: string;
+}
+type StoredRecord = Omit<StoredModel, "blob"> & { blob: Blob | StoredBytes };
+
+const withBlob = (record: StoredRecord): StoredModel =>
+  record.blob instanceof Blob || !record.blob || !("data" in record.blob) ? (record as StoredModel) : { ...record, blob: new Blob([record.blob.data], { type: record.blob.type }) };
+
 export async function putStoredModel(spec: ModelSpec, blob: Blob, now: number = Date.now()): Promise<void> {
   const record: StoredModel = { id: spec.id, sha256: spec.sha256, bytes: spec.bytes, revision: spec.revision, installedAt: now, blob };
-  await run("readwrite", (store) => store.put(record));
+  try {
+    await run("readwrite", (store) => store.put(record));
+  } catch (error) {
+    // a full disk stays full; a refused Blob is stored as its bytes
+    if (!(error instanceof MlError) || error.code !== "storage") throw error;
+    const bytes: StoredRecord = { ...record, blob: { data: await blob.arrayBuffer(), type: blob.type } };
+    await run("readwrite", (store) => store.put(bytes));
+  }
 }
 
 /** The stored copy is the file `spec` pins: made for it, and (where the environment can say) of the pinned size. */
@@ -67,8 +87,9 @@ export function isIntact(stored: { sha256: string; blob: { size?: number } }, sp
   return size === undefined || size === spec.bytes;
 }
 
-export function getStoredModel(id: ModelId): Promise<StoredModel | undefined> {
-  return run("readonly", (store) => store.get(id) as IDBRequest<StoredModel | undefined>);
+export async function getStoredModel(id: ModelId): Promise<StoredModel | undefined> {
+  const record = await run("readonly", (store) => store.get(id) as IDBRequest<StoredRecord | undefined>);
+  return record && withBlob(record);
 }
 
 /** The installed models, without their bytes. */

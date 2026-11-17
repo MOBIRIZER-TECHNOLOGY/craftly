@@ -27,7 +27,7 @@ import {
   type SelectOption,
 } from "@/ui";
 import { ANIM_RESOLUTIONS, GIF_FPS_CHOICES, VIDEO_FPS, animationProblem, formatDuration, isAnimatedFormat, resolutionLabel, type AnimResolution } from "./animated/frames";
-import { detectVideoSupport, type VideoSupport } from "./animated/video";
+import { detectVideoSupport, videoContainer, type VideoSupport } from "./animated/video";
 import { describeExportError, isCancelled } from "./errors";
 import { downloadBlob, exportDesign, type ExportFormat } from "./exporters";
 import { exportSeveralSizes } from "./multiSize";
@@ -121,9 +121,17 @@ const FILE_OPTIONS: SelectOption<FileKey>[] = [
   { value: "html", icon: <IconWebsite aria-hidden="true" />, textValue: TYPES.html, label: <Option name={TYPES.html} hint={TYPES.htmlHint} /> },
 ];
 
-/** The list as this browser can use it: a video the browser cannot record stays visible but disabled, with the reason. */
+/**
+ * The list as this browser can use it: a video the browser cannot record stays visible but disabled, with the reason, and one
+ * that it records as MP4 (Safari) is called so.
+ */
 const optionsFor = (video: VideoSupport): SelectOption<FileKey>[] =>
-  video.ok ? FILE_OPTIONS : FILE_OPTIONS.map((o) => (o.value === "webm" ? { ...o, disabled: true, label: <Option name={TYPES.video} hint={TYPES.videoUnsupported} /> } : o));
+  FILE_OPTIONS.map((o) => {
+    if (o.value !== "webm") return o;
+    if (!video.ok) return { ...o, disabled: true, label: <Option name={TYPES.video} hint={TYPES.videoUnsupported} /> };
+    if (videoContainer(video.mimeType) === "mp4") return { ...o, textValue: TYPES.videoMp4, label: <Option name={TYPES.videoMp4} hint={TYPES.videoHint} /> };
+    return o;
+  });
 
 /** The name of a size as the panel shows it: "Original size" stays English in the file names, and is said in the page's language here. */
 const sizeName = (name: string): string => (name === ORIGINAL_SIZE_NAME ? words.originalSize : name);

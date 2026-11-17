@@ -126,7 +126,18 @@ function readZip(file) {
           request.onsuccess = () => {
             const all = request.result.transaction("assets", "readonly").objectStore("assets").getAll();
             all.onsuccess = () =>
-              resolve(all.result.map((a) => ({ id: a.id, name: a.name, mime: a.mime, size: a.blob.size, type: a.blob.type, width: a.width, height: a.height })));
+              resolve(
+                // a browser whose database keeps no Blob (WebKit in a private window) has the bytes stored instead (src/core/assets.ts)
+                all.result.map((a) => ({
+                  id: a.id,
+                  name: a.name,
+                  mime: a.mime,
+                  size: a.blob instanceof Blob ? a.blob.size : a.blob.bytes.byteLength,
+                  type: a.blob.type,
+                  width: a.width,
+                  height: a.height,
+                })),
+              );
             all.onerror = () => reject(all.error);
           };
         }),
@@ -149,15 +160,23 @@ function readZip(file) {
   watch(first.page, "first");
   let firstDesign = "";
 
-  await step("the first save asks the browser to keep the library, once", async () => {
+  const persistStep = "the first save asks the browser to keep the library, once";
+  let noPersist = false;
+  await step(persistStep, async () => {
     await newDesign(first.page);
     firstDesign = await designId(first.page);
+    // Playwright's WebKit build has no navigator.storage.persist (Safari has it): the app then asks nothing (src/core/storage.ts)
+    if (!(await first.page.evaluate(() => typeof navigator.storage?.persist === "function"))) {
+      noPersist = true;
+      return "";
+    }
     await first.page.waitForFunction(() => window.__persistCalls >= 1, null, { timeout: 8000 });
     await wait(first.page, 1500);
     const calls = await first.page.evaluate(() => window.__persistCalls);
     if (calls !== 1) throw new Error("persist() was called " + calls + " times");
     return "persist() called once";
   });
+  if (noPersist) results.splice(results.indexOf("PASS " + persistStep), 1, `SKIP ${persistStep}  (this browser has no navigator.storage.persist)`);
 
   await step("a design with a shape and an uploaded picture is saved with its preview", async () => {
     const page = first.page;

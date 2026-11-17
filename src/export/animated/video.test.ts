@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RecordingClock, VIDEO_MIME_TYPES, detectVideoSupport, type RecorderEnv } from "./video";
+import { RecordingClock, VIDEO_MIME_TYPES, detectVideoSupport, videoContainer, type RecorderEnv } from "./video";
 import { encodeEbmlSize, patchWebmDuration, withWebmDuration } from "./webm";
 
 const env = (supported: readonly string[] | "throws", captureStream: unknown = () => undefined): RecorderEnv => ({
@@ -13,11 +13,19 @@ const env = (supported: readonly string[] | "throws", captureStream: unknown = (
 });
 
 describe("detectVideoSupport", () => {
-  it("prefers VP9, then VP8, then whatever WebM the browser has", () => {
-    expect(VIDEO_MIME_TYPES).toEqual(["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]);
+  it("prefers VP9, then VP8, then whatever WebM the browser has, then MP4", () => {
+    expect(VIDEO_MIME_TYPES).toEqual(["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4;codecs=avc1", "video/mp4"]);
     expect(detectVideoSupport(env(VIDEO_MIME_TYPES))).toEqual({ ok: true, mimeType: "video/webm;codecs=vp9", reason: null });
     expect(detectVideoSupport(env(["video/webm;codecs=vp8", "video/webm"])).mimeType).toBe("video/webm;codecs=vp8");
-    expect(detectVideoSupport(env(["video/webm"])).mimeType).toBe("video/webm");
+    expect(detectVideoSupport(env(["video/webm", "video/mp4"])).mimeType).toBe("video/webm");
+  });
+
+  it("records MP4 in a browser that records no WebM (Safari)", () => {
+    expect(detectVideoSupport(env(["video/mp4;codecs=avc1", "video/mp4"]))).toEqual({ ok: true, mimeType: "video/mp4;codecs=avc1", reason: null });
+    expect(detectVideoSupport(env(["video/mp4"])).mimeType).toBe("video/mp4");
+    expect(videoContainer("video/mp4;codecs=avc1")).toBe("mp4");
+    expect(videoContainer("video/webm;codecs=vp9")).toBe("webm");
+    expect(videoContainer(null)).toBe("webm");
   });
 
   it("is not possible without MediaRecorder or canvas capture, and says so in a sentence", () => {
@@ -36,10 +44,10 @@ describe("detectVideoSupport", () => {
     }
   });
 
-  it("is not possible when the browser records no WebM at all (Safari)", () => {
-    const support = detectVideoSupport(env(["video/mp4"]));
+  it("is not possible when the browser records neither WebM nor MP4", () => {
+    const support = detectVideoSupport(env(["video/x-matroska"]));
     expect(support).toMatchObject({ ok: false, mimeType: null });
-    expect(support.reason).toMatch(/cannot record WebM/);
+    expect(support.reason).toMatch(/cannot record video as WebM or MP4/);
   });
 
   it("survives a browser that throws from isTypeSupported", () => {

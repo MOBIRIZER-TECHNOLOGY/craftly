@@ -17,7 +17,7 @@
  * depends on a server that takes reports.
  */
 const fs = require("node:fs");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, BASE, isChromium } = require("./lib.cjs");
 
 const OUT = outDir("crash");
 const results = [];
@@ -27,7 +27,8 @@ let shotN = 0;
   const browser = await launch();
   // no service worker: on a production build it would answer a request that the journey has told the browser to refuse
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true, serviceWorkers: "block" });
-  await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => undefined);
+  // the clipboard permissions are Chromium's: another engine names neither, and refuses the context that asks for them
+  if (isChromium) await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => undefined);
   const page = await ctx.newPage();
   const sent = [];
   await page.route("**/__report", async (route) => {

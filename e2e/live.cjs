@@ -14,7 +14,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { launch, outDir, joinIfAsked, BASE } = require("./lib.cjs");
+const { launch, outDir, joinIfAsked, BASE, isChromium } = require("./lib.cjs");
 
 const OUT = outDir("live");
 const ROOT = path.resolve(__dirname, "..");
@@ -61,7 +61,8 @@ async function startServer() {
   const browser = await launch();
   const open = async (name) => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => undefined);
+    // the clipboard permissions are Chromium's: another engine names neither, and refuses the context that asks for them
+    if (isChromium) await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => undefined);
     const page = await ctx.newPage();
     page.on("console", (m) => {
       if (m.type() === "error" && !/WebSocket|ERR_CONNECTION|Failed to load resource/.test(m.text())) logs.push(`${name} console.error: ` + m.text().slice(0, 240));

@@ -140,4 +140,46 @@ describe("when the browser cannot keep the model", () => {
     const fresh = await import("./modelStore");
     await expect(fresh.putStoredModel(spec, new Blob(["12345"]))).rejects.toMatchObject({ code: "quota" });
   });
+
+  it("keeps the bytes of a model in a browser whose database refuses a Blob (WebKit in a private window), and gives a Blob back", async () => {
+    vi.resetModules();
+    const kept = new Map<string, { id: string; blob: unknown }>();
+    // a database that refuses every value holding a Blob the way WebKit does, and keeps anything else
+    vi.stubGlobal("indexedDB", {
+      open() {
+        const request: Record<string, unknown> = {};
+        request.result = {
+          transaction() {
+            const transaction: Record<string, unknown> = { error: null };
+            const done = (ok: boolean) => queueMicrotask(() => (transaction[ok ? "oncomplete" : "onabort"] as () => void)());
+            transaction.objectStore = () => ({
+              put(value: { id: string; blob: unknown }) {
+                const refused = value.blob instanceof Blob;
+                if (refused) transaction.error = new DOMException("Error preparing Blob/File data to be stored in object store", "UnknownError");
+                else kept.set(value.id, value);
+                done(!refused);
+                return {};
+              },
+              get(id: string) {
+                const req = { result: kept.get(id) };
+                done(true);
+                return req;
+              },
+            });
+            return transaction;
+          },
+        };
+        queueMicrotask(() => (request.onsuccess as () => void)());
+        return request;
+      },
+    });
+    const fresh = await import("./modelStore");
+    await fresh.putStoredModel(spec, new Blob([new Uint8Array([1, 2, 3, 4, 5])], { type: "application/octet-stream" }));
+    expect(kept.get(spec.id)?.blob).not.toBeInstanceOf(Blob);
+    const stored = await fresh.getStoredModel(spec.id);
+    expect(stored!.blob).toBeInstanceOf(Blob);
+    expect(stored!.blob.type).toBe("application/octet-stream");
+    expect(new Uint8Array(await stored!.blob.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+    expect(fresh.isIntact(stored!, spec)).toBe(true);
+  });
 });
