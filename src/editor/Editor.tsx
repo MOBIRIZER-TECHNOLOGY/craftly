@@ -17,6 +17,7 @@ import { Workspace } from "./canvas/Workspace";
 import { DialogHost } from "./dialogs/DialogHost";
 import { installHotkeys } from "./hotkeys";
 import { connectLive } from "./live/connection";
+import { applyTeamRole, connectTeamLive, stopTeamLive, useTeamLive } from "./live/teamLive";
 import { CommentsAnnouncer, CommentsPanel } from "./comments/CommentsPanel";
 import { GridView } from "./pages/GridView";
 import { PageStrip } from "./pages/PageStrip";
@@ -149,6 +150,23 @@ export function Editor({ designId }: { designId: string }) {
     if (status !== "ready" || !link) return;
     return connectLive(link);
   }, [status, link]);
+
+  /* a design of a team, open live with the team (teamLive.ts): joined with the member's session while it is open */
+  const teamLink = useTeamLive((s) => (s.designId === designId ? s.link : null));
+  const teamSession = useTeamLive((s) => s.session);
+  useEffect(() => {
+    if (status !== "ready" || !teamLink || !teamSession || link) return;
+    return connectTeamLive(designId, teamLink, teamSession);
+  }, [status, teamLink, teamSession, link, designId]);
+  useEffect(() => {
+    if (status === "ready") void applyTeamRole(designId);
+  }, [status, designId]);
+  useEffect(
+    () => () => {
+      if (useTeamLive.getState().designId === designId) stopTeamLive();
+    },
+    [designId],
+  );
 
   /* the browser tab shows the design's name */
   const title = useEditor((s) => s.design?.title);

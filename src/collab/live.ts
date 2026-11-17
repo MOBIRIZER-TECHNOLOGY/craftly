@@ -28,6 +28,8 @@ export interface LiveOptions {
   url: string;
   /** What lets this person in: shown in the first message of every connection. */
   key: string;
+  /** A member's session in place of the key, for a room bound to a design of their team (`SessionOptions.session`). */
+  session?: string;
   /** Names this page load to the server; another one is made when none is given. */
   client?: string;
   /** What this browser says in its join that it understands beyond what every version does (protocol.ts). */
@@ -78,7 +80,15 @@ export class Live {
 
   constructor(private opts: LiveOptions) {
     const client = opts.outbox?.client ?? opts.client ?? newName();
-    this.session = new Session({ client, key: opts.key, send: (msg) => this.send(msg), outbox: opts.outbox, onOutbox: opts.onOutbox, features: opts.features });
+    this.session = new Session({
+      client,
+      key: opts.key,
+      session: opts.session,
+      send: (msg) => this.send(msg),
+      outbox: opts.outbox,
+      onOutbox: opts.onOutbox,
+      features: opts.features,
+    });
   }
 
   /** Whether comments are shared with this server (`Session.sharesComments`): false until the welcome says so. */

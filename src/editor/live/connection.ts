@@ -27,6 +27,10 @@ export interface LiveEnv {
   fetch?: typeof fetch;
   /** How long to wait for a server when joining, in milliseconds. */
   timeoutMs?: number;
+  /** A member's session in place of the link's key: a room bound to a design of their team (docs/ACCOUNTS.md, src/editor/live/teamLive.ts). */
+  session?: string;
+  /** The server turned this browser away, or the room is gone: the team's room is then asked for again. */
+  onDenied?: (reason: DeniedReason | null) => void;
 }
 
 export interface LiveStatusState {
@@ -89,7 +93,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   let warned = false;
   const designId = useEditor.getState().design?.id;
   const key = `craftly:outbox:${designId}:${link.server}:${link.room}`;
-  const media = sharedMedia(link, env.fetch);
+  const media = sharedMedia(link, env.fetch, env.session);
   const outbox = readOutbox(key);
   const allowedUploads = new Set(outbox?.uploads);
 
@@ -184,6 +188,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   const live = new Live({
     url: websocketUrl(link),
     key: link.key,
+    session: env.session,
     createSocket: env.createSocket,
     // this browser understands comments: a server that shares them says so in its welcome (docs/COLLABORATION.md, "Comments")
     features: [COMMENTS],
@@ -232,6 +237,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
         actions().setMode("view");
       }
       useLiveStatus.setState({ status, reason, role: live.session.role });
+      if (status === "denied") env.onDenied?.(reason);
       // what the welcome said of comments; while the connection is away it stays what it was
       if (status === "live") useComments.setState({ sharing: live.sharesComments ? "shared" : "unsupported" });
       presenceOff();

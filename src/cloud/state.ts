@@ -114,7 +114,8 @@ export async function saveSession(session: CloudSession | null): Promise<void> {
 
 /** Changes the session as it is kept, and the state; nothing when nobody is signed in. */
 export async function updateSession(change: (session: CloudSession) => CloudSession): Promise<void> {
-  const current = readSession(await metaGet<unknown>(SESSION_KEY, null));
+  // as kept (another tab may have changed it), else as this tab has it
+  const current = readSession(await metaGet<unknown>(SESSION_KEY, null)) ?? useCloud.getState().session;
   if (!current) return;
   await saveSession(change(current));
 }

@@ -27,6 +27,7 @@ import {
   toast,
   type MenuEntry,
 } from "@/ui";
+import { SyncStatus } from "@/dashboard/account/SyncStatus";
 import { FileMenu } from "./FileMenu";
 import { LivePeople } from "../live/LivePeople";
 import { CommentsButton } from "../comments/CommentsButton";
@@ -322,6 +323,8 @@ export function TopBar() {
         />
         <span className="cf-topbar__sep cf-topbar__sep--hide-sm" aria-hidden="true" />
         <SaveIndicator />
+        {/* the sync status of the account, while somebody is signed in (docs/ACCOUNTS.md); nothing otherwise */}
+        <SyncStatus compact className="cf-topbar__sync" />
       </div>
       <div className="cf-topbar__title-wrap">
         <TitleField ref={titleRef} />

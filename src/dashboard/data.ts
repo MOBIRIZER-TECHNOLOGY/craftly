@@ -6,6 +6,7 @@ import { useMemo, useSyncExternalStore } from "react";
 import { listAssets, subscribeAssets } from "@/core/assets";
 import { getBrandKit, listDesigns, listFolders, setBrandKit, subscribeLibrary } from "@/core/library";
 import { metaGet, metaSet } from "@/core/persistence";
+import { inActiveSpace, useCloud } from "@/cloud/state";
 import type { Asset, BrandKit, DesignSummary, Folder } from "@/core/types";
 import { m } from "@/i18n";
 import { toast } from "@/ui";
@@ -13,8 +14,23 @@ import { createLiveStore, useLive } from "./liveStore";
 
 const EMPTY_BRAND: BrandKit = { colors: [], fonts: [], logos: [] };
 
-export const designsStore = createLiveStore<DesignSummary[]>([], listDesigns, [subscribeLibrary]);
-export const foldersStore = createLiveStore<Folder[]>([], listFolders, [subscribeLibrary]);
+/** The space being shown changes with the person who is signed in and the space they chose (src/cloud/state.ts). */
+const subscribeSpace = (callback: () => void) => {
+  let last = useCloud.getState().session?.activeSpace ?? null;
+  return useCloud.subscribe((state) => {
+    const now = state.session?.activeSpace ?? null;
+    if (now === last) return;
+    last = now;
+    callback();
+  });
+};
+
+/**
+ * The dashboard lists what is in the space being shown (docs/ACCOUNTS.md, "Listings by space"): everything while nobody is signed
+ * in, exactly as before accounts.
+ */
+export const designsStore = createLiveStore<DesignSummary[]>([], () => listDesigns().then((all) => all.filter((d) => inActiveSpace(d))), [subscribeLibrary, subscribeSpace]);
+export const foldersStore = createLiveStore<Folder[]>([], () => listFolders().then((all) => all.filter((f) => inActiveSpace(f))), [subscribeLibrary, subscribeSpace]);
 export const brandStore = createLiveStore<BrandKit>(EMPTY_BRAND, getBrandKit, [subscribeLibrary]);
 export const assetsStore = createLiveStore<Asset[]>([], listAssets, [subscribeAssets]);
 

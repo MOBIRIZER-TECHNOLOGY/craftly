@@ -21,6 +21,11 @@ export interface SessionOptions {
   client: string;
   /** What lets this browser in: shown in the first message of every connection, never in an address. */
   key: string;
+  /**
+   * A session of an account in place of the key: what a member shows in a room bound to a design of their team (docs/ACCOUNTS.md).
+   * The join then carries no key at all.
+   */
+  session?: string;
   send(msg: ClientMsg): void;
   outbox?: Outbox;
   onOutbox?(outbox: Outbox): void;
@@ -145,7 +150,8 @@ export class Session {
   /** Asks for the design, saying what this browser understands when it understands more than every version does. */
   private join(): void {
     const features = this.opts.features ?? [];
-    this.opts.send(features.length ? { t: "join", client: this.opts.client, key: this.opts.key, features } : { t: "join", client: this.opts.client, key: this.opts.key });
+    const credential = this.opts.session ? { session: this.opts.session } : { key: this.opts.key };
+    this.opts.send(features.length ? { t: "join", client: this.opts.client, ...credential, features } : { t: "join", client: this.opts.client, ...credential });
   }
 
   /** What of a batch goes to this server: without the comment operations when it does not share comments. */

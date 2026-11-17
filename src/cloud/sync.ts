@@ -188,6 +188,41 @@ async function giveNewId(id: string): Promise<string | null> {
   return done ? fresh : null;
 }
 
+/** Whether two designs have the same content: their pages, size and comments (not their details or dates). */
+function sameContent(a: Design, b: Design): boolean {
+  const content = (d: Design) => JSON.stringify([d.width, d.height, d.unit ?? null, d.pages, d.comments ?? []]);
+  return content(a) === content(b);
+}
+
+/**
+ * The copy of a design here is what the server has (or will have): after it was edited live in its team's room, which writes it
+ * back to the space itself. Nothing of it is sent again; a design the server never had stays as it is.
+ */
+export async function markInStep(id: string): Promise<void> {
+  await writeTransaction(["summaries", "sync"], async (tx) => {
+    const sync = tx.objectStore("sync");
+    const [record, summary] = await Promise.all([wrap<SyncRecord | undefined>(sync.get(id)), wrap<DesignSummary | undefined>(tx.objectStore("summaries").get(id))]);
+    if (!record || record.serverRev === null || !summary) return;
+    sync.put({ ...record, syncedRevision: summary.revision ?? null, syncedMeta: metaOfSummary(summary) });
+  });
+}
+
+/**
+ * Sends one design now, if it waits, whether or not an editor has it open (the one that asks): before it is opened live with the
+ * team, so that the room is made from what was edited here. Nothing when nobody is signed in or the design is in step.
+ */
+export async function sendOne(id: string, options: SyncOptions = {}): Promise<void> {
+  const session = useCloud.getState().session;
+  const summary = (await listDesigns()).find((s) => s.id === id);
+  if (!session || !summary?.space) return;
+  const role = roleIn(summary.space, session);
+  if (!writes(role)) return;
+  const record = (await dbGetAll<SyncRecord>("sync")).find((r) => r.id === id) ?? null;
+  if (!isDirty({ revision: summary.revision ?? null, record })) return;
+  const run: SpaceRun = { conn: connOf(session, options), space: summary.space, role: role as Role, device: session.device, report: newReport(), hold: false, full: false };
+  await push(run, id, record?.serverRev ?? null);
+}
+
 /* ---------------- a space ---------------- */
 
 interface SpaceRun {
@@ -296,22 +331,30 @@ async function conflict(run: SpaceRun, id: string, rev: number | null): Promise<
       const summaries = tx.objectStore("summaries");
       const [mine, summary] = await Promise.all([wrap<Design | undefined>(designs.get(id)), wrap<DesignSummary | undefined>(summaries.get(id))]);
       if (!mine || !summary) return false;
-      const now = Date.now();
-      const kept: VersionRecord = { id: `${id}:${now}`, designId: id, createdAt: now, label: "Before sync", design: mine };
-      tx.objectStore("versions").put(kept);
-      const copy: Design = { ...mine, id: copyId, title: m.cloud.sync.editedOn(mine.title, run.device), updatedAt: now };
-      delete copy.live;
-      designs.put(copy);
-      summaries.put({ ...summarize(copy, summary.thumbnail), space: run.space, revision: uid("revision") });
+      // the same content on both sides (what a room wrote back, an edit made twice): no conflict, only the server's revision
+      const same = sameContent(mine, got.design);
+      if (!same) {
+        const now = Date.now();
+        const kept: VersionRecord = { id: `${id}:${now}`, designId: id, createdAt: now, label: "Before sync", design: mine };
+        tx.objectStore("versions").put(kept);
+        const copy: Design = { ...mine, id: copyId, title: m.cloud.sync.editedOn(mine.title, run.device), updatedAt: now };
+        delete copy.live;
+        designs.put(copy);
+        summaries.put({ ...summarize(copy, summary.thumbnail), space: run.space, revision: uid("revision") });
+      }
       const revision = uid("revision");
       designs.put(got.design);
       summaries.put({ ...summarize(got.design, got.thumbnail, summary), space: run.space, revision });
       tx.objectStore("sync").put({ id, space: run.space, serverRev: got.rev, syncedRevision: revision, syncedMeta: metaOf(got.design) } satisfies SyncRecord);
-      return true;
+      return same ? "same" : "copied";
     }),
   );
   if (!made) {
     run.hold = true;
+    return;
+  }
+  if (made === "same") {
+    run.report.pulled++;
     return;
   }
   run.report.conflicts++;

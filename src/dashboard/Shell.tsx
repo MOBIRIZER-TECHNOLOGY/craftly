@@ -1,4 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+// (the UI kit names no icon for signing out; it re-exports the same library)
+import { LogOut as IconLogOut } from "lucide-react";
+import { useCloud, type CloudSession } from "@/cloud/state";
 import { languageMenuEntry } from "@/components/languageMenu";
 import { m } from "@/i18n";
 import { openProblemsDialog } from "@/components/problemsDialogState";
@@ -17,9 +20,12 @@ import {
   IconPanelClose,
   IconPanelOpen,
   IconPlus,
+  IconSettings,
   IconTemplate,
   IconTrash,
   IconUpload,
+  IconUser,
+  IconUsers,
   MenuPopover,
   cx,
   toast,
@@ -29,6 +35,8 @@ import { designPath, navigate, type Route } from "@/router";
 import { importProjectFile } from "@/export/projectFile";
 import { ProjectFileError, type ImportReport } from "@/export/projectFormat";
 import { AboutDialog } from "./AboutDialog";
+import { openAccountDialog } from "./account/dialogState";
+import { SyncStatus } from "./account/SyncStatus";
 import { closeBackupDialog, useBackupDialogRequest } from "./backupReminderState";
 import { openCreateDialog } from "./createDialogState";
 import { pickFiles } from "./files";
@@ -101,13 +109,40 @@ function importProject(): void {
   });
 }
 
+/**
+ * The first entries of the account menu (docs/ACCOUNTS.md, "Client"): Sign in and Create account while nobody is signed in; the
+ * person, Account settings, Team members, moving designs in and Sign out while somebody is. The dialogs are loaded when asked for.
+ */
+function accountEntries(session: CloudSession | null): MenuEntry[] {
+  if (!session) {
+    return [
+      { id: "signin", label: m.cloud.menu.signIn, icon: <IconUser aria-hidden="true" />, onSelect: () => navigate("/signin") },
+      { id: "signup", label: m.cloud.menu.createAccount, icon: <IconPlus aria-hidden="true" />, onSelect: () => navigate("/signup") },
+      { type: "divider" },
+    ];
+  }
+  const team = session.teams.find((t) => t.id === session.activeSpace) ?? session.teams[0];
+  return [
+    { type: "label", label: m.cloud.menu.signedInAs(session.user.name, session.user.email) },
+    { id: "account-settings", label: m.cloud.menu.settings, icon: <IconSettings aria-hidden="true" />, onSelect: () => openAccountDialog("settings") },
+    ...(team
+      ? [{ id: "team-members", label: m.cloud.menu.teamMembers, icon: <IconUsers aria-hidden="true" />, onSelect: () => navigate(`/team/${encodeURIComponent(team.id)}`) }]
+      : []),
+    { id: "move-designs", label: m.cloud.move.menu, icon: <IconUpload aria-hidden="true" />, onSelect: () => openAccountDialog("move") },
+    { id: "signout", label: m.cloud.menu.signOut, icon: <IconLogOut aria-hidden="true" />, onSelect: () => openAccountDialog("signout") },
+    { type: "divider" },
+  ];
+}
+
 function useAccountMenu(includeTrash: boolean) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [backupLoaded, setBackupLoaded] = useState(false);
+  const session = useCloud((s) => s.session);
 
   const items: MenuEntry[] = [
+    ...accountEntries(session),
     { type: "label", label: m.dashboard.account.onThisDevice },
     { id: "import", label: m.dashboard.account.importProject, icon: <IconUpload aria-hidden="true" />, onSelect: importProject },
     {
@@ -152,6 +187,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const mobileMenu = useAccountMenu(true);
   // the backup reminder's "Back up now" asks for the dialog too (backupReminderState.ts)
   const backupRequest = useBackupDialogRequest();
+  // the avatar shows the name of the person who is signed in
+  const who = useCloud((s) => s.session?.user.name) || m.dashboard.shell.you;
 
   // every page starts at the top
   useEffect(() => {
@@ -221,25 +258,26 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </ul>
 
         <div className="cf-dnav__bottom">
+          <SyncStatus compact={!expanded} className="cf-dnav__sync" />
           {expanded ? (
             <Button
               className="cf-dnav__account-wide"
               variant="ghost"
               block
-              icon={<Avatar name={m.dashboard.shell.you} size={28} />}
+              icon={<Avatar name={who} size={28} />}
               iconRight={<IconChevronDown aria-hidden="true" />}
               aria-haspopup="menu"
               aria-expanded={desktopMenu.anchor !== null}
               onClick={(event) => desktopMenu.setAnchor(event.currentTarget)}
             >
-              {m.dashboard.shell.you}
+              {who}
             </Button>
           ) : (
             <IconButton
               className="cf-dnav__account"
               size="lg"
               label={m.dashboard.account.menuLabel}
-              icon={<Avatar name={m.dashboard.shell.you} size={34} />}
+              icon={<Avatar name={who} size={34} />}
               aria-haspopup="menu"
               aria-expanded={desktopMenu.anchor !== null}
               onClick={(event) => desktopMenu.setAnchor(event.currentTarget)}
@@ -256,9 +294,10 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             <BrandMark size={28} />
             <span>Craftly</span>
           </a>
+          <SyncStatus compact className="cf-dash__mobilesync" />
           <IconButton
             label={m.dashboard.account.menuLabel}
-            icon={<Avatar name={m.dashboard.shell.you} size={32} />}
+            icon={<Avatar name={who} size={32} />}
             aria-haspopup="menu"
             aria-expanded={mobileMenu.anchor !== null}
             onClick={(event) => mobileMenu.setAnchor(event.currentTarget)}

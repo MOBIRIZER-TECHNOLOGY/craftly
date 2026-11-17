@@ -11,6 +11,8 @@ import { toast } from "@/ui";
 import { closeProblemsDialog, useProblemsDialog } from "@/components/problemsDialogState";
 import { closeCreateDialog, useCreateDialog } from "./createDialogState";
 import { Shell, activeNav } from "./Shell";
+import { applySession } from "@/cloud/state";
+import { useSyncStatus } from "@/cloud/syncStatus";
 
 const RAIL_KEY = "craftly:rail-expanded";
 
@@ -177,7 +179,7 @@ describe("<Shell>", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Import project file", "Back up & restore", "Report a problem", "About Craftly", "LanguageEnglish"]);
+      ).toEqual(["Sign in", "Create account", "Import project file", "Back up & restore", "Report a problem", "About Craftly", "LanguageEnglish"]);
     });
 
     it("offers the languages of the interface, each in its own language, with the one in use checked", async () => {
@@ -200,7 +202,7 @@ describe("<Shell>", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Import project file", "Back up & restore", "Trash", "Report a problem", "About Craftly", "LanguageEnglish"]);
+      ).toEqual(["Sign in", "Create account", "Import project file", "Back up & restore", "Trash", "Report a problem", "About Craftly", "LanguageEnglish"]);
       await user.click(within(menu).getByRole("menuitem", { name: "Trash" }));
       expect(window.location.hash).toBe("#/trash");
     });
@@ -369,5 +371,47 @@ describe("<Shell>", () => {
         expect(window.location.hash).toBe(`#/design/${imported.id}`);
       });
     });
+  });
+});
+
+describe("<Shell> and an account (docs/ACCOUNTS.md)", () => {
+  const ANN = { id: "user_ann_0000000000001", email: "ann@example.org", name: "Ann Lee" };
+  const TEAM = { id: "team_studio_000000001", name: "Studio", role: "editor" as const };
+  afterEach(() => act(() => applySession(null)));
+
+  it("starts the menu with Sign in and Create account while nobody is signed in, and shows no sync status", async () => {
+    const user = userEvent.setup();
+    mountShell();
+    expect(screen.queryByRole("button", { name: /^Sync:/ })).toBeNull();
+    await user.click(within(railNav()).getByRole("button", { name: "Account" }));
+    await user.click(screen.getByRole("menuitem", { name: "Sign in" }));
+    expect(window.location.hash).toBe("#/signin");
+    await user.click(within(railNav()).getByRole("button", { name: "Account" }));
+    await user.click(screen.getByRole("menuitem", { name: "Create account" }));
+    expect(window.location.hash).toBe("#/signup");
+  });
+
+  it("shows the person's name on the avatar, the sync status beside it, and their account in the menu", async () => {
+    act(() => {
+      applySession({ server: "https://accounts.example.org", token: "T".repeat(43), user: ANN, device: "Test", teams: [TEAM], activeSpace: TEAM.id });
+      useSyncStatus.setState({ state: "offline", waiting: 2, problem: null });
+    });
+    const user = userEvent.setup();
+    localStorage.setItem(RAIL_KEY, "1");
+    mountShell();
+    expect(within(railNav()).getByRole("button", { name: "Sync: Offline, 2 changes waiting" })).toBeTruthy();
+    // the wide account button of the rail says who is signed in
+    await user.click(within(railNav()).getByRole("button", { name: /^Ann Lee/ }));
+    const menu = screen.getByRole("menu", { name: "Account" });
+    expect(within(menu).getByText("Ann Lee (ann@example.org)")).toBeTruthy();
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent)
+        .slice(0, 4),
+    ).toEqual(["Account settings", "Team members", "Move designs into account", "Sign out"]);
+    await user.click(within(menu).getByRole("menuitem", { name: "Team members" }));
+    expect(window.location.hash).toBe(`#/team/${TEAM.id}`);
+    act(() => useSyncStatus.setState({ state: "off", waiting: 0, problem: null }));
   });
 });
