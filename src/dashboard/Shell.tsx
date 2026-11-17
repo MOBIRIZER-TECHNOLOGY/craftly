@@ -28,18 +28,15 @@ import {
   IconUsers,
   MenuPopover,
   cx,
-  toast,
   type MenuEntry,
 } from "@/ui";
-import { designPath, navigate, type Route } from "@/router";
-import { importProjectFile } from "@/export/projectFile";
-import { ProjectFileError, type ImportReport } from "@/export/projectFormat";
+import { navigate, type Route } from "@/router";
 import { AboutDialog } from "./AboutDialog";
 import { openAccountDialog } from "./account/dialogState";
 import { SyncStatus } from "./account/SyncStatus";
 import { closeBackupDialog, useBackupDialogRequest } from "./backupReminderState";
 import { openCreateDialog } from "./createDialogState";
-import { pickFiles } from "./files";
+import { pickProjectAndOpen } from "./openFile";
 import "./Shell.css";
 
 // the backup code (the ZIP writer and reader, the library reader) is only loaded when someone opens the dialog
@@ -85,28 +82,9 @@ export function activeNav(route: Route): NavId {
 /* Account menu                                                       */
 /* ------------------------------------------------------------------ */
 
-/** Import a .craftly file chosen by the user and open the design it contains. */
+/** Import a .craftly file chosen by the user and open the design it contains (openFile.ts). */
 function importProject(): void {
-  void pickFiles({ accept: ".craftly,.json,application/json" }).then(async ([file]) => {
-    if (!file) return;
-    try {
-      const report: ImportReport = { skipped: 0 };
-      const design = await importProjectFile(file, report);
-      // what could not be read, and what was taken out, is said: nothing is left out without a word
-      const notes: string[] = [];
-      if (report.skipped) notes.push(m.dashboard.imported.skipped(report.skipped));
-      if (report.remote) notes.push(m.dashboard.imported.remote(report.remote));
-      if (report.comments) notes.push(m.dashboard.imported.comments(report.comments));
-      if (notes.length) toast.info(m.dashboard.imported.withNotes(design.title, notes.join(" ")));
-      else toast.success(m.dashboard.imported.done(design.title));
-      navigate(designPath(design.id));
-    } catch (error) {
-      // a project file's own problems come with words for a person; anything else is the browser failing to store the design,
-      // and its own text ("Failed to execute 'put' on 'IDBObjectStore'...") is no use to them
-      const detail = error instanceof ProjectFileError ? error.message : m.dashboard.importFailed.notStored;
-      toast.error(m.dashboard.importFailed.toast(detail));
-    }
-  });
+  void pickProjectAndOpen();
 }
 
 /**

@@ -7,6 +7,10 @@ const journeys = [
   ["journey.cjs", "create, insert, edit, pages, templates, downloads, persistence"],
   ["features.cjs", "text formatting, effects, layers, uploads, crop, filters, background, resize, find, present"],
   ["dashboard.cjs", "home, templates, create dialog, trash, projects, brand"],
+  [
+    "onboarding.cjs",
+    "the first visit: the welcome on an empty Home and its three ways to begin, dismissed by keyboard and kept dismissed, never shown with a design, the editor's note on an empty page, a phone in English and Hindi",
+  ],
   ["backup.cjs", "back up everything, restore it in an empty browser, restore twice, a file that is not a backup, a damaged backup, the dialog on a phone"],
   [
     "migrate.cjs",

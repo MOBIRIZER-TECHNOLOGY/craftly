@@ -1,0 +1,91 @@
+/* The first-run note at the foot of an empty canvas (EmptyCanvasHint.tsx). Clicks go through it to the page, except on its close button. */
+
+.cf-firsthint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: max-content;
+  max-width: min(560px, calc(100% - 32px));
+  padding: 12px 8px 12px 16px;
+  border-radius: var(--r-md);
+  background: var(--c-glass-strong);
+  box-shadow:
+    0 0 0 1px var(--c-line),
+    0 6px 20px rgba(14, 19, 24, 0.1);
+  color: var(--c-ink-2);
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: cf-firsthint-in 0.24s ease-out;
+}
+
+.cf-firsthint__body {
+  min-width: 0;
+}
+
+.cf-firsthint__title {
+  margin: 0 0 2px;
+  color: var(--c-ink);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1.4;
+}
+
+.cf-firsthint__text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.cf-firsthint__keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.cf-firsthint__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.cf-firsthint__close {
+  flex: none;
+  margin-top: -4px;
+  pointer-events: auto;
+}
+
+/* a phone or a tablet without a keyboard has no use for the keys */
+@media (max-width: 899px), (pointer: coarse) {
+  .cf-firsthint__keys {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .cf-firsthint {
+    bottom: 10px;
+    padding: 10px 6px 10px 12px;
+  }
+}
+
+@keyframes cf-firsthint-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-firsthint {
+    animation: none;
+  }
+}

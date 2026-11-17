@@ -14,12 +14,13 @@ import { Page, Section, SeeAll } from "./Page";
 import { ShortcutRow } from "./ShortcutRow";
 import { TemplateCard } from "./TemplateCard";
 import { templateCategories, templatesForYou } from "./templateLists";
+import { WelcomePanel } from "./WelcomePanel";
 import "./Home.css";
 
 const RECENT_LIMIT = 12;
 const FOR_YOU_LIMIT = 16;
 
-/** Home: hero + search, shortcut tiles, Recent designs, Templates for you, template categories, popular sizes. */
+/** Home: hero + search, the first-run welcome (only while the library is empty), shortcut tiles, Recent designs, Templates for you, template categories, popular sizes. */
 export function Home() {
   const { active: designs, ready } = useDesigns();
   const { folders } = useFolders();
@@ -37,6 +38,7 @@ export function Home() {
       </Hero>
 
       <Page className="cf-home__page">
+        <WelcomePanel />
         <ShortcutRow />
 
         {!ready ? (

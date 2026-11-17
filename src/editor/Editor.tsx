@@ -13,6 +13,7 @@ import { Button, EmptyState, IconHome, IconSearch, IconWarning, Spinner, cx } fr
 import { installAutosave } from "./autosave";
 import { BottomBar } from "./bottombar/BottomBar";
 import { NotesPanel } from "./bottombar/NotesPanel";
+import { EmptyCanvasHint } from "./canvas/EmptyCanvasHint";
 import { Workspace } from "./canvas/Workspace";
 import { DialogHost } from "./dialogs/DialogHost";
 import { installHotkeys } from "./hotkeys";
@@ -257,6 +258,7 @@ export function Editor({ designId }: { designId: string }) {
               <Workspace>
                 <FloatingToolbar />
                 <MiniToolbar />
+                <EmptyCanvasHint />
               </Workspace>
             )}
             {notesOpen && !gridView ? <NotesPanel /> : null}

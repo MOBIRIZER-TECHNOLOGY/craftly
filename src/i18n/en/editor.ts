@@ -334,6 +334,19 @@ export const editor = {
     moveGuide: "Drag to move; drag onto the ruler to remove",
   },
 
+  /** EmptyCanvasHint.tsx: shown once, on the first empty page, until something is added */
+  emptyHint: {
+    label: "Getting started",
+    title: "Your page is empty",
+    text: "Add text, shapes and photos from the Text, Elements and Uploads tabs, or drop a picture onto the page.",
+    keys: "Keys:",
+    textBox: "text",
+    rectangle: "rectangle",
+    circle: "circle",
+    allShortcuts: "every shortcut",
+    dismiss: "Dismiss this hint",
+  },
+
   /** penTool.ts: what a screen reader is told while the Pen is used from the keyboard */
   pen: {
     /** a place on the page in whole pixels */

@@ -459,6 +459,22 @@ export const dashboard = {
     seeAll: "See all",
   },
 
+  /** WelcomePanel.tsx: the first visit, while the library is empty */
+  welcome: {
+    title: "Welcome to Craftly",
+    intro: "Make posters, presentations, social posts and more, right here in your browser. Three ways to begin:",
+    ways: "Ways to begin",
+    blankTitle: "Start from a blank size",
+    blankText: "Pick a size, such as an Instagram post or an A4 page, and begin on an empty page.",
+    templateTitle: "Start from a template",
+    templateText: "Choose a ready-made design, then change its words, colours and photos.",
+    fileTitle: "Open a file",
+    fileText: "Start from a photo on your device, or open a .craftly project file.",
+    local: "Your work stays on this device, and Craftly keeps working offline. No account needed.",
+    signIn: "Sign in to sync",
+    dismiss: "Dismiss the welcome",
+  },
+
   /** HomeSearch.tsx */
   search: {
     placeholder: "Search designs and templates",

@@ -301,6 +301,18 @@ export const editor: typeof en = {
     moveGuide: "हिलाने के लिए खींचें; हटाने के लिए रूलर पर खींचें",
   },
 
+  emptyHint: {
+    label: "शुरुआत",
+    title: "आपका पेज खाली है",
+    text: "टेक्स्ट, एलिमेंट और अपलोड टैब से टेक्स्ट, आकार और फ़ोटो जोड़ें, या कोई तस्वीर पेज पर छोड़ें।",
+    keys: "कुंजियाँ:",
+    textBox: "टेक्स्ट",
+    rectangle: "आयत",
+    circle: "वृत्त",
+    allShortcuts: "सभी शॉर्टकट",
+    dismiss: "यह सुझाव हटाएँ",
+  },
+
   pen: {
     place: (x: number, y: number) => `${num(x, { useGrouping: false })}, ${num(y, { useGrouping: false })}`,
     at: (place: string, next: "close" | "end" | "place") =>

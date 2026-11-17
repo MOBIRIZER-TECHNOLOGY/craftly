@@ -161,7 +161,7 @@ Craftly works without an account, as it always did. An account on a Craftly **ac
 
 ## Using Craftly
 
-1. **Start.** On the dashboard pick a design type (Presentation, Social media, Doc ...), open a template, or open a `.craftly` file with **Import project file** in the account menu (the round avatar at the bottom of the left bar).
+1. **Start.** On a first visit Home shows a welcome with the three quickest ways to begin (a blank size, a template, a file from your device); it goes once you have a design, or for good when you close it. On the dashboard pick a design type (Presentation, Social media, Doc ...), open a template, or open a `.craftly` file with **Import project file** in the account menu (the round avatar at the bottom of the left bar).
 2. **Build.** The left rail holds Templates, Elements (shapes, graphics, photos, frames, grids, charts, tables, lines, backgrounds), Text, Brand, Uploads, Tools (drawing and the Pen), Projects and Apps. Drag items onto the page or click them.
 3. **Edit.** Click anything on the page: the floating toolbar and the Position, Effects, Colour, Font and Filters panels adjust it. `Enter` edits text, `?` lists every shortcut.
 4. **Animate and present.** **Animate** picks effects and transitions; **Present** plays the design full screen and `P` plays it automatically.
