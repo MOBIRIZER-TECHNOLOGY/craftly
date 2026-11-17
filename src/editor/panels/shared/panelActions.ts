@@ -23,6 +23,10 @@ export function designMin(): number {
  * `markSelectAllOnEdit` is a one-shot flag that the editor overlay consumes in a mount effect. React StrictMode
  * (dev builds) runs that effect twice and the second run finds the flag gone, leaving a bare caret - so the
  * selection is verified on the next frame and completed when needed.
+ *
+ * That frame can come late (WebKit was measured drawing it some 350 ms after the click, by when "Pri" of "Print me" had
+ * been typed): a key pressed or a pointer put down before it means the person is already at work in the box, and the
+ * caret they left is theirs, so the text is not selected again (or the next key would replace what was typed).
  */
 export function addTextAndEdit(el: TextElement): ID {
   const actions = getActions();
@@ -30,7 +34,17 @@ export function addTextAndEdit(el: TextElement): ID {
   if (id) {
     markSelectAllOnEdit();
     actions.startTextEdit(id);
-    requestAnimationFrame(() => selectAllInTextEditor(id));
+    let touched = false;
+    const touch = () => {
+      touched = true;
+    };
+    document.addEventListener("keydown", touch, true);
+    document.addEventListener("pointerdown", touch, true);
+    requestAnimationFrame(() => {
+      document.removeEventListener("keydown", touch, true);
+      document.removeEventListener("pointerdown", touch, true);
+      if (!touched) selectAllInTextEditor(id);
+    });
   }
   return id;
 }

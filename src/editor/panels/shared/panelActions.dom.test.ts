@@ -132,6 +132,45 @@ describe("addTextAndEdit", () => {
       expect(window.getSelection()?.rangeCount).toBe(0);
     });
 
+    it("leaves the caret alone when a key was pressed before the frame came", () => {
+      const root = editorRoot("Pri");
+      addTextAndEdit(newText("Add text"));
+      // typing has begun: the caret is after "Pri"
+      const range = document.createRange();
+      range.setStart(root.firstChild as Text, 3);
+      range.collapse(true);
+      window.getSelection()?.addRange(range);
+      root.dispatchEvent(new KeyboardEvent("keydown", { key: "n", bubbles: true }));
+      vi.advanceTimersByTime(20);
+      expect(window.getSelection()?.isCollapsed).toBe(true);
+      expect(window.getSelection()?.anchorOffset).toBe(3);
+    });
+
+    it("leaves the caret alone when the pointer went down in the box before the frame came", () => {
+      const root = editorRoot("Add text");
+      addTextAndEdit(newText("Add text"));
+      const range = document.createRange();
+      range.setStart(root.firstChild as Text, 2);
+      range.collapse(true);
+      window.getSelection()?.addRange(range);
+      root.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      vi.advanceTimersByTime(20);
+      expect(window.getSelection()?.isCollapsed).toBe(true);
+    });
+
+    it("listens for keys only until the frame", () => {
+      const root = editorRoot("Add text");
+      const remove = vi.spyOn(document, "removeEventListener");
+      addTextAndEdit(newText("Add text"));
+      vi.advanceTimersByTime(20);
+      expect(remove).toHaveBeenCalledWith("keydown", expect.any(Function), true);
+      expect(remove).toHaveBeenCalledWith("pointerdown", expect.any(Function), true);
+      remove.mockRestore();
+      // a key after the frame changes nothing that was decided
+      root.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true }));
+      expect(window.getSelection()?.toString()).toBe("Add text");
+    });
+
     it("gives up when typing was already finished", () => {
       editorRoot("Add text");
       addTextAndEdit(newText("Add text"));

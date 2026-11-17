@@ -181,8 +181,11 @@ const fmt = (b) => "[" + b.map((v) => Math.round(v * 1000) / 1000).join(" ") + "
       .click();
     await wait(300);
     const bleed = dl.getByRole("radiogroup", { name: "Bleed" });
-    const choices = await bleed.getByRole("radio").allInnerTexts();
-    if (choices.join("|") !== "None|3 mm|0.125 in|Custom") throw new Error("bleed choices: " + choices.join("|"));
+    // WebKit's innerText ends each choice with a line break (the label is a flex item, and WebKit does not drop the trailing
+    // break that a block-level box adds, as Chrome does): trimmed, or "None\n|3 mm\n|..." fails and the message, cut at the
+    // first line break, reads only "None". The four radios are there in WebKit as in Chrome.
+    const choices = (await bleed.getByRole("radio").allInnerTexts()).map((t) => t.trim());
+    if (choices.join("|") !== "None|3 mm|0.125 in|Custom") throw new Error("bleed choices: " + JSON.stringify(choices));
     // chosen by keyboard: from None, one step to the right is 3 mm
     await bleed.getByRole("radio", { name: "None" }).click();
     await page.keyboard.press("ArrowRight");

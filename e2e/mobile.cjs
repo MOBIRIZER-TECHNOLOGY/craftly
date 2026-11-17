@@ -8,7 +8,7 @@
  * a control that is off the screen fails instead of being brought in for us.
  */
 const fs = require("node:fs");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, BASE, ENGINE } = require("./lib.cjs");
 
 const OUT = outDir("mobile");
 const results = [];
@@ -307,11 +307,26 @@ const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्�
       await wait(800);
       // Two taps in quick succession make a double click. The emulated touch screen sends the second tap only once the page has
       // handled the first, so on a busy (slow) machine the pair can come too far apart to count: a person would tap again too.
+      // In WebKit the taps cannot make the double click themselves. Safari on iOS answers a double tap on a node with a dblclick
+      // listener (the canvas has one, and no touch listener that could cancel the gesture) with pointerdown, pointerup,
+      // pointerdown, pointerup, dblclick (WebPage::handleDoubleTapForDoubleClickAtPoint; WebKit's layout test
+      // pointerevents/ios/pointer-events-for-double-tap). Playwright's WebKit build on Windows does not: a tap sends the pointer
+      // and touch events, then mouse events and a click only to a node with a click listener, always with detail 1, so two taps
+      // never make a dblclick (measured on 2026-11-17 on a bare page as well). There the two real taps are followed by the
+      // dblclick that iOS would send, at the same point, so the canvas still gets the whole sequence of a real double tap.
+      const iosDoubleClick = () =>
+        page.evaluate(({ x, y }) => {
+          const target = document.elementFromPoint(x, y);
+          target?.dispatchEvent(
+            new MouseEvent("dblclick", { bubbles: true, cancelable: true, composed: true, view: window, detail: 2, clientX: x, clientY: y, screenX: x, screenY: y }),
+          );
+        }, pt);
       let tries = 0;
       for (; tries < 3; tries++) {
         await page.touchscreen.tap(pt.x, pt.y);
         await wait(60);
         await page.touchscreen.tap(pt.x, pt.y);
+        if (ENGINE === "webkit") await iosDoubleClick();
         const editing = await page
           .waitForFunction((elId) => window.__editor.getState().editingTextId === elId, id, { timeout: 2000 })
           .then(() => true)
