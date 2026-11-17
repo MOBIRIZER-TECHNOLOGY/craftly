@@ -61,7 +61,7 @@ export const exporting = {
     pdfPreset: "PDF preset",
     digital: "Digital",
     print: "Print",
-    printHint: "300 dpi pages, sharp when printed.",
+    printHint: (dpi: number) => `${plain(dpi)} dpi pages, sharp when printed.`,
     digitalHint: "Light pages for screens, email and sharing.",
     compress: "Compress PDF",
     compressHint: "Makes the file smaller with slightly lower image quality.",
@@ -71,6 +71,19 @@ export const exporting = {
       `The page background is extended ${plain(mm)} mm beyond every edge, so nothing white shows when the sheet is cut. Keep what matters away from the edges.`,
     cropMarks: "Crop marks",
     cropMarksHint: "Thin lines outside the page that show the printer where to cut. The PDF page becomes larger to hold them.",
+    /** the bleeds the print PDF offers; "mm" and "in" are units and stay as they are */
+    bleedChoices: { none: "None", mm3: "3 mm", eighth: "0.125 in", custom: "Custom" },
+    bleedNoneHint: "No bleed: the page ends at its edge. Ask your printer whether they need one.",
+    printResolution: "Print resolution",
+    dpi: (dpi: number) => `${plain(dpi)} dpi`,
+    /** the print resolution had to be lowered to fit the largest picture a page can have */
+    dpiReduced: (dpi: number, longest: number) =>
+      `This page is too large for that resolution: it will be written at ${plain(dpi)} dpi, because a page picture can be at most ${num(longest)} px on its longest side.`,
+    registrationMarks: "Registration marks",
+    registrationMarksHint: "Small targets at the middle of each edge, printed in every ink, so the printer can check that the colours line up.",
+    cmyk: "CMYK colours",
+    cmykHint:
+      "Pages are written in the four printing inks instead of screen colours. This is a simple conversion without a colour profile, not an ICC colour-managed one: colours can print differently from what you see, and your printer may prefer to convert the RGB PDF with their own profile. The file is larger.",
     embedFonts: "Embed fonts",
     embedFontsHint: "Text looks the same everywhere. Turn off for a smaller file; the SVG then relies on fonts installed on the viewing device.",
     resolution: "Resolution",

@@ -18,6 +18,12 @@ export const CSS_DPI = 96;
 export const PRINT_DPI = 300;
 /** Raster scale that gives 300 dpi for a design measured in CSS pixels. */
 export const PRINT_SCALE = PRINT_DPI / CSS_DPI;
+/** The resolutions a print PDF can be asked for (300 is the default; 150 is for large posters and proofs). */
+export const PRINT_DPI_CHOICES = [150, 300] as const;
+export const MIN_PRINT_DPI = 72;
+export const MAX_PRINT_DPI = 600;
+/** A bleed of an eighth of an inch, as printers in the US ask for it, in millimetres. */
+export const EIGHTH_INCH_MM = 25.4 / 8;
 /** PDF user units (points) per design pixel. */
 export const PX_TO_PT = 72 / CSS_DPI;
 /** Design pixels and PDF points per millimetre (a bleed is given in millimetres). */
@@ -72,12 +78,20 @@ export interface RasterPlan {
 }
 
 /** Scale and pixel size a raster of this design will be rendered at, including the print preset and the cap. */
-export function planRaster(designWidth: number, designHeight: number, opts: Pick<ExportOptions, "format" | "scale" | "pdfMode">): RasterPlan {
-  const requested = opts.format === "pdf" && opts.pdfMode === "print" ? PRINT_SCALE : clampNumber(opts.scale, MIN_EXPORT_SCALE, MAX_EXPORT_SCALE, 1);
+export function planRaster(designWidth: number, designHeight: number, opts: Pick<ExportOptions, "format" | "scale" | "pdfMode" | "dpi">): RasterPlan {
+  const requested = opts.format === "pdf" && opts.pdfMode === "print" ? printDpi(opts.dpi) / CSS_DPI : clampNumber(opts.scale, MIN_EXPORT_SCALE, MAX_EXPORT_SCALE, 1);
   const fit = fitScaleToLimit(designWidth, designHeight, requested);
   const size = exportPixelSize(designWidth, designHeight, fit.scale);
   return { requested, scale: fit.scale, clamped: fit.clamped, width: size.width, height: size.height };
 }
+
+/** The resolution of a print PDF: what was asked for within 72 .. 600 dpi, 300 when nothing (or nonsense) was. */
+export function printDpi(dpi: number | undefined): number {
+  return clampNumber(dpi as number, MIN_PRINT_DPI, MAX_PRINT_DPI, PRINT_DPI);
+}
+
+/** The resolution a print PDF is really written at, after the 8192 px cap: whole dots per inch. */
+export const planDpi = (plan: RasterPlan): number => Math.round(plan.scale * CSS_DPI);
 
 /** "x2", "x1.5", "x0.5" */
 export function formatScale(scale: number): string {
@@ -134,6 +148,10 @@ export interface ResolvedExport {
   bleedMm: number;
   /** print pdf: draw crop marks around the design (false for everything else) */
   cropMarks: boolean;
+  /** print pdf: draw registration targets at the middle of every edge (false for everything else) */
+  registrationMarks: boolean;
+  /** print pdf: write the pages as CMYK pictures instead of RGB JPEGs (false for everything else) */
+  cmyk: boolean;
   embedFonts: boolean;
   /** gif / webm only: the timeline, frame rate and picture size of the animation; null for every other format */
   animation: AnimationPlan | null;
@@ -163,6 +181,8 @@ export function resolveExportOptions(design: Pick<Design, "width" | "height" | "
     pdfText: opts.pdfText !== false,
     bleedMm,
     cropMarks: print && opts.cropMarks === true,
+    registrationMarks: print && opts.registrationMarks === true,
+    cmyk: print && opts.cmyk === true,
     embedFonts: opts.embedFonts !== false,
     animation,
   };
@@ -310,6 +330,15 @@ function jpegBytesAt1x(w: PageWeight, pixels: number): number {
 }
 
 /**
+ * Bytes of one CMYK page of a print PDF: four bytes a pixel, deflated. Flat colour and text shrink to a few percent of
+ * that, photographs hardly at all (a guess, not fitted against many pages: the panel shows it as "~").
+ */
+function cmykBytes(w: PageWeight, pixels: number): number {
+  const ratio = Math.min(0.85, 0.012 + 0.002 * Math.min(w.elements, 40) + 0.6 * w.photo + 0.05 * Math.min(1, w.gradientSpan * 2.2) + (w.patterned ? 0.15 : 0));
+  return pixels * 4 * ratio + 3000;
+}
+
+/**
  * A rough prediction of the download size, good enough for a "~2.4 MB" hint (typically within a factor of 1.5,
  * never silly). Photographs and smooth gradients dominate PNG, patterns and busy pages dominate JPEG / PDF; an
  * SVG is the sum of its embedded images and fonts. Bytes grow slower than pixels (4x the pixels is about 3.2x the
@@ -326,9 +355,11 @@ export function estimateExportBytes(design: Pick<Design, "width" | "height" | "p
       case "png":
         total += pngBytesAt1x(weight, pixels1x) * resolved.plan.scale ** 1.7 + 2000;
         break;
-      case "jpg":
       case "pdf":
-        total += jpegBytesAt1x(weight, pixels1x) * resolved.plan.scale ** 1.38 * jpegQualityFactor(resolved.quality) + 3000;
+      case "jpg":
+        // a CMYK page of a print PDF is deflated; every other PDF page is a JPEG
+        if (resolved.cmyk) total += cmykBytes(weight, resolved.plan.width * resolved.plan.height);
+        else total += jpegBytesAt1x(weight, pixels1x) * resolved.plan.scale ** 1.38 * jpegQualityFactor(resolved.quality) + 3000;
         break;
       case "svg":
         total += 3000 + weight.elements * 700 + weight.images * 250000 + (resolved.embedFonts ? weight.families * 43000 : 0);

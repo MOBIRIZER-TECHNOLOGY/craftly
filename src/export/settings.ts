@@ -4,9 +4,28 @@
  */
 import { ANIM_RESOLUTIONS, DEFAULT_ANIM_RESOLUTION, DEFAULT_GIF_FPS, GIF_FPS_CHOICES, VIDEO_FPS, isAnimatedFormat, type AnimResolution } from "./animated/frames";
 import type { ExportFormat, ExportOptions } from "./exporters";
-import { COMPRESSED_QUALITY, DEFAULT_BLEED_MM, DEFAULT_QUALITY, MAX_BLEED_MM, clampNumber } from "./options";
+import { COMPRESSED_QUALITY, DEFAULT_BLEED_MM, DEFAULT_QUALITY, EIGHTH_INCH_MM, MAX_BLEED_MM, PRINT_DPI, PRINT_DPI_CHOICES, clampNumber } from "./options";
 
 export type PagesMode = "all" | "current" | "custom";
+/** The bleeds the panel offers: none, the 3 mm most printers ask for, the 1/8 inch of US printers, or a size of one's own. */
+export type BleedChoice = "none" | "3mm" | "eighth" | "custom";
+export type PrintDpi = (typeof PRINT_DPI_CHOICES)[number];
+
+export const BLEED_CHOICES: BleedChoice[] = ["none", "3mm", "eighth", "custom"];
+
+/** Millimetres of bleed a choice stands for. */
+export function bleedMmOf(s: Pick<DownloadSettings, "bleed" | "bleedMm">): number {
+  switch (s.bleed) {
+    case "none":
+      return 0;
+    case "3mm":
+      return DEFAULT_BLEED_MM;
+    case "eighth":
+      return EIGHTH_INCH_MM;
+    case "custom":
+      return s.bleedMm;
+  }
+}
 
 export interface DownloadSettings {
   format: ExportFormat;
@@ -18,12 +37,18 @@ export interface DownloadSettings {
   transparent: boolean;
   /** pdf: smaller file, lower image quality */
   compress: boolean;
-  /** print pdf: add a bleed around the page */
-  bleed: boolean;
-  /** print pdf: how wide the bleed is, in millimetres, 0 .. 10 (kept while `bleed` is off) */
+  /** print pdf: the bleed around the page: none, 3 mm, an eighth of an inch, or `bleedMm` */
+  bleed: BleedChoice;
+  /** print pdf: how wide a custom bleed is, in millimetres, 0 .. 10 (kept while another bleed is chosen) */
   bleedMm: number;
   /** print pdf: draw crop marks */
   cropMarks: boolean;
+  /** print pdf: draw registration targets */
+  registrationMarks: boolean;
+  /** print pdf: write the pages in CMYK */
+  cmyk: boolean;
+  /** print pdf: dots per inch of the pages */
+  printDpi: PrintDpi;
   embedFonts: boolean;
   pagesMode: PagesMode;
   /** gif / webm: length of the picture's shorter side, 480 | 720 | 1080 */
@@ -39,9 +64,12 @@ export const DEFAULT_DOWNLOAD_SETTINGS: DownloadSettings = {
   quality: DEFAULT_QUALITY,
   transparent: false,
   compress: false,
-  bleed: false,
+  bleed: "3mm",
   bleedMm: DEFAULT_BLEED_MM,
   cropMarks: false,
+  registrationMarks: false,
+  cmyk: false,
+  printDpi: PRINT_DPI,
   embedFonts: true,
   pagesMode: "all",
   resolution: DEFAULT_ANIM_RESOLUTION,
@@ -56,6 +84,17 @@ export const SIZE_MAX = 4;
 
 const FORMATS: ExportFormat[] = ["png", "jpg", "pdf", "svg", "gif", "webm"];
 const MODES: PagesMode[] = ["all", "current", "custom"];
+
+/**
+ * The remembered bleed. Before the choices there was a switch (true / false) and a size: a bleed that was switched on stays
+ * the size it was, one that was switched off stays off.
+ */
+function readBleed(bleed: unknown, mm: unknown): BleedChoice {
+  if (BLEED_CHOICES.includes(bleed as BleedChoice)) return bleed as BleedChoice;
+  if (bleed === false) return "none";
+  if (bleed === true) return mm === DEFAULT_BLEED_MM || mm === undefined ? "3mm" : "custom";
+  return DEFAULT_DOWNLOAD_SETTINGS.bleed;
+}
 
 /** Reads remembered settings; anything missing, mistyped or out of range falls back to a sane value. */
 export function readStoredSettings(raw: string | null | undefined): DownloadSettings {
@@ -72,10 +111,13 @@ export function readStoredSettings(raw: string | null | undefined): DownloadSett
       quality: clampNumber(Number(v.quality), 0.1, 1, d.quality),
       transparent: v.transparent === true,
       compress: v.compress === true,
-      // settings saved before there was a bleed have none of the three: they get the defaults
-      bleed: v.bleed === true,
+      // settings saved before there was a bleed have none of these: they get the defaults
+      bleed: readBleed(v.bleed, v.bleedMm),
       bleedMm: Math.round(clampNumber(v.bleedMm as number, 0, MAX_BLEED_MM, d.bleedMm) * 10) / 10,
       cropMarks: v.cropMarks === true,
+      registrationMarks: v.registrationMarks === true,
+      cmyk: v.cmyk === true,
+      printDpi: PRINT_DPI_CHOICES.includes(v.printDpi as PrintDpi) ? (v.printDpi as PrintDpi) : d.printDpi,
       embedFonts: v.embedFonts !== false,
       pagesMode: MODES.includes(v.pagesMode as PagesMode) ? (v.pagesMode as PagesMode) : d.pagesMode,
       // settings saved before animated exports existed have neither field: they get the defaults
@@ -101,8 +143,8 @@ export function toExportOptions(s: DownloadSettings, pages: number[]): ExportOpt
     transparent: s.format === "png" && s.transparent,
     pdfMode: s.pdfMode,
     embedFonts: s.embedFonts,
-    // bleed and crop marks are for the printer: only the print PDF is given them
-    ...(pdf && s.pdfMode === "print" ? { bleedMm: s.bleed ? s.bleedMm : 0, cropMarks: s.cropMarks } : {}),
+    // bleed, marks, CMYK and the resolution are for the printer: only the print PDF is given them
+    ...(pdf && s.pdfMode === "print" ? { bleedMm: bleedMmOf(s), cropMarks: s.cropMarks, registrationMarks: s.registrationMarks, cmyk: s.cmyk, dpi: s.printDpi } : {}),
     ...(isAnimatedFormat(s.format) ? { resolution: s.resolution, fps: s.format === "webm" ? VIDEO_FPS : s.gifFps } : {}),
   };
 }

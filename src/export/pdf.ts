@@ -9,6 +9,9 @@
  * copied. The fonts of that layer are described in pdfFonts.ts; no font is embedded. A page without text is
  * written exactly as it was before the layer existed.
  *
+ * For a printer a page can instead carry a deflated 8-bit /DeviceCMYK picture (cmyk.ts makes it), a bleed, crop marks and
+ * registration targets; without them a page is written exactly as before they existed.
+ *
  * The writer never builds one giant string: it collects Uint8Array parts (the JPEGs are referenced as they
  * are) and `pdfBlob` hands them straight to the Blob constructor.
  */
@@ -46,12 +49,29 @@ export interface PdfLink {
   h: number;
 }
 
+/**
+ * A picture that is not a JPEG: 8 bits per sample, deflated (/FlateDecode), its rows optionally filtered with the PNG
+ * predictors (one filter type byte before every row). The print PDF writes its CMYK pages this way (cmyk.ts).
+ */
+export interface PdfFlateImage {
+  width: number;
+  height: number;
+  /** 1 = gray, 3 = RGB, 4 = CMYK */
+  components: 1 | 3 | 4;
+  /** the zlib stream, in pieces */
+  data: Uint8Array[];
+  /** the rows were filtered with the PNG predictors before they were deflated */
+  png?: boolean;
+}
+
 export interface PdfPageInput {
   /** page size in points (1/72 inch) */
   widthPt: number;
   heightPt: number;
-  /** a complete baseline / progressive JPEG file */
-  jpeg: Uint8Array;
+  /** a complete baseline / progressive JPEG file (the picture of the page, unless `image` is given) */
+  jpeg?: Uint8Array;
+  /** the picture of the page as a deflated image instead of a JPEG (print PDF in CMYK) */
+  image?: PdfFlateImage;
   links?: PdfLink[];
   /** the text of the page, in reading order: written invisibly over the image */
   text?: PdfTextLine[];
@@ -63,6 +83,8 @@ export interface PdfPageInput {
   bleedPt?: number;
   /** Print: crop marks at the corners of the design. The page grows by CROP_MARK_ROOM_PT more on every side to hold them. */
   cropMarks?: boolean;
+  /** Print: a registration target at the middle of every edge, in the same room as the crop marks. */
+  registrationMarks?: boolean;
 }
 
 export interface PdfMeta {
@@ -231,11 +253,13 @@ class Sink {
     this.text(`${body}\n`);
     this.end();
   }
-  /** A complete stream object; /Length is computed from the data. */
-  stream(number: number, entries: string, data: Uint8Array): void {
+  /** A complete stream object; /Length is computed from the data (one array, or pieces written one after another). */
+  stream(number: number, entries: string, data: Uint8Array | Uint8Array[]): void {
+    const pieces = Array.isArray(data) ? data : [data];
+    const length = pieces.reduce((n, piece) => n + piece.length, 0);
     this.begin(number);
-    this.text(`<< ${entries ? `${entries} ` : ""}/Length ${data.length} >>\nstream\n`);
-    this.bytes(data);
+    this.text(`<< ${entries ? `${entries} ` : ""}/Length ${length} >>\nstream\n`);
+    for (const piece of pieces) this.bytes(piece);
     this.text("\nendstream\n");
     this.end();
   }
@@ -308,7 +332,52 @@ const REGISTRATION = "/ColorSpace << /CS0 [/Separation /All /DeviceCMYK << /Func
 /** How far the picture reaches beyond the design (the bleed) and how far the design sits from the edge of the page (the bleed and the room for marks). */
 function frameOf(page: PdfPageInput): { bleed: number; room: number } {
   const bleed = typeof page.bleedPt === "number" && Number.isFinite(page.bleedPt) && page.bleedPt > 0 ? page.bleedPt : 0;
-  return { bleed, room: bleed + (page.cropMarks ? CROP_MARK_ROOM_PT : 0) };
+  return { bleed, room: bleed + (page.cropMarks || page.registrationMarks ? CROP_MARK_ROOM_PT : 0) };
+}
+
+/** Registration target: a circle with a cross through it, centred in the room of the marks. */
+export const REGISTRATION_RADIUS_PT = 5;
+export const REGISTRATION_CROSS_PT = 8;
+
+/** A circle as four Bezier curves (the usual 0.5523 approximation), as path operators. */
+function circleOps(cx: number, cy: number, r: number): string {
+  const k = r * 0.5523;
+  const n = pdfNumber;
+  return [
+    `${n(cx + r)} ${n(cy)} m`,
+    `${n(cx + r)} ${n(cy + k)} ${n(cx + k)} ${n(cy + r)} ${n(cx)} ${n(cy + r)} c`,
+    `${n(cx - k)} ${n(cy + r)} ${n(cx - r)} ${n(cy + k)} ${n(cx - r)} ${n(cy)} c`,
+    `${n(cx - r)} ${n(cy - k)} ${n(cx - k)} ${n(cy - r)} ${n(cx)} ${n(cy - r)} c`,
+    `${n(cx + k)} ${n(cy - r)} ${n(cx + r)} ${n(cy - k)} ${n(cx + r)} ${n(cy)} c`,
+    "h",
+  ].join(" ");
+}
+
+/**
+ * The centres of the four registration targets: at the middle of every edge of the design, as far out as the middle of a
+ * crop mark, so they lie beyond the bleed and inside the page like the marks.
+ */
+export function registrationCentres(page: Pick<PdfPageInput, "widthPt" | "heightPt">, bleed: number, room: number): Array<[number, number]> {
+  const out = bleed + CROP_MARK_GAP_PT + CROP_MARK_LENGTH_PT / 2;
+  const [left, bottom, right, top] = [room, room, room + page.widthPt, room + page.heightPt];
+  const midX = room + page.widthPt / 2;
+  const midY = room + page.heightPt / 2;
+  return [
+    [midX, top + out],
+    [midX, bottom - out],
+    [left - out, midY],
+    [right + out, midY],
+  ];
+}
+
+function registrationOps(page: PdfPageInput, bleed: number, room: number): string {
+  const n = pdfNumber;
+  const r = REGISTRATION_RADIUS_PT;
+  const x = REGISTRATION_CROSS_PT;
+  const paths = registrationCentres(page, bleed, room).map(
+    ([cx, cy]) => `${circleOps(cx, cy, r)} ${n(cx - x)} ${n(cy)} m ${n(cx + x)} ${n(cy)} l ${n(cx)} ${n(cy - x)} m ${n(cx)} ${n(cy + x)} l`,
+  );
+  return `q ${n(CROP_MARK_WIDTH_PT)} w /CS0 CS 1 SCN ${paths.join(" ")} S Q`;
 }
 
 /**
@@ -331,6 +400,29 @@ function cropMarkOps(page: PdfPageInput, bleed: number, room: number): string {
   ];
   const path = lines.map(([x1, y1, x2, y2]) => `${pdfNumber(x1)} ${pdfNumber(y1)} m ${pdfNumber(x2)} ${pdfNumber(y2)} l`).join(" ");
   return `q ${pdfNumber(CROP_MARK_WIDTH_PT)} w /CS0 CS 1 SCN ${path} S Q`;
+}
+
+interface Picture {
+  width: number;
+  height: number;
+  components: number;
+  bits: number;
+  /** the /Filter entry and what it needs */
+  filter: string;
+  data: Uint8Array | Uint8Array[];
+}
+
+/** What the image XObject of a page says about its picture: a JPEG as it is, or a deflated image. */
+function pictureOf(page: PdfPageInput): Picture {
+  if (page.image) {
+    const { width, height, components, data, png } = page.image;
+    // predictor 15: every row says which PNG filter it was written with
+    const parms = png ? ` /DecodeParms << /Predictor 15 /Colors ${components} /BitsPerComponent 8 /Columns ${width} >>` : "";
+    return { width, height, components, bits: 8, filter: `/Filter /FlateDecode${parms}`, data };
+  }
+  if (!page.jpeg) throw new Error("A PDF page needs a picture.");
+  const jpeg = parseJpegInfo(page.jpeg);
+  return { width: jpeg.width, height: jpeg.height, components: jpeg.components, bits: jpeg.bits || 8, filter: "/Filter /DCTDecode", data: page.jpeg };
 }
 
 /** Builds the PDF as a list of byte parts (the JPEGs are not copied). */
@@ -370,8 +462,8 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
 
   pages.forEach((page, i) => {
     const ids = plan[i];
-    const jpeg = parseJpegInfo(page.jpeg);
-    const { space, procSet } = colorSpaceOf(jpeg.components);
+    const picture = pictureOf(page);
+    const { space, procSet } = colorSpaceOf(picture.components);
     // A page for a printer is larger than the design: the picture reaches `bleed` beyond it, and the design sits `room`
     // from the edge of the page. Without bleed and marks both are 0 and every number below is what it always was.
     const { bleed, room } = frameOf(page);
@@ -380,8 +472,9 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
     const printBoxes = room
       ? ` /BleedBox [${n(room - bleed)} ${n(room - bleed)} ${n(room + page.widthPt + bleed)} ${n(room + page.heightPt + bleed)}] /TrimBox [${n(room)} ${n(room)} ${n(room + page.widthPt)} ${n(room + page.heightPt)}]`
       : "";
-    const picture = `q ${n(page.widthPt + bleed * 2)} 0 0 ${n(page.heightPt + bleed * 2)} ${n(room - bleed)} ${n(room - bleed)} cm /Im0 Do Q`;
-    const marks = page.cropMarks ? `\n${cropMarkOps(page, bleed, room)}` : "";
+    const draw = `q ${n(page.widthPt + bleed * 2)} 0 0 ${n(page.heightPt + bleed * 2)} ${n(room - bleed)} ${n(room - bleed)} cm /Im0 Do Q`;
+    const marks = `${page.cropMarks ? `\n${cropMarkOps(page, bleed, room)}` : ""}${page.registrationMarks ? `\n${registrationOps(page, bleed, room)}` : ""}`;
+    const registration = page.cropMarks || page.registrationMarks;
     const annots = ids.annots.length ? ` /Annots [${ids.annots.map((a) => `${a} 0 R`).join(" ")}]` : "";
     const layer = layers[i];
     const fontRefs = layer
@@ -392,13 +485,13 @@ export function buildPdfParts(pages: PdfPageInput[], meta: PdfMeta = {}): PdfBui
       : "";
     out.dict(
       ids.page,
-      `<< /Type /Page /Parent 2 0 R /MediaBox ${mediaBox}${printBoxes} /Resources << /XObject << /Im0 ${ids.image} 0 R >>${fontRefs}${page.cropMarks ? ` ${REGISTRATION}` : ""} /ProcSet [/PDF ${layer ? "/Text " : ""}${procSet}] >> /Contents ${ids.contents} 0 R${annots} >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox ${mediaBox}${printBoxes} /Resources << /XObject << /Im0 ${ids.image} 0 R >>${fontRefs}${registration ? ` ${REGISTRATION}` : ""} /ProcSet [/PDF ${layer ? "/Text " : ""}${procSet}] >> /Contents ${ids.contents} 0 R${annots} >>`,
     );
-    out.stream(ids.contents, "", latin1(`${picture}${marks}${layer ? `\n${layer.ops}` : ""}`));
+    out.stream(ids.contents, "", latin1(`${draw}${marks}${layer ? `\n${layer.ops}` : ""}`));
     out.stream(
       ids.image,
-      `/Type /XObject /Subtype /Image /Width ${jpeg.width} /Height ${jpeg.height} /ColorSpace ${space} /BitsPerComponent ${jpeg.bits || 8} /Interpolate true /Filter /DCTDecode`,
-      page.jpeg,
+      `/Type /XObject /Subtype /Image /Width ${picture.width} /Height ${picture.height} /ColorSpace ${space} /BitsPerComponent ${picture.bits} /Interpolate true ${picture.filter}`,
+      picture.data,
     );
     (page.links ?? []).forEach((link, k) => {
       const x1 = link.x + room;

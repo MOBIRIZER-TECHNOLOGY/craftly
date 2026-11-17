@@ -267,12 +267,43 @@ describe("exportDesign", () => {
       expect(both).toContain("/TrimBox [35.504 35.504 185.504 110.504]");
     });
 
-    it("leaves a PDF for screens without bleed and marks whatever the options say", async () => {
+    it("leaves a PDF for screens without bleed, marks, CMYK or print resolution whatever the options say", async () => {
       const plain = await read((await exportDesign(twoPageDesign(), options({ format: "pdf" }))).blob);
-      const asked = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", bleedMm: 3, cropMarks: true }))).blob);
+      const asked = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", bleedMm: 3, cropMarks: true, registrationMarks: true, cmyk: true, dpi: 150 }))).blob);
       const body = (pdf: string) => pdf.slice(pdf.indexOf("4 0 obj"), pdf.indexOf("xref"));
       expect(body(asked)).toBe(body(plain));
       expect(asked).not.toContain("/TrimBox");
+      expect(asked).not.toContain("/DeviceCMYK");
+    });
+
+    it("writes a print PDF without bleed, marks and CMYK exactly as before they existed", async () => {
+      const before = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pdfMode: "print", pages: [0, 1] }))).blob);
+      const off = await read(
+        (
+          await exportDesign(
+            twoPageDesign(),
+            options({ format: "pdf", pdfMode: "print", pages: [0, 1], bleedMm: 0, cropMarks: false, registrationMarks: false, cmyk: false, dpi: 300 }),
+          )
+        ).blob,
+      );
+      const body = (pdf: string) => pdf.slice(pdf.indexOf("4 0 obj"), pdf.indexOf("xref"));
+      expect(body(off)).toBe(body(before));
+    });
+
+    it("writes the pages of a CMYK print PDF as deflated DeviceCMYK pictures at the print resolution, with the text still there", async () => {
+      const read8 = vi.spyOn(HTMLCanvasElement.prototype, "toBlob");
+      const pdf = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pdfMode: "print", pages: [1], cmyk: true, bleedMm: 3, registrationMarks: true }))).blob);
+      // no JPEG was encoded for it
+      expect(read8).not.toHaveBeenCalled();
+      // 300 dpi of (200 + 22.68) x (100 + 22.68) px: the same picture size as the RGB print PDF
+      expect(pdf).toContain("/Width 696 /Height 383 /ColorSpace /DeviceCMYK /BitsPerComponent 8 /Interpolate true /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors 4");
+      expect(pdf).not.toContain("/DCTDecode");
+      expect(pdf).toMatch(/BT 3 Tr 0\.75 0 0 0\.75 /);
+      expect(pdf).toContain("/Separation /All");
+      // the resolution can be lowered for a print PDF
+      const low = await read((await exportDesign(twoPageDesign(), options({ format: "pdf", pdfMode: "print", pages: [1], cmyk: true, dpi: 150 }))).blob);
+      // 200 x 100 px at 150 dpi, without bleed
+      expect(low).toContain("/Width 313 /Height 156 /ColorSpace /DeviceCMYK");
     });
 
     it("lets the canvas go when encoding fails", async () => {

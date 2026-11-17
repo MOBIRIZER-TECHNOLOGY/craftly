@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape, solid } from "@/core/factory";
 import { useEditor } from "@/core/store";
 import type { Design } from "@/core/types";
+import { exporting as hiExporting } from "@/i18n/hi/exporting";
 import { resetEditor } from "@/test/helpers";
 import { toast } from "@/ui";
 import { DownloadPanel } from "./DownloadPanel";
@@ -171,63 +172,122 @@ describe("<DownloadPanel> choices", () => {
     expect(screen.getByText("Every page in this design")).toBeTruthy();
   });
 
-  it("offers a bleed and crop marks for the print PDF only", async () => {
+  it("offers the print options for the print PDF only", async () => {
     const user = userEvent.setup();
     mountPanel();
     await choose(user, /^PDF Standard/);
-    expect(screen.queryByRole("switch", { name: "Bleed" })).toBeNull();
-    expect(screen.queryByRole("switch", { name: "Crop marks" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Bleed" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Print resolution" })).toBeNull();
+    for (const name of ["Crop marks", "Registration marks", "CMYK colours"]) expect(screen.queryByRole("switch", { name })).toBeNull();
     await user.click(radio("PDF preset", "Print"));
-    const bleed = screen.getByRole("switch", { name: "Bleed" }) as HTMLInputElement;
-    const marks = screen.getByRole("switch", { name: "Crop marks" }) as HTMLInputElement;
-    expect([bleed.checked, marks.checked]).toEqual([false, false]);
-    // the size of the bleed is asked for only when there is one
+    // a 3 mm bleed at 300 dpi, RGB and no marks to start with
+    expect(radio("Bleed", "3 mm").getAttribute("aria-checked")).toBe("true");
+    expect(radio("Print resolution", "300 dpi").getAttribute("aria-checked")).toBe("true");
+    const switches = ["Crop marks", "Registration marks", "CMYK colours"].map((name) => screen.getByRole("switch", { name }) as HTMLInputElement);
+    expect(switches.map((s) => s.checked)).toEqual([false, false, false]);
+    // the four bleeds, in this order
+    expect(
+      within(screen.getByRole("radiogroup", { name: "Bleed" }))
+        .getAllByRole("radio")
+        .map((r) => r.textContent),
+    ).toEqual(["None", "3 mm", "0.125 in", "Custom"]);
+    // the size of the bleed is asked for only when it is one's own
     expect(screen.queryByRole("spinbutton", { name: "Bleed size" })).toBeNull();
-    // back to the PDF for screens: both are gone again
+    expect(screen.getByText(/The page background is extended 3 mm beyond every edge/)).toBeTruthy();
+    // the pictures of a 400 x 300 px design with 3 mm of bleed around it, at 300 dpi
+    expect(screen.getByText("1,321 × 1,008 px")).toBeTruthy();
+    // back to the PDF for screens: all gone again
     await user.click(radio("PDF preset", "Digital"));
-    expect(screen.queryByRole("switch", { name: "Bleed" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Bleed" })).toBeNull();
     await choose(user, /^PNG/);
     expect(screen.queryByRole("switch", { name: "Crop marks" })).toBeNull();
   });
 
-  it("starts a bleed at 3 mm, lets it be set from 0 to 10 mm, and remembers it with the crop marks", async () => {
+  it("chooses the bleed with the keyboard, takes a custom bleed from 0 to 10 mm, and remembers it", async () => {
     const user = userEvent.setup();
     mountPanel();
     await choose(user, /^PDF Print/);
-    await user.click(screen.getByRole("switch", { name: "Bleed" }));
+    // arrow keys move along the choices, as in every other row of choices
+    radio("Bleed", "3 mm").focus();
+    await user.keyboard("{ArrowRight}");
+    expect(radio("Bleed", "0.125 in").getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(radio("Bleed", "0.125 in"));
+    expect(stored().bleed).toBe("eighth");
+    expect(screen.getByText(/extended 3\.175 mm beyond every edge/)).toBeTruthy();
+    await user.keyboard("{ArrowRight}");
+    expect(stored().bleed).toBe("custom");
     const size = screen.getByRole("spinbutton", { name: "Bleed size" }) as HTMLInputElement;
     expect(size.value).toBe("3");
     expect([size.getAttribute("aria-valuemin"), size.getAttribute("aria-valuemax")]).toEqual(["0", "10"]);
-    expect(screen.getByText(/The page background is extended 3 mm beyond every edge/)).toBeTruthy();
     await user.clear(size);
     await user.type(size, "5{Enter}");
-    expect(stored()).toMatchObject({ bleed: true, bleedMm: 5, cropMarks: false });
+    expect(stored()).toMatchObject({ bleed: "custom", bleedMm: 5, cropMarks: false });
     // more than the panel offers is brought back to 10
     await user.clear(size);
     await user.type(size, "40{Enter}");
     expect(stored().bleedMm).toBe(10);
     await user.click(screen.getByRole("switch", { name: "Crop marks" }));
-    expect(stored()).toMatchObject({ bleed: true, bleedMm: 10, cropMarks: true });
-    // switched off, the size is kept for the next time
-    await user.click(screen.getByRole("switch", { name: "Bleed" }));
+    expect(stored()).toMatchObject({ bleed: "custom", bleedMm: 10, cropMarks: true });
+    // no bleed: the custom size is kept for the next time
+    await user.click(radio("Bleed", "None"));
     expect(screen.queryByRole("spinbutton", { name: "Bleed size" })).toBeNull();
-    expect(stored()).toMatchObject({ bleed: false, bleedMm: 10 });
+    expect(screen.getByText("No bleed: the page ends at its edge. Ask your printer whether they need one.")).toBeTruthy();
+    expect(stored()).toMatchObject({ bleed: "none", bleedMm: 10 });
   });
 
-  it("downloads a print PDF with the bleed and the crop marks that were chosen", async () => {
+  it("switches registration marks and CMYK with the keyboard, and says plainly that CMYK is not colour-managed", async () => {
     const user = userEvent.setup();
-    store({ format: "pdf", pdfMode: "print", bleed: true, bleedMm: 4, cropMarks: true });
+    mountPanel();
+    await choose(user, /^PDF Print/);
+    const reg = screen.getByRole("switch", { name: "Registration marks" });
+    reg.focus();
+    await user.keyboard(" ");
+    expect(stored().registrationMarks).toBe(true);
+    const cmyk = screen.getByRole("switch", { name: "CMYK colours" });
+    cmyk.focus();
+    await user.keyboard(" ");
+    expect(stored().cmyk).toBe(true);
+    expect(screen.getByText(/not an ICC colour-managed one/).textContent).toContain("your printer may prefer to convert the RGB PDF with their own profile");
+    // a CMYK page is not a JPEG: compression has nothing to do
+    expect((screen.getByRole("switch", { name: "Compress PDF" }) as HTMLInputElement).disabled).toBe(true);
+    await user.click(radio("Print resolution", "150 dpi"));
+    expect(stored().printDpi).toBe(150);
+    expect(screen.getByText("150 dpi pages, sharp when printed.")).toBeTruthy();
+  });
+
+  it("warns when a page is too large for the print resolution", () => {
+    store({ format: "pdf", pdfMode: "print" });
+    mountPanel(designOf(1, { width: 3000, height: 2000 }));
+    // 3000 px and the bleed are 31.5 in: at 300 dpi that would be 9445 px, over the 8192 px a page picture can have (8192 / 31.49 in = 260 dpi)
+    expect(screen.getByText(/This page is too large for that resolution: it will be written at 260 dpi/)).toBeTruthy();
+    cleanup();
+    store({ format: "pdf", pdfMode: "print", printDpi: 150 });
+    mountPanel(designOf(1, { width: 3000, height: 2000 }));
+    expect(screen.queryByText(/too large for that resolution/)).toBeNull();
+  });
+
+  it("downloads a print PDF with the bleed, the marks, CMYK and the resolution that were chosen", async () => {
+    const user = userEvent.setup();
+    store({ format: "pdf", pdfMode: "print", bleed: "custom", bleedMm: 4, cropMarks: true, registrationMarks: true, cmyk: true, printDpi: 150 });
     mountPanel();
     vi.mocked(exportDesign).mockResolvedValueOnce(file("Menu.pdf"));
     await user.click(downloadButton());
-    expect(vi.mocked(exportDesign).mock.calls[0][1]).toMatchObject({ format: "pdf", pdfMode: "print", bleedMm: 4, cropMarks: true });
+    expect(vi.mocked(exportDesign).mock.calls[0][1]).toMatchObject({
+      format: "pdf",
+      pdfMode: "print",
+      bleedMm: 4,
+      cropMarks: true,
+      registrationMarks: true,
+      cmyk: true,
+      dpi: 150,
+    });
     // the same choices do not reach a PDF for screens
     cleanup();
-    store({ format: "pdf", pdfMode: "standard", bleed: true, bleedMm: 4, cropMarks: true });
+    store({ format: "pdf", pdfMode: "standard", bleed: "custom", bleedMm: 4, cropMarks: true, registrationMarks: true, cmyk: true });
     mountPanel();
     vi.mocked(exportDesign).mockResolvedValueOnce(file("Menu.pdf"));
     await user.click(downloadButton());
-    expect(vi.mocked(exportDesign).mock.calls[1][1]).not.toHaveProperty("bleedMm");
+    for (const key of ["bleedMm", "cropMarks", "registrationMarks", "cmyk", "dpi"]) expect(vi.mocked(exportDesign).mock.calls[1][1]).not.toHaveProperty(key);
   });
 
   it("chooses a print PDF straight from the list", async () => {
@@ -630,5 +690,31 @@ describe("<DownloadPanel> downloading", () => {
     expect(() => control.report(1, 3)).not.toThrow();
     await act(async () => control.reject(new ExportError("cancelled", "The download was cancelled.")));
     expect(toast.show).toHaveBeenCalledWith({ kind: "info", message: "Download cancelled" });
+  });
+});
+
+describe("the print options in Hindi", () => {
+  it("has every new word, in Devanagari where it is a word and not a unit or a format", () => {
+    const p = hiExporting.panel;
+    const devanagari = /[\u0900-\u097F]/;
+    for (const word of [
+      p.bleedChoices.none,
+      p.bleedChoices.custom,
+      p.bleedNoneHint,
+      p.printResolution,
+      p.registrationMarks,
+      p.registrationMarksHint,
+      p.cmykHint,
+      p.printHint(300),
+      p.dpiReduced(260, 8192),
+    ])
+      expect(word, word).toMatch(devanagari);
+    // units and the name of the colour model stay as they are
+    expect([p.bleedChoices.mm3, p.bleedChoices.eighth, p.dpi(300)]).toEqual(["3 mm", "0.125 in", "300 dpi"]);
+    expect(p.cmyk).toContain("CMYK");
+    // the Hindi says, like the English, that this is not an ICC colour-managed conversion
+    expect(p.cmykHint).toContain("ICC");
+    expect(p.dpiReduced(260, 8192)).toContain("260 dpi");
+    expect(p.printHint(150)).toContain("150 dpi");
   });
 });

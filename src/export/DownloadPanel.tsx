@@ -32,18 +32,22 @@ import { describeExportError, isCancelled } from "./errors";
 import { downloadBlob, exportDesign, type ExportFormat } from "./exporters";
 import { exportSeveralSizes } from "./multiSize";
 import { CURRENT_SIZE_ID, MAX_SIZES, ORIGINAL_SIZE_NAME, defaultSizeIds, multiSizeOptions, planMultiSize, sizeChoices, sizeLabel, type MultiSizeFormat } from "./multiSizePlan";
-import { MAX_BLEED_MM, MAX_EXPORT_SIDE, estimateExportBytes, formatBytes, pagesLabel, planRaster, resolveExportOptions } from "./options";
+import { MAX_BLEED_MM, MAX_EXPORT_SIDE, PRINT_DPI_CHOICES, estimateExportBytes, formatBytes, pagesLabel, planDpi, planRaster, resolveExportOptions } from "./options";
 import {
+  BLEED_CHOICES,
   DEFAULT_DOWNLOAD_SETTINGS,
   DOWNLOAD_SETTINGS_KEY,
   SIZE_MAX,
   SIZE_MIN,
+  bleedMmOf,
   pagesFor,
   readStoredSettings,
   serializeSettings,
   toExportOptions,
+  type BleedChoice,
   type DownloadSettings,
   type PagesMode,
+  type PrintDpi,
 } from "./settings";
 import { exportWebPage, webPageOptions } from "./webPageExport";
 
@@ -123,6 +127,13 @@ const optionsFor = (video: VideoSupport): SelectOption<FileKey>[] =>
 
 /** The name of a size as the panel shows it: "Original size" stays English in the file names, and is said in the page's language here. */
 const sizeName = (name: string): string => (name === ORIGINAL_SIZE_NAME ? words.originalSize : name);
+
+const bleedLabel: Record<BleedChoice, string> = {
+  none: words.bleedChoices.none,
+  "3mm": words.bleedChoices.mm3,
+  eighth: words.bleedChoices.eighth,
+  custom: words.bleedChoices.custom,
+};
 
 const fileKeyOf = (s: DownloadSettings): FileKey => (s.format === "pdf" ? (s.pdfMode === "print" ? "pdf-print" : "pdf-standard") : s.format);
 
@@ -272,6 +283,10 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
   const bigGif = format === "gif" && estimate > 15 * 1024 * 1024;
   /** why this download cannot start (a page that is missing is said in the footer, like for every other download) */
   const refusal = problem ?? sizePlan?.problem ?? null;
+  /** a print PDF: the pixel size its pages are written at (with the bleed), and whether the resolution had to be lowered for it */
+  const printPlan = format === "pdf" && settings.pdfMode === "print" ? resolveExportOptions(design, { ...options, pages: [] }).plan : null;
+  const bleedMm = bleedMmOf(settings);
+  const cmyk = printPlan !== null && settings.cmyk;
 
   const toggleSize = (id: string) => {
     const next = new Set(tickedSizes);
@@ -416,33 +431,60 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
               ]}
             />
           </Field>
-          <p className="cf-dl__hint">{settings.pdfMode === "print" ? words.printHint : words.digitalHint}</p>
-          <Switch checked={settings.compress} onChange={(compress) => patch({ compress })} label={words.compress} disabled={busy} />
+          <p className="cf-dl__hint">{printPlan ? words.printHint(settings.printDpi) : words.digitalHint}</p>
+          {/* a CMYK page is not a JPEG: there is nothing for compression to lower */}
+          <Switch checked={settings.compress && !cmyk} onChange={(compress) => patch({ compress })} label={words.compress} disabled={busy || cmyk} />
           <p className="cf-dl__hint">{words.compressHint}</p>
           {/* what only a printer needs: shown for the print preset alone */}
-          {settings.pdfMode === "print" ? (
+          {printPlan ? (
             <>
-              <Switch checked={settings.bleed} onChange={(bleed) => patch({ bleed })} label={words.bleed} disabled={busy} />
-              {settings.bleed ? (
-                <>
-                  <NumberField
-                    aria-label={words.bleedSize}
-                    value={settings.bleedMm}
-                    min={0}
-                    max={MAX_BLEED_MM}
-                    step={0.5}
-                    suffix="mm"
-                    stepper
-                    width={140}
-                    size="sm"
-                    onChange={(bleedMm) => patch({ bleedMm })}
-                    disabled={busy}
-                  />
-                  <p className="cf-dl__hint">{words.bleedHint(settings.bleedMm)}</p>
-                </>
+              <Field label={words.printResolution} aside={<span className="cf-dl__count">{words.pixels(printPlan.width, printPlan.height)}</span>}>
+                <Segmented<PrintDpi>
+                  aria-label={words.printResolution}
+                  size="sm"
+                  fullWidth
+                  value={settings.printDpi}
+                  onChange={(printDpi) => patch({ printDpi })}
+                  options={PRINT_DPI_CHOICES.map((dpi) => ({ value: dpi, label: words.dpi(dpi), disabled: busy }))}
+                />
+              </Field>
+              {printPlan.clamped ? (
+                <p className="cf-dl__note cf-dl__note--warn" role="status">
+                  {words.dpiReduced(planDpi(printPlan), MAX_EXPORT_SIDE)}
+                </p>
               ) : null}
+              <Field label={words.bleed}>
+                <Segmented<BleedChoice>
+                  aria-label={words.bleed}
+                  size="sm"
+                  fullWidth
+                  value={settings.bleed}
+                  onChange={(bleed) => patch({ bleed })}
+                  options={BLEED_CHOICES.map((choice) => ({ value: choice, label: bleedLabel[choice], disabled: busy }))}
+                />
+              </Field>
+              {settings.bleed === "custom" ? (
+                <NumberField
+                  aria-label={words.bleedSize}
+                  value={settings.bleedMm}
+                  min={0}
+                  max={MAX_BLEED_MM}
+                  step={0.5}
+                  suffix="mm"
+                  stepper
+                  width={140}
+                  size="sm"
+                  onChange={(bleedMm) => patch({ bleedMm })}
+                  disabled={busy}
+                />
+              ) : null}
+              <p className="cf-dl__hint">{bleedMm > 0 ? words.bleedHint(Math.round(bleedMm * 1000) / 1000) : words.bleedNoneHint}</p>
               <Switch checked={settings.cropMarks} onChange={(cropMarks) => patch({ cropMarks })} label={words.cropMarks} disabled={busy} />
               <p className="cf-dl__hint">{words.cropMarksHint}</p>
+              <Switch checked={settings.registrationMarks} onChange={(registrationMarks) => patch({ registrationMarks })} label={words.registrationMarks} disabled={busy} />
+              <p className="cf-dl__hint">{words.registrationMarksHint}</p>
+              <Switch checked={settings.cmyk} onChange={(on) => patch({ cmyk: on })} label={words.cmyk} disabled={busy} />
+              <p className="cf-dl__hint">{words.cmykHint}</p>
             </>
           ) : null}
         </div>

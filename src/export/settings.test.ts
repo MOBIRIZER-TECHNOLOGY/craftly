@@ -44,14 +44,29 @@ describe("readStoredSettings", () => {
     expect(readStoredSettings('{"resolution":null,"gifFps":null}')).toMatchObject({ resolution: 720, gifFps: 15 });
   });
 
-  it("starts without bleed or crop marks, and reads them back within their limits", () => {
-    expect(DEFAULT_DOWNLOAD_SETTINGS).toMatchObject({ bleed: false, bleedMm: 3, cropMarks: false });
-    const s = base({ format: "pdf", pdfMode: "print", bleed: true, bleedMm: 4.5, cropMarks: true });
+  it("starts with a 3 mm bleed, no marks, RGB at 300 dpi, and reads the print choices back within their limits", () => {
+    expect(DEFAULT_DOWNLOAD_SETTINGS).toMatchObject({ bleed: "3mm", bleedMm: 3, cropMarks: false, registrationMarks: false, cmyk: false, printDpi: 300 });
+    const s = base({ format: "pdf", pdfMode: "print", bleed: "custom", bleedMm: 4.5, cropMarks: true, registrationMarks: true, cmyk: true, printDpi: 150 });
     expect(readStoredSettings(serializeSettings(s))).toEqual(s);
-    expect(readStoredSettings('{"bleed":true,"bleedMm":99,"cropMarks":true}')).toMatchObject({ bleed: true, bleedMm: 10, cropMarks: true });
-    expect(readStoredSettings('{"bleed":"yes","bleedMm":-1,"cropMarks":1}')).toMatchObject({ bleed: false, bleedMm: 0, cropMarks: false });
+    for (const bleed of ["none", "3mm", "eighth", "custom"] as const) expect(readStoredSettings(serializeSettings(base({ bleed }))).bleed).toBe(bleed);
+    expect(readStoredSettings('{"bleed":"custom","bleedMm":99,"cropMarks":true}')).toMatchObject({ bleed: "custom", bleedMm: 10, cropMarks: true });
+    expect(readStoredSettings('{"bleed":"yes","bleedMm":-1,"cropMarks":1,"registrationMarks":"on","cmyk":1}')).toMatchObject({
+      bleed: "3mm",
+      bleedMm: 0,
+      cropMarks: false,
+      registrationMarks: false,
+      cmyk: false,
+    });
     expect(readStoredSettings('{"bleedMm":"wide"}').bleedMm).toBe(3);
     expect(readStoredSettings('{"bleedMm":2.26}').bleedMm).toBe(2.3);
+    // only the resolutions the panel offers
+    for (const printDpi of [72, 600, "300", null]) expect(readStoredSettings(JSON.stringify({ printDpi })).printDpi).toBe(300);
+  });
+
+  it("keeps the bleed of settings saved when the bleed was a switch", () => {
+    expect(readStoredSettings('{"bleed":false,"bleedMm":5}')).toMatchObject({ bleed: "none", bleedMm: 5 });
+    expect(readStoredSettings('{"bleed":true,"bleedMm":3}').bleed).toBe("3mm");
+    expect(readStoredSettings('{"bleed":true,"bleedMm":5}')).toMatchObject({ bleed: "custom", bleedMm: 5 });
   });
 
   it("clamps numbers and snaps the size to the slider's quarter steps", () => {
@@ -90,18 +105,37 @@ describe("toExportOptions", () => {
     expect(toExportOptions(base({ format: "pdf", scale: 4 }), [0]).scale).toBe(1.5);
   });
 
-  it("hands the bleed and the crop marks to a print PDF only", () => {
+  it("hands the bleed, the marks, CMYK and the resolution to a print PDF only", () => {
     const print = base({ format: "pdf", pdfMode: "print" });
-    expect(toExportOptions(print, [0])).toMatchObject({ bleedMm: 0, cropMarks: false });
-    expect(toExportOptions({ ...print, bleed: true }, [0])).toMatchObject({ bleedMm: 3, cropMarks: false });
-    expect(toExportOptions({ ...print, bleed: true, bleedMm: 5, cropMarks: true }, [0])).toMatchObject({ bleedMm: 5, cropMarks: true });
-    // the size is remembered while the switch is off, and not used
-    expect(toExportOptions({ ...print, bleed: false, bleedMm: 5 }, [0]).bleedMm).toBe(0);
-    for (const other of [base({ format: "pdf", bleed: true, cropMarks: true }), base({ format: "png", pdfMode: "print", bleed: true, cropMarks: true })]) {
+    expect(toExportOptions(print, [0])).toMatchObject({ bleedMm: 3, cropMarks: false, registrationMarks: false, cmyk: false, dpi: 300 });
+    expect(toExportOptions({ ...print, bleed: "none" }, [0]).bleedMm).toBe(0);
+    expect(toExportOptions({ ...print, bleed: "eighth" }, [0]).bleedMm).toBeCloseTo(3.175, 6);
+    expect(toExportOptions({ ...print, bleed: "custom", bleedMm: 5, cropMarks: true, registrationMarks: true, cmyk: true, printDpi: 150 }, [0])).toMatchObject({
+      bleedMm: 5,
+      cropMarks: true,
+      registrationMarks: true,
+      cmyk: true,
+      dpi: 150,
+    });
+    // the custom size is remembered while another bleed is chosen, and not used
+    expect(toExportOptions({ ...print, bleed: "3mm", bleedMm: 5 }, [0]).bleedMm).toBe(3);
+    const asked = { bleed: "custom", bleedMm: 5, cropMarks: true, registrationMarks: true, cmyk: true, printDpi: 150 } as const;
+    for (const other of [base({ format: "pdf", ...asked }), base({ format: "png", pdfMode: "print", ...asked })]) {
       const o = toExportOptions(other, [0]);
-      expect(o).not.toHaveProperty("bleedMm");
-      expect(o).not.toHaveProperty("cropMarks");
+      for (const key of ["bleedMm", "cropMarks", "registrationMarks", "cmyk", "dpi"]) expect(o).not.toHaveProperty(key);
     }
+  });
+
+  it("gives the PDF for screens exactly the options it had before there were print options", () => {
+    expect(toExportOptions(base({ format: "pdf", cmyk: true, registrationMarks: true, cropMarks: true, printDpi: 150 }), [0, 1])).toEqual({
+      format: "pdf",
+      pages: [0, 1],
+      scale: 1.5,
+      quality: 0.92,
+      transparent: false,
+      pdfMode: "standard",
+      embedFonts: true,
+    });
   });
 
   it("gives a GIF its resolution and frame rate", () => {

@@ -21,6 +21,7 @@ import {
   normalizePages,
   pageFileName,
   pagesLabel,
+  planDpi,
   planRaster,
   resolveExportOptions,
   safeFileName,
@@ -141,6 +142,52 @@ describe("normalizePages / resolveExportOptions", () => {
     expect(capped).toMatchObject({ clamped: true, width: MAX_EXPORT_SIDE });
     // crop marks are drawn by the PDF, not painted: they do not change the picture
     expect(resolveExportOptions(design(), { ...print, cropMarks: true }).plan).toMatchObject({ width: 6000, height: 3375 });
+  });
+
+  it("takes registration marks, CMYK and a resolution for a print PDF only", () => {
+    const d = design();
+    const print = { ...base, format: "pdf" as const, pdfMode: "print" as const };
+    expect(resolveExportOptions(d, print)).toMatchObject({ registrationMarks: false, cmyk: false });
+    expect(resolveExportOptions(d, { ...print, registrationMarks: true, cmyk: true })).toMatchObject({ registrationMarks: true, cmyk: true });
+    expect(resolveExportOptions(d, { ...print, cmyk: "yes" as never }).cmyk).toBe(false);
+    for (const other of [
+      { ...base, format: "pdf" as const },
+      { ...base, format: "jpg" as const, pdfMode: "print" as const },
+    ]) {
+      expect(resolveExportOptions(d, { ...other, registrationMarks: true, cmyk: true })).toMatchObject({ registrationMarks: false, cmyk: false });
+    }
+    // 300 dpi unless asked otherwise, within 72 .. 600
+    expect(resolveExportOptions(d, print).plan.scale).toBe(PRINT_SCALE);
+    expect(resolveExportOptions(d, { ...print, dpi: 150 }).plan).toMatchObject({ scale: 1.5625, width: 3000, height: 1688 });
+    expect(planDpi(resolveExportOptions(d, { ...print, dpi: 150 }).plan)).toBe(150);
+    expect(resolveExportOptions(d, { ...print, dpi: 5000 }).plan.requested).toBe(600 / 96);
+    expect(resolveExportOptions(d, { ...print, dpi: Number.NaN }).plan.requested).toBe(PRINT_SCALE);
+    // a resolution is no business of a PDF for screens: it keeps its size multiplier
+    expect(resolveExportOptions(d, { ...base, format: "pdf", scale: 1.5, dpi: 150 }).plan.scale).toBe(1.5);
+    // the cap: a page that is too large for 300 dpi is written at what fits, and says so
+    const big = resolveExportOptions(design(3000, 2000), print).plan;
+    expect(big.clamped).toBe(true);
+    expect(planDpi(big)).toBe(262);
+  });
+
+  it("estimates a CMYK print PDF as deflated four-byte pixels: far more than the JPEG for a photo, less for flat colour", () => {
+    const flat = design(1920, 1080);
+    const photo = createDesign({
+      width: 1920,
+      height: 1080,
+      pages: [
+        createPage({
+          background: solid("#fff"),
+          elements: [createImage({ src: "builtin:sunset-hills", x: 0, y: 0, width: 1920, height: 1080, naturalWidth: 1600, naturalHeight: 1067 })],
+        }),
+      ],
+    });
+    const print = { ...base, format: "pdf" as const, pdfMode: "print" as const };
+    const rgbPhoto = estimateExportBytes(photo, print);
+    const cmykPhoto = estimateExportBytes(photo, { ...print, cmyk: true });
+    expect(cmykPhoto).toBeGreaterThan(rgbPhoto * 3);
+    // 6000 x 3375 pixels, four bytes each, are 81 MB raw: a flat page is a small part of that
+    expect(estimateExportBytes(flat, { ...print, cmyk: true })).toBeLessThan(6000 * 3375 * 4 * 0.05);
   });
 
   it("rejects unknown formats", () => {

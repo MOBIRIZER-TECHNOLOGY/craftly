@@ -31,6 +31,7 @@ import {
   resolveExportOptions,
   type ResolvedExport,
 } from "./options";
+import { canvasToCmykImage } from "./cmyk";
 import { buildPdfParts, type PdfPageInput } from "./pdf";
 import { collectPageText } from "./pdfText";
 import { canvasToBlob, releaseCanvas, renderExportCanvas, renderPageBlob } from "./raster";
@@ -57,6 +58,12 @@ export interface ExportOptions {
   bleedMm?: number;
   /** print pdf: crop marks at the corners of the design (default false) */
   cropMarks?: boolean;
+  /** print pdf: registration targets at the middle of every edge (default false) */
+  registrationMarks?: boolean;
+  /** print pdf: pages as 8-bit DeviceCMYK pictures, converted here without a colour profile (see cmyk.ts; default false: RGB JPEG) */
+  cmyk?: boolean;
+  /** print pdf: dots per inch of the page pictures, 72 .. 600 (default 300); the 8192 px cap still applies */
+  dpi?: number;
   /** svg: embed the fonts used */
   embedFonts: boolean;
   /** gif / webm: length of the picture's shorter side in pixels, 480 | 720 | 1080 (default 720) */
@@ -169,9 +176,12 @@ async function exportPdf(design: Design, resolved: ResolvedExport, onProgress: E
     const page = design.pages[index];
     // with a bleed the picture shows that much more on every side; the PDF is told, and puts the design, its links and its text further in
     const canvas = await renderExportCanvas(design, page, { scale: plan.scale, flatten: "#ffffff", signal, bleed: resolved.bleedMm * MM_TO_PX });
-    let jpeg: Uint8Array;
+    // RGB: the browser's JPEG; CMYK: the pixels converted here (browsers cannot encode a CMYK JPEG) and deflated
+    let picture: Pick<PdfPageInput, "jpeg" | "image">;
     try {
-      jpeg = new Uint8Array(await (await canvasToBlob(canvas, "image/jpeg", resolved.quality)).arrayBuffer());
+      picture = resolved.cmyk
+        ? { image: { ...(await canvasToCmykImage(canvas, signal)), components: 4, png: true } }
+        : { jpeg: new Uint8Array(await (await canvasToBlob(canvas, "image/jpeg", resolved.quality)).arrayBuffer()) };
     } finally {
       releaseCanvas(canvas);
     }
@@ -179,11 +189,13 @@ async function exportPdf(design: Design, resolved: ResolvedExport, onProgress: E
     return {
       widthPt,
       heightPt,
-      jpeg,
+      ...picture,
       links,
       text: resolved.pdfText ? collectPageText(design, page) : undefined,
       bleedPt: resolved.bleedMm * MM_TO_PT,
       cropMarks: resolved.cropMarks,
+      // only named when asked for, so a PDF without them is built from exactly the same input as before they existed
+      ...(resolved.registrationMarks ? { registrationMarks: true } : {}),
     };
   });
   const { parts } = buildPdfParts(pages, { title: design.title });
