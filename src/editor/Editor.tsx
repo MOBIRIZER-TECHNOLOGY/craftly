@@ -2,6 +2,7 @@ import { installFoldPanelOnInsert } from "./foldPanelOnInsert";
 import { installMissingFontNotice } from "./missingFontNotice";
 import { useEffect, useState, type ReactNode } from "react";
 import { RecoveryPanel } from "@/components/RecoveryPanel";
+import { designLock, holdLock } from "@/cloud/locks";
 import { getDesignForEditing } from "@/core/library";
 import { isCrashing, keepBeforeProblem } from "@/core/recovery";
 import { MigrationError } from "@/core/schema/migrator";
@@ -98,6 +99,8 @@ export function Editor({ designId }: { designId: string }) {
   useEffect(() => {
     let cancelled = false;
     let autosave: ReturnType<typeof installAutosave> | null = null;
+    // sync leaves a design alone while an editor has it open (src/cloud/locks.ts, docs/ACCOUNTS.md)
+    const releaseLock = holdLock(designLock(designId));
     setStatus("loading");
     getDesignForEditing(designId)
       .then((opened) => {
@@ -127,11 +130,14 @@ export function Editor({ designId }: { designId: string }) {
     return () => {
       cancelled = true;
       const state = useEditor.getState();
+      let flushing: Promise<unknown> = Promise.resolve();
       if (autosave && state.design?.id === designId && state.saveState !== "saved" && state.saveState !== "saving") {
         const crashed = isCrashing();
         if (crashed) void keepBeforeProblem(designId).catch(() => undefined);
-        void autosave.flush(!crashed);
+        flushing = Promise.resolve(autosave.flush(!crashed));
       }
+      // the last save is written before sync may take the design
+      void flushing.catch(() => undefined).finally(releaseLock);
       autosave?.();
       useEditor.getState().actions.closeDesign();
     };

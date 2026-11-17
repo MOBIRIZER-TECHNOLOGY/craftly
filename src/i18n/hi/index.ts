@@ -11,5 +11,6 @@ import { exporting } from "./exporting";
 import { ml } from "./ml";
 import { core } from "./core";
 import { data } from "./data";
+import { cloud } from "./cloud";
 
-export const hi = { common, app, ui, dashboard, panelsContext, panelsTabs, editorChrome, editor, exporting, ml, core, data };
+export const hi = { common, app, ui, dashboard, panelsContext, panelsTabs, editorChrome, editor, exporting, ml, core, data, cloud };

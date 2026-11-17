@@ -23,6 +23,8 @@ export function subscribeLibrary(cb: () => void): () => void {
   return () => listeners.delete(cb);
 }
 const emit = () => listeners.forEach((l) => l());
+/** Tells subscribers that the library changed: for code that writes records itself in one transaction (src/cloud/sync.ts). */
+export const notifyLibrary = emit;
 
 /* ---------------- the space of what is made ---------------- */
 
@@ -139,18 +141,27 @@ export async function saveThumbnail(id: string, revision: string, thumbnail: str
 }
 
 export async function updateSummary(id: string, patch: Partial<DesignSummary>): Promise<void> {
-  const written = await writeTransaction(["designs", "summaries"], async (tx) => {
+  const written = await writeTransaction(["designs", "summaries", "sync"], async (tx) => {
     const designs = tx.objectStore("designs");
     const summaries = tx.objectStore("summaries");
-    const [design, prev] = await Promise.all([wrap<Design | undefined>(designs.get(id)), wrap<DesignSummary | undefined>(summaries.get(id))]);
+    const sync = tx.objectStore("sync");
+    const [design, prev, record] = await Promise.all([
+      wrap<Design | undefined>(designs.get(id)),
+      wrap<DesignSummary | undefined>(summaries.get(id)),
+      wrap<SyncRecord | undefined>(sync.get(id)),
+    ]);
     if (!design || !prev) return false;
     const nextDesign: Design = { ...design };
     if (patch.title !== undefined) nextDesign.title = patch.title;
     if (patch.starred !== undefined) nextDesign.starred = patch.starred;
     if (patch.folderId !== undefined) nextDesign.folderId = patch.folderId;
     if (patch.trashedAt !== undefined) nextDesign.trashedAt = patch.trashedAt;
+    const revision = uid("revision");
     designs.put(nextDesign);
-    summaries.put({ ...prev, ...patch, revision: uid("revision") });
+    summaries.put({ ...prev, ...patch, revision });
+    // A detail is not the content: a design whose content an account server has stays in step with it (its details are
+    // compared apart, with `syncedMeta`), so that starring it on one device and editing it on another is no conflict.
+    if (record && record.syncedRevision !== null && record.syncedRevision === (prev.revision ?? null)) sync.put({ ...record, syncedRevision: revision });
     return true;
   });
   if (written) emit();

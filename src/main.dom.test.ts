@@ -54,7 +54,7 @@ describe("main", () => {
     try {
       // what a newer release does the first time it changes the stores: it asks for a higher version of the database
       await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open("craftly", 2);
+        const request = indexedDB.open("craftly", 3);
         request.onsuccess = () => {
           request.result.close();
           resolve();

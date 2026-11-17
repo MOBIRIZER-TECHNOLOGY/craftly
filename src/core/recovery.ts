@@ -78,6 +78,7 @@ const LABELS: Readonly<Record<string, keyof typeof m.core.versions>> = {
   "Before going back": "beforeGoingBack",
   "Before restoring": "beforeRestoring",
   "Before the update": "beforeUpdate",
+  "Before sync": "beforeSync",
   "Saved by you": "savedByYou",
 };
 

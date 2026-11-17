@@ -15,6 +15,7 @@ export const core: typeof en = {
     beforeGoingBack: "वापस जाने से पहले",
     beforeRestoring: "रीस्टोर करने से पहले",
     beforeUpdate: "अपडेट से पहले",
+    beforeSync: "सिंक से पहले",
     savedByYou: "आपने सहेजा",
     savedAutomatically: "अपने-आप सहेजा गया",
   },

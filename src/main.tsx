@@ -4,6 +4,7 @@ import "./styles/base.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { startCloud } from "./cloud/state";
 import { startCustomFonts } from "./core/customFonts";
 import { installDatabaseNotices } from "./databaseNotices";
 import { installProblemCatcher } from "./problemCatcher";
@@ -23,6 +24,10 @@ installUploadNotices();
 // The fonts the person uploaded are read from the library and made known to everything that draws text, before the first
 // design is drawn where that is possible; what draws earlier is drawn again when they are in (src/core/customFonts.ts).
 void startCustomFonts();
+
+// A person who signed in to an account server on this device: the sync engine starts (src/cloud/state.ts). Without a session
+// this reads one record and does nothing more: no account code is loaded and no request goes out.
+void startCloud();
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>

@@ -20,6 +20,8 @@ export const core = {
     beforeGoingBack: "Before going back",
     beforeRestoring: "Before restoring",
     beforeUpdate: "Before the update",
+    /** this device's edit of a design that was also changed on another device (src/cloud/sync.ts) */
+    beforeSync: "Before sync",
     savedByYou: "Saved by you",
     savedAutomatically: "Saved automatically",
   },
