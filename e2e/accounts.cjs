@@ -61,15 +61,18 @@ async function startServer(port) {
     child.stderr.on("data", (chunk) => (text += chunk));
     child.on("exit", (code) => reject(new Error("the server stopped: " + code + " " + text.slice(0, 300))));
   });
-  return {
+  const server = {
     address,
+    running: true,
     stop: () =>
       new Promise((resolve) => {
+        server.running = false;
         child.removeAllListeners("exit");
         child.once("exit", () => resolve());
         child.kill();
       }),
   };
+  return server;
 }
 
 /** A request to the server as a person (from this script, as a third device would). */
@@ -105,11 +108,17 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     await ctx.addInitScript(() => performance.setResourceTimingBufferSize(20000));
     if (options.language) await ctx.addInitScript((code) => localStorage.setItem("craftly.language", code), options.language);
     const page = await ctx.newPage();
+    // WebKit says a server that is not there, while the journey has it stopped, as "Could not connect to server", and, when no
+    // permission of an earlier preflight is kept, as a page error "… due to access control checks"; only then are they expected
+    const serverAway = (text) =>
+      !server.running && (/^Could not connect to server/.test(text) || (text.includes(new URL(SERVER).host) && /due to access control checks/.test(text)));
     page.on("console", (m) => {
-      if (m.type() === "error" && !/WebSocket|ERR_CONNECTION|ERR_INTERNET_DISCONNECTED|Failed to load resource|Failed to fetch/.test(m.text()))
+      if (m.type() === "error" && !/WebSocket|ERR_CONNECTION|ERR_INTERNET_DISCONNECTED|Failed to load resource|Failed to fetch/.test(m.text()) && !serverAway(m.text()))
         logs.push(`${name} console.error: ` + m.text().slice(0, 240));
     });
-    page.on("pageerror", (e) => logs.push(`${name} PAGEERROR ` + e.message.slice(0, 240)));
+    page.on("pageerror", (e) => {
+      if (!serverAway(e.message)) logs.push(`${name} PAGEERROR ` + e.message.slice(0, 240));
+    });
     // every request to the account server, and every socket with what it says first
     const requests = [];
     page.on("request", (r) => {
@@ -154,8 +163,9 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
    * The app's own modules, kept on the page while it can still fetch them: a module that a browser fails to fetch (offline, the
    * server stopped) is remembered as failed for the life of the page.
    */
-  const prepare = (who, account = true) =>
-    who.page.evaluate(async (withAccount) => {
+  const prepare = (who, account = true) => {
+    who.account = account;
+    return who.page.evaluate(async (withAccount) => {
       // The very instance the app runs: the dev server adds ?t=<time> to the address of a module that changed since it started,
       // and an import of the plain address would make a second instance with none of the app's state.
       const loaded = (path) =>
@@ -171,20 +181,34 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
         sync: withAccount ? await import(loaded("/src/cloud/sync.ts")) : null,
       };
     }, account);
+  };
+  /**
+   * The modules again when the page was loaded anew since `prepare`: WebKit loads the page again for `goto` to the address it is
+   * at already (hash and all), where Chrome only moves to the hash, so a step may find the page without them.
+   */
+  const ready = async (who) => {
+    const kept = await who.page.evaluate((withAccount) => !!window.__journey && (!withAccount || !!window.__journey.sync), who.account !== false);
+    if (!kept) await prepare(who, who.account !== false);
+  };
   /** the library of a browser, through the app's own modules */
-  const designs = (who) =>
-    who.page.evaluate(async () => {
+  const designs = async (who) => {
+    await ready(who);
+    return who.page.evaluate(async () => {
       const lib = window.__journey.lib;
       return (await lib.listDesigns()).map((d) => ({ id: d.id, title: d.title, space: d.space ?? null, trashed: !!d.trashedAt }));
     });
-  const makeDesign = (who, title) =>
-    who.page.evaluate(async (t) => {
+  };
+  const makeDesign = async (who, title) => {
+    await ready(who);
+    return who.page.evaluate(async (t) => {
       const lib = window.__journey.lib;
       return (await lib.createBlankDesign({ typeId: "custom", width: 800, height: 600, title: t })).id;
     }, title);
+  };
   /** an edit of the content, as the editor saves one: `pages` pages more */
-  const addPages = (who, id, pages) =>
-    who.page.evaluate(
+  const addPages = async (who, id, pages) => {
+    await ready(who);
+    return who.page.evaluate(
       async ([designId, n]) => {
         const { lib, factory } = window.__journey;
         const open = await lib.getDesignForEditing(designId);
@@ -194,12 +218,15 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
       },
       [id, pages],
     );
-  const syncNow = (who) =>
-    who.page.evaluate(async () => {
+  };
+  const syncNow = async (who) => {
+    await ready(who);
+    return who.page.evaluate(async () => {
       const sync = window.__journey.sync;
       const report = await sync.syncNow().catch((e) => ({ error: String(e && e.message) }));
       return report;
     });
+  };
   const syncStatus = (who) =>
     who.page
       .getByRole("button", { name: /^Sync: / })
@@ -207,17 +234,26 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
       .getAttribute("aria-label");
   const accountMenu = async (who, label = "Account") => {
     // the rail's account button on a wide screen, the one in the top bar on a phone
+    // (waited for: a page that was just loaded may not show the shell yet, as after a `goto` that WebKit loads anew)
     const buttons = who.page.getByRole("button", { name: label, exact: true });
-    const count = await buttons.count();
-    for (let i = 0; i < count; i++) {
-      if (await buttons.nth(i).isVisible()) {
-        await buttons.nth(i).click();
+    const wide = who.page.locator(".cf-dnav__account-wide");
+    const end = Date.now() + 20000;
+    while (Date.now() < end) {
+      const count = await buttons.count();
+      for (let i = 0; i < count; i++) {
+        if (await buttons.nth(i).isVisible()) {
+          await buttons.nth(i).click();
+          return who.page.getByRole("menu").first();
+        }
+      }
+      // the expanded rail names the person
+      if (await wide.isVisible()) {
+        await wide.click();
         return who.page.getByRole("menu").first();
       }
+      await who.page.waitForTimeout(100);
     }
-    // the expanded rail names the person
-    await who.page.locator(".cf-dnav__account-wide").click();
-    return who.page.getByRole("menu").first();
+    throw new Error("no account button shows");
   };
 
   const ann = { email: `ann-${crypto.randomBytes(4).toString("hex")}@example.org`, password: secretPassword() };
@@ -237,7 +273,8 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     await prepare(laptop, false);
     posterId = await makeDesign(laptop, "Laptop poster");
     const menu = await accountMenu(laptop);
-    const items = await menu.getByRole("menuitem").allInnerTexts();
+    // (WebKit's innerText ends each item with a line break, as in print.cjs)
+    const items = (await menu.getByRole("menuitem").allInnerTexts()).map((t) => t.trim());
     if (items[0] !== "Sign in" || items[1] !== "Create account") throw new Error("the menu starts " + JSON.stringify(items.slice(0, 3)));
     await laptop.page.keyboard.press("Escape");
     if (laptop.requests.length) throw new Error("asked the server: " + laptop.requests.join(", "));
@@ -332,6 +369,7 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
       copy = (await designs(laptop)).map((d) => d.title).find((t) => /^Laptop poster \(edited on .+\)$/.test(t)) ?? null;
       return copy !== null;
     });
+    await ready(laptop);
     const pages = await laptop.page.evaluate(async (id) => (await window.__journey.lib.getDesign(id)).pages.length, posterId);
     if (pages !== 2) throw new Error("the design under its id has " + pages + " pages, not the phone's 2");
     await syncNow(phone);
@@ -505,6 +543,8 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     if (there.body.design.pages.length !== 3) throw new Error("the server's design has " + there.body.design.pages.length + " pages");
     return "sent after the restart";
   });
+  // a step that failed with the server stopped would fail every step after it too, for no fault of theirs
+  if (!server.running) server = await startServer(port);
 
   /* ---------------- Hindi ---------------- */
   await step("signing in and the account menu in Hindi, with the words of the catalog", async () => {
