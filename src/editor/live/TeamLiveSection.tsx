@@ -57,6 +57,11 @@ export function TeamLiveSection() {
         {on ? <Badge tone={status === "live" ? "success" : "neutral"}>{liveStatusText(status, role)}</Badge> : null}
       </div>
       <p className="cf-live__text">{viewer ? m.cloud.live.viewHint : m.cloud.live.hint}</p>
+      {live?.notice && !on ? (
+        <p className="cf-live__text" role="status">
+          {live.notice}
+        </p>
+      ) : null}
       {problem ? (
         <p className="cf-live__problem" role="alert">
           {problem}

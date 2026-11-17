@@ -29,8 +29,10 @@ export function SignOutDialog({ open, onClose }: { open: boolean; onClose: () =>
   const confirm = async () => {
     setBusy(true);
     try {
-      await signOutAccount({ keepCopies: keep });
+      const { kept } = await signOutAccount({ keepCopies: keep });
       toast.success(m.cloud.signOut.done);
+      // what could not be sent was kept here although removing was chosen: said, so that nobody looks for it on the server
+      if (kept) toast.info(m.cloud.signOut.keptUnsent(kept), { duration: 0 });
       onClose();
       navigate("/");
     } finally {

@@ -31,6 +31,11 @@ export interface LiveEnv {
   session?: string;
   /** The server turned this browser away, or the room is gone: the team's room is then asked for again. */
   onDenied?: (reason: DeniedReason | null) => void;
+  /**
+   * Told when the connection is closed for good, before anything of it is let go: whether it was ever in the room, how many edits of
+   * this person the server had not confirmed, and the design as the server last confirmed it (null before its welcome).
+   */
+  onStop?: (end: { reachedLive: boolean; unsent: number; room: Design | null }) => void;
 }
 
 export interface LiveStatusState {
@@ -171,6 +176,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     return recoveryId;
   };
   let mediaError = "";
+  let reachedLive = false;
   // Seeing each other (presence.ts): from the welcome of a server that passes presence on until the connection is lost, this
   // browser says where its person is, and keeps the list of the others. A connection that comes back starts both anew, under the
   // number the server gives it then.
@@ -232,6 +238,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
         void media.download(shared).catch((error: unknown) => showMediaError(error instanceof Error ? error.message : m.editor.live.imagesFailed));
     },
     onStatus: (status, reason) => {
+      if (status === "live") reachedLive = true;
       if (status === "live" && live.session.role === "view" && !looking) {
         looking = true;
         actions().setMode("view");
@@ -270,6 +277,11 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   live.start();
   return () => {
     closed = true;
+    try {
+      env.onStop?.({ reachedLive, unsent: live.session.pending, room: live.session.server });
+    } catch {
+      // what the caller does with it does not keep the connection open
+    }
     presenceOff();
     live.stop();
     actions().stopLive();

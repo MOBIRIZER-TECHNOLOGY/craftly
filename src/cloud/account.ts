@@ -4,7 +4,7 @@
  * signed in; the session itself is kept by state.ts.
  */
 import { listDesigns, listFolders, notifyLibrary } from "@/core/library";
-import { listAssets } from "@/core/assets";
+import { listAssets, storableAsset } from "@/core/assets";
 import { dbGetAll, metaSet, writeTransaction } from "@/core/persistence";
 import type { DesignSummary, Folder, SyncRecord } from "@/core/types";
 import { collectAssetIds } from "@/export/projectFormat";
@@ -12,7 +12,7 @@ import { getStoredDesign } from "@/core/library";
 import * as api from "./api";
 import type { Conn } from "./api";
 import { CURSORS_KEY, FOLDERS_KEY, saveSession, setActiveSpace, updateSession, useCloud, type CloudSession, type SessionTeam } from "./state";
-import { countWaiting, requestSync, startSync, stopSync, syncNow } from "./sync";
+import { countWaiting, requestSync, startSync, stopSync, syncNow, waitingDesigns } from "./sync";
 import type { CloudTeam } from "./validate";
 
 /** A name for this device that a person recognises in their list of devices and in "(edited on …)": the browser and the system. */
@@ -111,19 +111,25 @@ export async function moveIntoAccount(ids: readonly string[]): Promise<void> {
 /**
  * Signs this device out. What waits is sent first. Then either the account's designs stay here as designs of this device only
  * (`keepCopies`), or they are removed from this device (the default: a shared computer keeps nothing of the account). Designs that
- * were never moved into the account stay in every case. The session ends on the server too when it can be reached.
+ * were never moved into the account stay in every case, and so does every design whose changes still wait after the last sync
+ * (sync failed, another tab was syncing, an editor has it open): it is kept as a design of this device only, whatever was chosen.
+ * Resolves with how many such designs were kept although removing was asked for. The session ends on the server too when it can
+ * be reached.
  */
-export async function signOutAccount(options: { keepCopies: boolean }): Promise<void> {
+export async function signOutAccount(options: { keepCopies: boolean }): Promise<{ kept: number }> {
   const session = useCloud.getState().session;
-  if (!session) return;
+  if (!session) return { kept: 0 };
   await syncNow().catch(() => null);
   stopSync();
+  // what still waits now, counted again: the dialog counted when it opened, and the sync may not have sent it
+  const unsent = await waitingDesigns(session);
   await api.signOut({ server: session.server, token: session.token }).catch(() => undefined);
 
   const [summaries, folders, records, assets] = await Promise.all([listDesigns(), listFolders(), dbGetAll<SyncRecord>("sync"), listAssets()]);
-  const ofAccount = summaries.filter((s) => s.space);
-  const stays = summaries.filter((s) => !s.space);
-  // the uploads that the designs which stay use are kept, whoever's they were
+  const ofAccount = summaries.filter((s) => s.space && (options.keepCopies || !unsent.has(s.id)));
+  const kept = options.keepCopies ? summaries.filter((s) => s.space) : summaries.filter((s) => s.space && unsent.has(s.id));
+  const stays = summaries.filter((s) => !s.space || unsent.has(s.id));
+  // the uploads that the designs which stay use are kept, whoever's they were, as uploads of this device
   const used = new Set<string>();
   if (!options.keepCopies) {
     for (const summary of stays) {
@@ -131,20 +137,27 @@ export async function signOutAccount(options: { keepCopies: boolean }): Promise<
       if (design) for (const id of collectAssetIds(design)) used.add(id);
     }
   }
+  // the folders the kept designs are in, and their parents, stay with them
+  const folderOf = new Map(folders.map((f) => [f.id, f]));
+  const keptFolders = new Set<string>();
+  for (const summary of kept) {
+    for (let at = summary.folderId, n = 0; at && n < 100 && !keptFolders.has(at); n++) {
+      keptFolders.add(at);
+      at = folderOf.get(at)?.parentId ?? null;
+    }
+  }
+  const keptAssets = await Promise.all(assets.filter((a) => a.space && (options.keepCopies || used.has(a.id))).map(async ({ space: _space, ...rest }) => storableAsset(rest)));
   await writeTransaction(["designs", "summaries", "folders", "sync", "versions", "assets"], async (tx) => {
     for (const record of records) tx.objectStore("sync").delete(record.id);
+    for (const summary of kept) {
+      const { space: _space, ...rest } = summary;
+      tx.objectStore("summaries").put(rest);
+    }
+    for (const asset of keptAssets) tx.objectStore("assets").put(asset);
     if (options.keepCopies) {
-      for (const summary of ofAccount) {
-        const { space: _space, ...rest } = summary;
-        tx.objectStore("summaries").put(rest);
-      }
       for (const folder of folders.filter((f) => f.space)) {
         const { space: _space, ...rest } = folder;
         tx.objectStore("folders").put(rest);
-      }
-      for (const asset of assets.filter((a) => a.space)) {
-        const { space: _space, ...rest } = asset;
-        tx.objectStore("assets").put(rest);
       }
       return;
     }
@@ -162,13 +175,19 @@ export async function signOutAccount(options: { keepCopies: boolean }): Promise<
       const designId = String(key).slice(0, String(key).lastIndexOf(":"));
       if (gone.has(designId)) versions.delete(key);
     }
-    for (const folder of folders) if (folder.space) tx.objectStore("folders").delete(folder.id);
+    for (const folder of folders) {
+      if (!folder.space) continue;
+      const { space: _space, ...rest } = folder;
+      if (keptFolders.has(folder.id)) tx.objectStore("folders").put(rest);
+      else tx.objectStore("folders").delete(folder.id);
+    }
     for (const asset of assets) if (asset.space && !used.has(asset.id)) tx.objectStore("assets").delete(asset.id);
   });
   await metaSet(CURSORS_KEY, {});
   await metaSet(FOLDERS_KEY, {});
   await saveSession(null);
   notifyLibrary();
+  return { kept: options.keepCopies ? 0 : kept.length };
 }
 
 export { countWaiting };

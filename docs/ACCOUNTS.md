@@ -270,7 +270,8 @@ The client: `src/core/persistence.ts` (step 2), `src/core/library.ts` (`space`, 
 (`state.ts`, `api.ts`, `validate.ts`, `account.ts`, `syncPlan.ts`, `sync.ts`, `syncStatus.ts`, `locks.ts`),
 `src/dashboard/account/` (the screens), `src/editor/live/teamLive.ts` and `TeamLiveSection.tsx` (team designs live), and the join
 with a session in `src/collab/session.ts` and `live.ts`. Tests: `src/core/schema/dbStep2.dom.test.ts`, `persistedShapes.test.ts`,
-`src/cloud/syncPlan.test.ts`, `validate.test.ts`, `sync.dom.test.ts` (a real server on port 0), `backup.dom.test.ts`,
+`src/cloud/syncPlan.test.ts`, `validate.test.ts`, `sync.dom.test.ts` (a real server on port 0), `signOutNoBlobs.dom.test.ts`,
+`backup.dom.test.ts`, `src/editor/live/teamLive.dom.test.ts`, `src/editor/EditorLock.test.tsx`,
 `src/dashboard/account/screens.test.tsx` and `Shell.test.tsx` (a real server too), and `e2e/accounts.cjs`. Where it differs from
 the design above, or says more:
 
@@ -294,6 +295,14 @@ the design above, or says more:
 - **A server tombstone** moves a clean design to the Trash here **as a design of this device only** (its `space` and record are
   removed): restoring it from the Trash does not send it back. A design dirty here becomes a new design with a new id (its
   versions follow it), as does one the server answers `exists` or `deleted` for.
+- **A design here under the id of one of the server, not of that space** (a backup restored on a new device keeps the ids and drops
+  the space; a team left and joined again keeps its designs here as the person's own) is found before the plan, never written
+  over and never left to hold the space's cursor: a design of this device only with the same title and content is the same design,
+  and the server's is taken in its place; any other one, or one of another space that its server never had, gets a new id (it
+  stays what it was, with its versions) and the server's comes under the id. A design of another space that its server has keeps
+  its id: the sync status says so ("could not be brought to this device") and that one design of the feed waits.
+- **Leaving a team** forgets the team's cursor and its folders as last in step (`cloudCursors`, `cloudFolders`), so that joining
+  it again reads its feed from the start and does not take the folders kept here for folders deleted here.
 - **Deleting for good** is an owner's (`DELETE` answers 403 to an editor of a team): an editor's deletion removes the design here
   only, and the space's feed is read again from the start so that it comes back. A design deleted here whose server copy changed
   meanwhile comes back too, rather than deleting somebody else's work.
@@ -307,16 +316,26 @@ the design above, or says more:
 - **The locks.** `craftly-sync` is taken by each run with `ifAvailable` (a tab that finds it held skips that run), rather than held by
   one leader tab for its life; the status in a tab that did not run is that of its own last run. Where a browser has no Web Locks
   (and in the tests) the locks hold within the page only. The editor holds `craftly-design-<id>` from opening a design until its
-  last save after closing it; every write of sync to a design takes that lock with `ifAvailable` too, and a design held is
-  skipped (the space's cursor stays where it was, so its changes are read again).
-- **Team designs live.** "Edit live with your team" first sends the design if it waits (`sendOne`, which may, because only this
-  editor holds it), so that the room is made from it; then `POST …/live` and the join with the session (`Session`/`Live` take
-  `session` in place of `key`; the room's pictures go with `Authorization: Bearer`). Sent away (`no-access`, a role lowered or a
-  removal) or a room gone (`not-found`), the editor asks for the room again, three times at most, and joins with the role it is
-  given. When live editing stops, the copy here is marked in step: the room writes it back itself.
+  last save after closing it, and reads the design only once it holds it (or after 2 s all the same, where Web Locks are slow or
+  missing), so that a write of sync under way ends first; every write of sync to a design takes that lock with `ifAvailable` too,
+  and a design held is skipped (the space's cursor stays where it was, so its changes are read again).
+- **Team designs live.** "Edit live with your team" first saves and sends the design if it waits (`sendOne`, which may, because
+  only this editor holds it), so that the room is made from it. When it cannot be sent (a conflict, a new id, a full space, a
+  refusal, a save that did not finish), the room is not joined: the person is told to close the design and let it sync (a
+  conflict then makes its copy as usual). Then `POST …/live` and the join with the session (`Session`/`Live` take `session` in
+  place of `key`; the room's pictures go with `Authorization: Bearer`). Sent away (`no-access`, a role lowered or a removal) or a
+  room gone (`not-found`), the editor asks for the room again, three times at most, and joins with the role it is given. A
+  viewer who asks while nobody who may edit has the room open (409 `not-live`, also after the last editor left and the room
+  closed with 4004) sees the space's copy, read-only, with a note saying why, and no error; leaving a room keeps a viewer's
+  read-only mode. A room's "Title (edited live)" copy comes with the feed as any new design does. When live editing stops, the copy here is marked in step (the room writes it back itself) only when the room was joined, every edit
+  got there, and the content here, once its last save is written, is the room's; otherwise it stays to be sent, and sync takes the
+  same content on both sides without a copy.
 - **Signing out** sends what waits, ends the session on the server when it can, and then removes the account's designs (with
   their versions), folders and the uploads of the account that no remaining design uses, or keeps them as designs of this device
-  only. The dialog offers keeping them, ticked, when something could not be sent.
+  only. The dialog offers keeping them, ticked, when something could not be sent. What still waits after that last sync (it
+  failed, another tab was syncing, an editor has the design open) is counted again and always kept, as designs of this device
+  only with their folders and uploads, and a note says how many. Uploads put back are stored as the browser can keep them (their
+  bytes where the database keeps no Blob).
 - **An invite link** is `#/invite/<code>` of the page that made it; it does not name the server, which the person who opens it
   types unless the build names one (`VITE_CRAFTLY_ACCOUNT_SERVER`). A server typed in is remembered in `localStorage`
   (`craftly.account.server`) for the next sign-in.

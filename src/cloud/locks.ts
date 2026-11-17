@@ -22,21 +22,38 @@ export const designLock = (id: string) => `craftly-design-${id}`;
 
 /** Takes the lock as soon as it is free and holds it until the returned function is called (or the page goes). */
 export function holdLock(name: string): () => void {
+  return acquireLock(name).release;
+}
+
+/**
+ * `holdLock`, and also when the lock is taken: `acquired` resolves once it is held (at once where there are no Web Locks), or when
+ * the request fails or it is released before it was ever held.
+ */
+export function acquireLock(name: string): { release: () => void; acquired: Promise<void> } {
   const browser = locks();
   if (!browser) {
     heldHere.add(name);
-    return () => heldHere.delete(name);
+    return { release: () => void heldHere.delete(name), acquired: Promise.resolve() };
   }
   let release: () => void = () => undefined;
   let released = false;
+  let taken: () => void = () => undefined;
+  const acquired = new Promise<void>((resolve) => (taken = resolve));
   const held = new Promise<void>((resolve) => {
     release = () => {
       released = true;
+      taken();
       resolve();
     };
   });
-  void browser.request(name, {}, () => (released ? Promise.resolve() : held)).catch(() => undefined);
-  return () => release();
+  void browser
+    .request(name, {}, () => {
+      taken();
+      return released ? Promise.resolve() : held;
+    })
+    .catch(() => undefined)
+    .finally(taken);
+  return { release: () => release(), acquired };
 }
 
 /** Runs `work` holding the lock when it is free now; null, without running it, when somebody holds it. */

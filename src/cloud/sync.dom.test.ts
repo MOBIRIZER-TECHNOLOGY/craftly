@@ -18,14 +18,14 @@ import {
   createFolder,
   getDesignForEditing,
 } from "@/core/library";
-import { dbGet, dbGetAll, dbPut } from "@/core/persistence";
+import { dbGet, dbGetAll, dbPut, metaGet } from "@/core/persistence";
 import type { Design, SyncRecord } from "@/core/types";
 import { boot, call, closeAll, PASSWORD, PNG, signUp, type Booted } from "@/server/accounts/testServer";
 import { wipeDatabase } from "@/test/logicDb";
 import { moveIntoAccount, signOutAccount, signInAccount } from "./account";
 import { designLock, holdLock } from "./locks";
 import { saveSession, useCloud, type CloudSession } from "./state";
-import { countWaiting, MAX_CONFLICT_COPIES, stopSync, syncOnce } from "./sync";
+import { countWaiting, markInStep, MAX_CONFLICT_COPIES, stopSync, syncOnce } from "./sync";
 import { useSyncStatus } from "./syncStatus";
 
 let b: Booted;
@@ -263,6 +263,20 @@ describe("a design open in the editor", () => {
   });
 });
 
+describe("after editing live with the team", () => {
+  it("marks the copy here in step only when its content is what the room had", async () => {
+    const design = await local("Live");
+    await run();
+    const room = (await getDesign(design.id))!;
+    await edit(design.id, (d) => ({ ...d, pages: [...d.pages, createPage()] }));
+    // an edit that did not reach the room stays to be sent
+    expect(await markInStep(design.id, room)).toBe(false);
+    expect(await countWaiting()).toBe(1);
+    expect(await markInStep(design.id, (await getDesign(design.id))!)).toBe(true);
+    expect(await countWaiting()).toBe(0);
+  });
+});
+
 describe("a team", () => {
   it("brings the team's designs into the team's space, and a viewer sends nothing", async () => {
     const team = (await call(b, "POST", "/api/teams", { token: other, body: { name: "Studio" } })).body.team;
@@ -290,6 +304,91 @@ describe("a team", () => {
   });
 });
 
+describe("a design here under the id of one of the server", () => {
+  /** A design on this device only (a backup restored on a new device keeps the ids and drops the space), saved while signed out. */
+  async function onlyHere(id: string, title: string, pages = 1): Promise<Design> {
+    await saveSession(null);
+    const design = { ...createDesign({ title, width: 300, height: 200, pages: Array.from({ length: pages }, () => createPage({ elements: [createShape("rect")] })) }), id };
+    await saveDesign(design);
+    await signedIn();
+    return design;
+  }
+
+  it("keeps the design here under a new id and takes the server's, and the space's sync goes on", async () => {
+    const id = "d_restored_from_backup";
+    const theirs = createDesign({ title: "Server copy", width: 100, height: 100 });
+    expect((await call(b, "PUT", `/api/spaces/${space()}/designs/${id}`, { token: other, body: { baseRev: null, design: { ...theirs, id } } })).status).toBe(201);
+    await onlyHere(id, "Local copy", 2);
+
+    const report = await run();
+    expect(report.problems).toEqual([]);
+    expect(await getSummary(id)).toMatchObject({ space: space(), title: "Server copy" });
+    const kept = (await listDesigns()).find((d) => d.title === "Local copy");
+    expect(kept && kept.id !== id).toBe(true);
+    // the design here stays this device's own, with its content
+    expect(kept?.space).toBeUndefined();
+    expect((await getDesign(kept!.id))?.pages).toHaveLength(2);
+    // the cursor moved on: the next run downloads nothing again
+    expect(await metaGet<Record<string, number>>("cloudCursors", {})).toHaveProperty(space());
+    expect(await run()).toMatchObject({ pulled: 0, problems: [] });
+    expect(useSyncStatus.getState().state).toBe("synced");
+  });
+
+  it("takes the server's design in place of one here with the same content and title, without a copy", async () => {
+    const id = "d_same_on_both";
+    const mine = await onlyHere(id, "Same");
+    expect((await call(b, "PUT", `/api/spaces/${space()}/designs/${id}`, { token: other, body: { baseRev: null, design: mine } })).status).toBe(201);
+    const report = await run();
+    expect(report).toMatchObject({ pulled: 1, forked: 0, problems: [] });
+    expect((await listDesigns()).map((d) => [d.id, d.space])).toEqual([[id, space()]]);
+    expect(await countWaiting()).toBe(0);
+  });
+
+  it("says so, rather than holding the space silently, when the design here is another space's on the server", async () => {
+    const team = (await call(b, "POST", "/api/teams", { token: person.token, body: { name: "Studio" } })).body.team.id as string;
+    const shared = createDesign({ title: "In the team", width: 100, height: 100 });
+    await call(b, "PUT", `/api/spaces/${team}/designs/${shared.id}`, { token: other, body: { baseRev: null, design: shared } });
+    await run();
+    expect((await getSummary(shared.id))?.space).toBe(team);
+    // the same id in the person's own space, sent by another device
+    const put = await call(b, "PUT", `/api/spaces/${space()}/designs/${shared.id}`, {
+      token: other,
+      body: { baseRev: null, design: { ...shared, title: "Mine", pages: [createPage()] } },
+    });
+    expect(put.status).toBe(201);
+    const report = await run();
+    expect(report.problems.length).toBe(1);
+    expect(useSyncStatus.getState().state).toBe("problem");
+    expect(await getSummary(shared.id)).toMatchObject({ space: team, title: "In the team" });
+  });
+});
+
+describe("leaving a team and joining it again", () => {
+  it("forgets the team's cursor and folders, so that nothing of the team is deleted on the server and its designs come again", async () => {
+    const owner = await signUp(b, { name: "Owner" });
+    const team = (await call(b, "POST", "/api/teams", { token: owner.token, body: { name: "Studio" } })).body.team.id as string;
+    expect((await call(b, "PUT", `/api/spaces/${team}/folders/f_team_1`, { token: owner.token, body: { name: "Brand", parentId: null } })).status).toBe(201);
+    const shared = createDesign({ title: "Team flyer", width: 100, height: 100 });
+    await call(b, "PUT", `/api/spaces/${team}/designs/${shared.id}`, { token: owner.token, body: { baseRev: null, design: shared } });
+    const invite = async () => (await call(b, "POST", `/api/teams/${team}/invites`, { token: owner.token, body: { role: "editor", uses: 1, hours: 1 } })).body.code;
+    expect((await call(b, "POST", "/api/invites/redeem", { token: person.token, body: { code: await invite() } })).status).toBe(200);
+    await run();
+    expect((await listFolders()).find((f) => f.id === "f_team_1")?.space).toBe(team);
+
+    expect((await call(b, "DELETE", `/api/teams/${team}/members/${person.user.id}`, { token: owner.token })).status).toBe(200);
+    await run();
+    expect(await metaGet<Record<string, number>>("cloudCursors", {})).not.toHaveProperty(team);
+    expect(await metaGet<Record<string, unknown>>("cloudFolders", {})).not.toHaveProperty(team);
+
+    expect((await call(b, "POST", "/api/invites/redeem", { token: person.token, body: { code: await invite() } })).status).toBe(200);
+    await run();
+    const feed = await call(b, "GET", `/api/spaces/${team}/changes?since=0`, { token: owner.token });
+    expect(feed.body.folders.map((f: { id: string; deletedAt: number | null }) => [f.id, f.deletedAt])).toEqual([["f_team_1", null]]);
+    // the team's design is the team's here again (the copy kept on leaving had the same content and title)
+    expect((await getSummary(shared.id))?.space).toBe(team);
+  });
+});
+
 describe("signing in and out", () => {
   it("removes the account's designs and keeps the ones that were never moved in", async () => {
     await saveSession(null);
@@ -314,6 +413,25 @@ describe("signing in and out", () => {
     await signOutAccount({ keepCopies: true });
     expect((await getSummary(synced.id))?.space).toBeUndefined();
     expect((await listFolders()).every((f) => !f.space)).toBe(true);
+  });
+
+  it("keeps a design whose edit could not be sent (open in an editor) as a design of this device, when the account's are removed", async () => {
+    const sent = await local("Sent");
+    const open = await local("Open with an edit");
+    await run();
+    await edit(open.id, (d) => ({ ...d, pages: [...d.pages, createPage()] }));
+    // the editor has it: sync leaves it alone, so the edit is still here only when the dialog signs out
+    const release = holdLock(designLock(open.id));
+    try {
+      expect(await signOutAccount({ keepCopies: false })).toEqual({ kept: 1 });
+    } finally {
+      release();
+    }
+    expect(useCloud.getState().session).toBeNull();
+    expect(await getSummary(sent.id)).toBeNull();
+    expect(await getSummary(open.id)).toMatchObject({ title: "Open with an edit" });
+    expect((await getSummary(open.id))?.space).toBeUndefined();
+    expect((await getDesign(open.id))?.pages).toHaveLength(2);
   });
 
   it("fetches the uploads a design of the server uses, checked as an upload", async () => {

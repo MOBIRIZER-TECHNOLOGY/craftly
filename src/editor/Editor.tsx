@@ -2,7 +2,7 @@ import { installFoldPanelOnInsert } from "./foldPanelOnInsert";
 import { installMissingFontNotice } from "./missingFontNotice";
 import { useEffect, useState, type ReactNode } from "react";
 import { RecoveryPanel } from "@/components/RecoveryPanel";
-import { designLock, holdLock } from "@/cloud/locks";
+import { acquireLock, designLock } from "@/cloud/locks";
 import { getDesignForEditing } from "@/core/library";
 import { isCrashing, keepBeforeProblem } from "@/core/recovery";
 import { MigrationError } from "@/core/schema/migrator";
@@ -38,6 +38,9 @@ type Status = "loading" | "ready" | "missing" | "broken" | "newer" | "failed";
 function EditorState({ children }: { children: ReactNode }) {
   return <div className="cf-editor-state">{children}</div>;
 }
+
+/** How long the editor waits for the design's lock before it loads the design all the same. */
+const LOCK_WAIT_MS = 2000;
 
 /** The whole editor for one design: loads it from the library, installs the global services and lays out the chrome. */
 export function Editor({ designId }: { designId: string }) {
@@ -101,10 +104,17 @@ export function Editor({ designId }: { designId: string }) {
   useEffect(() => {
     let cancelled = false;
     let autosave: ReturnType<typeof installAutosave> | null = null;
-    // sync leaves a design alone while an editor has it open (src/cloud/locks.ts, docs/ACCOUNTS.md)
-    const releaseLock = holdLock(designLock(designId));
+    // sync leaves a design alone while an editor has it open (src/cloud/locks.ts, docs/ACCOUNTS.md); the design is read once the
+    // lock is held, so that a write of sync under way ends first, or after a moment all the same where Web Locks are slow or missing
+    const lock = acquireLock(designLock(designId));
+    const releaseLock = lock.release;
     setStatus("loading");
-    getDesignForEditing(designId)
+    let waiting: ReturnType<typeof setTimeout> | undefined;
+    Promise.race([lock.acquired, new Promise<void>((resolve) => (waiting = setTimeout(resolve, LOCK_WAIT_MS)))])
+      .then(() => {
+        clearTimeout(waiting);
+        return cancelled ? null : getDesignForEditing(designId);
+      })
       .then((opened) => {
         if (cancelled) return;
         if (!opened) {

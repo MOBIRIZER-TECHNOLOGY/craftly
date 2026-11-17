@@ -12,7 +12,7 @@
 import { create } from "zustand";
 import type { DeniedReason } from "@/collab/protocol";
 import { getSummary } from "@/core/library";
-import type { LiveLink } from "@/core/types";
+import type { Design, LiveLink } from "@/core/types";
 import { useEditor } from "@/core/store";
 import { connectLive } from "./connection";
 
@@ -24,12 +24,22 @@ export interface TeamLiveState {
   session: string | null;
   joining: boolean;
   error: string | null;
+  /**
+   * Why a viewer sees the space's copy, read-only, and not the room: nobody who may edit has the design open live (`not-live`, also
+   * when the last editor left and the room closed). Not a problem: there is nothing live to see.
+   */
+  notice: string | null;
 }
 
-export const useTeamLive = create<TeamLiveState>(() => ({ designId: null, link: null, session: null, joining: false, error: null }));
+const NONE = { link: null, session: null, joining: false, error: null, notice: null };
+
+export const useTeamLive = create<TeamLiveState>(() => ({ designId: null, ...NONE }));
 
 const MAX_ASKS = 3;
 let asks = 0;
+
+/** "Edit live" refused because what was edited here has not reached the server. */
+class Unsent extends Error {}
 
 /** The team (space) of a design and the member's role in it; null for a design that is not a team's, or nobody signed in. */
 export async function teamOf(designId: string): Promise<{ space: string; role: "owner" | "editor" | "viewer" } | null> {
@@ -48,18 +58,24 @@ export async function startTeamLive(designId: string, again = false): Promise<vo
   const session = useCloud.getState().session;
   const team = await teamOf(designId);
   if (!session || !team) throw new Error(m.cloud.errors.forbidden);
-  useTeamLive.setState({ designId, joining: true, error: null });
+  useTeamLive.setState({ designId, joining: true, error: null, notice: null });
   try {
-    // what was edited here and not sent yet goes to the server first: the room is made from the server's design
+    // what was edited here and not sent yet goes to the server first: the room is made from the server's design, so the room is not
+    // joined over edits that did not get there (a conflict, a full space, a save that did not finish): they would be lost
     if (!again && team.role !== "viewer") {
       const [{ settleSaves }, sync] = await Promise.all([import("@/settleSaves"), import("@/cloud/sync")]);
-      await settleSaves(3000);
-      await sync.sendOne(designId);
+      const saved = await settleSaves(3000);
+      if (saved !== "saved" || !(await sync.sendOne(designId))) throw new Unsent(m.cloud.live.unsent);
     }
     const room = await api.openLive({ server: session.server, token: session.token }, team.space, designId);
     useTeamLive.setState({ designId, link: { server: session.server, room: room.room, key: "", role: room.role }, session: session.token, joining: false, error: null });
   } catch (error) {
-    const words = error instanceof api.CloudError && error.code === "offline" ? m.cloud.live.offline : api.cloudErrorText(error);
+    if (error instanceof api.CloudError && error.code === "not-live") {
+      // a viewer, and nobody who may edit has it open live (or the last one left): the space's copy, read-only, and why
+      useTeamLive.setState({ designId, ...NONE, notice: m.cloud.errors["not-live"] });
+      return;
+    }
+    const words = error instanceof Unsent ? error.message : error instanceof api.CloudError && error.code === "offline" ? m.cloud.live.offline : api.cloudErrorText(error);
     useTeamLive.setState({ joining: false, error: words, link: null });
     throw new Error(words, { cause: error });
   }
@@ -67,7 +83,7 @@ export async function startTeamLive(designId: string, again = false): Promise<vo
 
 /** Stops editing live: the editor leaves the room and the design here is what the room has, which it writes back itself. */
 export function stopTeamLive(): void {
-  useTeamLive.setState({ designId: null, link: null, session: null, joining: false, error: null });
+  useTeamLive.setState({ designId: null, ...NONE });
 }
 
 /** Joins the team's room for as long as the returned function has not been called (the editor calls it while the design is open). */
@@ -81,11 +97,23 @@ export function connectTeamLive(designId: string, link: LiveLink, session: strin
       void startTeamLive(designId, true).catch(() => undefined);
     }, 300);
   };
-  const stop = connectLive(link, { session, onDenied });
+  let end: { reachedLive: boolean; unsent: number; room: Design | null } | null = null;
+  const stop = connectLive(link, { session, onDenied, onStop: (e) => (end = e) });
   return () => {
     stop();
-    // what was done live is the room's, which writes it back: the copy here is in step, not something to send again
-    void import("@/cloud/sync").then((sync) => sync.markInStep(designId)).catch(() => undefined);
+    // leaving a room ends the read-only mode it set: a viewer of the team keeps it all the same
+    void applyTeamRole(designId);
+    // What was done live is the room's, which writes it back: the copy here is in step, not something to send again. Only when the
+    // room was joined, every edit of this person got there, and the copy here (once its last save is written) is what the room has;
+    // anything else stays to be sent by sync, where the same content on both sides makes no copy.
+    const ended = end;
+    const room = ended?.reachedLive && ended.unsent === 0 ? ended.room : null;
+    if (!room) return;
+    void (async () => {
+      const [{ settleSaves }, sync] = await Promise.all([import("@/settleSaves"), import("@/cloud/sync")]);
+      await settleSaves(3000);
+      await sync.markInStep(designId, room);
+    })().catch(() => undefined);
   };
 }
 

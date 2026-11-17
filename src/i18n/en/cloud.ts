@@ -50,6 +50,8 @@ export const cloud = {
     editedOn: (title: string, device: string) => `${title} (edited on ${device || "another device"})`,
     signInAgain: "You were signed out on this device. Sign in again to keep syncing.",
     tooManyConflicts: (n: number) => `Sync stopped after ${num(n)} designs were changed on two devices at once. Check the copies, then sync again.`,
+    /** a design of the server whose id a design of another space on this device has */
+    sameId: (title: string) => `“${title}” could not be brought to this device: a design of another space here has the same id.`,
   },
 
   /** what the dashboard and the editor's top bar say */
@@ -179,6 +181,12 @@ export const cloud = {
     working: "Signing out…",
     cancel: "Cancel",
     done: "You are signed out.",
+    /** designs whose changes could not be sent, kept on this device when the account's designs were removed */
+    keptUnsent: (n: number) =>
+      plural(n, {
+        one: `${num(n)} design had changes that did not reach the server. It was kept on this device as your own.`,
+        other: `${num(n)} designs had changes that did not reach the server. They were kept on this device as your own.`,
+      }),
   },
 
   move: {
@@ -253,5 +261,8 @@ export const cloud = {
     viewing: "Viewing live with your team",
     leave: "Stop editing live",
     offline: "Editing live needs the account server. Connect and try again.",
+    /** "Edit live" refused: what was edited here could not be sent, and the room starts from the server's copy */
+    unsent:
+      "Changes made to this design here have not reached the server yet, so it cannot be edited live now. Close it and let it sync (if it was changed on another device too, your changes are kept as a copy), then try again.",
   },
 };

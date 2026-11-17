@@ -11,9 +11,9 @@
  */
 import { m } from "@/i18n";
 import { cacheSharedAsset, getAsset as getLocalAsset, prepareAssetFromFile } from "@/core/assets";
-import { getStoredDesign, listDesigns, listFolders, notifyLibrary, subscribeLibrary, summarize, type VersionRecord } from "@/core/library";
+import { getStoredDesign, getSummary, listDesigns, listFolders, notifyLibrary, subscribeLibrary, summarize, type VersionRecord } from "@/core/library";
 import { uid } from "@/core/ids";
-import { dbDelete, dbGetAll, metaGet, metaSet, wrap, writeTransaction } from "@/core/persistence";
+import { dbDelete, dbGet, dbGetAll, metaGet, metaSet, wrap, writeTransaction } from "@/core/persistence";
 import type { Design, DesignSummary, Folder, SyncRecord, SyncedMeta } from "@/core/types";
 import { blobToDataUrl } from "@/export/encoding";
 import { collectAssetIds, dataUrlToBytes, extensionForMime, portableDesign } from "@/export/projectFormat";
@@ -71,16 +71,24 @@ const writes = (role: Role | null) => role === "owner" || role === "editor";
 /** What waits to be sent: designs of the spaces the person may write to that are dirty (content or details), and deletions. */
 export async function countWaiting(session = useCloud.getState().session): Promise<number> {
   if (!session) return 0;
+  const [designs, records] = await Promise.all([waitingDesigns(session), syncRecords()]);
+  let n = designs.size;
+  for (const record of records) if (record.tombstone && writes(roleIn(record.space, session))) n++;
+  return n;
+}
+
+/** The ids of the designs that wait to be sent (what `countWaiting` counts, without the deletions). */
+export async function waitingDesigns(session = useCloud.getState().session): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (!session) return ids;
   const [summaries, records] = await Promise.all([listDesigns(), syncRecords()]);
   const byId = new Map(records.map((r) => [r.id, r]));
-  let n = 0;
   for (const summary of summaries) {
     if (!summary.space || !writes(roleIn(summary.space, session))) continue;
     const record = byId.get(summary.id) ?? null;
-    if (isDirty({ revision: summary.revision ?? null, record }) || Object.keys(changedHere(metaOfSummary(summary), record?.syncedMeta ?? null)).length) n++;
+    if (isDirty({ revision: summary.revision ?? null, record }) || Object.keys(changedHere(metaOfSummary(summary), record?.syncedMeta ?? null)).length) ids.add(summary.id);
   }
-  for (const record of records) if (record.tombstone && writes(roleIn(record.space, session))) n++;
-  return n;
+  return ids;
 }
 
 /* ---------------- uploads ---------------- */
@@ -127,26 +135,29 @@ async function sendAssets(conn: Conn, space: string, design: Design): Promise<vo
 
 /**
  * Writes the server's design under its id, with what changed here in its details kept, in one transaction that first checks that
- * the design here is still what was planned for (`expected`: its revision then, undefined for a design that was not here). False
- * when it changed meanwhile: the next run looks again.
+ * the design here is still what was planned for (`expected`: its revision then, undefined for a design that was not here).
+ * "changed" when it changed meanwhile: the next run looks again. "foreign" when the design here under that id is not of this space
+ * (on this device only, or another space's) and is not to be replaced (`adopt`): it is never written over.
  */
 async function writeServers(
   space: string,
   got: { design: Design; rev: number; thumbnail?: string },
   expected: string | null | undefined,
   keep: Partial<SyncedMeta>,
-): Promise<boolean> {
+  adopt = false,
+): Promise<"written" | "changed" | "foreign"> {
   return writeTransaction(["designs", "summaries", "sync"], async (tx) => {
     const summaries = tx.objectStore("summaries");
     const prev = await wrap<DesignSummary | undefined>(summaries.get(got.design.id));
-    if ((prev?.revision ?? (prev ? null : undefined)) !== expected) return false;
+    if ((prev?.revision ?? (prev ? null : undefined)) !== expected) return "changed";
+    if (prev && prev.space !== space && !adopt) return "foreign";
     const design: Design = { ...got.design, ...keep };
     const revision = uid("revision");
     tx.objectStore("designs").put(design);
     summaries.put({ ...summarize(design, got.thumbnail, prev), space, revision });
     const record: SyncRecord = { id: design.id, space, serverRev: got.rev, syncedRevision: revision, syncedMeta: metaOf(got.design) };
     tx.objectStore("sync").put(record);
-    return true;
+    return "written";
   });
 }
 
@@ -196,31 +207,43 @@ function sameContent(a: Design, b: Design): boolean {
 
 /**
  * The copy of a design here is what the server has (or will have): after it was edited live in its team's room, which writes it
- * back to the space itself. Nothing of it is sent again; a design the server never had stays as it is.
+ * back to the space itself. Nothing of it is sent again. Only when the content here is the room's (`room`, as the room last had
+ * it): anything else (an edit that did not reach the room, a save that came after) stays to be sent, and a design the server never
+ * had stays as it is. Whether it was marked.
  */
-export async function markInStep(id: string): Promise<void> {
-  await writeTransaction(["summaries", "sync"], async (tx) => {
+export async function markInStep(id: string, room: Design): Promise<boolean> {
+  return writeTransaction(["designs", "summaries", "sync"], async (tx) => {
     const sync = tx.objectStore("sync");
-    const [record, summary] = await Promise.all([wrap<SyncRecord | undefined>(sync.get(id)), wrap<DesignSummary | undefined>(tx.objectStore("summaries").get(id))]);
-    if (!record || record.serverRev === null || !summary) return;
+    const [record, summary, design] = await Promise.all([
+      wrap<SyncRecord | undefined>(sync.get(id)),
+      wrap<DesignSummary | undefined>(tx.objectStore("summaries").get(id)),
+      wrap<Design | undefined>(tx.objectStore("designs").get(id)),
+    ]);
+    if (!record || record.serverRev === null || !summary || !design || !sameContent(design, room)) return false;
     sync.put({ ...record, syncedRevision: summary.revision ?? null, syncedMeta: metaOfSummary(summary) });
+    return true;
   });
 }
 
 /**
  * Sends one design now, if it waits, whether or not an editor has it open (the one that asks): before it is opened live with the
- * team, so that the room is made from what was edited here. Nothing when nobody is signed in or the design is in step.
+ * team, so that the room is made from what was edited here. Whether the content here is then what the server has: true when
+ * nobody is signed in or the design is no space's (nothing to send), false when it could not be sent (a conflict, which the next
+ * sync after the editor closes deals with, a full space, a design open live elsewhere, a refusal) or the person may not send it.
  */
-export async function sendOne(id: string, options: SyncOptions = {}): Promise<void> {
+export async function sendOne(id: string, options: SyncOptions = {}): Promise<boolean> {
   const session = useCloud.getState().session;
   const summary = (await listDesigns()).find((s) => s.id === id);
-  if (!session || !summary?.space) return;
+  if (!session || !summary?.space) return true;
   const role = roleIn(summary.space, session);
-  if (!writes(role)) return;
   const record = (await dbGetAll<SyncRecord>("sync")).find((r) => r.id === id) ?? null;
-  if (!isDirty({ revision: summary.revision ?? null, record })) return;
+  if (!isDirty({ revision: summary.revision ?? null, record })) return true;
+  if (!writes(role)) return false;
+  // (the editor that asks holds the design's lock: a conflict or a new id, which need it, are left to the sync after it closes)
   const run: SpaceRun = { conn: connOf(session, options), space: summary.space, role: role as Role, device: session.device, report: newReport(), hold: false, full: false };
   await push(run, id, record?.serverRev ?? null);
+  const [after, now] = await Promise.all([getSummary(id), dbGet<SyncRecord>("sync", id)]);
+  return !!after && !isDirty({ revision: after.revision ?? null, record: now ?? null });
 }
 
 /* ---------------- a space ---------------- */
@@ -248,8 +271,12 @@ async function pull(run: SpaceRun, id: string, expected: string | null | undefin
   }
   await fetchAssets(run.conn, run.space, got.design, run.report);
   const written = await tryLock(designLock(id), () => writeServers(run.space, got, expected, keep));
-  if (written) run.report.pulled++;
-  else run.hold = true;
+  if (written === "written") run.report.pulled++;
+  else {
+    run.hold = true;
+    // (a design of another space under this id is found before the plan, in `claimIds`; this is what came here meanwhile)
+    if (written === "foreign") run.report.problems.push(m.cloud.sync.sameId(got.design.title));
+  }
 }
 
 async function push(run: SpaceRun, id: string, baseRev: number | null): Promise<void> {
@@ -550,6 +577,73 @@ async function pullFolders(run: SpaceRun, folders: Changes["folders"]): Promise<
   await metaSet(FOLDERS_KEY, { ...(await metaGet<SyncedFolders>(FOLDERS_KEY, {})), [run.space]: synced });
 }
 
+/**
+ * The designs of the feed whose id is held here by a design that is not of this space: one on this device only (a backup restored
+ * on a new device keeps the ids and drops the space; so does a team left and joined again), or one of another space that the server
+ * there never had. With the same content and title it is the same design, and the server's is taken in its place. Otherwise the
+ * design here gets a new id (it stays what it was, in its own space or none, with its versions) and the server's comes under the
+ * id. A design of another space that its server has (or a deletion of one waiting to be sent) keeps its id: that is said, and this
+ * one design of the feed waits. Returns the ids that were dealt with here, which the plan leaves alone.
+ */
+async function claimIds(run: SpaceRun, entries: readonly Changes["designs"][number][]): Promise<string[]> {
+  if (!entries.some((e) => e.deletedAt === null)) return [];
+  const [summaries, records] = await Promise.all([listDesigns(), syncRecords()]);
+  const summaryOf = new Map(summaries.map((s) => [s.id, s]));
+  const recordOf = new Map(records.map((r) => [r.id, r]));
+  const claimed: string[] = [];
+  for (const entry of entries) {
+    if (entry.deletedAt !== null) continue;
+    const summary = summaryOf.get(entry.id);
+    const record = recordOf.get(entry.id);
+    if (summary ? summary.space === run.space : !record || record.space === run.space) continue;
+    claimed.push(entry.id);
+    if (!summary || (summary.space && record?.serverRev != null)) {
+      run.hold = true;
+      run.report.problems.push(m.cloud.sync.sameId(entry.title));
+      continue;
+    }
+    try {
+      await claim(run, entry.id, summary);
+    } catch (error) {
+      if (error instanceof CloudError && ["offline", "session", "rate", "busy", "server"].includes(error.code)) throw error;
+      run.hold = true;
+      run.report.problems.push(error instanceof BadAnswer ? m.cloud.errors["bad-answer"] : api.cloudErrorText(error));
+    }
+  }
+  return claimed;
+}
+
+async function claim(run: SpaceRun, id: string, summary: DesignSummary): Promise<void> {
+  let got;
+  try {
+    got = await api.getDesign(run.conn, run.space, id);
+  } catch (error) {
+    if (error instanceof NewerDesign) {
+      run.hold = true;
+      return void run.report.problems.push(m.cloud.sync.newer);
+    }
+    if (error instanceof CloudError && (error.code === "not-found" || error.code === "deleted")) return; // the feed will say so
+    throw error;
+  }
+  await fetchAssets(run.conn, run.space, got.design, run.report);
+  const mine = await getStoredDesign(id);
+  // (only a design of this device only is taken as the server's: one of another space stays in it, under a new id)
+  const same = !summary.space && !!mine && mine.title === got.design.title && sameContent(mine, got.design);
+  const written = await tryLock(designLock(id), async () => {
+    if (same) return writeServers(run.space, got, summary.revision ?? null, {}, true);
+    const fresh = await giveNewId(id);
+    if (!fresh) return "changed";
+    run.report.forked++;
+    return writeServers(run.space, got, undefined, {});
+  });
+  if (written === "written") run.report.pulled++;
+  else if (written === null) {
+    // open in an editor: looked at again when it is closed
+    run.report.skipped++;
+    run.hold = true;
+  } else run.hold = true;
+}
+
 async function syncSpace(conn: Conn, space: string, role: Role, device: string, report: SyncReport): Promise<void> {
   const run: SpaceRun = { conn, space, role, device, report, hold: false, full: false };
   if (writes(role)) await pushFolders(run);
@@ -567,6 +661,9 @@ async function syncSpace(conn: Conn, space: string, role: Role, device: string, 
     more = changes.more;
   }
   await pullFolders(run, folders);
+
+  const claimed = await claimIds(run, [...remote.values()]);
+  for (const id of claimed) remote.delete(id);
 
   const [summaries, records, held] = await Promise.all([listDesigns(), syncRecords(), heldLocks()]);
   const byId = new Map(records.map((r) => [r.id, r]));
@@ -604,8 +701,16 @@ async function syncSpace(conn: Conn, space: string, role: Role, device: string, 
   }
 }
 
-/** The designs of a space the person is no longer in (they left, or were removed): kept here, as designs of this device only. */
+/**
+ * The designs of a space the person is no longer in (they left, or were removed): kept here, as designs of this device only. What
+ * this device knew of the space (its cursor and its folders as last in step) is forgotten: joined again, the space is read from the
+ * start, and the folders kept here are not taken for folders removed here (which would delete them on the server).
+ */
 async function keepLeftSpaces(spaces: Set<string>): Promise<void> {
+  const [cursors, synced] = await Promise.all([metaGet<Record<string, number>>(CURSORS_KEY, {}), metaGet<SyncedFolders>(FOLDERS_KEY, {})]);
+  const forget = <T>(all: Record<string, T>) => Object.fromEntries(Object.entries(all).filter(([space]) => spaces.has(space)));
+  if (Object.keys(cursors).some((space) => !spaces.has(space))) await metaSet(CURSORS_KEY, forget(cursors));
+  if (Object.keys(synced).some((space) => !spaces.has(space))) await metaSet(FOLDERS_KEY, forget(synced));
   const [summaries, folders] = await Promise.all([listDesigns(), listFolders()]);
   const gone = summaries.filter((s) => s.space && !spaces.has(s.space));
   const goneFolders = folders.filter((f) => f.space && !spaces.has(f.space));
