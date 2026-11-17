@@ -1,11 +1,11 @@
 /**
  * Comments in the editor store: adding, answering, editing, resolving and deleting them; that they are no steps of undo (they are
  * what people said, and in a shared design what others answered), alone and in a shared design; and that a page that goes takes
- * its comments with it, and an element that goes leaves the pins on it where it was.
+ * its comments with it, and an element that goes leaves the pins on it where it was, until undo brings it back.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { diffDesign } from "@/collab/ops";
-import { MAX_COMMENTS } from "./comments";
+import { MAX_COMMENTS, commentPosition } from "./comments";
 import { createDesign, createPage, createShape } from "./factory";
 import { useEditor, type LiveBridge } from "./store";
 import type { Design, DesignComment, DesignElement } from "./types";
@@ -136,10 +136,14 @@ describe("comments and undo, in a design of one's own", () => {
     ).toEqual(["on one", "on two"]);
   });
 
-  it("stay where their element was when it is deleted", () => {
+  it("stay where their element was when it is deleted, and are on it again when undo brings it back", () => {
     a().addComment({ pageId: "p1", anchor: { x: 0, y: 0, elementId: "a", dx: 20, dy: 30 }, text: "Here", author: ann });
     a().deleteElements(["a"]);
-    expect(comments()[0].anchor).toEqual({ x: 120, y: 130 });
+    expect(comments()[0].anchor).toEqual({ x: 120, y: 130, elementId: "a", dx: 20, dy: 30 });
+    expect(commentPosition(s().design!.pages[0], comments()[0])).toEqual({ x: 120, y: 130 });
+    a().undo();
+    a().updateElements(["a"], { x: 400, y: 300 });
+    expect(commentPosition(s().design!.pages[0], comments()[0])).toEqual({ x: 420, y: 330 });
   });
 });
 

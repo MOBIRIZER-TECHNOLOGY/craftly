@@ -31,6 +31,14 @@ const journeys = [
     "crash.cjs",
     "when Craftly stops: the screen and when the design was saved, the problem written down, the report read, copied, downloaded and sent only on Send, a second stop that says so, going back to a version, a copy of the design as a file, errors that nothing caught, Report a problem in both menus, a part that cannot be fetched (needs VITE_CRAFTLY_REPORT_URL=/__report in a production build, see e2e/README.md)",
   ],
+  [
+    "comments.cjs",
+    "comments: the Comment tool by palette and key M, posting, Esc and Cancel, the count, replies, edit, delete after asking, resolve and reopen, a pin that follows its shape and comes back with it after undo, kept out of undo, markup shown as text, no pin in a PNG or in Present, reload",
+  ],
+  [
+    "textshapes.cjs",
+    "Convert to shapes for a text box: one path per letter where the canvas draws it (read from the pixels), undo and redo, light and heavy weights, the refusals, effects and missing letters said, line breaks, SVG download, reload",
+  ],
   ["animate.cjs", "element and page animations, timing, transitions, preview, motion templates"],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
   ["animated-export.cjs", "animated GIF and WebM downloads: structure, length, loop, decoded by the browser, cancel"],
@@ -40,6 +48,13 @@ const journeys = [
     "on-device photo tools without a download: consent gate, models dialog, the real ONNX runtime on WebGPU in its worker, cut-out, blurred background, colour pop and upscaler against hand-made models (the GPU steps skip without WebGPU)",
   ],
 ];
+if (!process.env.OFFLINE) {
+  // it reads the words from the catalogs in src/, which only the dev server serves
+  journeys.push([
+    "language.cjs",
+    "the interface in English and Hindi: the browser's language, Language in the account menu and under File, an unsaved edit kept through the switch, no English left in the Hindi bars, the Hindi untitled name, English search on a Hindi page, hi-IN dates and numbers, labels that fit at 1280 and 375 px, back to English (dev server only)",
+  ]);
+}
 if (process.env.OFFLINE) {
   journeys.push(["offline.cjs", "service worker: reload and work offline (needs a production preview, see e2e/README.md)"]);
   journeys.push([

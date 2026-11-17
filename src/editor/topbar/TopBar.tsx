@@ -84,7 +84,7 @@ const TitleField = forwardRef<HTMLInputElement>(function TitleField(_props, ref)
       setDraft(title);
       return;
     }
-    const next = draft.trim() || "Untitled design";
+    const next = draft.trim() || m.core.untitledDesign;
     setDraft(next);
     if (next !== title) useEditor.getState().actions.setTitle(next);
   };

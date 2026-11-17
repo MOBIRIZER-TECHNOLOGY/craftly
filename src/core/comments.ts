@@ -250,7 +250,9 @@ export function commentPosition(page: Page, comment: DesignComment): { x: number
 
 /**
  * The comments as a step of the editor leaves them: those of a page that went go with it, and a pin on an element that went stays
- * where that element was (it becomes a pin on the page). The same design when nothing needs that, which is nearly always.
+ * where that element was. It keeps the element's id and its place on it, so that when undo, redo or a paste of the same element
+ * brings it back the pin is on it again; until then commentPosition gives that last place. The same design when nothing needs
+ * that, which is nearly always.
  */
 export function settleComments(base: Design, next: Design): Design {
   const comments = next.comments;
@@ -269,7 +271,7 @@ export function settleComments(base: Design, next: Design): Design {
     const was = before.get(comment.pageId);
     if (id !== undefined && was && was !== page && !page.elements.some((e) => e.id === id) && was.elements.some((e) => e.id === id)) {
       const at = commentPosition(was, comment);
-      kept.push({ ...comment, anchor: { x: at.x, y: at.y } });
+      kept.push({ ...comment, anchor: { ...comment.anchor, x: at.x, y: at.y } });
       changed = true;
       continue;
     }

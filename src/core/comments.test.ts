@@ -213,10 +213,16 @@ describe("a step of the editor", () => {
     expect(settleComments(base, next).comments!.map((c) => c.id)).toEqual(["a"]);
   });
 
-  it("leaves a pin where its element was when the element is deleted", () => {
+  it("leaves a pin where its element was when the element is deleted, and puts it back on the element when that returns", () => {
     const base = design([comment("a", { anchor: { x: 0, y: 0, elementId: "a", dx: 5, dy: 6 } })]);
     const next = { ...base, pages: [{ ...base.pages[0], elements: [] }, base.pages[1]] };
-    expect(settleComments(base, next).comments![0].anchor).toEqual({ x: 105, y: 106 });
+    const settled = settleComments(base, next);
+    expect(settled.comments![0].anchor).toEqual({ x: 105, y: 106, elementId: "a", dx: 5, dy: 6 });
+    expect(commentPosition(settled.pages[0], settled.comments![0])).toEqual({ x: 105, y: 106 });
+    // undo brings the element back, somewhere else by now: the pin is on it again
+    const back = { ...settled, pages: [{ ...settled.pages[0], elements: [rect("a", 300, 300)] }, settled.pages[1]] };
+    const again = settleComments(settled, back);
+    expect(commentPosition(again.pages[0], again.comments![0])).toEqual({ x: 305, y: 306 });
   });
 
   it("changes nothing, and gives the same design, when no comment needs it", () => {
