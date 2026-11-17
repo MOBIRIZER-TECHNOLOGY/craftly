@@ -199,8 +199,9 @@ this machine does not have:
 
 ## Checked again on 2026-11-16, before the push
 
-Group commit, comments and text to points were done by then (see the tables), and `main` was pushed to GitHub on 2026-11-16
-(44 commits, ending at `5bf1fc9`). Run on `main` at that commit, on the same slowed laptop:
+Group commit, comments and text to points were done by then (see the tables). The push planned for 2026-11-16 (44 commits,
+ending at `5bf1fc9`) did not reach GitHub: `pawan084/craftly` does not exist there. On 2026-11-17 the remote became
+`MOBIRIZER-TECHNOLOGY/craftly`. Run on `main` at `5bf1fc9`, on the same slowed laptop:
 
 | Check | Result |
 | --- | --- |
@@ -217,5 +218,17 @@ place to see these two pass. With the usual 30-second limits the unit suite stil
 
 Translation (B17) was built later the same day: English and Hindi (see `docs/TRANSLATION.md`); the Hindi needs a native
 speaker's reading. Still open: a merge (not a lock) for text edited by two people, CMYK, accounts and sync, real stock
-photos, Firefox and Safari, a load test of group commit, the video journey on a machine whose Chrome records, and for text to
-points a real uploaded font and a screen reader.
+photos, Firefox and Safari, a load test of group commit, and for text to points a real uploaded font and a screen reader.
+
+## Checked again on 2026-11-17, with translation
+
+Run on `main` at `ad83701` (B17), on the same laptop. The build was made as CI makes it (`VITE_EXPOSE_STORE=1`,
+`VITE_CRAFTLY_REPORT_URL=/__report`, `VITE_CRAFTLY_CSP_CONNECT` naming port 8788), so the policy is the meta tag in the page:
+
+| Check | Result |
+| --- | --- |
+| Browser journeys, production build, `OFFLINE=1`, `LIVE_PORT=8788` | 250 of 250 (one skipped: the job layer of `ml.cjs`, which needs the dev server) |
+
+The two WebM checks of `animated-export.cjs` passed this time (a 3.17 s video, 854 x 480), with no change to the video code.
+So the earlier failures came from the laptop that day, not from Craftly; a page with only a canvas and `MediaRecorder` was
+not tried again. If they fail again, run `node e2e/animated-export.cjs` alone first.
