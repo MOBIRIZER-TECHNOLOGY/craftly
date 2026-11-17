@@ -16,6 +16,9 @@ import "./account.css";
 
 export function InvitePage({ code }: { code: string }) {
   const session = useCloud((s) => s.session);
+  // a person who came signed out makes their account (or signs in) on this page, and joins with it: the page stays the sign-up
+  // form until it is done, so that the recovery code is shown
+  const [signedOut] = useState(() => !useCloud.getState().session);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -26,7 +29,7 @@ export function InvitePage({ code }: { code: string }) {
       </Page>
     );
   }
-  if (!session) return <SignInPage mode="signup" inviteCode={code} />;
+  if (!session || signedOut) return <SignInPage mode="signup" inviteCode={code} />;
 
   const join = async () => {
     setBusy(true);

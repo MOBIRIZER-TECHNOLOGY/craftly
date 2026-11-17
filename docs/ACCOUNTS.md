@@ -8,8 +8,9 @@ Status: being built on the branch `multi-user`, in the order of [Build order](#b
 Steps 1 to 7 (the server: HTTP helpers, passwords, storage, sign-up and sessions, codes and the operator's script, spaces, teams)
 are built and tested (2026-11-17); where the code differs from the first design it says so in [As built](#as-built-steps-1-to-7).
 Step 14 on the server (team designs live: bound rooms, joining with a session, writing back, removal) is built and tested
-(2026-11-17), see [As built (step 14, server)](#as-built-step-14-server); its client side is not. Steps 8 to 13 and 15 (the
-client) are being built separately.
+(2026-11-17), see [As built (step 14, server)](#as-built-step-14-server). Steps 8 to 13 and 15 (the client: the database step,
+sync, the screens, team designs live from Share, the browser journey) are built and tested (2026-11-17), see
+[As built (steps 8–13, 15)](#as-built-steps-813-15).
 
 ## Server
 
@@ -234,6 +235,66 @@ design above, or says more:
   after `no-access` and after a room that went away between `POST …/live` and the join, which answers `not-found`). A bound room
   removed by the operator (`DELETE /api/admin/rooms/:id`) is not written back. A bound room whose write-back failed and whose
   team was deleted afterwards stays on the disk until the operator removes it.
+
+## As built (steps 8–13, 15)
+
+The client: `src/core/persistence.ts` (step 2), `src/core/library.ts` (`space`, tombstones, `setNewRecordSpace`), `src/cloud/`
+(`state.ts`, `api.ts`, `validate.ts`, `account.ts`, `syncPlan.ts`, `sync.ts`, `syncStatus.ts`, `locks.ts`),
+`src/dashboard/account/` (the screens), `src/editor/live/teamLive.ts` and `TeamLiveSection.tsx` (team designs live), and the join
+with a session in `src/collab/session.ts` and `live.ts`. Tests: `src/core/schema/dbStep2.dom.test.ts`, `persistedShapes.test.ts`,
+`src/cloud/syncPlan.test.ts`, `validate.test.ts`, `sync.dom.test.ts` (a real server on port 0), `backup.dom.test.ts`,
+`src/dashboard/account/screens.test.tsx` and `Shell.test.tsx` (a real server too), and `e2e/accounts.cjs`. Where it differs from
+the design above, or says more:
+
+- **What is loaded while nobody is signed in.** Not nothing at all: `src/cloud/state.ts` (it reads the one record `cloudSession`
+  when the app starts, keeps the session and the space being shown, and filters the dashboard's listings), `syncStatus.ts` and the
+  status button (which draws nothing), and `src/dashboard/account/dialogState.ts`. The API, the sync engine, the account code
+  and every account screen are loaded only when a person opens one or is signed in, and no request goes out; `e2e/accounts.cjs`
+  checks both in Chrome. The account menu offers **Sign in** and **Create account** at its top while nobody is signed in: the one
+  thing that is new without an account, and it asks nothing of anybody.
+- **What else belongs to the device** (none of it in a backup): `meta` keys `cloudCursors` (the cursor of each space's feed) and
+  `cloudFolders` (the folders of each space as last in step). `cloudSession` also keeps the teams and the space being shown, so
+  that the dashboard lists them offline.
+- **Folders** are synced by state too, from `cloudFolders` and not from the `sync` store: a folder changed here is sent first
+  (`PUT`, parents before children; one removed here is `DELETE`d), then the feed's folders are taken. Last write wins, as for
+  details. Moving designs in moves the folders they are in (and their parents).
+- **A detail is not the content.** Renaming, starring, moving or trashing a design that is in step keeps it in step (`updateSummary`
+  carries `syncedRevision` forward in the same transaction), and the details are compared with `syncedMeta` field by field. So a
+  star on one device and an edit on another is no conflict, and a title changed in the editor goes as content and as a detail.
+- **Same content, no copy.** A conflict whose two sides have the same pages, size and comments (what a team's room wrote back, an
+  edit made twice) takes the server's revision without making a copy.
+- **A server tombstone** moves a clean design to the Trash here **as a design of this device only** (its `space` and record are
+  removed): restoring it from the Trash does not send it back. A design dirty here becomes a new design with a new id (its
+  versions follow it), as does one the server answers `exists` or `deleted` for.
+- **Deleting for good** is an owner's (`DELETE` answers 403 to an editor of a team): an editor's deletion removes the design here
+  only, and the space's feed is read again from the start so that it comes back. A design deleted here whose server copy changed
+  meanwhile comes back too, rather than deleting somebody else's work.
+- **A viewer** of a team sends nothing: their edits here are not sent and not counted as waiting, a conflict takes the team's
+  design, and the editor opens the team's designs read-only (the mode of a view link), live or not. New designs go into the space
+  being shown only for an owner or editor; otherwise into the person's own.
+- **`409 live`** on a `PUT` leaves the design waiting; when the room has written it back, the feed brings the new revision and the
+  conflict is resolved as above (usually as the same content).
+- **Leaving a team, or being removed:** the team's designs and folders stay on the device as the person's own (no `space`), with
+  the next sync after the server stops listing the team. Copies already there cannot be taken back, as the design says.
+- **The locks.** `craftly-sync` is taken by each run with `ifAvailable` (a tab that finds it held skips that run), rather than held by
+  one leader tab for its life; the status in a tab that did not run is that of its own last run. Where a browser has no Web Locks
+  (and in the tests) the locks hold within the page only. The editor holds `craftly-design-<id>` from opening a design until its
+  last save after closing it; every write of sync to a design takes that lock with `ifAvailable` too, and a design held is
+  skipped (the space's cursor stays where it was, so its changes are read again).
+- **Team designs live.** "Edit live with your team" first sends the design if it waits (`sendOne`, which may, because only this
+  editor holds it), so that the room is made from it; then `POST …/live` and the join with the session (`Session`/`Live` take
+  `session` in place of `key`; the room's pictures go with `Authorization: Bearer`). Sent away (`no-access`, a role lowered or a
+  removal) or a room gone (`not-found`), the editor asks for the room again, three times at most, and joins with the role it is
+  given. When live editing stops, the copy here is marked in step: the room writes it back itself.
+- **Signing out** sends what waits, ends the session on the server when it can, and then removes the account's designs (with
+  their versions), folders and the uploads of the account that no remaining design uses, or keeps them as designs of this device
+  only. The dialog offers keeping them, ticked, when something could not be sent.
+- **An invite link** is `#/invite/<code>` of the page that made it; it does not name the server, which the person who opens it
+  types unless the build names one (`VITE_CRAFTLY_ACCOUNT_SERVER`). A server typed in is remembered in `localStorage`
+  (`craftly.account.server`) for the next sign-in.
+- **The device's name** ("Chrome on Windows") is made from the browser's user agent, for the list of devices and "(edited on …)".
+- **Not built:** restoring a server revision from the app (the endpoints are there), a list of a team's designs on the server that
+  are not on the device yet beyond what sync brings, the operator's reset in the journey (the reset page is there; no test drives it), and a check of the sync lock across tabs in a real browser (the journey uses one tab per device).
 
 ## Sync
 

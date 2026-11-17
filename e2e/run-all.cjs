@@ -57,7 +57,11 @@ const journeys = [
   ],
 ];
 if (!process.env.OFFLINE) {
-  // it reads the words from the catalogs in src/, which only the dev server serves
+  // these read the app's modules and catalogs in src/, which only the dev server serves
+  journeys.push([
+    "accounts.cjs",
+    "accounts, sync and teams against the real server with accounts on: nothing new without an account, sign up and move designs in, a second device, a conflict, a team, an invite, roles, editing live without a link, removal, signing out, the server stopped, Hindi (dev server only)",
+  ]);
   journeys.push([
     "language.cjs",
     "the interface in English and Hindi: the browser's language, Language in the account menu and under File, an unsaved edit kept through the switch, no English left in the Hindi bars, the Hindi untitled name, English search on a Hindi page, hi-IN dates and numbers, labels that fit at 1280 and 375 px, back to English (dev server only)",

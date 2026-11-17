@@ -15,6 +15,7 @@ import { boot, call, closeAll, PASSWORD, signUp, type Booted } from "@/server/ac
 import { Hosts, emptyLibrary } from "@/test/dashuiUtils";
 import { AccountDialogs } from "./AccountDialogs";
 import { openAccountDialog } from "./dialogState";
+import { InvitePage } from "./InvitePage";
 import { SignInPage } from "./SignInPage";
 import { TeamPage } from "./TeamPage";
 import { TeamSwitcher } from "./TeamSwitcher";
@@ -89,6 +90,37 @@ describe("signing up", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     expect((await screen.findByRole("alert")).textContent).toBe("That email and password do not match.");
     expect(useCloud.getState().session).toBeNull();
+  });
+});
+
+describe("an invite", () => {
+  it("makes an account with the invite, shows the recovery code, and the person is in the team", async () => {
+    const ann = await signUp(b, { name: "Ann" });
+    const team = (await call(b, "POST", "/api/teams", { token: ann.token, body: { name: "Studio" } })).body.team;
+    const code = (await call(b, "POST", `/api/teams/${team.id}/invites`, { token: ann.token, body: { role: "viewer", uses: 1, hours: 1 } })).body.code;
+    localStorage.setItem("craftly.account.server", b.base);
+    const user = userEvent.setup();
+    render(
+      <>
+        <InvitePage code={code} />
+        <Hosts />
+      </>,
+    );
+    expect(screen.getByRole("heading", { name: "Join a team", level: 1 })).toBeTruthy();
+    await user.type(screen.getByLabelText("Your name"), "Bob");
+    await user.type(screen.getByLabelText("Email"), "bob@example.org");
+    await user.type(screen.getByLabelText("Password"), PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    // the page stays until the code is kept, although the person is signed in by now
+    expect(await screen.findByRole("heading", { name: "Keep your recovery code" })).toBeTruthy();
+    stopSync();
+    expect(useCloud.getState().session?.teams).toEqual([{ id: team.id, name: "Studio", role: "viewer" }]);
+    expect(useCloud.getState().session?.activeSpace).toBe(team.id);
+  });
+
+  it("says so for a link that is not an invite", () => {
+    render(<InvitePage code="not-a-code" />);
+    expect(screen.getByText("This link is not an invite. Ask for a new one.")).toBeTruthy();
   });
 });
 
