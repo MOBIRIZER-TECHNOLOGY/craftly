@@ -12,6 +12,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import records from "@/test/fixtures/schema/records-v1.json";
+import syncRecord from "@/test/fixtures/schema/sync-record-v2.json";
 import { completeDesign, completeRecords } from "@/test/schema/complete";
 import { CURRENT_DESIGN_VERSION } from "./design";
 
@@ -102,13 +103,18 @@ const COMMENTS = [
  * older copy does not write over a newer one. Optional for good: a summary stored before it has none, which is read as `null`.
  */
 const REVISION = ["$.revision: string"];
+/**
+ * The `space` of a summary, a folder and an upload (2026-11-17, database step 2, docs/ACCOUNTS.md): the space of an account
+ * server that it belongs to. Optional for good: a record without one is on this device only, which every record before accounts is.
+ */
+const SPACE = ["$.space: string"];
 const ADDED: Record<string, string[]> = {
   design: [...COMMENTS, ...LIVE_LINK, ...BLEND, ...LINE_ATTACHMENTS],
-  summary: REVISION,
-  folder: [],
+  summary: [...REVISION, ...SPACE],
+  folder: SPACE,
   brandKit: [],
   version: [],
-  upload: [],
+  upload: SPACE,
 };
 const DROPPED: Record<string, string[]> = { design: [], summary: [], folder: [], brandKit: [], version: [], upload: [] };
 
@@ -156,6 +162,11 @@ describe("the shape of the records beside designs", () => {
     const stored = shapeOf(frozen, skip as string[]);
     expect(difference(code, stored), `a ${name} record is now written with something the frozen one does not have:${WHAT_NEXT}`).toEqual(ADDED[name]);
     expect(difference(stored, code), `a ${name} record is no longer written with something the frozen one has:${WHAT_NEXT}`).toEqual(DROPPED[name]);
+  });
+
+  it("a record of the sync store (database step 2) is what the frozen one is", () => {
+    // the store came with step 2, so its record has a frozen file of its own; it belongs to the device and is in no backup
+    expect(shapeOf(written.sync), `a sync record is now written in another shape:${WHAT_NEXT}`).toEqual(shapeOf(syncRecord));
   });
 });
 

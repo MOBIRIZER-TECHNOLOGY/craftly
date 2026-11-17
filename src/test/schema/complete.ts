@@ -7,7 +7,7 @@
  * `Complete<T>`: T with every optional property required and not null, in every nested object, array item and union member.
  */
 import type { VersionRecord } from "@/core/library";
-import type { Asset, BrandKit, Design, DesignElement, DesignSummary, Folder, Page } from "@/core/types";
+import type { Asset, BrandKit, Design, DesignElement, DesignSummary, Folder, Page, SyncRecord } from "@/core/types";
 
 export type Complete<T> = T extends Blob ? T : T extends readonly (infer Item)[] ? Complete<Item>[] : T extends object ? { [Key in keyof T]-?: Complete<NonNullable<T[Key]>> } : T;
 
@@ -411,8 +411,9 @@ export function completeRecords() {
     trashedAt: design.trashedAt,
     thumbnail: "data:image/jpeg;base64,/9j/4AAQ",
     schema: 1,
+    space: "space_of_a_person_1",
   };
-  const folder: Complete<Folder> = { id: "f_complete", name: "Campaigns", createdAt: 1_700_000_000_000, parentId: "f_parent" };
+  const folder: Complete<Folder> = { id: "f_complete", name: "Campaigns", createdAt: 1_700_000_000_000, parentId: "f_parent", space: "space_of_a_person_1" };
   const brandKit: Complete<BrandKit> = { colors: ["#7c3aed", "#14b8a6"], fonts: ["Plus Jakarta Sans"], logos: ["a_logo"] };
   const version: Complete<VersionRecord> = { id: `${design.id}:1700000300000`, designId: design.id, createdAt: 1_700_000_300_000, label: "Saved by you", design };
   const asset: Complete<Asset> = {
@@ -425,8 +426,17 @@ export function completeRecords() {
     height: 900,
     createdAt: 1_700_000_000_000,
     blob: new Blob(["png!"], { type: "image/png" }),
+    space: "space_of_a_person_1",
   };
-  return { summary, folder, brandKit, version, asset };
+  const sync: Complete<SyncRecord> = {
+    id: design.id,
+    space: "space_of_a_person_1",
+    serverRev: 3,
+    syncedRevision: "revision-1",
+    syncedMeta: { title: design.title, folderId: "f_complete", starred: true, trashedAt: 1_700_000_900_000 },
+    tombstone: true,
+  };
+  return { summary, folder, brandKit, version, asset, sync };
 }
 
 /* The helper itself is checked by the compiler: each directive below is an error that `Complete` must produce. */

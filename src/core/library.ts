@@ -13,7 +13,7 @@ import { commentsForCopy } from "./comments";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "./schema/design";
 import { newerError } from "./schema/migrator";
 import { askForPersistentStorageOnce } from "./storage";
-import type { Asset, BrandKit, Design, DesignSummary, Folder, Page, SizeUnit } from "./types";
+import type { Asset, BrandKit, Design, DesignSummary, Folder, Page, SizeUnit, SyncRecord } from "./types";
 
 /* ---------------- change notifications ---------------- */
 
@@ -24,10 +24,27 @@ export function subscribeLibrary(cb: () => void): () => void {
 }
 const emit = () => listeners.forEach((l) => l());
 
+/* ---------------- the space of what is made ---------------- */
+
+let newRecordSpace: string | null = null;
+
+/**
+ * The space of an account server that designs and folders made from now on belong to (docs/ACCOUNTS.md): the one the dashboard
+ * shows while a person is signed in, null (on this device only) otherwise. Set by the account code (src/cloud/state.ts); a record
+ * that exists keeps its own.
+ */
+export function setNewRecordSpace(space: string | null): void {
+  newRecordSpace = space;
+}
+
+/** `{ space }` for a new record, or nothing at all: a record of a person who is not signed in is exactly what it always was. */
+const spaceOfNew = (): { space?: string } => (newRecordSpace ? { space: newRecordSpace } : {});
+
 /* ---------------- designs ---------------- */
 
 export function summarize(design: Design, thumbnail?: string, previous?: DesignSummary): DesignSummary {
   return {
+    ...(previous?.space ? { space: previous.space } : {}),
     id: design.id,
     title: design.title,
     typeId: design.typeId,
@@ -99,7 +116,7 @@ export async function saveDesign(design: Design, thumbnail?: string, expectedRev
         tx.objectStore("versions").put(record);
       }
     }
-    const summary = { ...summarize(design, thumbnail, prev), revision: uid("revision") };
+    const summary = { ...(prev ? {} : spaceOfNew()), ...summarize(design, thumbnail, prev), revision: uid("revision") };
     for (const asset of storedAssets) tx.objectStore("assets").add(asset);
     designs.put(design);
     summaries.put(summary);
@@ -146,9 +163,14 @@ export const moveToTrash = (id: string) => updateSummary(id, { trashedAt: Date.n
 export const restoreFromTrash = (id: string) => updateSummary(id, { trashedAt: null });
 
 export async function deleteForever(id: string): Promise<void> {
-  await writeTransaction(["designs", "summaries", "versions"], async (tx) => {
+  await writeTransaction(["designs", "summaries", "versions", "sync"], async (tx) => {
     tx.objectStore("designs").delete(id);
     tx.objectStore("summaries").delete(id);
+    // a design that an account server has: its deletion waits there to be sent (a tombstone), one it never had is simply gone
+    const sync = tx.objectStore("sync");
+    const record = await wrap<SyncRecord | undefined>(sync.get(id));
+    if (record?.serverRev != null) sync.put({ ...record, tombstone: true });
+    else if (record) sync.delete(id);
     const versions = tx.objectStore("versions");
     const records = await wrap<VersionRecord[]>(versions.getAll());
     for (const version of records) if (version.designId === id) versions.delete(version.id);
@@ -179,7 +201,7 @@ export async function duplicateDesign(id: string): Promise<Design | null> {
   const prev = await getSummary(id);
   await dbPutMany([
     { store: "designs", value: copy },
-    { store: "summaries", value: { ...summarize(copy, prev?.thumbnail), revision: uid("revision") } },
+    { store: "summaries", value: { ...spaceOfNew(), ...summarize(copy, prev?.thumbnail), revision: uid("revision") } },
   ]);
   emit();
   return copy;
@@ -237,7 +259,7 @@ export async function listFolders(): Promise<Folder[]> {
 }
 
 export async function createFolder(name: string, parentId: string | null = null): Promise<Folder> {
-  const folder: Folder = { id: uid("f"), name: name.trim() || m.core.untitledFolder, createdAt: Date.now(), parentId };
+  const folder: Folder = { id: uid("f"), name: name.trim() || m.core.untitledFolder, createdAt: Date.now(), parentId, ...spaceOfNew() };
   await dbPut("folders", folder);
   emit();
   return folder;

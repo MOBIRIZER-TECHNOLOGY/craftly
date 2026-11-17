@@ -10,8 +10,8 @@ describe("the local database", () => {
   it("has a store for each kind of data, named craftly", async () => {
     const db = await openDb();
     expect(db.name).toBe("craftly");
-    expect(db.version).toBe(1);
-    expect(Array.from(db.objectStoreNames).sort()).toEqual(["assets", "designs", "folders", "meta", "summaries", "versions"]);
+    expect(db.version).toBe(2);
+    expect(Array.from(db.objectStoreNames).sort()).toEqual(["assets", "designs", "folders", "meta", "summaries", "sync", "versions"]);
   });
 
   it("keys every store by id except the settings store, which takes its keys from the caller", async () => {
@@ -22,6 +22,7 @@ describe("the local database", () => {
     expect(keyPath("folders")).toBe("id");
     expect(keyPath("assets")).toBe("id");
     expect(keyPath("versions")).toBe("id");
+    expect(keyPath("sync")).toBe("id");
     expect(keyPath("meta")).toBeNull();
   });
 

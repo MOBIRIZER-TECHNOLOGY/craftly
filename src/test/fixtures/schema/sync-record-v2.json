@@ -1,0 +1,13 @@
+{
+  "id": "d_complete",
+  "space": "space_of_a_person_1",
+  "serverRev": 3,
+  "syncedRevision": "revision-1",
+  "syncedMeta": {
+    "title": "Everything the format can hold",
+    "folderId": "f_complete",
+    "starred": true,
+    "trashedAt": 1700000900000
+  },
+  "tombstone": true
+}

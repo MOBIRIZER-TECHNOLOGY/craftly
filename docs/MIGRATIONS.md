@@ -2,7 +2,7 @@
 
 Craftly keeps a person's designs in their own browser, so no release may lose or damage them. This page says what is stored, how each thing is versioned, what happens when versions meet, and the recipe for changing a format. The code is in `src/core/schema/` (the runner, the design format, the database upgrade), in the places that read a format (`src/core/library.ts`, `src/core/persistence.ts`, `src/export/projectFormat.ts`, `src/export/backupFormat.ts`, `src/export/backup.ts`) and in the notices (`src/databaseNotices.ts`, the editor's screens in `src/editor/Editor.tsx`).
 
-**Status.** Everything is still at its first version, so no migration step exists yet. The framework, its tests and the frozen documents come before the first change on purpose: a format cannot be changed safely until old data can be tried against the change.
+**Status.** The design format, project files and backups are still at their first version, so no design migration step exists yet. The framework, its tests and the frozen documents come before the first change on purpose: a format cannot be changed safely until old data can be tried against the change. The database has its second step (2026-11-17, accounts and sync, `docs/ACCOUNTS.md`): the store `sync` and an optional `space` on summaries, folders and uploads; see [Database step 2](#database-step-2-accounts-and-sync).
 
 The library summary also tracks a local save revision. It detects stale writes and is separate from the design format version. Portable project and backup readers discard embedded live credentials, including those in legacy files. Backup preserves other document fields for newer formats where it can copy the record.
 
@@ -20,6 +20,7 @@ The library summary also tracks a local save revision. It detects stale writes a
 | The dashboard record of a design | `summaries` | `schema`: the `version` of the design it was made from (none means 1) | read as it is | read as it is. Its `schema` is how a save finds out, without reading the design, that the stored one is newer |
 | A saved version of a design | `versions` | the `version` of the design inside it | the design is brought up to date when the version is opened (preview, restore) | not offered: the preview stays empty |
 | Folders, uploads, brand kit, small settings | `folders`, `assets`, `meta` | none: every reader gives a missing field a default | missing fields take their defaults | unknown fields stay where they are |
+| What an account server has of each design | `sync` (database step 2), and the `meta` keys `cloudSession` and `cloudCursors` | none: the shape is frozen in `src/test/fixtures/schema/sync-record-v2.json` | a release from before accounts never opens a database at version 2 (the browser refuses) | unknown fields stay where they are; they belong to the device and are in no backup |
 | Uploaded fonts | `meta`, one record per file under the key `customFont:<id>`, bytes included (`src/core/customFonts.ts`) | none: the reader skips a record that has not the shape of one | a release from before uploaded fonts never asks for these keys; text that names such a family draws in a substitute font | unknown fields stay where they are |
 | A project file | `.craftly` | `craftly`, `PROJECT_FORMAT_VERSION`: the layout of the file; the design in it has its own `version` | each is brought up to date on import | "This project was saved by a newer version of Craftly" |
 | A backup | ZIP, `craftly-backup.json` | `craftlyBackup`, `BACKUP_FORMAT_VERSION`: the manifest and the layout; every design in it has its own `version` | each design is brought up to date as it is restored | a newer backup is refused as a whole; a newer design inside an older backup is left out, counted, and the result says to reload and restore again |
@@ -30,6 +31,25 @@ The library summary also tracks a local save revision. It detects stale writes a
 Uploaded fonts needed no new version of anything: the files are records of the existing `meta` store (no step in `DB_STEPS`), and a project file and a backup list them in an optional `fonts` field that is left out when there are none, so a file without uploaded fonts is byte for byte what it was, and an older release that reads a file with the field ignores it.
 
 The service worker's caches are not user data: a new build replaces them (`docs/UPDATES.md`).
+
+## Database step 2: accounts and sync
+
+The first step that was added to `DB_STEPS` after the first release (`src/core/persistence.ts`, docs/ACCOUNTS.md "Sync").
+
+- **What it does**: makes the store `sync`, keyed by the design's id, if it is not there. Nothing moves and nothing is rewritten, so
+  the step cannot fail half-way on a large library.
+- **The optional fields**: `space?` on a design's summary, a folder and an upload, the space of an account server it belongs to. A
+  record without one is on this device only, which is every record of a person who never signed in, and every record from before
+  the step. They are optional additions under the recipe below (no format version), named in `ADDED` in
+  `src/core/schema/persistedShapes.test.ts`. A design itself gets no field: the server keeps its details, and a backup or a project
+  file of a design of a space is the design as it always was.
+- **The record of `sync`**: `{id, space, serverRev, syncedRevision, syncedMeta, tombstone?}` (`SyncRecord` in `src/core/types.ts`),
+  frozen in `src/test/fixtures/schema/sync-record-v2.json` and compared with what the code writes in `persistedShapes.test.ts`.
+- **Backups** leave `sync` out, and the `meta` keys `cloudSession` and `cloudCursors` (the backup reads the stores and keys it
+  names, nothing else); `src/cloud/backup.dom.test.ts` checks it. A restored design of a space comes back on this device only.
+- **Tested** in `src/core/schema/dbStep2.dom.test.ts`: a library as step 1 left it, with records, opened with both steps.
+- **Older tabs**: a tab of a release before accounts holds the upgrade up until it is closed, and after a reload it is refused
+  ("This tab is older than your designs"), as for any step ([Two tabs](#two-tabs)).
 
 ## The rules of the runner
 
@@ -104,7 +124,7 @@ First decide which kind of change it is.
 
 ## Not done
 
-- No step exists, so none has run on real data yet. The first one will be the first real test of this page.
+- No design migration step exists, so none has run on real data yet. The first one will be the first real test of this page. The database's step 2 only adds a store.
 - A design from a newer release cannot be opened read-only; it is refused.
 - The notice for a tab that holds an upgrade up is only seen by tabs of this release and later. A tab of an earlier release is not told anything and holds the other tab up until it is closed.
 - Preferences and the small `meta` values have no version; a change to one of them is a reader that copes with the old value.

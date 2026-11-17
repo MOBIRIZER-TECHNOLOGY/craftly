@@ -3,7 +3,8 @@
 These files are what a release of Craftly wrote to a person's browser. They are the proof that old designs still open, so
 **they are never edited and never written again by a script.** `design-v1-full.json` has every field a design can hold,
 `design-v1-minimal.json` only the required ones (the least any build can have stored), `records-v1.json` the records that sit
-beside designs in the library (summary, folder, brand kit, saved version, upload).
+beside designs in the library (summary, folder, brand kit, saved version, upload), and `sync-record-v2.json` a record of the
+`sync` store that database step 2 made (docs/ACCOUNTS.md).
 
 When the format of a design changes (`docs/MIGRATIONS.md`):
 

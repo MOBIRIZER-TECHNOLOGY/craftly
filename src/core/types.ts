@@ -561,6 +561,11 @@ export interface DesignSummary {
    * Saving refuses to write over a design that a newer release stored, without reading the design to find out.
    */
   schema?: number;
+  /**
+   * The space on an account server that the design belongs to (docs/ACCOUNTS.md): the person's own space (their id) or a team's.
+   * None for a design that is on this device only, which is every design of a person who never signed in.
+   */
+  space?: string;
 }
 
 export interface Folder {
@@ -568,6 +573,33 @@ export interface Folder {
   name: string;
   createdAt: number;
   parentId: ID | null;
+  /** The space of an account server the folder belongs to; none for a folder on this device only (as `DesignSummary.space`). */
+  space?: string;
+}
+
+/** The details of a design that sync compares and sends apart from its content (`PATCH …/meta`, docs/ACCOUNTS.md). */
+export interface SyncedMeta {
+  title: string;
+  folderId: ID | null;
+  starred: boolean;
+  trashedAt: number | null;
+}
+
+/**
+ * What this device knows of a design's copy on an account server: a record of the `sync` store (database step 2), keyed by the
+ * design's id. It belongs to the device: a backup leaves it out. The design is dirty when its summary's `revision` is not
+ * `syncedRevision`, its details when they are not `syncedMeta`. `tombstone` is a design deleted for good here whose deletion the
+ * server has not had yet.
+ */
+export interface SyncRecord {
+  id: ID;
+  space: string;
+  /** the server's revision the copy here was last in step with; null for a design the server has never had */
+  serverRev: number | null;
+  /** the summary's `revision` at that moment; null when the copy here never was in step */
+  syncedRevision: string | null;
+  syncedMeta: SyncedMeta | null;
+  tombstone?: boolean;
 }
 
 export interface Asset {
@@ -580,6 +612,8 @@ export interface Asset {
   height: number;
   createdAt: number;
   blob: Blob;
+  /** The space of an account server the upload came from or was sent to; none for an upload on this device only. */
+  space?: string;
 }
 
 export interface BrandKit {

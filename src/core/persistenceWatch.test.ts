@@ -42,7 +42,7 @@ describe("the steps of the database", () => {
   it("are the whole history: the version is the number of steps, and the first one makes the stores", async () => {
     const { DB_STEPS, DB_VERSION, openDb } = await load();
     expect(DB_VERSION).toBe(DB_STEPS.length);
-    expect(DB_VERSION).toBe(1);
+    expect(DB_VERSION).toBe(2);
     await openDb();
     expect(calls[0]).toMatchObject({ name: "craftly", steps: DB_STEPS });
 
@@ -56,6 +56,12 @@ describe("the steps of the database", () => {
       ["versions", { keyPath: "id" }],
       ["meta", undefined],
     ]);
+
+    // the second makes the store of sync (docs/ACCOUNTS.md), and only when it is not there
+    const second: Array<[string, unknown]> = [];
+    const without = { objectStoreNames: { contains: () => false }, createObjectStore: (name: string, options: unknown) => second.push([name, options]) };
+    DB_STEPS[1](without as unknown as IDBDatabase, undefined as unknown as IDBTransaction);
+    expect(second).toEqual([["sync", { keyPath: "id" }]]);
   });
 });
 

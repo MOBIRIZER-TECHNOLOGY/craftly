@@ -6,14 +6,16 @@
  *  assets     uploaded files as Blobs       (key: id)
  *  versions   design snapshots              (key: id = `${designId}:${ts}`)
  *  meta       small key/value settings      (key: string)
+ *  sync       what an account server has of each design (key: design id; step 2, docs/ACCOUNTS.md)
  *
  * Every store here is part of the library backup (src/export/backup.ts, docs/BACKUP.md), or is left out of it there on
- * purpose: when a store or a `meta` key is added, decide which.
+ * purpose: when a store or a `meta` key is added, decide which. `sync` and the `meta` keys of an account (`cloudSession`,
+ * `cloudCursors`) belong to this device and are left out.
  */
 
 import { openDatabase, type DbStep } from "./schema/database";
 
-export type StoreName = "designs" | "summaries" | "folders" | "assets" | "versions" | "meta";
+export type StoreName = "designs" | "summaries" | "folders" | "assets" | "versions" | "meta" | "sync";
 
 const DB_NAME = "craftly";
 const STORES: StoreName[] = ["designs", "summaries", "folders", "assets", "versions", "meta"];
@@ -30,6 +32,11 @@ export const DB_STEPS: readonly DbStep[] = [
     for (const name of STORES) {
       if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, name === "meta" ? undefined : { keyPath: "id" });
     }
+  },
+  // 2: accounts and sync (docs/ACCOUNTS.md): what a server has of each design. Nothing moves: a design without a record is on
+  // this device only, and the `space` of summaries, folders and uploads is an optional field that older records lack.
+  (db) => {
+    if (!db.objectStoreNames.contains("sync")) db.createObjectStore("sync", { keyPath: "id" });
   },
 ];
 export const DB_VERSION = DB_STEPS.length;

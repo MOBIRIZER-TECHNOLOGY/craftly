@@ -334,7 +334,7 @@ function readZip(file) {
         new Promise((resolve) => {
           const started = performance.now();
           let blocked = false;
-          const request = indexedDB.open("craftly", 2);
+          const request = indexedDB.open("craftly", 3);
           request.onupgradeneeded = () => request.result.createObjectStore("added_by_a_newer_release");
           request.onblocked = () => {
             blocked = true;
@@ -354,7 +354,7 @@ function readZip(file) {
     await page.getByRole("button", { name: "Reload" }).waitFor({ timeout: 5000 });
     await shot(page, "replaced");
     const info = await databaseInfo(other);
-    if (info.version !== 2 || !info.stores.includes("added_by_a_newer_release")) throw new Error("the database is " + JSON.stringify(info));
+    if (info.version !== 3 || !info.stores.includes("added_by_a_newer_release")) throw new Error("the database is " + JSON.stringify(info));
     await other.close();
     return `upgrade took ${upgrade.ms} ms (${upgrade.blocked ? "held up by this tab until its edit was saved" : "not held up"}), edit written, notice shown`;
   });
@@ -371,9 +371,9 @@ function readZip(file) {
     const after = { future: canon(await readFrom(page, "designs", future.id)), edited: canon(await readFrom(page, "designs", minimal.id)) };
     if (after.future !== before.future || after.edited !== before.edited) throw new Error("the older code changed the library");
     const info = await databaseInfo(page);
-    if (info.version !== 2) throw new Error("the database is at version " + info.version);
+    if (info.version !== 3) throw new Error("the database is at version " + info.version);
     expectRefusals = false;
-    return "editor and dashboard say so, database still at version 2, records identical";
+    return "editor and dashboard say so, database still at version 3, records identical";
   });
 
   await step("no errors reached the console", async () => {
