@@ -8,10 +8,14 @@
  * ROOM_TTL_DAYS (a room that nobody has used for so many days is removed; not set or 0: never), and ROOM_CREATE_KEY (a secret that
  * whoever starts to share must show; not set: anybody may), and ADMIN_KEY (the operator's key for listing and removing rooms,
  * scripts/rooms.mjs; not set: there is no such interface), and METRICS_KEY (the key of a scraper for GET /metrics; not set: the
- * server shows no numbers). What is not set keeps the default
+ * server shows no numbers), and ACCOUNTS (1 for accounts, teams and sync; off by default) with SIGNUP (invite, open or closed;
+ * invite), MAX_ACCOUNTS (no limit) and SPACE_QUOTA_MB (1024). What is not set keeps the default
  * of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000) is how long the server may take to close when it
  * is told to stop. See docs/COLLABORATION.md and docs/DEPLOY.md.
  */
+import { join } from "node:path";
+import { SIGNUP_MODES, type SignupMode } from "./accounts";
+import { FileAccounts } from "./accounts/storage";
 import { closeWithin, createLiveServer } from "./live";
 import { listenWarning } from "./listenWarning";
 import { FileStorage } from "./storage";
@@ -52,9 +56,31 @@ const named = (env.ALLOW_ORIGIN ?? "")
 const origins = named.length ? named : undefined;
 const joinEveryMs = number("JOIN_EVERY_MS", 1, Number.MAX_SAFE_INTEGER);
 const roomTtlDays = number("ROOM_TTL_DAYS", 0, 36_500);
+const dataDir = env.DATA_DIR ?? "live-data";
+
+/**
+ * Accounts, teams and sync (docs/ACCOUNTS.md), off unless ACCOUNTS=1: off, the server is exactly what it was, and the other
+ * account settings are not read. They are kept in DATA_DIR/accounts, beside the rooms.
+ */
+const accountsOn = flag("ACCOUNTS");
+const signupMode = (): SignupMode => {
+  const raw = (env.SIGNUP ?? "").trim().toLowerCase();
+  if (raw === "") return "invite";
+  if (!(SIGNUP_MODES as readonly string[]).includes(raw)) throw new Error(`Invalid SIGNUP: expected ${SIGNUP_MODES.join(", ")}.`);
+  return raw as SignupMode;
+};
+const accounts = accountsOn
+  ? {
+      storage: new FileAccounts(join(dataDir, "accounts")),
+      signup: signupMode(),
+      // none: no limit on the number of accounts
+      maxAccounts: number("MAX_ACCOUNTS", 1, Number.MAX_SAFE_INTEGER),
+      spaceQuotaBytes: (number("SPACE_QUOTA_MB", 1, 1024 * 1024) ?? 1024) * 1024 * 1024,
+    }
+  : undefined;
 
 const server = createLiveServer({
-  storage: new FileStorage(env.DATA_DIR ?? "live-data"),
+  storage: new FileStorage(dataDir),
   allowOrigin: origins?.includes("*") ? "*" : origins,
   maxRooms: number("MAX_ROOMS", 1, Number.MAX_SAFE_INTEGER),
   maxPeersPerRoom: number("MAX_PEERS_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),
@@ -82,11 +108,12 @@ const server = createLiveServer({
   adminKey: secret("ADMIN_KEY", 16),
   // off unless it is set: /metrics answers 404 then
   metricsKey: secret("METRICS_KEY", 16),
+  accounts,
 });
 
 const host = env.HOST ?? "127.0.0.1";
 const address = await server.listen(number("PORT", 0, 65535) ?? 8787, host);
-console.log(`Craftly live server on http://${host}:${address.port} (rooms are kept in ${env.DATA_DIR ?? "live-data"})`);
+console.log(`Craftly live server on http://${host}:${address.port} (rooms are kept in ${dataDir}${accounts ? `; accounts are on, sign-up is ${accounts.signup}` : ""})`);
 // Reachable from other machines, the server needs a proxy with TLS in front of it, and says so (src/server/listenWarning.ts).
 const warning = listenWarning(host);
 if (warning) console.warn(warning);

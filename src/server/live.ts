@@ -17,22 +17,26 @@
  *
  * A room lives until its owner stops sharing, or, when the server is told how long rooms may live (`roomTtlMs`), until nobody has
  * used it for that long: a sweep looks through the storage from time to time and removes such rooms the way "stop sharing" does.
+ * With `accounts` set (ACCOUNTS=1), the addresses of accounts, teams and sync are answered too, under /api/auth/, /api/me,
+ * /api/teams, /api/invites/ and /api/spaces/ (src/server/accounts, docs/ACCOUNTS.md), and the operator's under /api/admin/accounts.
  * WebSocket: /ws?room=<id>               then a join with the key as the first message, then the rest of src/collab/protocol.ts
  *
  * The keys are random and only their hashes are stored. The room's id is random too: a link with an id and a key is all it takes to
  * get in, so a link is a secret. The key is never in an address, which every server and proxy that it passes writes in a log: a browser
  * shows it in its first message, soon after it has connected, and a connection that does not is sent away.
  */
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { checkDesign, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type Role, type ServerMsg } from "@/collab/protocol";
 import { DesignTooLarge, Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
+import { ACCOUNT_CORS, createAccounts, type Accounts, type AccountsOptions } from "./accounts";
 import { clientAddress, hourlyLimit } from "./address";
+import { ASSET_ID, ASSET_LIMIT, checkAsset, cors, foreign, readBody, reply, replyTooBig, requestTarget, sameSecret, sha256 } from "./http";
 import { createMetrics, METRICS_CONTENT_TYPE, type LabelOf } from "./metrics";
-import { ROOM_ID, type LiveStorage, type RoomRecord, type SharedAsset } from "./storage";
+import { ROOM_ID, type LiveStorage, type RoomRecord } from "./storage";
 
 export interface LiveServerOptions {
   storage: LiveStorage;
@@ -122,6 +126,11 @@ export interface LiveServerOptions {
   maxGroup?: number;
   /** How long an answer about the health of the storage is kept, so that not every `GET /api/health` writes to the disk. */
   healthCacheMs?: number;
+  /**
+   * Accounts, teams and sync (src/server/accounts, docs/ACCOUNTS.md). Not set: the server has none of it, and answers exactly as
+   * it did before (the addresses are 404, the preflight names no `authorization` header).
+   */
+  accounts?: AccountsOptions;
 }
 
 export interface LiveServer {
@@ -168,12 +177,7 @@ const bucket = (given: { burst?: number; perSecond?: number } | undefined, stand
   perSecond: given?.perSecond ?? standard.perSecond,
 });
 
-const ASSET_ID = /^[A-Za-z0-9_-]{1,128}$/;
-const IMAGE_TYPE = /^image\/(?:png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
-const ASSET_LIMIT = 12 * 1024 * 1024; // base64 for up to 9 MiB
-
 const CLIENT_NAME = /^[A-Za-z0-9._-]{1,64}$/;
-const sha256 = (text: string) => createHash("sha256").update(text).digest();
 const token = () => randomBytes(16).toString("base64url");
 /** The size of a message in bytes: `ws` hands every message over as one Buffer (its `binaryType` is left as it comes, "nodebuffer"). */
 const sizeOf = (data: RawData) => (data as Buffer).length;
@@ -182,11 +186,6 @@ const sameHash = (hex: string, key: string) => {
   const b = sha256(key);
   return a.length === b.length && timingSafeEqual(a, b);
 };
-/**
- * Whether what was shown is the secret, in a time that does not depend on how much of it is right. Both are hashed first, so that
- * they are compared at one length whatever was sent; that the secret has a length is no secret.
- */
-const sameSecret = (secret: string, shown: unknown): boolean => typeof shown === "string" && timingSafeEqual(sha256(secret), sha256(shown));
 
 interface Loaded {
   id: string;
@@ -256,6 +255,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   const loaded = new Map<string, Loaded>();
   const loading = new Map<string, Promise<Loaded | null>>();
   const sockets = new Set<WebSocket>();
+  const accounts: Accounts | null = options.accounts
+    ? createAccounts(options.accounts, { allowOrigin: o.allowOrigin, trustProxy: o.trustProxy, now, maxDesignBytes: o.maxDesignBytes })
+    : null;
 
   let roomCreation = Promise.resolve();
   let closing = false;
@@ -475,57 +477,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     }
   };
 
-  /* ---------------- HTTP ---------------- */
-
-  const cors = (req: IncomingMessage, res: ServerResponse) => {
-    const allow = o.allowOrigin;
-    if (!allow) return;
-    const origin = req.headers.origin;
-    if (allow === "*") res.setHeader("access-control-allow-origin", "*");
-    else if (origin && (Array.isArray(allow) ? allow : [allow]).includes(origin)) {
-      res.setHeader("access-control-allow-origin", origin);
-      res.setHeader("vary", "origin");
-    }
-    res.setHeader("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.setHeader("access-control-allow-headers", "content-type, x-craftly-key, x-craftly-create-key");
-    res.setHeader("access-control-max-age", "600");
-  };
-
-  /**
-   * Whether a request comes from a page that may not use this server: the server was given a list of origins, the request names
-   * its origin, as every browser does for a WebSocket and for anything that is not a plain GET, and that origin is not on the list.
-   * The CORS headers above do not do this. They stop a page from reading an answer, not from sending the request: making a room
-   * needs no permission beforehand (its body has no content type that would), and a WebSocket is not subject to CORS at all.
-   * It keeps the pages of other sites out, not a program, which names whatever origin it likes or none.
-   */
-  const foreign = (req: IncomingMessage): boolean => {
-    const allow = o.allowOrigin;
-    if (!allow || allow === "*") return false;
-    const origin = req.headers.origin;
-    return origin !== undefined && !(Array.isArray(allow) ? allow : [allow]).includes(origin);
-  };
-
-  const reply = (res: ServerResponse, status: number, body: unknown) => {
-    res.statusCode = status;
-    res.setHeader("content-type", "application/json; charset=utf-8");
-    res.setHeader("cache-control", "no-store");
-    res.end(JSON.stringify(body));
-  };
-
-  /** The body of a request as text, or null when it is longer than allowed (the request is then dropped). */
-  const readBody = (req: IncomingMessage, limit: number): Promise<string | null> =>
-    new Promise((resolve) => {
-      const chunks: Buffer[] = [];
-      let size = 0;
-      req.on("data", (chunk: Buffer) => {
-        size += chunk.length;
-        if (size > limit)
-          resolve(null); // the rest is read and thrown away until the answer has gone, then the connection is dropped
-        else chunks.push(chunk);
-      });
-      req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-      req.on("error", () => resolve(null));
-    });
+  /* ---------------- HTTP (the helpers are in http.ts) ---------------- */
 
   const createRoom = async (req: IncomingMessage, res: ServerResponse) => {
     // Asked before the body is read: reading and checking up to 16 MiB is the work that an address with no allowance left is not
@@ -545,12 +497,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       if (!sameSecret(o.roomCreateKey, shown)) return reply(res, 403, { error: "that key to start sharing is not right", code: "create-key-wrong" });
     }
     const text = await readBody(req, o.maxDesignBytes);
-    if (text === null) {
-      res.setHeader("connection", "close");
-      reply(res, 413, { error: "the design is too big" });
-      res.once("finish", () => req.socket.destroy());
-      return;
-    }
+    if (text === null) return replyTooBig(req, res, { error: "the design is too big" });
     let body: { design?: Design };
     try {
       body = JSON.parse(text) as { design?: Design };
@@ -632,26 +579,15 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     }
     const body = await readBody(req, ASSET_LIMIT + 100);
     if (body === null) return reply(res, 413, { error: "this shared image is too large" });
-    let asset: Partial<SharedAsset> | null;
+    let parsed: unknown;
     try {
-      asset = JSON.parse(body) as Partial<SharedAsset> | null;
+      parsed = JSON.parse(body);
     } catch {
       return reply(res, 400, { error: "invalid image data" });
     }
-    const mime = asset?.mime;
-    const base64 = asset?.base64;
-    if (
-      typeof mime !== "string" ||
-      !IMAGE_TYPE.test(mime) ||
-      typeof base64 !== "string" ||
-      !base64 ||
-      base64.length > ASSET_LIMIT ||
-      base64.length % 4 ||
-      /[^A-Za-z0-9+/=]/.test(base64) ||
-      Buffer.from(base64, "base64").toString("base64") !== base64
-    ) {
-      return reply(res, 400, { error: "invalid image data or format" });
-    }
+    const asset = checkAsset(parsed);
+    if (!asset) return reply(res, 400, { error: "invalid image data or format" });
+    const { mime, base64 } = asset;
     await enqueue(l, async () => {
       // The body may have taken minutes. Only the room that is in memory now may be saved: not one that was stopped meanwhile, and
       // not a copy that memory let go of (which being pinned rules out; it is asked all the same, because saving such a copy would
@@ -766,6 +702,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
 
   const admin = async (req: IncomingMessage, url: URL, res: ServerResponse) => {
     if (!operator(req, res, o.adminKey, req.headers["x-craftly-admin-key"])) return;
+    if (accounts && (await accounts.admin(req, url, res))) return;
     if (req.method === "GET" && url.pathname === "/api/admin/rooms") return adminList(url, res);
     const room = /^\/api\/admin\/rooms\/([^/]+)$/.exec(url.pathname);
     if (req.method === "DELETE" && room) return adminRemove(room[1], res);
@@ -835,18 +772,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     return health.writable;
   };
 
-  const target = (req: IncomingMessage): URL | null => {
-    const raw = req.url ?? "";
-    if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return null;
-    try {
-      return new URL(raw, "http://localhost");
-    } catch {
-      return null;
-    }
-  };
-
   const http = createServer((req, res) => {
-    const url = target(req);
+    const url = requestTarget(req);
     // The storage failed, or a room that is there could not be read. It is written down for the operator, and answered as a
     // problem of the server: a browser asks again later after a 500, where it takes a 404 to mean that the design is gone.
     const failed = (error: unknown) => {
@@ -857,7 +784,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     // what is the operator's is no part of what pages may call: it is answered before, and without, the CORS headers
     if (url?.pathname.startsWith("/api/admin/")) return void admin(req, url, res).catch(failed);
     if (url?.pathname === "/metrics") return void metricsAnswer(req, res).catch(failed);
-    cors(req, res);
+    cors(req, res, o.allowOrigin, accounts ? ACCOUNT_CORS : undefined);
     if (!url) return reply(res, 400, { error: "invalid request target" });
     void (async () => {
       if (req.method === "OPTIONS") {
@@ -868,7 +795,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         if (await storageWritable()) return reply(res, 200, { ok: true, rooms: loaded.size });
         return reply(res, 503, { ok: false, error: "room storage is unavailable" });
       }
-      if ((req.method === "POST" || req.method === "PUT" || req.method === "DELETE") && foreign(req)) {
+      // the accounts refuse a page of another origin themselves, for every method and with a code (accounts/index.ts)
+      if (accounts && (await accounts.routes(req, url, res))) return;
+      if ((req.method === "POST" || req.method === "PUT" || req.method === "DELETE") && foreign(req, o.allowOrigin)) {
         return reply(res, 403, { error: "this server does not take requests from this origin" });
       }
       if (req.method === "POST" && url.pathname === "/api/rooms") return await createRoom(req, res);
@@ -905,12 +834,12 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   };
 
   http.on("upgrade", (req, socket, head) => {
-    const url = target(req);
+    const url = requestTarget(req);
     if (!url || url.pathname !== "/ws" || closing) {
       socket.destroy();
       return;
     }
-    if (foreign(req)) {
+    if (foreign(req, o.allowOrigin)) {
       // a page of another site: refused before it is a connection, and before a room is read for it
       metrics.countBy("upgrades_refused_total", "origin");
       socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");

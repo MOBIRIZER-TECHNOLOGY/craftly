@@ -1,0 +1,271 @@
+# Accounts, teams and sync
+
+The design that the multi-user work follows: accounts with email and password on Craftly's own server, designs that sync to the
+server and open on any device, and teams with shared folders and roles. It builds on the live server. The app keeps working
+fully offline and without any server: none of the account code is loaded, and no request goes out, while a person is signed out.
+
+Status: being built on the branch `multi-user`, in the order of [Build order](#build-order). This page is updated as each step lands.
+Steps 1 to 7 (the server: HTTP helpers, passwords, storage, sign-up and sessions, codes and the operator's script, spaces, teams)
+are built and tested (2026-11-17); where the code differs from the first design it says so in [As built](#as-built-steps-1-to-7).
+Steps 8 to 15 (the client, and team designs live in rooms) are not started.
+
+## Server
+
+**Mounting.** The code lives in `src/server/accounts/` and is switched on with `ACCOUNTS=1` in `main.ts`; without it the server is
+exactly what it was. `createLiveServer` takes an optional `accounts?: AccountsOptions`, and its HTTP handler calls
+`cloudRoutes(req, url, res)` before the final 404. The HTTP helpers both route sets need (`reply`, `readBody`, `cors`, `foreign`,
+the asset check of `roomAssetIn`) live in `src/server/http.ts`.
+
+**Storage.** The `FileStorage` style: whole files written to a temporary name and renamed, ids checked against a pattern. An
+`AccountStorage` interface with `MemoryAccounts` and `FileAccounts` (`accounts/storage.ts`), under `DATA_DIR/accounts/`:
+
+| Path | Holds |
+| --- | --- |
+| `users/<userId>.json` | `{id, email, name, pw: "scrypt$15$8$1$<salt>$<hash>", recoveryHash, disabled, createdAt, sessions: {sessionId: sha256(token)}, teams: [teamId]}` |
+| `emails/<sha256(email)>.json` | `{userId}`, written whole and hard-linked into place, so the file system refuses a second account with one email |
+| `sessions/<sha256(token)>.json` | `{id, userId, device, createdAt, lastUsedAt, expiresAt}` |
+| `teams/<teamId>.json` | `{id, name, createdAt, members: {userId: role}, invites: [{id, hash, role, usesLeft, expiresAt, createdAt}]}` |
+| `codes/<sha256(code)>.json` | a sign-up code `{kind: "signup", usesLeft, expiresAt}`, an invite `{kind: "invite", teamId, inviteId}` or a reset `{kind: "reset", userId, expiresAt}` |
+| `spaces/<spaceId>/manifest.json` | `{seq, designs: {id: {rev, metaSeq, seq, title, folderId, starred, trashedAt, deletedAt?, bytes, updatedAt, versions: [{rev, bytes, at}]}}, folders: {id: {name, parentId, createdAt, seq, deletedAt?}}, assets: {id: {mime, bytes, seq, createdAt}}}`, written whole through a queue per space |
+| `spaces/<spaceId>/designs/<sha256(id)>/<rev>.json` | `{rev, thumbnail, design}`: the current revision and the 10 before it, each a file |
+| `spaces/<spaceId>/assets/<sha256(id)>.json` | an upload, `{mime, base64}` |
+
+A **space** is a person's own (its id is the user's id) or a team's (the team's id); both are the same code.
+
+**Passwords.** `crypto.scrypt`, N = 2^15, r = 8, p = 1, a 16-byte salt and a 64-byte key, `maxmem` 64 MiB (Node's 32 MiB default
+fails at these parameters). The parameters are in the stored string, so they can be raised later. At most 4 hashes at once
+(`HASH_CONCURRENCY`), 503 above that. Passwords are NFC-normalised, 10 to 256 characters, compared with `timingSafeEqual`; a
+sign-in for an unknown email hashes a dummy password, so the time it takes says nothing.
+
+**Sessions are bearer tokens, not cookies.** The app and the server are on different sites in development and in most
+deployments (5173 and 8787), and cookies across sites need `SameSite=None`, which Safari and Chrome block as third-party cookies.
+
+- The token is 32 random bytes in base64url; the server keeps only its SHA-256.
+- 30 days, sliding, 180 days at most; at most 20 sessions a person (the oldest goes).
+- The browser keeps it in the IndexedDB `meta` store under `cloudSession`. A backup leaves it out.
+- No CSRF: the browser never attaches the token by itself. The `foreign()` Origin check stays.
+- CORS allows the `authorization` header, so requests are preflighted; `ALLOW_ORIGIN` lists the app's origin.
+- On a WebSocket the token goes in the `join` message, never in the address (the rule keys follow today).
+- CSP: only `connect-src`, which `VITE_CRAFTLY_CSP_CONNECT` already adds. Pictures are fetched with the token and shown as `blob:`
+  or `data:` addresses, which `img-src` allows. The service worker ignores other origins, so answers are never cached.
+
+**Rate limits** (`hourlyLimit`): failed sign-ins 20 an hour per address and 10 per account and address, with an account-wide cap
+of 100 so that one address cannot lock someone out; sign-ups 5 an hour per address; invite and reset codes 20. A refusal is 429
+with `Retry-After`.
+
+**Without email.** There is no mail server: the email is a unique login name, never verified.
+
+- `SIGNUP` = `invite` (default), `open` or `closed`. With `invite`, signing up needs a team's invite code or a sign-up code from
+  an administrator.
+- At sign-up a recovery code is shown once (128 bits, kept as SHA-256); with it a person resets their own password.
+- `scripts/accounts.mjs` (with `ADMIN_KEY`): `create-signup-code`, `list`, `reset <email>`, `disable`, `enable`, `delete --yes`.
+  `reset` prints a one-time link `…#/reset/<code>` valid for 24 hours. Any reset ends every session of that person. The script
+  asks the running server (`/api/admin/accounts`), it does not open `DATA_DIR` itself (see [As built](#as-built-steps-1-to-7)).
+
+**Endpoints** (JSON; an error is `{error, code}`):
+
+| Method and path | Does |
+| --- | --- |
+| `POST /api/auth/signup {email, password, name, code?}` | 201 `{token, user, recoveryCode}`; 400, 403 `signup-closed`, 409 `email-taken`, 429 |
+| `POST /api/auth/signin {email, password, device}` | `{token, user}`; 401 `wrong` for every failure, 429 |
+| `POST /api/auth/signout` | ends this session |
+| `GET /api/me` | the person, their teams with roles, their spaces |
+| `GET /api/me/sessions`, `DELETE /api/me/sessions/:id` | devices signed in |
+| `POST /api/me/password {old, new}` | changes the password |
+| `POST /api/auth/reset {code` or `email + recoveryCode, newPassword}` | resets it |
+| `POST /api/teams {name}`, `GET` / `PATCH` / `DELETE /api/teams/:t` | teams; `GET` gives the members with their names and roles |
+| `PUT /api/teams/:t/members/:u {role}`, `DELETE /api/teams/:t/members/:u` | roles, removing, leaving |
+| `POST /api/teams/:t/invites {role, uses, hours}` | `{id, code}`, the code shown once |
+| `GET /api/teams/:t/invites`, `DELETE /api/teams/:t/invites/:id` | invites without their codes; revoking |
+| `POST /api/invites/redeem {code}` | joins a team |
+| `GET /api/spaces/:s/changes?since=&limit=500` | `{cursor, more, designs, folders, assets}` |
+| `GET /api/spaces/:s/designs/:id` | `{design, rev, thumbnail}` |
+| `PUT /api/spaces/:s/designs/:id {baseRev or null, design, thumbnail?}` | `{rev}`; 409 `conflict {rev}`, 409 `exists`, 409 `deleted`, 409 `live {room}` (step 14), 413 `quota` |
+| `PATCH /api/spaces/:s/designs/:id/meta {title?, folderId?, starred?, trashedAt?}` | per field, last write wins, never a conflict |
+| `DELETE /api/spaces/:s/designs/:id` | a tombstone, kept 90 days |
+| `GET …/designs/:id/versions`, `POST …/designs/:id/restore {rev}` | revisions |
+| `PUT` / `GET /api/spaces/:s/assets/:id`, `POST …/assets/missing {ids}` | uploads, with the checks room pictures get and `svgProblem` |
+| `PUT` / `DELETE /api/spaces/:s/folders/:id` | folders |
+| `POST /api/spaces/:s/designs/:id/live` | the live room of a team design, made when needed |
+
+**Roles** (one pure table, `can(role, action)` in `accounts/roles.ts`): an **owner** manages members, invites, the team's name,
+deleting the team and deleting forever, and a team always keeps one; an **editor** makes, edits, trashes and restores designs
+and folders and uploads; a **viewer** reads and downloads. The shared folders are the folders of the team's space; there are no
+per-folder permissions in this version.
+
+**Limits.** A design 16 MiB (`maxDesignBytes`) and it passes `checkDesign` (one carrying a `live` field is refused); a thumbnail
+256 KB matching `^data:image/(jpeg|png);base64,`; an upload 9 MiB; a space `SPACE_QUOTA_MB` (1024) and 10,000 designs; 1,000
+folders; 20 teams a person; 100 members a team; 50 open invites; `MAX_ACCOUNTS`; a title 200 characters; a name `cleanName`, 40.
+
+**Team designs live, without links.** `POST …/live` gives the room bound to that design (`RoomRecord.bound = {space, designId}`,
+its key hashes random and never handed out). `join` takes a `session` in place of a `key`, and the member's role decides: owner
+and editor edit, a viewer views. While a room is bound, `PUT` on its design answers 409 `live` and the client joins the room;
+when the room unloads, its design is written back as the next revision. Removing a member or lowering their role closes their
+sockets with 4003. Sharing by link with keys works as before.
+
+## As built (steps 1 to 7)
+
+The server side is in `src/server/http.ts` (the helpers both route sets use) and `src/server/accounts/`: `passwords.ts`,
+`storage.ts`, `roles.ts`, `context.ts` (settings, refusals, strict reading of bodies, sessions, limits, a queue per record),
+`auth.ts`, `spaces.ts`, `teams.ts`, `admin.ts`, and `index.ts` (the routes). `main.ts` reads `ACCOUNTS`, `SIGNUP`, `MAX_ACCOUNTS`
+and `SPACE_QUOTA_MB`; with `ACCOUNTS` off the server is what it was (a test checks the 404s and the preflight). Where the code
+differs from the design above, and why:
+
+- **Every refusal has a code**: `bad-request` (400), `too-big` (413, and the connection is dropped), `session` (401: no token, a
+  token that is not one, expired, signed out, revoked, or its person disabled), `wrong` (401), `forbidden` (403: a member whose
+  role may not), `origin` (403), `not-found` (404, also for a space or team the person is not in), `deleted` (404 on reading a
+  tombstone, 409 on writing one), `method` (405 with `Allow`), `rate` (429 with `Retry-After`), `busy` (503 with `Retry-After: 1`),
+  `server` (500), and the ones of the table: `signup-closed`, `code-wrong` (403), `email-taken`, `full` (403 for `MAX_ACCOUNTS`,
+  409 for a team's members), `newer` (400: a design from a newer Craftly, from `migrateDesign`), `conflict`, `exists`, `quota`,
+  `last-owner`, `too-many-teams`, `too-many-invites` (409).
+- **The routes are asked before the rooms' Origin check, not just before the final 404**, so that the accounts refuse a page of
+  another origin themselves, for every method including GET (a person's own data), with the code `origin`. The rooms answer as
+  before. The preflight names `authorization` and `PATCH` only when accounts are on.
+- **A person's record lists their sessions and their teams.** Capping sessions at 20, listing them and ending all of them at a
+  reset would otherwise mean reading every session file of the server, and `GET /api/me` every team. A session file that its
+  person's list does not name lets nobody in (the list is written first on sign-in, and emptied first on sign-out and reset). The
+  list of teams is only an index: the team's record decides every request, and the index may name a team the person has left,
+  never miss one they are in.
+- **One table of codes, `codes/<sha256(code)>`,** for sign-up codes, invites and resets: redeeming an invite must find its team
+  from the code alone, without reading every team. The team's record still holds its invites (with the same hash) and decides:
+  an invite code whose invite was revoked, used up or expired is not good. Codes, tokens and recovery codes are 128 bits (tokens
+  256), base64url, kept only as SHA-256.
+- **Each revision of a design is a file, the current one too** (`designs/<sha256(id)>/<rev>.json`), and the manifest says which
+  is current. A save writes the new revision and then the manifest, so a crash between the two leaves the revision before
+  current and whole; with one file for the current design a crash could leave a manifest and a design that disagree. The id is
+  hashed into the name because the app's ids (`isSafeId`) may hold a colon, which Windows refuses in a file name, and may differ
+  only in capitals.
+- **The email file is written whole and hard-linked into place** rather than created with `wx`: the link fails when the name
+  exists, exactly as `wx` does, and a crash cannot leave an empty file that blocks the email for good. A sign-up writes the
+  person first and the email second, so a crash leaves a person nobody can sign in as (the operator's list leaves them out),
+  never an email that names nobody.
+- **Details belong to the manifest.** A new design's title, folder, star and trash time are taken from the design; after that
+  `PUT` changes the content only, `PATCH …/meta` the details (each field, last write wins), and `GET` gives the content with the
+  manifest's details over it.
+- **A retry gets its answer again**: a `PUT` with `baseRev: null` of the content already there, or with the revision before the
+  current one and the content of the current one, answers `{rev}` and not `exists` or `conflict`, so a write whose answer was
+  lost on the network does not turn into a conflict copy.
+- **`DELETE` of a design is deleting forever (owners; in a person's own space, the person).** It leaves a tombstone in the feed
+  and keeps the revisions 90 days, in which an editor can restore one (`POST …/restore`), which makes a new revision. A tombstone
+  still counts towards the quota until it is purged; the purge runs with the next change of the space after 90 days. `PUT` on a
+  tombstone is 409 `deleted` (a new code): the client sends its copy under a new id.
+- **Folders**: `PUT /api/spaces/:s/folders/:id {name, parentId}` (1 to 200 characters; a parent must be a folder of the space,
+  and a folder cannot be put inside itself). Removing one is a tombstone; its designs and folders move to the top.
+- **Uploads** get the room pictures' check (`checkAsset` in `http.ts`), `svgProblem` for an SVG, and, beyond the design, a check
+  that the bytes begin as a picture of the stated type does (PNG, JPEG, GIF, WebP, BMP, AVIF). `checkUpload` itself draws on a
+  canvas and cannot run on a server. Uploads count as their base64 length, as a room's do.
+- **The changes feed** is `{cursor, more, designs, folders, assets}`: every item with a `seq` after `since`, in order, at most
+  `limit` (1 to 500); the cursor is the last `seq` given, or the space's `seq` when nothing more waits. Designs carry their
+  details and `rev`, `metaSeq`, `seq`, `updatedAt`, `deletedAt` (or null); not their content.
+- **Limits**: failed sign-ins (also wrong old passwords) are counted per address, per account and address, and per account; a
+  sign-up counts every attempt; wrong codes (invites, sign-up codes, reset codes, recovery codes) are counted per address and a
+  right one is not. Hashing more than 4 at once is 503 `busy`. A person who does not exist is checked against a random salt at the
+  server's cost, so a sign-in for them takes as long as one with a wrong password.
+- **A reset with the recovery code uses it up** and answers a new one; changing the password ends every other session; a
+  sign-in's `device` is optional (empty when not given).
+- **The operator's script asks the server** (`ADMIN_KEY`, `/api/admin/accounts`, behind the guard of `/api/admin/rooms`) and does
+  not open `DATA_DIR`: its changes then take their turn in the same queues as people's requests (a reset never meets a sign-in
+  writing the same file), and it works where the operator has no shell on the data's volume. `delete` is refused while the
+  account is the last owner of a team with other members, and names the teams.
+- **Not built yet**: `POST …/designs/:id/live`, 409 `live`, joining a room with a session, and closing a removed member's sockets
+  (step 14). `RoomRecord` is unchanged; `bound` is to be an optional field on it. A session that ends by its time keeps its file
+  (it lets nobody in) until its person signs in with 20 sessions listed and it is cut; nothing sweeps such files yet, nor the files
+  of sign-up and reset codes past their time.
+
+## Sync
+
+**On the device.** `DB_STEPS` step 2: a store `sync` keyed by design id, `{space, serverRev, syncedRevision, syncedMeta,
+tombstone?}`; optional `space?` on `DesignSummary`, `Folder` and `Asset` (optional additions under MIGRATIONS.md: no format
+version, recorded in `persistedShapes.test.ts`). The `sync` store belongs to the device and is not in backups.
+
+**By state, not by a log of operations.** A design is dirty when `summary.revision !== syncedRevision`, its details when the
+summary differs from `syncedMeta`. What waits to be sent is the dirty rows and the tombstones, so it survives reloads and cannot
+grow without end.
+
+**The engine** (`src/cloud/sync.ts`). One tab syncs, holding the lock `craftly-sync`. It runs when the browser comes online, when
+the tab comes into view, 3 s after a save, every 60 s and on Sync now, backing off to 5 minutes after errors.
+
+- **Pull** reads `changes` from the cursor and plans with a pure `planSync(local, remote)`: a clean local copy takes the server's
+  design; a dirty one whose server copy did not change is pushed; dirty on both sides is a conflict; a server tombstone moves a
+  clean local design to the Trash ("deleted on another device", never deleted outright), and a dirty one is kept and pushed as
+  a new design.
+- **Push** sends the uploads the design uses first (`assets/missing`, then `PUT`), then the design with `baseRev`.
+- **A conflict** keeps the server's version under the id; the local edit goes into the local version history ("Before sync")
+  and is pushed as a new design, "Title (edited on Device)". At most 20 such copies a run; past that sync stops and says so.
+- **A design open in the editor** holds the lock `craftly-design-<id>`, and sync leaves it alone meanwhile.
+- **Uploads** are fetched when needed and kept with `cacheSharedAsset`.
+
+**Signing in where there are designs already**: "Move N designs into your account?" with Move all, Choose and Not now. Moving
+sets `space` and pushes with `baseRev: null`; a different design under that id on the server (409 `exists`) is pushed as a copy
+with a new id.
+
+**Signing out** sends what waits first. Offline, it offers to keep copies on the device as plain local designs; otherwise the
+account's designs are removed from the device (the default, for shared computers). Designs never moved into the account stay.
+
+## Client
+
+- `src/cloud/`: `api.ts` (fetch with the token, strict reading of every answer, error codes), `validate.ts` (`checkDesign`,
+  `migrateDesign`, `isSafeId`, the thumbnail pattern), `account.ts` (`useAccount`: `{server, user, teams, activeSpace}`, sign
+  up, sign in, sign out, redeem an invite), `syncPlan.ts` (pure), `sync.ts`, `syncStatus.ts` (synced, syncing, offline with N
+  waiting, problem).
+- The server: `VITE_CRAFTLY_ACCOUNT_SERVER` at build time, or typed on the sign-in screen, with its host shown plainly.
+- `src/dashboard/account/`: `SignInPage.tsx` (`#/signin`, `#/signup`, `autocomplete` set), `ResetPage.tsx` (`#/reset/<code>`),
+  `InvitePage.tsx` (`#/invite/<token>`), `AccountDialog.tsx`, `SignOutDialog.tsx`, `MoveDesignsDialog.tsx`, `TeamSwitcher.tsx`,
+  `TeamPage.tsx` (`#/team/<id>`: members, roles, invites), `SyncStatus.tsx`; routes in `router.ts`.
+- `Shell.tsx`: the account menu starts with Sign in and Create account, or the person's name and email, Account settings, Team
+  members and Sign out; the avatar shows their name; the sync status sits beside it.
+- The editor: the sync status in the top bar; "Edit live with your team" in Share for a team design; a viewer gets the read-only
+  mode of a view link.
+- Words: a `cloud` catalog in `src/i18n/en/cloud.ts` and `src/i18n/hi/cloud.ts`. Server error codes become words on the client.
+
+## Security
+
+- **On the network**: TLS (`listenWarning`); tokens only in a header or a WebSocket message; tokens, recovery, invite and reset
+  codes kept only as hashes; nothing is sent by the browser on its own, so no CSRF and no cross-site WebSocket hijacking.
+- **Script in the page** could read the token from IndexedDB; the strict CSP (`script-src 'self'`) is the defence.
+- **A team member with bad intent**: an editor can overwrite, trash or fill the space with junk within the quota, and the last
+  10 revisions and the 90-day tombstones let an owner restore; roles are checked on every request; nobody raises their own role;
+  only owners invite; removal is immediate, sockets too; copies already downloaded cannot be taken back.
+- **A server with bad intent** sees every design (there is no end-to-end encryption) and receives the password, which it hashes:
+  use a password of its own. Whatever it sends is checked as a hostile room's is (`checkDesign`, `migrateDesign`, `checkUpload`,
+  `svgProblem`, safe ids, the thumbnail pattern), and the CSP blocks scripts. It cannot delete local work: its tombstones go to
+  the Trash, and the cap on conflict copies stops a flood.
+- Sign-up says whether an email is taken (accepted: codes gate sign-up); sign-in answers say nothing; limits and the hashing cap
+  hold off guessing and floods.
+- The server checks, every time: the size before parsing, the JSON, the exact shape per endpoint, the ids, the session, the role,
+  the Origin, the quotas.
+
+## Tests
+
+- Logic: `accounts/passwords.test.ts`, `accounts/storage.test.ts` (memory and file, the race for one email, damaged files),
+  `accounts/roles.test.ts`, `src/cloud/syncPlan.test.ts` (local clean, dirty, deleted against remote same, changed, tombstone,
+  conflict), `validate.test.ts` (hostile answers).
+- Server, real sockets (`boot()` as in `comments.test.ts`): `accounts.test.ts`, `spaces.test.ts`, `teams.test.ts`.
+- DOM: the step-2 migration, `src/cloud/sync.dom.test.ts` (fake IndexedDB against a real server on port 0), the screens,
+  `Shell.test.tsx`, and that a backup leaves out `cloudSession` and `sync`.
+- `e2e/accounts.cjs`: two devices of one person and a second person, from moving local designs in to conflicts, a team, an
+  invite, roles, live editing without a link, removal, an admin reset, signing out, the server stopped, and Hindi.
+
+## Build order
+
+1. The shared HTTP helpers into `src/server/http.ts`, no change in behaviour.
+2. `passwords.ts`.
+3. Account storage, memory and file.
+4. Sign-up, sign-in, sessions, limits, CORS, `ACCOUNTS` and `SIGNUP`.
+5. Sign-up codes, reset and disable, `scripts/accounts.mjs`, DEPLOY.md.
+6. Spaces: designs, details, uploads, folders, changes, revisions, quotas.
+7. Teams, roles, invites.
+8. Client database step 2, optional fields, tombstones; MIGRATIONS.md.
+9. `syncPlan` and `validate`.
+10. The sync engine and its locks.
+11. Account screens, menu, the move and sign-out dialogs, English and Hindi.
+12. The sync status in the dashboard and the editor.
+13. Team switcher, team page, invite page, listings by space.
+14. Team designs live: joining by session, bound rooms, writing back, removal.
+15. `e2e/accounts.cjs`, `run-all`, README (privacy, offline), BACKUP.md.
+
+## What needs a person
+
+A native speaker for the Hindi; a real public HTTPS deployment across sites and password managers in Safari and Firefox; the
+scrypt cost tuned on the real server; a privacy policy and terms for deleting data, now that a server holds people's work; the
+default sign-up mode; an outside security review; and trying the "(edited on Device)" copies with people.

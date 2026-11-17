@@ -111,9 +111,13 @@ All settings are environment variables, read once at the start by `src/server/ma
 | `BYTE_BURST`, `BYTES_PER_SECOND` | `8388608`, `1048576` | Bytes one connection may send: a burst (8 MiB), then so many a second (1 MiB). More closes the connection (1008). |
 | `JOIN_BURST`, `JOIN_EVERY_MS` | `4`, `2000` | How often one connection may ask for the whole design: a burst, then once every so many milliseconds. More closes the connection (1008). |
 | `PRESENCE_BURST`, `PRESENCE_PER_SECOND` | `30`, `15` | How often one connection may say where its person is (pointer, selection): a burst, then so many a second. More is dropped without closing the connection, and counted (`craftly_live_presence_dropped_total`). |
+| `ACCOUNTS` | off | `1` turns on accounts, teams and sync (section 2.9, [`ACCOUNTS.md`](ACCOUNTS.md)), kept in `DATA_DIR/accounts`. Off (`0` or not set), the server is exactly what it was, and the three settings below are not read. |
+| `SIGNUP` | `invite` | With `ACCOUNTS=1`: who may make an account. `invite`: only with a team's invite or a sign-up code from you (`scripts/accounts.mjs create-signup-code`); `open`: anybody who reaches the server; `closed`: nobody. Anything else stops the server. |
+| `MAX_ACCOUNTS` | (no limit) | With `ACCOUNTS=1`: the most accounts the server keeps. One more sign-up is refused (403 `full`). |
+| `SPACE_QUOTA_MB` | `1024` | With `ACCOUNTS=1`: the most one person's or one team's space may hold, in MiB: designs with their last 10 revisions (deleted ones too, for 90 days) and uploads. More is refused (413 `quota`). |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | How long the server may take to close when it is told to stop (SIGINT, SIGTERM): it waits for the saves and requests that are at work, then leaves with exit code 1 and a line in the log. 0 to 600000. Nothing acknowledged is lost by not waiting. |
 
-**This table must be kept in step with `src/server/main.ts`**: a variable added there and not here does not exist for an operator. The comment at the top of `main.ts` lists the variables too. The table was read against `main.ts` on 2026-11-14 and holds every variable it reads. A variable is in the table only if `main.ts` read it when this section was last edited.
+**This table must be kept in step with `src/server/main.ts`**: a variable added there and not here does not exist for an operator. The comment at the top of `main.ts` lists the variables too. The table was read against `main.ts` on 2026-11-17 and holds every variable it reads. A variable is in the table only if `main.ts` read it when this section was last edited.
 
 Limits that are not settings (they are options of `createLiveServer` in `src/server/live.ts`, with these defaults): 4 MiB per WebSocket message, 16 MiB for a design, 9 MiB per shared image and 36 MiB of images per room, a burst of 200 messages and then 100 a second per connection, a ping every 30 seconds.
 
@@ -300,13 +304,49 @@ What to know:
 - Counters start at 0 with the process. Memory and CPU are not here: take them from the system (`node_exporter`, the container runtime).
 - Suggested alerts: `increase(craftly_live_save_failures_total[5m]) > 0`; `craftly_live_rooms_stored` above 90 % of `MAX_ROOMS`; `craftly_live_connections` near `MAX_CONNECTIONS`; `increase(craftly_live_http_responses_total{class="5xx"}[5m]) > 0`; and the scrape failing (`up == 0`).
 
+### 2.9 Accounts, teams and sync
+
+Off unless `ACCOUNTS=1` (section 2.3). With it, people can make an account with an email and a password on your server, keep their designs there, open them on any device, and share folders with a team. How it works is in [`ACCOUNTS.md`](ACCOUNTS.md); the editor's side of it (signing in, syncing) is still being built, so for now this is the server only.
+
+```bash
+ACCOUNTS=1 SIGNUP=invite ADMIN_KEY=... ALLOW_ORIGIN=https://editor.example.org node dist-server/live.mjs
+```
+
+- **Who can sign up.** `SIGNUP=invite` (the default) means nobody can make an account without a code: a team's invite (an owner makes one) or a sign-up code from you. The first person on a new server needs one from you. There is no mail server: an email is a unique name to sign in with and is never checked. Signing up says whether an email is taken, but only to somebody with a good code.
+- **Passwords** are kept as scrypt hashes (N = 2^15, r = 8, p = 1, 32 MiB of memory each while it runs); at most 4 are checked at once, and more is answered 503 for a moment. Measure a sign-in on your machine before you change anything (the cost is in each stored hash, so it can be raised later).
+- **Sessions** are tokens sent in the `Authorization` header, never cookies; the server keeps their SHA-256. They last 30 days from their last use and 180 days at most, 20 a person. `ALLOW_ORIGIN` must name your editor: the browser asks first (a preflight) before sending the header, and pages of other origins are refused (403) on every account address, reading included.
+- **Limits** per address and hour: 20 failed sign-ins (10 for one account; 100 for one account from everywhere, so one address cannot lock somebody out), 5 sign-ups, 20 wrong codes. Behind a proxy set `TRUST_PROXY=1`, or every visitor shares the proxy's allowance.
+- **Body sizes.** A design is sent whole (up to 16 MiB with its thumbnail) and an upload up to about 12 MB: the proxy's `client_max_body_size 20m` of section 2.4 covers both.
+
+The operator's tool needs `ADMIN_KEY` (section 2.3) and asks the running server, like `scripts/rooms.mjs`, from the machine itself or through a tunnel:
+
+```bash
+export ADMIN_KEY=...                            # the key the server was started with
+export CRAFTLY_SERVER=http://127.0.0.1:8787     # the default
+export CRAFTLY_APP=https://editor.example.org/  # for reset links
+node scripts/accounts.mjs create-signup-code 1 168     # a code for one account, good for a week; shown once
+node scripts/accounts.mjs list
+node scripts/accounts.mjs reset ann@example.org        # prints https://editor.example.org/#/reset/<code>, good once for 24 hours
+node scripts/accounts.mjs disable ann@example.org      # every session ends at once; signing in is refused
+node scripts/accounts.mjs enable ann@example.org
+node scripts/accounts.mjs delete ann@example.org --yes # the account and its own designs, for good
+```
+
+- A person who forgets their password and still has the recovery code shown at sign-up resets it themselves. Otherwise `reset` gives you a link to hand them by a way you trust (whoever has the link sets the password). Any reset ends every session of that person.
+- `delete` is refused while the account is the last owner of a team that has other members, and names the teams. A team where the account is the only member goes with it.
+- The script asks the server rather than working on `DATA_DIR`: the server changes the same files one request at a time, and a second program writing them at the same moment could undo a change; it also works where you have no shell on the volume. The cost: the server has to be running.
+
+**What is kept, and backups.** Everything is under `DATA_DIR/accounts/` (section 2.5 applies: copy the folder; files are written whole and renamed into place). It holds people's emails and names, password hashes (scrypt: slow to guess, not impossible for a weak password), hashes of tokens and codes (useless without the token or code), every design of every space with its last 10 revisions, and uploads. A copy is as sensitive as all of that together: keep backups encrypted, and access to them as narrow as to the server. A restore brings back the sessions of its day; to end them after a restore you do not trust, disable and enable each account, or reset its password.
+
+**Checked**: the endpoints, every refusal, the limits, a restart with the files in a temporary folder, the role table and `scripts/accounts.mjs`, by the tests of `src/server/accounts/` against a real server on a real port. **Not checked**: anything with a real browser across sites (the client is not built), a real deployment, the cost of hashing on a small server, a restore.
+
 ## 3. What is not there yet
 
 - **A built and tested image.** `Dockerfile.server` has never been through `docker build` (section 2.1). No image is published anywhere, and CI does not build one.
 - **A deployment on a real host.** The proxy configurations, the systemd unit, the backup and the restore are written from reading, not from running them in public.
 - **Dashboards and alert rules.** The metrics are there (section 2.8), with a few alerts suggested in words; no Grafana dashboard and no rules file is shipped, and no real Prometheus has scraped the endpoint yet.
 - **Logs.** The server writes a line when it starts. There is no access log; use the proxy's.
-- **Accounts.** There are none. Who may make a room, how long rooms live and whether an operator can list and delete rooms (section 2.7) depend on the settings in section 2.3: if a setting is not in that table, the server does not have it. Without `ROOM_CREATE_KEY` anybody who can reach `POST /api/rooms` can make rooms up to `MAX_ROOMS`; with it, everybody who has that one key can, and the server does not know one of them from another.
+- **Accounts in the editor.** The server has them with `ACCOUNTS=1` (section 2.9); the editor cannot sign in or sync yet, and shared rooms still know no accounts. Who may make a room, how long rooms live and whether an operator can list and delete rooms (section 2.7) depend on the settings in section 2.3: if a setting is not in that table, the server does not have it. Without `ROOM_CREATE_KEY` anybody who can reach `POST /api/rooms` can make rooms up to `MAX_ROOMS`; with it, everybody who has that one key can, and the server does not know one of them from another.
 - **More than one server.** A room lives in the memory of one process and the files of one folder. Two servers behind a load balancer would each have their own rooms; there is no shared storage and no way to spread a room over processes.
 - **A load test.** How many rooms and people one server carries has not been measured.
 - **TLS in the server itself.** It speaks plain HTTP on purpose; use a proxy.
