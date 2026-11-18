@@ -13,6 +13,7 @@ import {
   IconText,
   IconTools,
   cx,
+  useLatest,
   useMedia,
   useResizeObserver,
   type LucideIcon,
@@ -40,6 +41,28 @@ export const RAIL_TABS: RailTab[] = [
   { id: "apps", label: m.panelsTabs.tabs.apps, icon: IconApps },
 ];
 
+/** The narrowest a tab of the tab bar may be, the bar's padding at its ends and the column a chevron takes (editor.css, LeftRail.css). */
+const MIN_TAB_W = 64;
+const TAB_BAR_PAD = 4;
+const CHEVRON_COLUMN = 32;
+
+/**
+ * The tab bar of a narrow screen that cannot show every tab: the tabs are made as wide as fills the bar up to the column of the
+ * chevron with whole tabs, so that no tab is cut by the chevron (B13), at the start and, after a tap on a chevron, at the end.
+ * Otherwise (the rail, or a bar with room for all) the tabs keep the width the style sheet gives them.
+ */
+function fitTabs(list: HTMLElement, horizontal: boolean) {
+  const count = list.querySelectorAll('[role="tab"]').length;
+  const width = list.clientWidth;
+  if (!horizontal || width <= 0 || count * MIN_TAB_W <= width - 2 * TAB_BAR_PAD) {
+    list.style.removeProperty("--cf-tab-w");
+    return;
+  }
+  const room = width - TAB_BAR_PAD - CHEVRON_COLUMN;
+  const shown = Math.max(1, Math.floor(room / MIN_TAB_W));
+  list.style.setProperty("--cf-tab-w", `${room / shown}px`);
+}
+
 /**
  * The 72px icon rail on the left of the editor. Clicking a tab opens its side panel; clicking the active tab
  * collapses / re-opens the panel. "Tools" has no panel: it toggles the floating tool palette instead.
@@ -58,13 +81,16 @@ export function LeftRail() {
   // "l", "r" or "lr": the sides of the tab bar that have more tabs past them
   const [fade, setFade] = useState("");
 
+  const horizontalRef = useLatest(horizontal);
+
   const measure = useCallback(() => {
     const list = listRef.current;
     if (!list) return;
+    fitTabs(list, horizontalRef.current);
     const max = list.scrollWidth - list.clientWidth;
     const next = max > 1 ? (list.scrollLeft > 1 ? "l" : "") + (list.scrollLeft < max - 1 ? "r" : "") : "";
     setFade((prev) => (prev === next ? prev : next));
-  }, []);
+  }, [horizontalRef]);
   useLayoutEffect(measure, [measure, horizontal]);
   useResizeObserver(listRef, measure);
 

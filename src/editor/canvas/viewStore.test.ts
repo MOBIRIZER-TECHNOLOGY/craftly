@@ -36,6 +36,13 @@ describe("layoutFor", () => {
     expect(l.pageTop).toBe(MARGIN_Y);
   });
 
+  it("keeps a phone's narrower margins, so that a page fitted to 88% of the width sits in the middle without scrolling (B13)", () => {
+    // a 1080 px page fitted to a 375 px workspace: 330 px wide
+    const l = layoutFor(1080, 1080, 330 / 1080, 375, 552);
+    expect(l.contentW).toBeCloseTo(375);
+    expect(l.pageLeft).toBeCloseTo(22.5);
+  });
+
   it("leaves room below the page for the extra strip", () => {
     const l = layoutFor(400, 200, 1, 1000, 700, 100);
     expect(l.contentH).toBe(700);

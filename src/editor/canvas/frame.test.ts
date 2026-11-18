@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createGroup, createLine, createPage, createShape, createText } from "@/core/factory";
-import { handlesFor, selectionFrame, worldBox } from "./frame";
+import { setTextMeasurer } from "@/core/textMetrics";
+import { measureTextElement } from "@/render/textLayout";
+import { handlesFor, inkBox, selectionFrame, worldBox } from "./frame";
 
 describe("worldBox", () => {
   it("is the element's own box for a top level element", () => {
@@ -47,6 +49,44 @@ describe("selectionFrame", () => {
     const a = createShape("rect", { x: 10, y: 20, width: 30, height: 40 });
     const b = createShape("rect", { x: 100, y: 5, width: 50, height: 10 });
     expect(selectionFrame([a, b])).toEqual({ x: 10, y: 5, width: 140, height: 55, rotation: 0, multi: true });
+  });
+});
+
+describe("inkBox", () => {
+  // every letter 10 px wide; a text that starts with "न" draws 2 px left of its box, one that ends with "ा" 3 px right of it
+  beforeEach(() =>
+    setTextMeasurer({
+      width: (_font, text) => Array.from(text).length * 10,
+      metrics: () => ({ ascent: 40, descent: 10 }),
+      ink: (_font, text) => ({ left: text.startsWith("न") ? 2 : -1, right: Array.from(text).length * 10 + (text.endsWith("ा") ? 3 : -1) }),
+    }),
+  );
+  afterEach(() => setTextMeasurer(null));
+
+  const text = (words: string, rotation = 0) => {
+    const el = createText({ text: words, x: 100, y: 50, rotation });
+    return { ...el, width: measureTextElement(el).width, height: measureTextElement(el).height };
+  };
+
+  it("widens the box of a text to the ink that reaches past its sides (a Devanagari letter in a fallback font)", () => {
+    const el = text("नमस्ते दुनिया");
+    expect(inkBox(selectionFrame([el])!, el)).toEqual({ x: 98, y: 50, width: el.width + 5, height: el.height, rotation: 0, multi: false });
+  });
+
+  it("widens it along the text's own direction when the text is turned", () => {
+    const el = text("नमस्ते", 90);
+    const box = inkBox(selectionFrame([el])!, el);
+    expect(box.width).toBe(el.width + 2);
+    // the middle moves 1 px back along the text, which runs downwards at 90 degrees
+    expect(box.x + box.width / 2).toBeCloseTo(el.x + el.width / 2);
+    expect(box.y + box.height / 2).toBeCloseTo(el.y + el.height / 2 - 1);
+  });
+
+  it("leaves a text whose ink stays inside its box, and any other element, as they are", () => {
+    const latin = text("Hello");
+    expect(inkBox(selectionFrame([latin])!, latin)).toEqual(selectionFrame([latin]));
+    const shape = createShape("rect", { x: 1, y: 2, width: 3, height: 4 });
+    expect(inkBox(selectionFrame([shape])!, shape)).toEqual(selectionFrame([shape]));
   });
 });
 

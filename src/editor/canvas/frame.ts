@@ -1,6 +1,7 @@
 /** The box that carries the selection handles. */
 import { boundsOfElements, boxCenter, fromLocalPoint } from "@/core/geometry";
 import type { DesignElement, GroupElement, ID, Page } from "@/core/types";
+import { textInkOverhang } from "@/render/textLayout";
 import type { Handle } from "./resize";
 
 /** Page-space box of an element that may live inside groups (positions compose through the group chain). */
@@ -28,6 +29,26 @@ export function worldBox(page: Page, id: ID): { x: number; y: number; width: num
     rotation += chain[i].rotation;
   }
   return { x: c.x - el.width / 2, y: c.y - el.height / 2, width: el.width, height: el.height, rotation };
+}
+
+type Box = { x: number; y: number; width: number; height: number; rotation: number };
+
+/**
+ * The box of a text widened, along the text's own direction, to the ink that reaches past its left or right side (a Devanagari
+ * letter drawn by a fallback font starts left of its box), so that the selection box and the hover outline hold all that is drawn.
+ * The element itself keeps its box; any other element is given back as it is.
+ */
+export function inkBox<B extends Box>(box: B, el: DesignElement | null): B {
+  if (!el || el.type !== "text") return box;
+  const { left, right } = textInkOverhang(el);
+  if (left <= 0 && right <= 0) return box;
+  const width = box.width + left + right;
+  // the middle moves by half the difference, along the text's direction
+  const shift = (right - left) / 2;
+  const angle = (box.rotation * Math.PI) / 180;
+  const cx = box.x + box.width / 2 + shift * Math.cos(angle);
+  const cy = box.y + box.height / 2 + shift * Math.sin(angle);
+  return { ...box, x: cx - width / 2, y: cy - box.height / 2, width };
 }
 
 export interface Frame {

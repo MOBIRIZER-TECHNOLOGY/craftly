@@ -132,8 +132,9 @@
    * icon over label in a bar 52 to 60 px high: the icon box and the gap are smaller than on the rail, and the label's line is
    * tall enough for the marks of Devanagari above and below the letters (at 36 + 4 + 13 px they were cut off at the bottom)
    */
+  /* --cf-tab-w: set by LeftRail.tsx when the bar cannot show every tab, so that whole tabs fill it up to the chevron (B13) */
   .cf-editor__body > .cf-leftrail .cf-leftrail__tab {
-    flex: 1 0 64px;
+    flex: 1 0 var(--cf-tab-w, 64px);
     justify-content: center;
     gap: 2px;
     width: auto;

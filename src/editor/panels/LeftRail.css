@@ -128,8 +128,9 @@
   }
 
   /*
-   * A phone has room for five or six of the eight tabs: the bar scrolls sideways. The side with more tabs fades out (as the
-   * context toolbar does) and shows a chevron, and the tab cut by the edge stays partly in view, so the bar reads as more.
+   * A phone has room for five or six of the eight tabs: the bar scrolls sideways. The side with more tabs shows a chevron in a
+   * column of its own, and the tabs are as wide as fills the rest with whole tabs (LeftRail.tsx), so no label is cut by the
+   * chevron (B13). Past the column the tabs fade out (as the context toolbar does) while the bar is being scrolled.
    */
   .cf-leftrail__list {
     overscroll-behavior-x: contain;
@@ -137,50 +138,54 @@
   }
 
   .cf-leftrail[data-fade="l"] .cf-leftrail__list {
-    -webkit-mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 40px);
-    mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 40px);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 32px);
+    mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 32px);
   }
 
   .cf-leftrail[data-fade="r"] .cf-leftrail__list {
-    -webkit-mask-image: linear-gradient(90deg, var(--c-ink) calc(100% - 40px), transparent 100%);
-    mask-image: linear-gradient(90deg, var(--c-ink) calc(100% - 40px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, var(--c-ink) calc(100% - 32px), transparent 100%);
+    mask-image: linear-gradient(90deg, var(--c-ink) calc(100% - 32px), transparent 100%);
   }
 
   .cf-leftrail[data-fade="lr"] .cf-leftrail__list {
-    -webkit-mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 40px, var(--c-ink) calc(100% - 40px), transparent 100%);
-    mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 40px, var(--c-ink) calc(100% - 40px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 32px, var(--c-ink) calc(100% - 32px), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, var(--c-ink) 32px, var(--c-ink) calc(100% - 32px), transparent 100%);
   }
 
-  /* a small white disc level with the icons, so the chevron reads apart from the faded icon under it */
+  /* a column as high as the bar (below its top line), with a small white disc level with the icons */
   .cf-leftrail__more {
     position: absolute;
-    top: 8px;
+    top: 1px;
+    bottom: 0;
     z-index: 1;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: var(--r-pill);
+    width: 32px;
+    padding-top: 7px;
     background: var(--c-bg);
     color: var(--c-ink-2);
-    box-shadow: var(--sh-2);
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--dur-fast) var(--ease);
   }
 
   .cf-leftrail__more--l {
-    left: 4px;
+    left: 0;
   }
 
   .cf-leftrail__more--r {
-    right: 4px;
+    right: 0;
   }
 
   .cf-leftrail__more svg {
+    box-sizing: content-box;
     width: 16px;
     height: 16px;
+    padding: 4px;
+    border-radius: var(--r-pill);
+    background: var(--c-bg);
+    box-shadow: var(--sh-2);
     stroke-width: 2.25;
   }
 

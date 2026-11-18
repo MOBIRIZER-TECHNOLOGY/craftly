@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { getActivePage, useEditor, useSelectedElements } from "@/core/store";
 import type { DesignElement } from "@/core/types";
 import { m } from "@/i18n";
-import { handlesFor, selectionFrame } from "./frame";
+import { handlesFor, inkBox, selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
 import { usePathEdit } from "./pathEditStore";
 import { PenCursor } from "./PenCursor";
@@ -47,15 +47,17 @@ export function SelectionOverlay() {
   void hoverId;
   if (mode === "view") return null;
 
-  const frame = selectionFrame(els);
+  const single = els.length === 1 ? els[0] : null;
+  // a text's frame holds the ink that reaches past its box (a Devanagari letter in a fallback font)
+  const box = selectionFrame(els);
+  const frame = box && single ? inkBox(box, single) : box;
   const locked = els.some((e) => e.locked);
   const handles = !cropping && !pathEditing && !editing && tool === "select" ? handlesFor(els) : [];
-  const single = els.length === 1 ? els[0] : null;
   const isLine = single?.type === "line";
 
   return (
     <>
-      {hover && !active && hover.type !== "line" && <div className="cf-outline cf-outline--hover" style={boxStyle(hover, zoom)} />}
+      {hover && !active && hover.type !== "line" && <div className="cf-outline cf-outline--hover" style={boxStyle(inkBox(hover, hover), zoom)} />}
 
       {els.length > 1 && els.map((e) => <div key={e.id} className="cf-outline cf-outline--item" style={boxStyle(e, zoom)} />)}
 

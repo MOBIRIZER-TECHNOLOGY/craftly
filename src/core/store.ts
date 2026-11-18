@@ -337,8 +337,23 @@ const FIT_PAD_Y = 48;
 
 export const pageOf = (design: Design | null, id: ID): Page | null => design?.pages.find((p) => p.id === id) ?? null;
 
+/** Below this width (a phone), the margin beside the page is a share of the width, not FIT_PAD_X (B13). */
+const NARROW_VIEWPORT = 600;
+/** On a phone a fitted page leaves this share of the width free on each side: the page takes 88% of the width. */
+const NARROW_PAD_SHARE = 0.06;
+
+/**
+ * The room kept on the left and on the right of the page in a workspace `viewW` px wide: 72 px, or 6% of a phone's width, where
+ * 72 px on each side would leave the page 60% of the screen. The workspace lays the page out with the same margin
+ * (editor/canvas/viewStore.ts), so that a fitted page sits in the middle without scrolling.
+ */
+export function pageMarginX(viewW: number): number {
+  return viewW < NARROW_VIEWPORT ? viewW * NARROW_PAD_SHARE : FIT_PAD_X;
+}
+
 function fitZoomFor(design: Design, vw: number, vh: number, mode: "fit" | "fill", stripH: number): number {
-  const availW = Math.max(120, vw - FIT_PAD_X * 2);
+  const padX = pageMarginX(vw);
+  const availW = Math.max(120, vw - padX * 2);
   const availH = Math.max(120, vh - FIT_PAD_Y * 2 - stripH);
   const z = mode === "fit" ? Math.min(availW / design.width, availH / design.height) : Math.max(availW / design.width, availH / design.height);
   return Math.min(4, Math.max(0.05, z));

@@ -70,3 +70,17 @@
 .cf-filemenu .cf-menu {
   padding-top: 6px;
 }
+
+/*
+ * A short screen (a phone, 812 px high) has no room for the whole menu at the kit's 36 px per item: the items are a little
+ * lower there, so the last one (Help) is on the screen without scrolling the menu. A shorter screen still scrolls the menu.
+ */
+@media (max-height: 860px) {
+  .cf-filemenu .cf-menu__item {
+    min-height: 32px;
+  }
+
+  .cf-filemenu .cf-menu__divider {
+    margin-block: 4px;
+  }
+}

@@ -4,9 +4,10 @@
  * Kept out of the document store because it changes on every scroll event.
  */
 import { create } from "zustand";
+import { pageMarginX } from "@/core/store";
 import type { Point } from "@/core/types";
 
-/** space kept around the page: left/right and top/bottom */
+/** space kept around the page: left/right (on a screen 600 px wide or more; a phone keeps less, see pageMarginX) and top/bottom */
 export const MARGIN_X = 72;
 export const MARGIN_Y = 48;
 
@@ -46,7 +47,7 @@ export const initialMetrics: ViewMetrics = {
 export function layoutFor(designW: number, designH: number, zoom: number, viewW: number, viewH: number, extraBottom = 0) {
   const pageW = designW * zoom;
   const pageH = designH * zoom;
-  const contentW = Math.max(viewW, pageW + MARGIN_X * 2);
+  const contentW = Math.max(viewW, pageW + pageMarginX(viewW) * 2);
   const contentH = Math.max(viewH, pageH + MARGIN_Y * 2 + extraBottom);
   return {
     pageW,

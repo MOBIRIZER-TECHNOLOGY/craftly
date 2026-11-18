@@ -225,6 +225,16 @@ describe("<LeftRail>", () => {
       expect(rail().hasAttribute("data-fade")).toBe(false);
     });
 
+    it("fills a phone's bar with whole tabs up to the chevron, so that no label is cut by it (B13)", () => {
+      mountPanels();
+      size(375, 520);
+      // 4 px of padding, five tabs, and the 32 px column of the chevron: 4 + 5 x 67.8 + 32 = 375
+      expect(list().style.getPropertyValue("--cf-tab-w")).toBe("67.8px");
+      // a tablet has room for every tab: the style sheet's width
+      size(768, 768);
+      expect(list().style.getPropertyValue("--cf-tab-w")).toBe("");
+    });
+
     it("scrolls by most of its width when a chevron is tapped; the chevrons are hidden from the keyboard and screen readers", () => {
       mountPanels();
       size(375, 520);

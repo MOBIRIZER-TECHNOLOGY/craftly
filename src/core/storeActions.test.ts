@@ -1255,6 +1255,18 @@ describe("view", () => {
     expect(s().viewport).toEqual({ w: 800, h: 600 });
   });
 
+  it("fits a page to most of the width of a phone (B13)", () => {
+    open([rect("r")], { width: 1080, height: 1080 });
+    // the workspace of the editor on a 375 x 812 phone
+    a().setViewport(375, 552);
+    const shown = s().zoom * 1080;
+    expect(shown).toBeGreaterThanOrEqual(0.85 * 375);
+    expect(shown).toBeLessThanOrEqual(0.9 * 375);
+    // a wide screen keeps its margin of 72 px
+    a().setViewport(1500, 1500);
+    expect(s().zoom).toBeCloseTo((1500 - 144) / 1080);
+  });
+
   it("never fits the page into a workspace smaller than 120 px", () => {
     a().setViewport(50, 50);
     expect(s().zoom).toBeCloseTo(0.12);

@@ -190,6 +190,41 @@ const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्�
       return n + " controls";
     });
 
+    await step(`[${lang}] the page is fitted to most of the phone's width, and no tab of the bar is under its chevron (B13)`, async () => {
+      const fit = await page.evaluate(() => {
+        const s = window.__editor.getState();
+        const frame = document.querySelector(".cf-pageframe").getBoundingClientRect();
+        return { zoom: s.zoom, mode: s.zoomMode, width: frame.width, left: frame.left, screen: innerWidth };
+      });
+      if (fit.mode !== "fit") throw new Error("the zoom is " + fit.mode);
+      const share = fit.width / fit.screen;
+      if (share < 0.84 || share > 0.91) throw new Error(`the page is ${Math.round(fit.width)} px wide on a ${fit.screen} px screen (${Math.round(share * 100)}%)`);
+      if (fit.left < 0 || fit.left + fit.width > fit.screen) throw new Error(`the page runs off the screen (${Math.round(fit.left)}..${Math.round(fit.left + fit.width)})`);
+      // a tab is either wholly in view or wholly under the column of a chevron that is shown: no label is half covered
+      const covered = await page.evaluate(() => {
+        const out = [];
+        const chevrons = Array.from(document.querySelectorAll(".cf-leftrail__more"))
+          .filter((c) => getComputedStyle(c).opacity !== "0")
+          .map((c) => c.getBoundingClientRect());
+        const list = document.querySelector(".cf-leftrail__list").getBoundingClientRect();
+        for (const t of document.querySelectorAll(".cf-leftrail__tab")) {
+          const box = t.querySelector(".cf-leftrail__label").getBoundingClientRect();
+          // the part of the label the bar does not clip away
+          const left = Math.max(box.left, list.left);
+          const right = Math.min(box.right, list.right);
+          if (right - left < 0.5) continue;
+          for (const c of chevrons) {
+            const overlap = Math.min(right, c.right) - Math.max(left, c.left);
+            if (overlap > 0.5 && overlap < right - left - 0.5) out.push(`${t.textContent} (${Math.round(overlap)} of ${Math.round(right - left)} px)`);
+          }
+        }
+        return out;
+      });
+      if (covered.length) throw new Error("labels half under a chevron: " + covered.join(", "));
+      await shot(lang + "-editor-fit");
+      return `zoom ${Math.round(fit.zoom * 100)}%, the page ${Math.round(fit.width)} px of ${fit.screen} px (${Math.round(share * 100)}%)`;
+    });
+
     await step(`[${lang}] every tab of the tab bar is reached with taps and opens its panel; no label is cut off`, async () => {
       const tabs = await tabsNow();
       if (tabs.length !== 8) throw new Error(tabs.length + " tabs");
@@ -378,16 +413,18 @@ const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्�
     });
 
     /* ---------------- menus and dialogs ---------------- */
-    await step(`[${lang}] the File menu fits the screen and its last entry can be reached`, async () => {
+    await step(`[${lang}] the File menu fits the screen and its last entry is on it without scrolling`, async () => {
       await tap(page.locator(".cf-topbar button").filter({ hasText: words.file }).first(), "the File button");
       const menu = page.getByRole("menu").first();
       await menu.waitFor({ timeout: 5000 });
       await wait(400);
-      // the popover that holds the menu fits the screen and scrolls when the menu is taller
+      // the popover that holds the menu fits the screen, and on a phone the whole menu is in it: the last entry (Help) is on the
+      // screen without scrolling the menu
       await inScreen(page.locator(".cf-popover.cf-filemenu"), "the File menu");
       const last = menu.getByRole("menuitem").last();
-      await last.scrollIntoViewIfNeeded();
-      await inScreen(last, "the last entry of the File menu");
+      const fits = await page.locator(".cf-popover.cf-filemenu").evaluate((el) => ({ scroll: el.scrollHeight, client: el.clientHeight }));
+      if (fits.scroll > fits.client + 1) throw new Error(`the File menu is ${fits.scroll - fits.client} px taller than its popover`);
+      await inScreen(last, "the last entry of the File menu, before any scrolling");
       const entries = await menu.getByRole("menuitem").count();
       await shot(lang + "-file-menu");
       await page.keyboard.press("Escape");

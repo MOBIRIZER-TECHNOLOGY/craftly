@@ -7,7 +7,7 @@
  * content area) so the contentEditable overlay used while typing lines up with
  * the canvas rendering.
  */
-import { clearMeasureCache, measureMetrics, measureWidth } from "@/core/textMetrics";
+import { clearMeasureCache, measureInk, measureMetrics, measureWidth } from "@/core/textMetrics";
 import type { TextAlign, TextCase, TextElement, TextParagraph, TextRun } from "@/core/types";
 import { cssFontFamily, fontsEpoch } from "./fonts";
 
@@ -331,6 +331,28 @@ export function measureTextElement(el: TextElement): { width: number; height: nu
   const l = layoutText(el);
   const curve = curveGeometry(el, l);
   return { width: el.autoWidth ? Math.ceil(l.width) : el.width, height: Math.ceil(l.height + (curve ? curve.sag : 0)) };
+}
+
+/**
+ * How far the ink of a straight text reaches past the left and the right side of its box (0 when it stays inside). The box is laid
+ * out from the advance widths of the letters, and some letters draw outside their advance: the head line of a Devanagari letter
+ * drawn by a fallback font starts left of the pen, the tail of an italic or script "f" ends right of it. The selection box is
+ * widened by this much so that it holds what is drawn.
+ */
+export function textInkOverhang(el: TextElement): { left: number; right: number } {
+  const layout = layoutText(el);
+  if (curveGeometry(el, layout)) return { left: 0, right: 0 };
+  let left = 0;
+  let right = 0;
+  for (const line of layout.lines) {
+    const ink = line.segments.filter((s) => !s.isSpace && s.text);
+    if (!ink.length) continue;
+    const first = ink[0];
+    const last = ink[ink.length - 1];
+    left = Math.max(left, measureInk(first.font, first.text).left - (line.x + first.x));
+    right = Math.max(right, line.x + last.x + measureInk(last.font, last.text).right - layout.width);
+  }
+  return { left: Math.max(0, left), right: Math.max(0, right) };
 }
 
 /** Horizontal fraction of the box that stays put when an auto-width box changes size. */
