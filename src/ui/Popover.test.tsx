@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createRef, useState } from "react";
+import { createRef, StrictMode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { rect, stubOffsets, stubRects } from "@/test/dashuiLayout";
 import { OVERLAY_ROOT_ID } from "./overlay";
@@ -118,6 +118,28 @@ describe("<Popover>", () => {
       await user.keyboard("{Escape}");
       expect(queryPanel()).toBeNull();
       expect(document.activeElement).toBe(trigger);
+    });
+
+    it("gives the focus to the item marked data-autofocus, also in StrictMode", async () => {
+      const user = userEvent.setup();
+      function Marked() {
+        const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+        return (
+          <>
+            <button onClick={(e) => setAnchor(e.currentTarget)}>Open</button>
+            <Popover open={anchor !== null} anchor={anchor} onClose={() => setAnchor(null)} aria-label="Panel">
+              <button data-autofocus="">Item</button>
+            </Popover>
+          </>
+        );
+      }
+      render(
+        <StrictMode>
+          <Marked />
+        </StrictMode>,
+      );
+      await user.click(screen.getByRole("button", { name: "Open" }));
+      expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Item" }));
     });
 
     it("leaves focus alone when initialFocus is off", async () => {

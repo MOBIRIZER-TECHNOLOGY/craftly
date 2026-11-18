@@ -132,6 +132,9 @@ export const editorChrome = {
     inPixels: "In pixels",
     pixelSize: (w: number, h: number) => `${px(w)} × ${px(h)} px`,
     limits: (min: number, max: number) => `Sizes can be between ${px(min)} and ${px(max)} px on each side.`,
+    widthRange: (min: number, max: number) => `Width must be between ${px(min)} and ${px(max)} px.`,
+    heightRange: (min: number, max: number) => `Height must be between ${px(min)} and ${px(max)} px.`,
+    bothRange: (min: number, max: number) => `Width and height must be between ${px(min)} and ${px(max)} px.`,
   },
   shortcuts: {
     title: "Keyboard shortcuts",

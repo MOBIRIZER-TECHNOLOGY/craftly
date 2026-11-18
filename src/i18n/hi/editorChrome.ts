@@ -135,6 +135,9 @@ export const editorChrome: typeof en = {
     inPixels: "पिक्सेल में",
     pixelSize: (w: number, h: number) => `${px(w)} × ${px(h)} px`,
     limits: (min: number, max: number) => `हर तरफ़ का आकार ${px(min)} से ${px(max)} px के बीच हो सकता है।`,
+    widthRange: (min: number, max: number) => `चौड़ाई ${px(min)} से ${px(max)} px के बीच होनी चाहिए।`,
+    heightRange: (min: number, max: number) => `ऊँचाई ${px(min)} से ${px(max)} px के बीच होनी चाहिए।`,
+    bothRange: (min: number, max: number) => `चौड़ाई और ऊँचाई ${px(min)} से ${px(max)} px के बीच होनी चाहिए।`,
   },
   shortcuts: {
     title: "कीबोर्ड शॉर्टकट",

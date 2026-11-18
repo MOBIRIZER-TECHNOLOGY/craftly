@@ -293,6 +293,47 @@ describe("<CreateDialog>", () => {
       expect((within(panel()).getByRole("button", { name: "Create new design" }) as HTMLButtonElement).disabled).toBe(true);
     });
 
+    it("checks a side while it is typed, before the field is left (B8)", async () => {
+      const user = userEvent.setup();
+      mountDialog({ tab: "custom" });
+      const create = () => within(panel()).getByRole("button", { name: "Create new design" }) as HTMLButtonElement;
+      const error = () => panel().querySelector(".cf-custom__error")?.textContent ?? null;
+      await user.clear(field("Width"));
+      // nothing typed yet: the button waits, nobody is told off
+      expect(create().disabled).toBe(true);
+      expect(error()).toBeNull();
+      await user.type(field("Width"), "9000");
+      expect(document.activeElement).toBe(field("Width"));
+      expect(error()).toBe("Width must be between 40 - 8000 px.");
+      expect(create().disabled).toBe(true);
+      // "2" may still become "200": the button is off, with no message yet
+      await user.clear(field("Width"));
+      await user.type(field("Width"), "2");
+      expect(create().disabled).toBe(true);
+      expect(error()).toBeNull();
+      await user.type(field("Width"), "00");
+      expect(create().disabled).toBe(false);
+      await user.clear(field("Width"));
+      await user.type(field("Width"), "abc");
+      expect(error()).toBe("Width must be between 40 - 8000 px.");
+      expect(create().disabled).toBe(true);
+      // the field is left: the text was no number, so the size is as it was
+      await user.tab();
+      expect(error()).toBeNull();
+      expect(create().disabled).toBe(false);
+    });
+
+    it("tells about a side that is too small once the field is left", async () => {
+      const user = userEvent.setup();
+      mountDialog({ tab: "custom" });
+      await user.clear(field("Width"));
+      await user.type(field("Width"), "20");
+      expect(panel().querySelector(".cf-custom__error")).toBeNull();
+      expect((within(panel()).getByRole("button", { name: "Create new design" }) as HTMLButtonElement).disabled).toBe(true);
+      await user.tab();
+      expect(panel().querySelector(".cf-custom__error")?.textContent).toBe("Width must be between 40 - 8000 px.");
+    });
+
     it.each([["40"], ["8000"]])("accepts a side of %s px, the limit itself", async (side) => {
       const user = userEvent.setup();
       mountDialog({ tab: "custom" });

@@ -4,6 +4,7 @@ import { resizeDesign as applyResize } from "@/core/ops";
 import { useEditor } from "@/core/store";
 import type { SizeUnit } from "@/core/types";
 import { DESIGN_CATEGORY_LABELS, DESIGN_TYPES, describeSize, fromPx, toPx, type DesignCategory, type DesignType } from "@/data/designTypes";
+import { checkSizeDraft } from "@/data/sizeDraft";
 import { m } from "@/i18n";
 import { renderPageToCanvas } from "@/render/renderPage";
 import { designPath, navigate } from "@/router";
@@ -50,6 +51,9 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [scale, setScale] = useState(true);
   const [preset, setPreset] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // what is being typed into a side, checked at every key (B8); the field clamps it to the limits when it is committed
+  const [widthDraft, setWidthDraft] = useState<string | null>(null);
+  const [heightDraft, setHeightDraft] = useState<string | null>(null);
 
   if (!design) return null;
 
@@ -57,6 +61,17 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
   const nh = Math.round(clampPx(size.h));
   const unchanged = nw === design.width && nh === design.height;
   const decimals = PRECISION[unit];
+  const widthCheck = widthDraft === null ? "ok" : checkSizeDraft(widthDraft, unit, MIN_PX, MAX_PX);
+  const heightCheck = heightDraft === null ? "ok" : checkSizeDraft(heightDraft, unit, MIN_PX, MAX_PX);
+  const typing = widthCheck !== "ok" || heightCheck !== "ok";
+  const outOfRange =
+    widthCheck === "invalid" && heightCheck === "invalid"
+      ? m.editorChrome.resize.bothRange(MIN_PX, MAX_PX)
+      : widthCheck === "invalid"
+        ? m.editorChrome.resize.widthRange(MIN_PX, MAX_PX)
+        : heightCheck === "invalid"
+          ? m.editorChrome.resize.heightRange(MIN_PX, MAX_PX)
+          : null;
 
   const setWidth = (value: number) => {
     const w = clampPx(toPx(value, unit));
@@ -128,10 +143,10 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
           <Button variant="secondary" onClick={onClose}>
             {m.common.cancel}
           </Button>
-          <Button variant="secondary" loading={busy} disabled={unchanged} onClick={() => void resizeCopy()}>
+          <Button variant="secondary" loading={busy} disabled={unchanged || typing} onClick={() => void resizeCopy()}>
             {m.editorChrome.resize.makeCopy}
           </Button>
-          <Button variant="primary" disabled={unchanged || busy} onClick={resizeHere}>
+          <Button variant="primary" disabled={unchanged || busy || typing} onClick={resizeHere}>
             {m.editorChrome.resize.resize}
           </Button>
         </>
@@ -174,6 +189,7 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
               precision={decimals}
               suffix={unit}
               onChange={setWidth}
+              onDraft={setWidthDraft}
             />
             <IconButton
               size="sm"
@@ -192,6 +208,7 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
               precision={decimals}
               suffix={unit}
               onChange={setHeight}
+              onDraft={setHeightDraft}
             />
           </div>
           <div className="cf-resize__unit">
@@ -218,7 +235,13 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
               </div>
             ) : null}
           </dl>
-          <p className="cf-resize__hint">{m.editorChrome.resize.limits(MIN_PX, MAX_PX)}</p>
+          {outOfRange ? (
+            <p className="cf-resize__error" role="alert">
+              {outOfRange}
+            </p>
+          ) : (
+            <p className="cf-resize__hint">{m.editorChrome.resize.limits(MIN_PX, MAX_PX)}</p>
+          )}
         </section>
       </div>
     </Modal>

@@ -195,8 +195,8 @@ function ResizeMenu() {
         <button
           type="button"
           className="cf-resizepop__item"
-          // eslint-disable-next-line jsx-a11y/no-autofocus -- the popover has just been opened: its first item takes the focus
-          autoFocus
+          // the popover has just been opened: its first (only) item takes the focus, so that Enter opens the dialog
+          data-autofocus=""
           onClick={() => {
             close();
             useEditor.getState().actions.openDialog("resize");

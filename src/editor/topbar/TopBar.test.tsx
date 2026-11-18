@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage } from "@/core/factory";
 import { useEditor } from "@/core/store";
@@ -259,6 +260,22 @@ describe("<TopBar>: resize", () => {
     await user.click(within(popover).getByRole("button", { name: /Change the size of your design/ }));
     expect(useEditor.getState().dialog).toBe("resize");
     expect(screen.queryByRole("dialog", { name: "Resize options" })).toBeNull();
+  });
+
+  it("puts the keyboard on the small resize menu's item, so that Enter opens the dialog", async () => {
+    // as main.tsx renders the app: StrictMode runs the popover's effects twice
+    await renderChrome(
+      <StrictMode>
+        <TopBar />
+      </StrictMode>,
+      chromeDesign("Strict"),
+    );
+    const user = userEvent.setup({ delay: null });
+    await user.click(button("Resize"));
+    const popover = screen.getByRole("dialog", { name: "Resize options" });
+    expect(document.activeElement).toBe(within(popover).getByRole("button", { name: /Change the size of your design/ }));
+    await user.keyboard("{Enter}");
+    expect(useEditor.getState().dialog).toBe("resize");
   });
 
   it("closes the small resize menu with Escape without opening the dialog", async () => {

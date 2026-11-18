@@ -11,6 +11,8 @@ export interface NumberFieldProps {
   onChange: (value: number) => void;
   /** fires once an edit is finished: Enter / blur after typing, each arrow step, the end of a scrub */
   onCommit?: (value: number) => void;
+  /** the text being typed, at every key (null once the edit ends): for a form that checks the value before it is committed */
+  onDraft?: (text: string | null) => void;
   min?: number;
   max?: number;
   /** arrow-key / scrub step (default 1). Shift = x10, Alt = x0.1 */
@@ -67,6 +69,7 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
     value,
     onChange,
     onCommit,
+    onDraft,
     min,
     max,
     step = 1,
@@ -88,7 +91,11 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
 ) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const mergedRef = useMergedRefs<HTMLInputElement>(inputRef, ref);
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraftState] = useState<string | null>(null);
+  const setDraft = (text: string | null) => {
+    setDraftState(text);
+    onDraft?.(text);
+  };
   const revert = useRef(false);
   const scrubState = useRef<{ lastX: number; exact: number; moved: boolean; last: number; startX: number } | null>(null);
 

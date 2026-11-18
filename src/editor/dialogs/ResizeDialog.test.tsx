@@ -130,6 +130,34 @@ describe("<ResizeDialog>: the custom size", () => {
     expect(fact("New")).toBe("8000 × 720 px");
   });
 
+  it("checks a side while it is typed, before the field is left (B8)", async () => {
+    await mount();
+    const user = userEvent.setup({ delay: null });
+    const alert = () => screen.queryByRole("alert")?.textContent ?? null;
+    await user.clear(field("Width"));
+    await nextFrame();
+    await user.type(field("Width"), "9000");
+    expect(document.activeElement).toBe(field("Width"));
+    expect(alert()).toBe("Width must be between 40 and 8000 px.");
+    expect(isDisabled(resizeButton())).toBe(true);
+    expect(isDisabled(copyButton())).toBe(true);
+    // "2" may still become "200": no message, but nothing to apply yet
+    await user.clear(field("Width"));
+    await user.type(field("Width"), "2");
+    expect(alert()).toBeNull();
+    expect(isDisabled(resizeButton())).toBe(true);
+    await user.type(field("Width"), "00");
+    expect(alert()).toBeNull();
+    await user.clear(field("Width"));
+    await user.type(field("Width"), "abc");
+    expect(alert()).toBe("Width must be between 40 and 8000 px.");
+    expect(isDisabled(resizeButton())).toBe(true);
+    // Enter commits: the text was no number, so the size is as it was
+    await user.keyboard("{Enter}");
+    expect(alert()).toBeNull();
+    expect(field("Width").value).toBe("1280");
+  });
+
   it("clamps the other side too when the proportions would take it outside the limits", async () => {
     await mount();
     await type(userEvent.setup({ delay: null }), "Width", "8000");

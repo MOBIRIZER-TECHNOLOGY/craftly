@@ -25,6 +25,7 @@ import {
 import type { SizeUnit } from "@/core/types";
 import { isAcceptedImage } from "@/core/assets";
 import { englishName } from "@/data/names";
+import { checkSizeDraft } from "@/data/sizeDraft";
 import { m, num } from "@/i18n";
 import { DESIGN_CATEGORY_LABELS, DESIGN_TYPES, POPULAR_DESIGN_TYPES, describeSize, fromPx, toPx, type DesignCategory, type DesignType } from "@/data/designTypes";
 import { MAX_SIZE_PX, MIN_SIZE_PX, createBlankAndOpen, createCustomAndOpen, createFromImageFile, IMAGE_ACCEPT } from "./actions";
@@ -281,13 +282,22 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
   const [widthPx, setWidthPx] = useState(1080);
   const [heightPx, setHeightPx] = useState(1080);
   const [locked, setLocked] = useState(false);
+  // what is being typed into a side, checked at every key (B8): the size is only committed on Enter or blur
+  const [widthDraft, setWidthDraft] = useState<string | null>(null);
+  const [heightDraft, setHeightDraft] = useState<string | null>(null);
 
   const shown = (px: number) => Number(fromPx(px, unit).toFixed(UNIT_PRECISION[unit]));
   const valid = (px: number) => Number.isFinite(px) && px >= MIN_SIZE_PX && px <= MAX_SIZE_PX;
+  const check = (draft: string | null, px: number) => (draft !== null ? checkSizeDraft(draft, unit, MIN_SIZE_PX, MAX_SIZE_PX) : valid(px) ? "ok" : "invalid");
   const rangeText = `${trimNumber(fromPx(MIN_SIZE_PX, unit))} - ${trimNumber(fromPx(MAX_SIZE_PX, unit))} ${unit}`;
-  const widthOk = valid(widthPx);
-  const heightOk = valid(heightPx);
-  const ready = widthOk && heightOk;
+  const widthCheck = check(widthDraft, widthPx);
+  const heightCheck = check(heightDraft, heightPx);
+  // the message names a side once it cannot become a size; the button waits for both to be sizes
+  const widthOk = widthCheck !== "invalid";
+  const heightOk = heightCheck !== "invalid";
+  const ready = widthCheck === "ok" && heightCheck === "ok";
+  // the preview shows the size last committed
+  const committed = valid(widthPx) && valid(heightPx);
 
   const changeWidth = (value: number) => {
     const px = toPx(value, unit);
@@ -319,6 +329,7 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
                 id="cf-custom-width"
                 value={shown(widthPx)}
                 onChange={changeWidth}
+                onDraft={setWidthDraft}
                 step={UNIT_STEP[unit]}
                 precision={UNIT_PRECISION[unit]}
                 prefix={<span>{m.dashboard.create.widthShort}</span>}
@@ -342,6 +353,7 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
                 id="cf-custom-height"
                 value={shown(heightPx)}
                 onChange={changeHeight}
+                onDraft={setHeightDraft}
                 step={UNIT_STEP[unit]}
                 precision={UNIT_PRECISION[unit]}
                 prefix={<span>{m.dashboard.create.heightShort}</span>}
@@ -377,7 +389,7 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
         </div>
 
         <div className="cf-custom__preview" aria-hidden="true">
-          <DesignMock spec={{ width: ready ? widthPx : 1, height: ready ? heightPx : 1, color: "var(--c-primary)", icon: IconCustomSize }} height={190} />
+          <DesignMock spec={{ width: committed ? widthPx : 1, height: committed ? heightPx : 1, color: "var(--c-primary)", icon: IconCustomSize }} height={190} />
           <p className="cf-custom__dims">{describeSize(widthPx, heightPx, unit)}</p>
         </div>
       </div>

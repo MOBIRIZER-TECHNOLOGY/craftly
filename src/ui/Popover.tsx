@@ -92,7 +92,10 @@ function PopoverPanel({
     const lifted = zAbove(parent);
     if (lifted !== null) panel.style.zIndex = String(lifted);
 
-    if (initialFocus && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+    // The element marked `data-autofocus` takes the focus, else the panel itself. (React's own `autoFocus` is not enough here:
+    // it focuses only when the element is first put in the page, so StrictMode's second run of this effect, after the cleanup
+    // has given the focus back to the trigger, would leave it on the panel.)
+    if (initialFocus && !panel.contains(document.activeElement)) (panel.querySelector<HTMLElement>("[data-autofocus]") ?? panel).focus({ preventScroll: true });
 
     return () => {
       unregister();

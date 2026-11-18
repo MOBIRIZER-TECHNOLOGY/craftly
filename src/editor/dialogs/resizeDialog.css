@@ -145,6 +145,14 @@
   line-height: 1.4;
 }
 
+.cf-resize__error {
+  margin-top: -6px;
+  color: var(--c-danger-ink);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.4;
+}
+
 .cf-resize__facts {
   display: flex;
   flex-direction: column;
