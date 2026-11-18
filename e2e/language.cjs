@@ -132,6 +132,25 @@ let shotN = 0;
     return `en: "${en.dashboard.home.title}"; hi: ${words.length} words, title "${hi.dashboard.pageTitles.home}"`;
   });
 
+  await step("the title of the tab is Hindi also where a screen sets none of its own: a design that is not found, a link that does not work", async () => {
+    const hiPage = await fresh("hi-IN");
+    current = hiPage;
+    const titles = [];
+    for (const [route, text] of [
+      ["#/design/not-there", hi.editor.shell.missingTitle],
+      ["#/join/not-a-link", null],
+    ]) {
+      await hiPage.goto(BASE + "/" + route, { waitUntil: "load" });
+      if (text) await hiPage.getByText(text).first().waitFor({ timeout: 30000 });
+      else await wait(hiPage, 2500);
+      const title = await hiPage.title();
+      if (title !== hi.dashboard.pageTitles.home) throw new Error(`${route}: the title is ${JSON.stringify(title)}, not ${JSON.stringify(hi.dashboard.pageTitles.home)}`);
+      titles.push(route);
+    }
+    await shot("missing-design-hi", hiPage);
+    return `"${hi.dashboard.pageTitles.home}" on ${titles.join(", ")}`;
+  });
+
   /* ---------------- 2. the account menu ---------------- */
   await step("account menu > Language > हिन्दी reloads the dashboard in Hindi, keeps the choice, and it beats the browser's English on the next load", async () => {
     const page = await fresh("en-US");
@@ -445,28 +464,69 @@ let shotN = 0;
   });
 
   /* ---------------- 7. back to English ---------------- */
-  await step("File > भाषा > English from the Hindi editor returns everything to English with the design and the text box kept", async () => {
-    current = page;
-    const count = (await elementIds(page)).length;
-    await chooseLanguage(page, fileButton(page, hi), hi, "English");
-    await waitEditor(page);
-    if ((await htmlLang(page)) !== "en" || (await saved(page)) !== "en") throw new Error(`lang ${await htmlLang(page)}, saved ${await saved(page)}`);
-    const ids = await elementIds(page);
-    if ((await page.evaluate(() => window.__editor.getState().design.id)) !== designId) throw new Error("another design opened");
-    if (!ids.includes(added) || ids.length !== count) throw new Error(`${ids.length} elements (${count} before), text box kept: ${ids.includes(added)}`);
-    await page.locator(".cf-topbar").getByRole("button", { name: en.editorChrome.fileMenu.file, exact: true }).waitFor({ timeout: 10000 });
-    await page.getByRole("tab", { name: en.panelsTabs.tabs.elements, exact: true }).waitFor({ timeout: 5000 });
-    await page.locator(".cf-topbar").getByRole("button", { name: en.common.undo }).waitFor({ timeout: 5000 });
-    await fileButton(page, en).click();
-    const menu = page.getByRole("menu", { name: en.editorChrome.fileMenu.file, exact: true });
-    await menu.getByRole("menuitem", { name: en.editorChrome.fileMenu.versions }).waitFor({ timeout: 5000 });
-    await shot("editor-back-in-en", page);
-    await page.keyboard.press("Escape");
-    const text = await page.locator(".cf-topbar, .cf-leftrail").allInnerTexts();
-    const devanagari = text.join(" ").match(/[ऀ-ॿ]+/g);
-    if (devanagari) throw new Error("Hindi left in the English bars: " + devanagari.slice(0, 5).join(" "));
-    return `${ids.length} elements kept, bars and File menu in English`;
-  });
+  await step(
+    "File > भाषा > English from the Hindi editor returns everything to English with the design and the text box kept, on the same page with the same selection and zoom (B12)",
+    async () => {
+      current = page;
+      await page.setViewportSize({ width: 1280, height: 800 });
+      // a second page with a box on it, which is the page shown and the box chosen, at a zoom of the person's own
+      const view = await page.evaluate(async () => {
+        const { actions } = window.__editor.getState();
+        const pageId = actions.addPage({ blank: true });
+        actions.setActivePage(pageId);
+        const [box] = actions.addElements(
+          [
+            {
+              id: "x",
+              type: "shape",
+              shape: "rect",
+              x: 100,
+              y: 100,
+              width: 300,
+              height: 200,
+              rotation: 0,
+              opacity: 1,
+              fill: { type: "solid", color: "#16a34a" },
+              stroke: null,
+              radius: 0,
+            },
+          ],
+          { select: true },
+        );
+        actions.select([box]);
+        actions.setZoom(0.37);
+        return { pageId, box, index: window.__editor.getState().design.pages.findIndex((p) => p.id === pageId) };
+      });
+      await page.waitForFunction(() => window.__editor.getState().saveState === "saved", null, { timeout: 15000 }).catch(() => undefined);
+      const count = (await elementIds(page)).length;
+      await chooseLanguage(page, fileButton(page, hi), hi, "English");
+      await waitEditor(page);
+      const back = await page.evaluate(() => {
+        const s = window.__editor.getState();
+        return { pageId: s.activePageId, selection: s.selection, zoom: s.zoom, mode: s.zoomMode };
+      });
+      if (back.pageId !== view.pageId) throw new Error(`the editor opened on another page (${back.pageId}, not page ${view.index + 1} ${view.pageId})`);
+      if (back.selection.length !== 1 || back.selection[0] !== view.box) throw new Error("the selection is " + JSON.stringify(back.selection));
+      if (Math.abs(back.zoom - 0.37) > 0.001 || back.mode !== "custom") throw new Error(`the zoom is ${back.zoom} (${back.mode})`);
+      await shot("editor-back-in-en-same-page", page);
+      if ((await htmlLang(page)) !== "en" || (await saved(page)) !== "en") throw new Error(`lang ${await htmlLang(page)}, saved ${await saved(page)}`);
+      const ids = await elementIds(page);
+      if ((await page.evaluate(() => window.__editor.getState().design.id)) !== designId) throw new Error("another design opened");
+      if (!ids.includes(added) || ids.length !== count) throw new Error(`${ids.length} elements (${count} before), text box kept: ${ids.includes(added)}`);
+      await page.locator(".cf-topbar").getByRole("button", { name: en.editorChrome.fileMenu.file, exact: true }).waitFor({ timeout: 10000 });
+      await page.getByRole("tab", { name: en.panelsTabs.tabs.elements, exact: true }).waitFor({ timeout: 5000 });
+      await page.locator(".cf-topbar").getByRole("button", { name: en.common.undo }).waitFor({ timeout: 5000 });
+      await fileButton(page, en).click();
+      const menu = page.getByRole("menu", { name: en.editorChrome.fileMenu.file, exact: true });
+      await menu.getByRole("menuitem", { name: en.editorChrome.fileMenu.versions }).waitFor({ timeout: 5000 });
+      await shot("editor-back-in-en", page);
+      await page.keyboard.press("Escape");
+      const text = await page.locator(".cf-topbar, .cf-leftrail").allInnerTexts();
+      const devanagari = text.join(" ").match(/[ऀ-ॿ]+/g);
+      if (devanagari) throw new Error("Hindi left in the English bars: " + devanagari.slice(0, 5).join(" "));
+      return `${ids.length} elements kept, page ${view.index + 1} with its box chosen at 37%, bars and File menu in English`;
+    },
+  );
 
   /* ---------------- 5b. the dashboard's search on a Hindi page ---------------- */
   await step("dashboard in Hindi: the home search typed in English ('poster') finds design types and templates", async () => {

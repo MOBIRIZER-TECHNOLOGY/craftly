@@ -7,6 +7,7 @@ import { createFolder, getDesign, listDesigns, listFolders } from "@/core/librar
 import { dbPut } from "@/core/persistence";
 import { useEditor } from "@/core/store";
 import { installAutosave } from "@/editor/autosave";
+import { switchLanguage } from "@/i18n";
 import { chromeDesign, clearToasts, renderChrome, storeDesign } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor } from "@/test/helpers";
 import { FileMenu } from "./FileMenu";
@@ -16,6 +17,11 @@ import { printDesign } from "./designActions";
 vi.mock("./designActions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./designActions")>();
   return { ...actual, printDesign: vi.fn() };
+});
+// Changing the language reloads the page: here only what the menu does before that is checked.
+vi.mock("@/i18n", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/i18n")>();
+  return { ...actual, switchLanguage: vi.fn(async () => undefined) };
 });
 vi.mock("@/core/library", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/core/library")>();
@@ -252,7 +258,7 @@ describe("<FileMenu>: page view, rulers and settings", () => {
     expect(useEditor.getState().gridView).toBe(true);
   });
 
-  it("shows rulers and snaps to guides from Rulers and guides and from Settings", async () => {
+  it("shows rulers and snaps to guides from Rulers and guides", async () => {
     await mount();
     const user = userEvent.setup({ delay: null });
     await openMenu(user);
@@ -261,11 +267,40 @@ describe("<FileMenu>: page view, rulers and settings", () => {
     expect(useEditor.getState().showRulers).toBe(true);
 
     await openMenu(user);
-    await user.click(item(/^Settings/));
+    await user.click(item(/^Rulers and guides/));
     expect(checkbox("Show rulers").getAttribute("aria-checked")).toBe("true");
     expect(checkbox("Snap to guides").getAttribute("aria-checked")).toBe("true");
     await user.click(checkbox("Snap to guides"));
     expect(useEditor.getState().snapEnabled).toBe(false);
+  });
+
+  it("keeps the page, the selection and the zoom for the reload into another language (B12)", async () => {
+    await mount("Two pages", (d) => {
+      d.pages.push(createPage({ id: "second" }));
+    });
+    act(() => {
+      actions().setActivePage("second");
+      actions().setZoom(0.75);
+    });
+    sessionStorage.clear();
+    const user = userEvent.setup({ delay: null });
+    await openMenu(user);
+    await user.click(item(/^Language/));
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "हिन्दी" }));
+    expect(vi.mocked(switchLanguage)).toHaveBeenCalledWith("hi");
+    const kept = JSON.parse(sessionStorage.getItem("craftly.keptView") ?? "null");
+    expect(kept).toMatchObject({ designId: storeDesign().id, pageId: "second", zoom: 0.75 });
+  });
+
+  it("opens the Settings dialog from Settings, which repeats no toggle of the menu", async () => {
+    await mount();
+    const user = userEvent.setup({ delay: null });
+    await openMenu(user);
+    const settings = item("Settings");
+    expect(settings.getAttribute("aria-haspopup")).toBeNull();
+    await user.click(settings);
+    expect(useEditor.getState().dialog).toBe("settings");
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("clears the guides and says how many there were", async () => {

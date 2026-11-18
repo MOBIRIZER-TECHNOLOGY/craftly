@@ -229,7 +229,7 @@ const EN = {
 
   /* ---------------- the keyboard, dismissing, and reduced motion ---------------- */
   ctx = await open("en", DESKTOP, { reducedMotion: "reduce" });
-  await step("keyboard: Tab reaches the three ways and the close button; Enter dismisses; the keyboard stays where the panel was", async () => {
+  await step("keyboard: Tab reaches the three ways and the close button; Enter dismisses; the keyboard goes on to the first shortcut, with its ring", async () => {
     await home();
     await welcome(w).waitFor({ timeout: 20000 });
     await wait(600);
@@ -252,15 +252,26 @@ const EN = {
     await shot("welcome-close-focused");
     await page.keyboard.press("Enter");
     await welcome(w).waitFor({ state: "detached", timeout: 5000 });
-    const focus = await page.evaluate(() => (document.activeElement === document.body ? "(body)" : document.activeElement.className));
-    if (!/cf-welcome-slot/.test(focus)) throw new Error("the keyboard went to " + focus);
-    // the next Tab goes on to the shortcut row, not back to the top of the page
+    // the keyboard is on the first tile of the shortcut row, and its focus ring shows (not on the empty place the panel left)
+    const after = await page.evaluate(() => {
+      const el = document.activeElement;
+      const style = getComputedStyle(el);
+      return {
+        first: !!el.closest(".cf-dshortcuts") && el === document.querySelector(".cf-dshortcuts button"),
+        what: el === document.body ? "(body)" : el.className,
+        ring: el.matches(":focus-visible") && (style.outlineStyle !== "none" || style.boxShadow !== "none"),
+      };
+    });
+    if (!after.first) throw new Error("the keyboard went to " + after.what);
+    if (!after.ring) throw new Error("the first shortcut has the keyboard but shows no focus ring");
+    await shot("welcome-dismissed-focus");
+    // the next Tab goes on along the shortcut row, not back to the top of the page
     await page.keyboard.press("Tab");
     const next = await page.evaluate(() =>
       document.activeElement.closest(".cf-dshortcuts") ? "shortcuts" : document.activeElement.getAttribute("aria-label") || document.activeElement.textContent.trim().slice(0, 30),
     );
     if (next !== "shortcuts") throw new Error("the next Tab went to " + next);
-    return `reached ${[...reached].join(", ")}; focus ring ${ring ? "shown" : "not shown"}; then the shortcut row`;
+    return `reached ${[...reached].join(", ")}; focus ring ${ring ? "shown" : "not shown"}; then the first shortcut, with its ring`;
   });
 
   await step("dismissed: after a reload the empty library still shows no welcome", async () => {

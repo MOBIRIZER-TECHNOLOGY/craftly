@@ -17,6 +17,7 @@ import { EmptyCanvasHint } from "./canvas/EmptyCanvasHint";
 import { Workspace } from "./canvas/Workspace";
 import { DialogHost } from "./dialogs/DialogHost";
 import { installHotkeys } from "./hotkeys";
+import { restoreKeptView } from "./keptView";
 import { connectLive } from "./live/connection";
 import { applyTeamRole, connectTeamLive, stopTeamLive, useTeamLive } from "./live/teamLive";
 import { CommentsAnnouncer, CommentsPanel } from "./comments/CommentsPanel";
@@ -132,6 +133,8 @@ export function Editor({ designId }: { designId: string }) {
           // the Comments panel, a pin being placed and a marked thread belonged to the design that was open before: a design starts with none
           closeComments();
           actions.openDesign(opened.design);
+          // back from a reload into another language: the page, selection and zoom the person had (B12)
+          restoreKeptView(designId);
           // on a phone the side panel is a sheet over the page: start with it folded away
           if (window.matchMedia("(max-width: 899px)").matches && useEditor.getState().panelOpen) actions.toggle("panelOpen");
           autosave = installAutosave(opened.revision);

@@ -6,7 +6,8 @@
 import { LANGUAGES, lang, m, switchLanguage } from "@/i18n";
 import { IconLanguages, toast, type MenuItemEntry } from "@/ui";
 
-export function languageMenuEntry(): MenuItemEntry {
+/** `beforeSwitch` runs once another language is chosen, before the page is saved and loaded again (the editor keeps its view). */
+export function languageMenuEntry({ beforeSwitch }: { beforeSwitch?: () => void } = {}): MenuItemEntry {
   const current = LANGUAGES.find((l) => l.code === lang)!;
   return {
     id: "language",
@@ -20,6 +21,7 @@ export function languageMenuEntry(): MenuItemEntry {
       onSelect: () => {
         if (l.code === lang) return;
         toast.info(m.common.languageSwitching);
+        beforeSwitch?.();
         void switchLanguage(l.code);
       },
     })),

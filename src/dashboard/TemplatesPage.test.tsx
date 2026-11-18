@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEMPLATES, TEMPLATE_CATEGORY_LABELS, searchTemplates } from "@/data/templates";
 import { Hosts, dismissOpenDialogs, emptyLibrary, resetDashboardStores, stubBox } from "@/test/dashuiUtils";
 import { toast } from "@/ui";
+import { useRoute } from "@/router";
 import { closeCreateDialog } from "./createDialogState";
 import { CATEGORY_ORDER } from "./templateLists";
 import { takePresetTemplateSearch, presetTemplateSearch } from "./templatePreview";
@@ -193,23 +194,60 @@ describe("<TemplatesPage>", () => {
   });
 
   describe("favourites", () => {
+    /** the page as the dashboard shows it: at the route of the address, following it as it changes */
+    function Routed() {
+      const route = useRoute();
+      return <TemplatesPage category={route.id} />;
+    }
+    const mountRouted = (hash = "#/templates") => {
+      window.history.replaceState(null, "", hash);
+      return render(
+        <>
+          <Routed />
+          <Hosts />
+        </>,
+      );
+    };
+    const selected = (name: string) => waitFor(() => expect(chip(name).getAttribute("aria-selected")).toBe("true"));
+
     it("says there are none yet, with a way back to all templates", async () => {
       const user = userEvent.setup();
       stubBox(960);
-      mountTemplates();
+      mountRouted();
       await user.click(chip("Favourites"));
-      expect(chip("Favourites").getAttribute("aria-selected")).toBe("true");
+      await selected("Favourites");
       expect(await screen.findByText("No favourite templates yet")).toBeTruthy();
       expect(screen.getByText("Tap the star on a template to keep it here.")).toBeTruthy();
       await user.click(screen.getByRole("button", { name: "Show all templates" }));
-      expect(chip("All").getAttribute("aria-selected")).toBe("true");
+      await selected("All");
+      expect(window.location.hash).toBe("#/templates");
       await waitFor(() => expect(cards().length).toBeGreaterThan(0));
+    });
+
+    it("has a route of its own, which a reload and Back come back to", async () => {
+      const user = userEvent.setup();
+      stubBox(960);
+      const view = mountRouted("#/templates/social");
+      await selected(TEMPLATE_CATEGORY_LABELS.social);
+      await user.click(chip("Favourites"));
+      await waitFor(() => expect(window.location.hash).toBe("#/templates/favourites"));
+      await selected("Favourites");
+      // a reload: the page is made again from the address alone
+      view.unmount();
+      mountRouted(window.location.hash);
+      await selected("Favourites");
+      expect(chip(TEMPLATE_CATEGORY_LABELS.social).getAttribute("aria-selected")).toBe("false");
+      // Back from another category returns to the favourites
+      await user.click(chip("All"));
+      await selected("All");
+      window.history.back();
+      await selected("Favourites");
     });
 
     it("shows the templates that were starred", async () => {
       const user = userEvent.setup();
       stubBox(960);
-      mountTemplates();
+      mountRouted();
       await waitFor(() => expect(cards().length).toBeGreaterThan(0));
       const first = TEMPLATES[0];
       await user.click(within(cards()[0]).getByRole("button", { name: "Add to favourites" }));
@@ -227,18 +265,12 @@ describe("<TemplatesPage>", () => {
       stubBox(960);
       const first = TEMPLATES[0];
       const other = CATEGORY_ORDER.find((id) => id !== first.category && TEMPLATES.some((template) => template.category === id))!;
-      const view = mountTemplates();
+      mountRouted();
       await waitFor(() => expect(cards().length).toBeGreaterThan(0));
       await user.click(within(cards()[0]).getByRole("button", { name: "Add to favourites" }));
       await screen.findByText(`Added “${first.name}” to your favourites`);
-      // the route moves to another category, as clicking its chip does
-      view.rerender(
-        <>
-          <TemplatesPage category={other} />
-          <Hosts />
-        </>,
-      );
-      await waitFor(() => expect(chip(TEMPLATE_CATEGORY_LABELS[other]).getAttribute("aria-selected")).toBe("true"));
+      await user.click(chip(TEMPLATE_CATEGORY_LABELS[other]));
+      await selected(TEMPLATE_CATEGORY_LABELS[other]);
       await user.click(chip("Favourites"));
       await waitFor(() => expect(cards()).toHaveLength(1));
       expect(within(cards()[0]).getByText(first.name)).toBeTruthy();
@@ -248,8 +280,8 @@ describe("<TemplatesPage>", () => {
     it("tells apart 'no favourites' from 'nothing matches' when searching among them", async () => {
       const user = userEvent.setup();
       stubBox(960);
-      mountTemplates();
-      await user.click(chip("Favourites"));
+      mountRouted("#/templates/favourites");
+      await selected("Favourites");
       await user.type(searchBox(), "zzzqqq");
       expect(await screen.findByText("No templates match “zzzqqq”")).toBeTruthy();
     });
@@ -257,17 +289,12 @@ describe("<TemplatesPage>", () => {
     it("leaves the favourites when another category is chosen", async () => {
       const user = userEvent.setup();
       stubBox(960);
-      const view = mountTemplates();
-      await user.click(chip("Favourites"));
-      expect(chip("Favourites").getAttribute("aria-selected")).toBe("true");
-      view.rerender(
-        <>
-          <TemplatesPage category="social" />
-          <Hosts />
-        </>,
-      );
-      await waitFor(() => expect(chip("Favourites").getAttribute("aria-selected")).toBe("false"));
-      expect(chip(TEMPLATE_CATEGORY_LABELS.social).getAttribute("aria-selected")).toBe("true");
+      mountRouted("#/templates/favourites");
+      await selected("Favourites");
+      await user.click(chip(TEMPLATE_CATEGORY_LABELS.social));
+      await selected(TEMPLATE_CATEGORY_LABELS.social);
+      expect(window.location.hash).toBe("#/templates/social");
+      expect(chip("Favourites").getAttribute("aria-selected")).toBe("false");
     });
   });
 

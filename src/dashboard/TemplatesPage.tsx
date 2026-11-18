@@ -17,6 +17,8 @@ const PAGE_SIZE = 24;
 const GAP = 16;
 
 const isCategory = (value: string | undefined): value is TemplateCategory => value !== undefined && value in TEMPLATE_CATEGORY_LABELS;
+/** `#/templates/favourites`: the Favourites chip has a route of its own, so that it survives a reload and Back returns to it. */
+export const FAVOURITES_ROUTE = "favourites";
 
 /** Columns that fit the width, and the width of one column (matches the CSS `column-count` layout). */
 function columnsFor(width: number): { count: number; width: number } {
@@ -29,7 +31,7 @@ function columnsFor(width: number): { count: number; width: number } {
 export function TemplatesPage({ category }: { category?: string }) {
   const activeCategory = isCategory(category) ? category : null;
   const [query, setQuery] = useState("");
-  const [onlyFavourites, setOnlyFavourites] = useState(false);
+  const onlyFavourites = category === FAVOURITES_ROUTE;
   const [limit, setLimit] = useState(PAGE_SIZE);
   const favourites = useFavouriteTemplates();
 
@@ -39,8 +41,7 @@ export function TemplatesPage({ category }: { category?: string }) {
     if (preset) setQuery(preset);
   }, []);
 
-  useEffect(() => setOnlyFavourites(false), [category]);
-  useEffect(() => setLimit(PAGE_SIZE), [query, category, onlyFavourites]);
+  useEffect(() => setLimit(PAGE_SIZE), [query, category]);
 
   const counts = useMemo(() => {
     const map = new Map<TemplateCategory, number>();
@@ -49,14 +50,13 @@ export function TemplatesPage({ category }: { category?: string }) {
   }, []);
 
   const results = useMemo(() => {
-    // Favourites is a chip beside the categories, not inside one: it spans every category, even when the
-    // route still names the category the person was on when they picked it
+    // Favourites is a chip beside the categories, not inside one: it spans every category (B2)
     if (onlyFavourites) return searchTemplates(query, null).filter((template) => favourites.has(template.id));
     return searchTemplates(query, activeCategory);
   }, [query, activeCategory, onlyFavourites, favourites]);
 
   const chipIds = [...CATEGORY_ORDER.filter((id) => (counts.get(id) ?? 0) > 0 || id === activeCategory)];
-  const chipValue = onlyFavourites ? "favourites" : (activeCategory ?? "all");
+  const chipValue = onlyFavourites ? FAVOURITES_ROUTE : (activeCategory ?? "all");
 
   const shown = results.slice(0, limit);
   const searching = query.trim().length > 0;
@@ -74,17 +74,11 @@ export function TemplatesPage({ category }: { category?: string }) {
             variant="pill"
             aria-label={m.dashboard.home.categories}
             value={chipValue}
-            onChange={(id) => {
-              if (id === "favourites") setOnlyFavourites(true);
-              else {
-                setOnlyFavourites(false);
-                navigate(id === "all" ? "/templates" : `/templates/${id}`);
-              }
-            }}
+            onChange={(id) => navigate(id === "all" ? "/templates" : `/templates/${id}`)}
             tabs={[
               { id: "all", label: m.dashboard.shared.all },
               ...chipIds.map((id) => ({ id, label: TEMPLATE_CATEGORY_LABELS[id] })),
-              { id: "favourites", label: m.dashboard.templates.favourites, icon: <IconStar aria-hidden="true" /> },
+              { id: FAVOURITES_ROUTE, label: m.dashboard.templates.favourites, icon: <IconStar aria-hidden="true" /> },
             ]}
           />
         </div>
@@ -117,8 +111,7 @@ export function TemplatesPage({ category }: { category?: string }) {
                     setQuery("");
                     return;
                   }
-                  setOnlyFavourites(false);
-                  if (activeCategory) navigate("/templates");
+                  if (activeCategory || onlyFavourites) navigate("/templates");
                 }}
               >
                 {searching ? m.dashboard.templates.clearSearch : m.dashboard.templates.showAll}

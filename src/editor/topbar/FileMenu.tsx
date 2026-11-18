@@ -34,6 +34,7 @@ import {
   toast,
   type MenuEntry,
 } from "@/ui";
+import { keepView } from "../keptView";
 import { makeCopy, moveToTrash, printDesign, saveNow, startNewDesign } from "./designActions";
 import "./fileMenu.css";
 
@@ -109,10 +110,6 @@ export function FileMenu({ onRename, onUpload }: FileMenuProps) {
   const actions = useEditor.getState().actions;
   const readOnly = view.mode === "view";
 
-  const rulerToggles = (): MenuEntry[] => [
-    { id: "rulers", label: m.editorChrome.settings.showRulers, checked: view.showRulers, onSelect: () => actions.toggle("showRulers") },
-    { id: "snap", label: m.editorChrome.settings.snapToGuides, checked: view.snapEnabled, onSelect: () => actions.toggle("snapEnabled") },
-  ];
   const guideCount = view.guides;
 
   const moveTo = (folderId: string | null, name: string) => {
@@ -142,7 +139,8 @@ export function FileMenu({ onRename, onUpload }: FileMenuProps) {
       label: m.editorChrome.fileMenu.rulersAndGuides,
       icon: <IconRuler aria-hidden="true" />,
       submenu: [
-        ...rulerToggles(),
+        { id: "rulers", label: m.editorChrome.settings.showRulers, checked: view.showRulers, onSelect: () => actions.toggle("showRulers") },
+        { id: "snap", label: m.editorChrome.settings.snapToGuides, checked: view.snapEnabled, onSelect: () => actions.toggle("snapEnabled") },
         { type: "divider" },
         {
           id: "clear-guides",
@@ -194,10 +192,12 @@ export function FileMenu({ onRename, onUpload }: FileMenuProps) {
     { id: "versions", label: m.editorChrome.fileMenu.versions, icon: <IconHistory aria-hidden="true" />, onSelect: () => actions.openDialog("versions") },
     { id: "trash", label: m.editorChrome.fileMenu.trash, icon: <IconTrash aria-hidden="true" />, disabled: readOnly, onSelect: () => void moveToTrash() },
     { type: "divider" },
-    { id: "settings", label: m.editorChrome.settings.title, icon: <IconSettings aria-hidden="true" />, submenu: rulerToggles() },
+    // the Settings dialog (rulers, snapping and page thumbnails in one place), not a second copy of the Rulers and guides toggles
+    { id: "settings", label: m.editorChrome.settings.title, icon: <IconSettings aria-hidden="true" />, onSelect: () => actions.openDialog("settings") },
     { id: "find", label: m.editorChrome.fileMenu.find, icon: <IconSearch aria-hidden="true" />, shortcut: "Ctrl+F", onSelect: () => actions.openDialog("findReplace") },
     { id: "models", label: m.editorChrome.fileMenu.models, icon: <IconLaptop aria-hidden="true" />, onSelect: () => actions.openDialog("models") },
-    languageMenuEntry(),
+    // the page, the selection and the zoom come back after the reload into the other language (B12)
+    languageMenuEntry({ beforeSwitch: keepView }),
     {
       id: "help",
       label: m.editorChrome.fileMenu.help,

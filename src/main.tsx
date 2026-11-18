@@ -7,9 +7,14 @@ import { App } from "./App";
 import { startCloud } from "./cloud/state";
 import { startCustomFonts } from "./core/customFonts";
 import { installDatabaseNotices } from "./databaseNotices";
+import { m } from "./i18n";
 import { installProblemCatcher } from "./problemCatcher";
 import { registerServiceWorker } from "./serviceWorker";
 import { installUploadNotices } from "./uploadNotices";
+
+// The title of the tab in the language of the page (index.html has the English one): the screens that set no title of their
+// own (the editor while it opens, a design that is not found, a shared link) keep it, and the others go back to it.
+document.title = m.dashboard.pageTitles.home;
 
 // Another tab upgrading the library, or holding up this tab's own upgrade, is told to the person (src/databaseNotices.ts).
 installDatabaseNotices();

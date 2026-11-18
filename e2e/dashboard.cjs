@@ -197,6 +197,35 @@ const results = [];
     return `"${name.slice(0, 40)}" under Favourites from ${other} and from All`;
   });
 
+  await step("templates: Favourites has an address of its own, kept by a reload and found again with Back", async () => {
+    const chip = (label) => page.locator("[aria-label='Template categories']").getByRole("tab", { name: label, exact: true });
+    const selected = () => page.evaluate(() => document.querySelector("[aria-label='Template categories'] [aria-selected=true]")?.textContent.trim());
+    const waitSelected = (label) =>
+      page.waitForFunction((l) => document.querySelector("[aria-label='Template categories'] [aria-selected=true]")?.textContent.trim() === l, label, { timeout: 8000 });
+    await page.goto(BASE + "/#/templates", { waitUntil: "load" });
+    await chip("Social media").waitFor({ timeout: 20000 });
+    await chip("Social media").click();
+    await waitSelected("Social media");
+    await chip("Favourites").click();
+    await waitSelected("Favourites");
+    const hash = await page.evaluate(() => location.hash);
+    if (hash !== "#/templates/favourites") throw new Error("Favourites is at " + hash);
+    await page.reload({ waitUntil: "load" });
+    await chip("Favourites").waitFor({ timeout: 20000 });
+    await wait(600);
+    if ((await selected()) !== "Favourites") throw new Error("after a reload the chosen chip is " + (await selected()));
+    await shot("templates-favourites-reloaded");
+    // the starred template of the step before is still the one listed
+    const shown = await page.locator(".cf-tplpage__masonry article.cf-tcard").count();
+    if (shown !== 1) throw new Error(`after a reload Favourites lists ${shown} templates`);
+    // Back goes to Social media, Forward to Favourites again
+    await page.goBack();
+    await waitSelected("Social media");
+    await page.goForward();
+    await waitSelected("Favourites");
+    return `${hash}; kept by a reload; Back to Social media and Forward again`;
+  });
+
   await step("the dashboard keeps its layout after a visit to the editor and its dialogs, in the same page (the stylesheets of both stay loaded)", async () => {
     await page.goto(BASE + "/#/", { waitUntil: "load" });
     await page.getByText("What will you design today?").waitFor({ timeout: 20000 });

@@ -47,6 +47,16 @@ describe("main", () => {
     expect(document.getElementById("root")?.querySelector(".cf-dash")).toBeTruthy();
   });
 
+  it("titles the tab in the language of the page, also where a screen sets no title of its own", async () => {
+    const { hi } = await import("@/i18n/hi");
+    document.title = "Craftly - Design anything"; // as index.html has it
+    localStorage.setItem("craftly.language", "hi");
+    await boot("#/design/not-there");
+    expect(await screen.findByText(hi.editor.shell.missingTitle)).toBeTruthy();
+    expect(document.title).toBe(hi.dashboard.pageTitles.home);
+    expect(document.title).not.toBe("Craftly - Design anything");
+  });
+
   it("tells the person to reload when another tab upgrades the library under this one", async () => {
     await boot("#/trash");
     // the page has read the library, so this tab holds a connection to the database

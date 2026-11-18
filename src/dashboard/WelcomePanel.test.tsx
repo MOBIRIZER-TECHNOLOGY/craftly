@@ -87,7 +87,7 @@ describe("<WelcomePanel> on a first visit", () => {
     expect(isProjectFile(imageFile("photo.png"))).toBe(false);
   });
 
-  it("is put away by its close button, for good, and the keyboard stays where it was", async () => {
+  it("is put away by its close button, for good, and the keyboard goes on to the next control", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<Home />);
     await welcome();
@@ -95,7 +95,9 @@ describe("<WelcomePanel> on a first visit", () => {
     close.focus();
     await user.keyboard("{Enter}");
     await waitFor(() => expect(screen.queryByRole("region", { name: "Welcome to Craftly" })).toBeNull());
-    expect(document.activeElement?.classList.contains("cf-welcome-slot")).toBe(true);
+    // the first shortcut tile, which shows its focus ring, not the empty place the panel left
+    const shortcuts = screen.getByRole("group", { name: "Start a design" });
+    expect(document.activeElement).toBe(within(shortcuts).getAllByRole("button")[0]);
     expect(localStorage.getItem(firstRunKey("welcome"))).toBe("1");
     unmount();
     // the next visit to Home, with the library still empty

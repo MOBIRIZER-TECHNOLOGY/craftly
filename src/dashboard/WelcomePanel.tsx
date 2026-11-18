@@ -23,6 +23,17 @@ const WAYS: Way[] = [
   { id: "file", title: m.dashboard.welcome.fileTitle, text: m.dashboard.welcome.fileText, icon: IconFilePlus, run: () => void pickAnyFileAndOpen() },
 ];
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** The first control after `place` in the order of the page: what Tab would reach next. */
+function nextControl(place: HTMLElement): HTMLElement | null {
+  for (let el = place.nextElementSibling; el; el = el.nextElementSibling) {
+    const hit = el.matches(FOCUSABLE) ? el : el.querySelector(FOCUSABLE);
+    if (hit instanceof HTMLElement) return hit;
+  }
+  return null;
+}
+
 /**
  * Whether the welcome is for this visit: the library has been read and holds no design at all (the trash included, so a returning
  * person who emptied their projects is not greeted as new), nobody is signed in, and it was not dismissed on this device.
@@ -37,15 +48,18 @@ export function useWelcomeVisible(): boolean {
 /**
  * The first-run welcome on Home: what Craftly is, the three quickest ways to start, and that the work stays on this device. It is
  * part of the page, never a dialog, so nothing waits on it; the close button puts it away for good, and it is gone by itself as
- * soon as there is a design. The place it leaves keeps the keyboard, so the next Tab goes on from here.
+ * soon as there is a design. Closing it gives the keyboard to the next control of the page (the first shortcut tile).
  */
 export function WelcomePanel() {
   const visible = useWelcomeVisible();
   const headingId = useId();
   const slot = useRef<HTMLDivElement>(null);
 
+  // the keyboard goes on to the next control of the page (the first shortcut tile), which shows where it is; the empty place
+  // the panel leaves is only the last resort
   const dismiss = () => {
-    slot.current?.focus();
+    const place = slot.current;
+    (place ? (nextControl(place) ?? place) : null)?.focus();
     markFirstRunDone("welcome");
   };
 
