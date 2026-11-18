@@ -10,6 +10,7 @@ import { getActions, useEditor } from "@/core/store";
 import { renderPageToCanvas } from "@/render/renderPage";
 import { setMedia } from "@/test/media";
 import { clearLibrary, flush, mountEditor, resetEditor, sampleDesign, stubLayout } from "@/test/helpers";
+import { useComments } from "./comments/commentsStore";
 import { Editor } from "./Editor";
 import { printDesign } from "./topbar/designActions";
 
@@ -419,6 +420,35 @@ describe("the services it installs", () => {
     expect(fireEvent.keyDown(document.body, { key: "s", ctrlKey: true })).toBe(false);
     await waitFor(() => expect(saveDesign).toHaveBeenCalledTimes(1), { timeout: 600 });
     await waitFor(async () => expect((await getDesign(design.id))?.title).toBe("Saved by hand"));
+  });
+});
+
+describe("the Comments panel in the editor", () => {
+  afterEach(() => useComments.setState(useComments.getInitialState(), true));
+
+  it("starts closed when a design is opened, even if it was open in the design before", async () => {
+    useComments.setState({ panelOpen: true, highlight: "c1", focusThread: "c1" });
+    await mountEditor();
+    expect(useComments.getState()).toMatchObject({ panelOpen: false, highlight: null, focusThread: null, draft: null });
+    expect(screen.queryByRole("complementary", { name: "Comments" })).toBeNull();
+  });
+
+  it("is closed when the editor closes, so that coming back to a design does not find it open", async () => {
+    const view = await mountEditor();
+    act(() => useComments.setState({ panelOpen: true }));
+    expect(screen.getByRole("complementary", { name: "Comments" })).toBeTruthy();
+    view.unmount();
+    expect(useComments.getState().panelOpen).toBe(false);
+  });
+
+  it("is a column of the editor's body beside the page area, not a layer inside it", async () => {
+    const { container } = await mountEditor();
+    act(() => useComments.setState({ panelOpen: true }));
+    const panel = screen.getByRole("complementary", { name: "Comments" });
+    const main = screen.getByRole("main", { name: "Design" });
+    expect(main.contains(panel)).toBe(false);
+    expect(panel.parentElement).toBe(container.querySelector(".cf-editor__body"));
+    expect(main.nextElementSibling).toBe(panel);
   });
 });
 

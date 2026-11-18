@@ -261,5 +261,59 @@ describe("curved text", () => {
     const straight = render({ curve: 0 }).svg;
     expect(render({ curve: 0.3 }).svg).toBe(straight);
     expect(render({ curve: -0.3 }).svg).toBe(straight);
+    // with its effect too
+    expect(render({ curve: 0.3, effect: { kind: "neon" } }).svg).toBe(render({ effect: { kind: "neon" } }).svg);
+  });
+});
+
+describe("curved text with an effect", () => {
+  const curved = (e: TextEffect, init: TextInit = {}) => effect(e, { curve: 20, ...init });
+
+  it("glows with Neon: three blurred copies on the arc under the words", () => {
+    const { svg, defs } = curved({ kind: "neon", color: "#00ffaa" });
+    expect(count(svg, '<g filter="url(#cf-sh')).toBe(3);
+    expect(count(svg, 'fill="#00ffaa"')).toBe(6);
+    expect(attr(defs, "stdDeviation")).toHaveLength(3);
+    // every pass is on the same arc, the words in their own colour last
+    expect(count(defs, "<path id=")).toBe(1);
+    expect(count(svg, "<textPath")).toBe(8);
+    expect(svg.lastIndexOf('fill="#00ffaa"')).toBeLessThan(svg.lastIndexOf('fill="#0e1318"'));
+  });
+
+  it("casts a Shadow and a Lift through a filter around the curved words", () => {
+    for (const kind of ["shadow", "lift"] as const) {
+      const { svg } = curved({ kind });
+      expect(svg).toMatch(/^<g filter="url\(#cf-sh1\)"><text /);
+      expect(count(svg, "<textPath")).toBe(2);
+    }
+  });
+
+  it("strokes the curved words for Hollow, Outline and Splice", () => {
+    expect(curved({ kind: "hollow" }).svg).toContain('fill="none" stroke-width="1.1"');
+    const outline = curved({ kind: "outline", color: "#00ff00" }).svg;
+    expect(outline.indexOf('stroke="#00ff00"')).toBeLessThan(outline.indexOf('fill="#0e1318"'));
+    expect(count(outline, "<textPath")).toBe(4);
+    const splice = curved({ kind: "splice" }).svg;
+    // the violet copy is the arc moved by the offset
+    expect(splice).toMatch(/^<g transform="translate\(1\.556 1\.556\)"><text [^>]*stroke="#8b3dff"/);
+    expect(count(splice, "<textPath")).toBe(4);
+  });
+
+  it("trails Echo copies and splits the colours of Glitch along the arc", () => {
+    const echo = curved({ kind: "echo" }).svg;
+    expect(attr(echo, "fill-opacity")).toEqual(["0.28", "0.28", "0.55", "0.55"]);
+    expect(echo).toContain('<g transform="translate(3.111 3.111)">');
+    const glitch = curved({ kind: "glitch" }).svg;
+    expect(glitch).toContain('<g transform="translate(-1 0)"><text');
+    expect(glitch).toContain('fill="#19e6ff" fill-opacity="0.9"');
+  });
+
+  it("bends the Background box onto the arc, behind the words", () => {
+    const { svg } = curved({ kind: "background", color: "#112233", transparency: 50 });
+    expect(svg).toMatch(/^<path d="M[\d. -]+A[\d.]+ [\d.]+ 0 0 1 [\d. -]+" fill="none" stroke-width="24.56" stroke-linecap="round" stroke="#112233" stroke-opacity="0.5"\/>/);
+    expect(svg).not.toContain("<rect");
+    expect(curved({ kind: "background", roundness: 0 }).svg).toContain('stroke-linecap="butt"');
+    // round a centre above the text for a bow
+    expect(curved({ kind: "background" }, { curve: -20 }).svg).toMatch(/^<path d="M[\d. -]+A[\d.]+ [\d.]+ 0 0 0 /);
   });
 });

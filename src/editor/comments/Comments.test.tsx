@@ -347,6 +347,69 @@ describe("the Comments panel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close comments" }));
     expect(useComments.getState().panelOpen).toBe(false);
   });
+
+  it("closes on Esc pressed outside it too (on the page or a button of the top bar), leaving the keyboard where it was", async () => {
+    open([note("a")]);
+    const off = installHotkeys();
+    try {
+      render(
+        <>
+          <CommentsButton />
+          <div data-cf-workspace tabIndex={0} data-testid="workspace" />
+          <CommentsPanel />
+        </>,
+      );
+      const workspace = screen.getByTestId("workspace");
+      workspace.focus();
+      await userEvent.keyboard("{Escape}");
+      expect(useComments.getState().panelOpen).toBe(false);
+      expect(document.activeElement).toBe(workspace);
+      // from the Comments button that opened it
+      await userEvent.click(screen.getByRole("button", { name: "Comments, 1 open" }));
+      expect(useComments.getState().panelOpen).toBe(true);
+      await userEvent.keyboard("{Escape}");
+      expect(useComments.getState().panelOpen).toBe(false);
+    } finally {
+      off();
+    }
+  });
+
+  it("lets a selection wait for the next Esc, and the draft of a pin or an edit with the keyboard take Esc first", async () => {
+    open([note("a")]);
+    const off = installHotkeys();
+    try {
+      render(
+        <>
+          <div data-cf-workspace tabIndex={0} data-testid="workspace">
+            <div className="cf-pageframe">
+              <CommentsOverlay />
+            </div>
+          </div>
+          <CommentsPanel />
+        </>,
+      );
+      act(() => useEditor.getState().actions.select(["box"]));
+      // a pin being placed: Esc cancels it and the panel stays open
+      act(() => void placeDraft(useEditor.getState().design!, "p", { x: 50, y: 40 }, null));
+      await userEvent.type(screen.getByRole("textbox", { name: "Comment" }), "Draft{Escape}");
+      expect(useComments.getState().draft).toBeNull();
+      expect(useComments.getState().panelOpen).toBe(true);
+      // an edit of a comment in the panel: Esc cancels the edit and the panel stays open
+      await userEvent.click(screen.getByRole("button", { name: "Edit comment" }));
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("textbox", { name: "Edit your comment" })).toBeNull();
+      expect(useComments.getState().panelOpen).toBe(true);
+      // then the panel, and only then the selection
+      screen.getByTestId("workspace").focus();
+      await userEvent.keyboard("{Escape}");
+      expect(useComments.getState().panelOpen).toBe(false);
+      expect(useEditor.getState().selection).toEqual(["box"]);
+      await userEvent.keyboard("{Escape}");
+      expect(useEditor.getState().selection).toEqual([]);
+    } finally {
+      off();
+    }
+  });
 });
 
 describe("the Comments button", () => {

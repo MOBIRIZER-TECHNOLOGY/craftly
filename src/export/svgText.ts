@@ -5,14 +5,15 @@
  *
  *   shadow, lift, neon  -> <filter> (blurred, tinted copy of the glyphs, like canvas shadowBlur)
  *   hollow, outline, splice, echo, glitch, background -> extra stroked / offset copies and <rect>s
- *   curved text         -> <textPath> on a circular arc, one <text> per word
+ *   curved text         -> <textPath> on a circular arc, one <text> per word; every effect above is drawn on it too
+ *                          (offset copies move the arc, the Background box is a thick stroke along it)
  *
  * Underline and strike-through are drawn as rectangles with the canvas geometry (not text-decoration), so
  * they match the on-screen result exactly and also cover the spaces between words.
  */
 import type { TextEffect, TextElement } from "@/core/types";
 import { cssFontFamily } from "@/render/fonts";
-import { curveGeometry, layoutText, type LayoutLine, type LayoutSegment, type RunStyle, type TextLayout } from "@/render/textLayout";
+import { curveGeometry, layoutText, type CurveGeometry, type LayoutLine, type LayoutSegment, type RunStyle, type TextLayout } from "@/render/textLayout";
 import { inverseLinear, type Matrix } from "./links";
 import { colorAttr, esc, num, paintAttr, svgFontFamily, type PaintRef, type SvgDoc } from "./svgUtil";
 
@@ -135,14 +136,41 @@ function textRegion(layout: TextLayout, fs: number): { x: number; y: number; w: 
   return { x: -pad, y: -pad, w: layout.width + pad * 2, h: layout.height + pad * 2 };
 }
 
-function drawWithEffect(el: TextElement, layout: TextLayout, gradient: PaintRef | null, cx: TextRenderContext): string {
+/** What the effects are written with: passes over the text and the band behind each line, on a line or on the arc (as in render/drawText.ts). */
+interface Painter {
+  pass(spec: PassSpec): string;
+  /** the box of the Background effect behind each line, in `color` at `opacity` */
+  band(pad: number, radius: number, color: string, opacity: number): string;
+}
+
+function straightPainter(el: TextElement, layout: TextLayout, gradient: PaintRef | null, cx: TextRenderContext): Painter {
+  return {
+    pass: (spec) => pass(el, layout, gradient, cx, spec),
+    band(pad, radius, color, opacity) {
+      const fill = colorAttr("fill", color, opacity);
+      let boxes = "";
+      for (const line of layout.lines) {
+        if (!line.segments.length || line.width <= 0) continue;
+        const x = line.x - pad;
+        const y = line.y + (line.height - line.size * 1.15) / 2 - pad * 0.15;
+        const w = line.width + pad * 2;
+        const h = line.size * 1.15 + pad * 0.3;
+        const r = Math.max(0, Math.min(radius, h / 2, w / 2));
+        boxes += `<rect x="${num(x)}" y="${num(y)}" width="${num(w)}" height="${num(h)}"${r ? ` rx="${num(r)}"` : ""}${fill}/>`;
+      }
+      return boxes;
+    },
+  };
+}
+
+function drawWithEffect(el: TextElement, layout: TextLayout, cx: TextRenderContext, painter: Painter): string {
   const e = el.effect;
   const fs = el.fontSize;
   const doc = cx.doc;
   const base: PassSpec = { mode: "fill" };
   const thick = Math.max(1, ((e.thickness ?? 50) / 100) * fs * 0.09 + fs * 0.01);
   const region = textRegion(layout, fs);
-  const P = (spec: PassSpec) => pass(el, layout, gradient, cx, spec);
+  const P = (spec: PassSpec) => painter.pass(spec);
 
   /** a canvas style shadow: offsets are in screen space, so rotate them back into element space */
   const shadowPass = (dxScreen: number, dyScreen: number, blur: number, color: string, opacity: number, includeSource = true, paint?: PaintRef) => {
@@ -199,18 +227,7 @@ function drawWithEffect(el: TextElement, layout: TextLayout, gradient: PaintRef 
     case "background": {
       const pad = fs * (0.12 + ((e.spread ?? 50) / 100) * 0.28);
       const radius = ((e.roundness ?? 50) / 100) * (fs * 0.6);
-      const fill = colorAttr("fill", e.color ?? "#ffe066", cx.alpha * (1 - (e.transparency ?? 0) / 100));
-      let boxes = "";
-      for (const line of layout.lines) {
-        if (!line.segments.length || line.width <= 0) continue;
-        const x = line.x - pad;
-        const y = line.y + (line.height - line.size * 1.15) / 2 - pad * 0.15;
-        const w = line.width + pad * 2;
-        const h = line.size * 1.15 + pad * 0.3;
-        const r = Math.max(0, Math.min(radius, h / 2, w / 2));
-        boxes += `<rect x="${num(x)}" y="${num(y)}" width="${num(w)}" height="${num(h)}"${r ? ` rx="${num(r)}"` : ""}${fill}/>`;
-      }
-      return boxes + P(base);
+      return painter.band(pad, radius, e.color ?? "#ffe066", cx.alpha * (1 - (e.transparency ?? 0) / 100)) + P(base);
     }
     default:
       return P(base);
@@ -221,38 +238,85 @@ function drawWithEffect(el: TextElement, layout: TextLayout, gradient: PaintRef 
 /* curved text                                                         */
 /* ------------------------------------------------------------------ */
 
-function curvedText(el: TextElement, layout: TextLayout, gradient: PaintRef | null, cx: TextRenderContext): string {
-  const geo = curveGeometry(el, layout);
-  if (!geo) return pass(el, layout, gradient, cx, { mode: "fill" });
+/**
+ * Curved text on <textPath>: one arc per line, shared by every pass of the effect, and one <text> per word on it. A pass that is
+ * offset moves the whole arc (a translated group), as the canvas moves it; the Background box is a thick stroke along the arc.
+ */
+function curvedPainter(el: TextElement, layout: TextLayout, gradient: PaintRef | null, cx: TextRenderContext, geo: CurveGeometry): Painter {
   const { radius, dir, sag } = geo;
   const centerX = layout.width / 2;
   const doc = cx.doc;
-  let out = "";
-  for (const line of layout.lines) {
-    const words = line.segments.filter((s) => !s.isSpace && s.text);
-    if (!words.length) continue;
+  const centerYOf = (line: LayoutLine) => {
     const y0 = line.y + line.baseline + (dir > 0 ? 0 : sag);
-    const centerY = dir > 0 ? y0 + radius : y0 - radius;
-    const point = (pos: number) => {
-      const theta = (pos - centerX) / radius;
-      return { x: centerX + radius * Math.sin(theta), y: dir > 0 ? centerY - radius * Math.cos(theta) : centerY + radius * Math.cos(theta) };
-    };
-    // the arc starts at the line's left edge and runs a little past its end so the last glyph is not cut off
-    const start = line.x;
-    const span = Math.min(line.width + Math.max(line.size, 24), radius * (Math.PI * 2 - 0.05));
-    const a = point(start);
-    const b = point(start + span);
-    const large = span / radius > Math.PI ? 1 : 0;
-    const id = doc.id("arc");
-    doc.defs.push(`<path id="${id}" d="M${num(a.x)} ${num(a.y)}A${num(radius)} ${num(radius)} 0 ${large} ${dir > 0 ? 1 : 0} ${num(b.x)} ${num(b.y)}"/>`);
-    for (const seg of words) {
-      const paint = gradient ?? ({ kind: "color", color: seg.style.color } as PaintRef);
-      // the canvas places curved text one character at a time (no kerning, no ligatures): switch both off here too
-      const textAttr = `${fontAttrs(seg.style, null)}${paintAttr("fill", paint, cx.alpha)} style="font-kerning:none;font-variant-ligatures:none"`;
-      out += `<text${textAttr}><textPath xlink:href="#${id}" startOffset="${num(seg.x)}">${esc(seg.text)}</textPath></text>`;
+    return dir > 0 ? y0 + radius : y0 - radius;
+  };
+  /** the point of a circle round the line's centre that lies under `pos` (a distance along the baseline) */
+  const pointOn = (line: LayoutLine, r: number, pos: number) => {
+    const theta = (pos - centerX) / radius;
+    const centerY = centerYOf(line);
+    return { x: centerX + r * Math.sin(theta), y: dir > 0 ? centerY - r * Math.cos(theta) : centerY + r * Math.cos(theta) };
+  };
+  const arcPath = (line: LayoutLine, r: number, from: number, to: number) => {
+    const a = pointOn(line, r, from);
+    const b = pointOn(line, r, to);
+    const large = (to - from) / radius > Math.PI ? 1 : 0;
+    return `M${num(a.x)} ${num(a.y)}A${num(r)} ${num(r)} 0 ${large} ${dir > 0 ? 1 : 0} ${num(b.x)} ${num(b.y)}`;
+  };
+  const arcs = new Map<LayoutLine, string>();
+  const arcOf = (line: LayoutLine) => {
+    let id = arcs.get(line);
+    if (!id) {
+      // the arc starts at the line's left edge and runs a little past its end so the last glyph is not cut off
+      const span = Math.min(line.width + Math.max(line.size, 24), radius * (Math.PI * 2 - 0.05));
+      id = doc.id("arc");
+      doc.defs.push(`<path id="${id}" d="${arcPath(line, radius, line.x, line.x + span)}"/>`);
+      arcs.set(line, id);
     }
-  }
-  return out;
+    return id;
+  };
+  return {
+    pass(spec) {
+      const alpha = cx.alpha * (spec.alphaMul ?? 1);
+      const prop = spec.mode === "fill" ? "fill" : "stroke";
+      const stroke = spec.mode === "stroke" ? ` fill="none" stroke-width="${num(spec.lineWidth ?? 1)}" stroke-linejoin="round" stroke-linecap="round"` : "";
+      let out = "";
+      for (const line of layout.lines) {
+        const words = line.segments.filter((s) => !s.isSpace && s.text);
+        if (!words.length) continue;
+        const id = arcOf(line);
+        for (const seg of words) {
+          const paint = spec.paint ?? gradient ?? ({ kind: "color", color: seg.style.color } as PaintRef);
+          // the canvas places curved text one character at a time (no kerning, no ligatures): switch both off here too
+          const textAttr = `${fontAttrs(seg.style, null)}${stroke}${paintAttr(prop, paint, alpha)} style="font-kerning:none;font-variant-ligatures:none"`;
+          out += `<text${textAttr}><textPath xlink:href="#${id}" startOffset="${num(seg.x)}">${esc(seg.text)}</textPath></text>`;
+        }
+      }
+      if (!out) return "";
+      const dx = spec.dx ?? 0;
+      const dy = spec.dy ?? 0;
+      if (dx || dy) out = `<g transform="translate(${num(dx)} ${num(dy)})">${out}</g>`;
+      return spec.filter ? `<g filter="url(#${spec.filter})">${out}</g>` : out;
+    },
+    band(pad, roundness, color, opacity) {
+      const strokeColor = colorAttr("stroke", color, opacity);
+      let out = "";
+      for (const line of layout.lines) {
+        if (!line.segments.length || line.width <= 0) continue;
+        const h = line.size * 1.15 + pad * 0.3;
+        const middle = line.height / 2 - line.baseline;
+        const r = dir > 0 ? radius - middle : radius + middle;
+        if (r <= 0) continue;
+        const round = roundness > 0;
+        // in distance along the baseline: a round cap reaches half the band's height past each end
+        const inset = round ? ((h / 2) * radius) / r : 0;
+        let from = line.x - pad + inset;
+        let to = line.x + line.width + pad - inset;
+        if (to < from) from = to = (from + to) / 2;
+        out += `<path d="${arcPath(line, r, from, to)}" fill="none" stroke-width="${num(h)}" stroke-linecap="${round ? "round" : "butt"}"${strokeColor}/>`;
+      }
+      return out;
+    },
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -263,7 +327,9 @@ function curvedText(el: TextElement, layout: TextLayout, gradient: PaintRef | nu
 export function textElementSvg(el: TextElement, cx: TextRenderContext): string {
   const layout = layoutText(el);
   const gradient: PaintRef | null = el.gradient ? { kind: "url", id: cx.doc.linearGradient(el.gradient, layout.width, layout.height) } : null;
-  return el.curve ? curvedText(el, layout, gradient, cx) : drawWithEffect(el, layout, gradient, cx);
+  // a curve too slight to bend the text has no geometry: such text is drawn straight, as on the canvas
+  const geo = el.curve ? curveGeometry(el, layout) : null;
+  return drawWithEffect(el, layout, cx, geo ? curvedPainter(el, layout, gradient, cx, geo) : straightPainter(el, layout, gradient, cx));
 }
 
 /** Exposed for tests: which line / segment geometry a text element produces. */

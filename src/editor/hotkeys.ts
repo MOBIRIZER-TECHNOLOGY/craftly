@@ -9,6 +9,7 @@ import { elementPath } from "@/core/penShape";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import { measureTextElement } from "@/render/textLayout";
 import { pathEditKey } from "./canvas/pathEditActions";
+import { useComments } from "./comments/commentsStore";
 import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore";
 import { backspacePen, finishPen, hasPenDraft, penHistory, penKey } from "./canvas/penTool";
 import { stopPreview, usePreview } from "./canvas/preview";
@@ -56,7 +57,12 @@ function onKeyDown(e: KeyboardEvent) {
     else if (usePathEdit.getState().id) stopPathEdit();
     else if (s.tool !== "select") a.setTool("select");
     else if (s.context) a.closeContext();
-    else if (s.selection.length) a.clearSelection();
+    // the Comments panel closes on Esc from anywhere in the editor (inside it, CommentsPanel closes it itself and puts the
+    // keyboard back on the Comments button; a draft pin or an edit that has the keyboard cancels itself first)
+    else if (useComments.getState().panelOpen) {
+      e.preventDefault(); // one thing per Esc: the grid view waits for the next one
+      useComments.setState({ panelOpen: false, highlight: null });
+    } else if (s.selection.length) a.clearSelection();
     return;
   }
   if (mod && key === "s") {

@@ -53,6 +53,15 @@ export const useComments = create<CommentsState>(() => ({
   announcement: { text: "", n: 0 },
 }));
 
+/**
+ * Puts away what belongs to the design that is open: the panel, a pin being placed, a marked or focused thread or pin. The
+ * editor calls it when a design opens and when it closes, so that a design always starts with the panel closed. The filter and
+ * "Show resolved pins" are this person's choices and stay.
+ */
+export function closeComments(): void {
+  useComments.setState({ panelOpen: false, draft: null, highlight: null, focusThread: null, focusPin: null });
+}
+
 /** A number for a name, the same on every device, to choose a colour by when there is no number of a connection. */
 function nameIndex(name: string): number {
   let hash = 0;

@@ -487,6 +487,102 @@ const DRAG_BY = [-400, 250];
     return "2 left";
   });
 
+  /* ---------------- the panel beside the page ---------------- */
+  await step("the panel is a column beside the page: the workspace and every control of the bottom bar stay uncovered, and the Share popover opens over it", async () => {
+    await putToolDown();
+    await openPanel();
+    await wait(400);
+    const geometry = await page.evaluate(() => {
+      const rect = (el) => el && el.getBoundingClientRect();
+      const panelEl = document.querySelector(".cf-comments-panel");
+      const p = rect(panelEl);
+      const ws = rect(document.querySelector(".cf-workspace"));
+      const bar = rect(document.querySelector(".cf-bottombar"));
+      // every control of the bottom bar is the topmost thing at its own middle
+      const covered = [...document.querySelectorAll(".cf-bottombar button, .cf-bottombar input, .cf-bottombar [role=slider]")]
+        .filter((el) => el.getClientRects().length)
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return !top || !(el === top || el.contains(top));
+        })
+        .map((el) => el.getAttribute("aria-label") || el.textContent.trim());
+      const controls = document.querySelectorAll(".cf-bottombar button").length;
+      return { panel: [p.left, p.right], workspaceRight: ws.right, barRight: bar.right, covered, controls, inMain: !!panelEl.closest("main") };
+    });
+    if (geometry.inMain) throw new Error("the panel is inside the page area");
+    if (geometry.workspaceRight > geometry.panel[0] + 1) throw new Error(`the workspace runs under the panel (${geometry.workspaceRight} > ${geometry.panel[0]})`);
+    if (geometry.barRight > geometry.panel[0] + 1) throw new Error(`the bottom bar runs under the panel (${geometry.barRight} > ${geometry.panel[0]})`);
+    if (geometry.covered.length) throw new Error("covered controls of the bottom bar: " + JSON.stringify(geometry.covered));
+    // the zoom, Pages and full-screen controls can be used with the panel open
+    await page.locator(".cf-bottombar__zoombtn").click();
+    await page.getByRole("menu", { name: "Zoom" }).waitFor({ timeout: 5000 });
+    await page.keyboard.press("Escape");
+    await wait(200);
+    if (!(await panel().count())) throw new Error("the Esc that closed the zoom menu closed the panel too");
+    // the Share popover is over the panel where they meet
+    await page.getByRole("button", { name: "Share", exact: true }).first().click();
+    const pop = page.locator(".cf-popover").filter({ hasText: "Share design" }).first();
+    await pop.waitFor({ timeout: 5000 });
+    await wait(300);
+    const onTop = await pop.evaluate((el) => {
+      const panelBox = document.querySelector(".cf-comments-panel").getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      const x = Math.max(r.left, panelBox.left) + 20;
+      const y = r.top + r.height / 2;
+      const top = document.elementFromPoint(x, y);
+      return { overlaps: r.right > panelBox.left, top: !!top && el.contains(top) };
+    });
+    await shot("panel-and-share");
+    if (onTop.overlaps && !onTop.top) throw new Error("the Share popover is under the Comments panel");
+    await page.keyboard.press("Escape");
+    await pop.waitFor({ state: "detached", timeout: 5000 });
+    if (!(await panel().count())) throw new Error("the Esc that closed Share closed the panel too");
+    return `panel ${Math.round(geometry.panel[0])}-${Math.round(geometry.panel[1])} px, workspace to ${Math.round(geometry.workspaceRight)}, ${geometry.controls} bottom-bar controls uncovered, Share over the panel`;
+  });
+
+  await step("Esc closes the panel from outside it (the Share button, the canvas); a draft pin with the keyboard takes Esc first", async () => {
+    // the keyboard was given back to the Share button: Esc from there
+    await page.keyboard.press("Escape");
+    await wait(200);
+    if (await panel().count()) throw new Error("Esc from the top bar left the panel open");
+    // a pin being placed: its Esc cancels it, the panel stays; the next Esc puts the tool down, the one after closes the panel
+    await openPanel();
+    await page.locator(".cf-workspace").focus();
+    await page.keyboard.press("m");
+    await click(...MARKUP_SPOT);
+    await draftBox().waitFor({ timeout: 10000 });
+    await page.keyboard.type("Never posted");
+    await page.keyboard.press("Escape");
+    await wait(200);
+    if (await draftBox().count()) throw new Error("Esc left the draft");
+    if (!(await panel().count())) throw new Error("the Esc of the draft closed the panel");
+    await putToolDown();
+    if (!(await panel().count())) throw new Error("the Esc that put the tool down closed the panel");
+    await page.locator(".cf-workspace").focus();
+    await page.keyboard.press("Escape");
+    await wait(200);
+    if (await panel().count()) throw new Error("Esc on the canvas left the panel open");
+    if ((await comments()).length !== 2) throw new Error((await comments()).length + " comments");
+    return "closed from the top bar and from the canvas, after the draft and the tool";
+  });
+
+  await step("the panel starts closed when the design is opened again after going to Home", async () => {
+    await openPanel();
+    const url = page.url();
+    await page
+      .getByRole("button", { name: /^(Home|Back to home)/ })
+      .first()
+      .click();
+    await page.getByText("What will you design today?").waitFor({ timeout: 20000 });
+    await page.goto(url);
+    await page.locator(".cf-workspace").waitFor({ timeout: 30000 });
+    await wait(800);
+    if (await panel().count()) throw new Error("the panel is open again");
+    if ((await comments()).length !== 2) throw new Error((await comments()).length + " comments after coming back");
+    return "closed";
+  });
+
   /* ---------------- markup is text ---------------- */
   let c4 = null;
   await step("text written like markup is shown as text in the pin's name and the panel, and nothing in it runs", async () => {

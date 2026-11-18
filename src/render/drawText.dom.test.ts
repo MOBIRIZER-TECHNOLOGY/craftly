@@ -476,6 +476,100 @@ describe("curved text", () => {
   });
 });
 
+describe("curved text with an effect", () => {
+  const KINDS = ["shadow", "lift", "hollow", "outline", "splice", "echo", "glitch", "neon", "background"] as const;
+  const glyphCalls = (spy: ReturnType<typeof draw>) => spy.calls.filter((c) => c.name === "fillText" || c.name === "strokeText");
+  /** what a pass looks like, apart from where it is */
+  const look = (c: PaintCall) => ({
+    name: c.name,
+    paint: String(c.name === "fillText" ? c.state.fillStyle : c.state.strokeStyle),
+    lineWidth: c.name === "strokeText" ? c.state.lineWidth : null,
+    alpha: c.state.globalAlpha,
+    shadow: [c.state.shadowColor, c.state.shadowBlur, c.state.shadowOffsetX, c.state.shadowOffsetY],
+  });
+  const curvedEffect = (e: TextEffect, init: Parameters<typeof createText>[0] = {}) => effect(e, { autoWidth: true, curve: 50, ...init });
+  const translates = (spy: ReturnType<typeof draw>) => spy.to("translate").map((c) => c.args as number[]);
+
+  it.each(KINDS)("%s: paints every pass of the straight text, each letter of it on the arc", (kind) => {
+    const e: TextEffect = { kind, color: "#00aa88" };
+    const straight = glyphCalls(draw(effect(e, { autoWidth: true }), 2));
+    const curved = glyphCalls(draw(curvedEffect(e), 2));
+    expect(straight.length).toBeGreaterThan(0);
+    // "Hello" is one segment on a straight line and five letters on the arc
+    expect(curved).toHaveLength(straight.length * 5);
+    straight.forEach((pass, i) => {
+      for (let k = 0; k < 5; k++) expect(look(curved[i * 5 + k])).toEqual(look(pass));
+    });
+  });
+
+  it("neon: three glows of the effect colour under the letters, then the letters in their own colour", () => {
+    const calls = glyphCalls(draw(curvedEffect({ kind: "neon", color: "#00ffcc" }), 2));
+    expect(calls).toHaveLength(20);
+    for (const glow of calls.slice(0, 15)) {
+      expect(glow.state.shadowColor).toBe("#00ffcc");
+      expect(glow.state.fillStyle).toBe("#00ffcc");
+      expect(glow.state.shadowBlur).toBeGreaterThan(0);
+    }
+    for (const letter of calls.slice(15)) {
+      expect(letter.state.fillStyle).toBe("#112233");
+      expect(letter.state.shadowBlur).toBe(0);
+    }
+  });
+
+  it("splice and echo: the offset copies move the whole arc by the offset", () => {
+    const splice = translates(draw(curvedEffect({ kind: "splice", offset: 50, direction: 0 })));
+    for (let k = 0; k < 5; k++) {
+      expect(splice[k][0] - splice[5 + k][0]).toBeCloseTo(4.4);
+      expect(splice[k][1]).toBeCloseTo(splice[5 + k][1]);
+    }
+    const echo = translates(draw(curvedEffect({ kind: "echo", offset: 50, direction: 90 })));
+    for (let k = 0; k < 5; k++) {
+      expect(echo[k][1] - echo[10 + k][1]).toBeCloseTo(8.8);
+      expect(echo[5 + k][1] - echo[10 + k][1]).toBeCloseTo(4.4);
+    }
+  });
+
+  it("background: bends the box onto the arc, behind the letters, in the effect colour", () => {
+    const spy = draw(curvedEffect({ kind: "background", color: "#ffee00", transparency: 50, spread: 50, roundness: 50 }));
+    const [arc] = spy.to("arc");
+    const stroke = spy.to("stroke")[0];
+    expect(spy.to("arc")).toHaveLength(1);
+    expect(stroke.state.strokeStyle).toBe("rgba(255,238,0,0.5)");
+    expect(stroke.state.lineWidth).toBeCloseTo(49.12);
+    expect(stroke.state.lineCap).toBe("round");
+    expect(spy.names().indexOf("stroke")).toBeLessThan(spy.names().indexOf("fillText"));
+    // an arch: the band runs clockwise round a centre below the text, its ends level with each other
+    const [cx, , r, from, to, anticlockwise] = arc.args as [number, number, number, number, number, boolean];
+    expect(cx).toBeCloseTo(55);
+    expect(anticlockwise).toBe(false);
+    expect(from + Math.PI / 2).toBeCloseTo(-(to + Math.PI / 2));
+    expect(r).toBeGreaterThan(0);
+    // the letters stay in their own colour, the box is not drawn as a straight rectangle
+    expect(spy.to("roundRect")).toHaveLength(0);
+    expect(spy.to("fillText")[0].state.fillStyle).toBe("#112233");
+  });
+
+  it("background: turns the other way round a centre above the text for a bow, and has square ends for square corners", () => {
+    const spy = draw(curvedEffect({ kind: "background", roundness: 0 }, { curve: -50 }));
+    expect(spy.to("arc")[0].args[5]).toBe(true);
+    expect(spy.to("stroke")[0].state.lineCap).toBe("butt");
+  });
+
+  it("keeps the gradient on the letters of a curved text with an effect, and off its tinted copies", () => {
+    const gradient = {
+      type: "linear" as const,
+      angle: 90,
+      stops: [
+        { offset: 0, color: "#ff0000" },
+        { offset: 1, color: "#0000ff" },
+      ],
+    };
+    const calls = glyphCalls(draw(curvedEffect({ kind: "glitch" }, { gradient })));
+    expect(calls.slice(0, 5).every((c) => c.state.fillStyle === "#ff2d95")).toBe(true);
+    expect(calls.slice(10).every((c) => (c.state.fillStyle as { kind?: string }).kind === "linear")).toBe(true);
+  });
+});
+
 describe("text on the page", () => {
   it("is placed where the layout puts it, for any alignment", () => {
     const el = text({ align: "right" });

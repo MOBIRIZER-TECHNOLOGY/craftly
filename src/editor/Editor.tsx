@@ -20,6 +20,7 @@ import { installHotkeys } from "./hotkeys";
 import { connectLive } from "./live/connection";
 import { applyTeamRole, connectTeamLive, stopTeamLive, useTeamLive } from "./live/teamLive";
 import { CommentsAnnouncer, CommentsPanel } from "./comments/CommentsPanel";
+import { closeComments } from "./comments/commentsStore";
 import { GridView } from "./pages/GridView";
 import { PageStrip } from "./pages/PageStrip";
 import { LeftRail } from "./panels/LeftRail";
@@ -88,6 +89,11 @@ export function Editor({ designId }: { designId: string }) {
       }
       if (e.key === "Escape" || e.key === "?" || e.ctrlKey || e.metaKey || e.altKey) return;
       if (target.closest("[data-cf-workspace]") && !target.closest("[data-cf-ui]")) return;
+      // Delete and Backspace on an item of a side-panel tab (a shape, photo or Add button just used) remove what is selected,
+      // as in Canva: an insert leaves the keyboard on the item, so that keyboard users go on through the panel, and the keys
+      // mean nothing to the item itself. Text fields keep them (the shortcuts skip anything being typed into), and so does
+      // a control that uses them and says so with preventDefault (a brand colour). Context panels are left out.
+      if ((e.key === "Delete" || e.key === "Backspace") && target.closest("#cf-sidepanel .cf-sidepanel__body[role='tabpanel']")) return;
       if (target.closest(".cf-editor, [data-cf-layer]")) e.stopPropagation();
     };
     document.addEventListener("keydown", isolate);
@@ -123,6 +129,8 @@ export function Editor({ designId }: { designId: string }) {
         }
         try {
           const actions = useEditor.getState().actions;
+          // the Comments panel, a pin being placed and a marked thread belonged to the design that was open before: a design starts with none
+          closeComments();
           actions.openDesign(opened.design);
           // on a phone the side panel is a sheet over the page: start with it folded away
           if (window.matchMedia("(max-width: 899px)").matches && useEditor.getState().panelOpen) actions.toggle("panelOpen");
@@ -151,6 +159,7 @@ export function Editor({ designId }: { designId: string }) {
       // the last save is written before sync may take the design
       void flushing.catch(() => undefined).finally(releaseLock);
       autosave?.();
+      closeComments();
       useEditor.getState().actions.closeDesign();
     };
   }, [designId]);
@@ -274,8 +283,9 @@ export function Editor({ designId }: { designId: string }) {
             {notesOpen && !gridView ? <NotesPanel /> : null}
             {showPageStrip && !gridView ? <PageStrip /> : null}
             <BottomBar />
-            <CommentsPanel />
           </main>
+          {/* a column beside the page area (not over it), so that the workspace and the bottom bar make room for it */}
+          <CommentsPanel />
         </div>
         <CommentsAnnouncer />
       </div>

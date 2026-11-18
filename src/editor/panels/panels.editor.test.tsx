@@ -60,6 +60,68 @@ describe("the rail and its panels inside the editor", () => {
     expect(state().selection).toEqual([added.id]);
   });
 
+  describe("Delete and Backspace right after an insert, with the keyboard still on the panel", () => {
+    async function insertCircle() {
+      const opened = await openEditor();
+      await tab(opened.user, "Elements");
+      await opened.user.click(await screen.findByRole("button", { name: "Browse shapes" }));
+      const before = elements().length;
+      const circle = await screen.findByRole("button", { name: "Circle" });
+      await opened.user.click(circle);
+      expect(elements()).toHaveLength(before + 1);
+      const added = state().selection[0];
+      return { ...opened, circle, before, added };
+    }
+
+    it.each(["Delete", "Backspace"])("%s removes the element just put on the page", async (key) => {
+      const { user, circle, before, added } = await insertCircle();
+      expect(document.activeElement).toBe(circle);
+      await user.keyboard(`{${key}}`);
+      expect(elements()).toHaveLength(before);
+      expect(elements().map((e) => e.id)).not.toContain(added);
+    });
+
+    it("works the same after an insert made with the keyboard (Enter on the item)", async () => {
+      const { user, circle, before } = await insertCircle();
+      act(() => state().actions.undo());
+      expect(elements()).toHaveLength(before);
+      circle.focus();
+      await user.keyboard("{Enter}");
+      expect(elements()).toHaveLength(before + 1);
+      // the keyboard stays in the panel to go on through it
+      expect(document.activeElement).toBe(circle);
+      await user.keyboard("{Delete}");
+      expect(elements()).toHaveLength(before);
+    });
+
+    it("leaves the other plain keys on the item to the panel", async () => {
+      const { user, before, added } = await insertCircle();
+      const x = elements().find((e) => e.id === added)!.x;
+      await user.keyboard("{ArrowRight}tr");
+      expect(elements()).toHaveLength(before + 1);
+      expect(elements().find((e) => e.id === added)!.x).toBe(x);
+    });
+
+    it("leaves Backspace and Delete to the search box of the panel", async () => {
+      const { user, before } = await insertCircle();
+      const search = screen.getAllByRole("searchbox")[0] as HTMLInputElement;
+      await user.click(search);
+      await user.keyboard("star{Backspace}{Backspace}{Delete}");
+      expect(search.value).toBe("st");
+      expect(elements()).toHaveLength(before + 1);
+    });
+
+    it("keeps Delete on a control of a context panel (the Position panel) from removing the element", async () => {
+      const { before } = await insertCircle();
+      act(() => state().actions.openContext({ kind: "position", tab: "arrange" }));
+      const options = await screen.findByRole("complementary", { name: "Options panel" });
+      const control = (await within(options).findAllByRole("button"))[0];
+      control.focus();
+      fireEvent.keyDown(control, { key: "Delete" });
+      expect(elements()).toHaveLength(before + 1);
+    });
+  });
+
   it("adds a heading from Text, opens it for typing and takes the typed words", async () => {
     const { user } = await openEditor();
     await tab(user, "Text");

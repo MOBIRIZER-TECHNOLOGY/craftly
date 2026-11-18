@@ -153,6 +153,50 @@ const results = [];
     return txt.slice(0, 80);
   });
 
+  await step("templates: a template starred on All is under Favourites when Favourites is picked from another category", async () => {
+    await page.goto(BASE + "/#/templates", { waitUntil: "load" });
+    const cards = page.locator(".cf-tplpage__masonry article.cf-tcard");
+    const names = () => page.locator(".cf-tplpage__masonry .cf-tcard__name").allInnerTexts();
+    await cards.first().waitFor({ timeout: 20000 });
+    const first = cards.first();
+    const name = (await first.locator(".cf-tcard__name").innerText()).trim();
+    await first.hover();
+    await first.getByRole("button", { name: "Add to favourites" }).click();
+    await first.getByRole("button", { name: "Remove from favourites" }).waitFor({ timeout: 5000 });
+    // a category that does not hold the starred template
+    const chips = page.locator("[aria-label='Template categories'] [role=tab]");
+    const chip = (label) => page.locator("[aria-label='Template categories']").getByRole("tab", { name: label, exact: true });
+    const labels = (await chips.allInnerTexts()).map((t) => t.trim()).filter((t) => t && t !== "All" && t !== "Favourites");
+    let other = null;
+    for (const label of labels) {
+      await chip(label).click();
+      await page.waitForFunction(
+        (l) => location.hash.startsWith("#/templates/") && document.querySelector("[aria-label='Template categories'] [aria-selected=true]")?.textContent.trim() === l,
+        label,
+        { timeout: 5000 },
+      );
+      await wait(400);
+      if (!(await names()).some((t) => t.trim() === name)) {
+        other = label;
+        break;
+      }
+    }
+    if (!other) throw new Error("no category without the starred template " + JSON.stringify(name));
+    await chip("Favourites").click();
+    await wait(600);
+    await shot("templates-favourites-from-category");
+    if (await page.getByText("No favourite templates yet").count()) throw new Error(`Favourites from ${other} says there are none`);
+    const shown = (await names()).map((t) => t.trim());
+    if (shown.length !== 1 || shown[0] !== name) throw new Error(`Favourites from ${other} shows ${JSON.stringify(shown)}, not ${JSON.stringify(name)}`);
+    // the same from All
+    await chip("All").click();
+    await wait(400);
+    await chip("Favourites").click();
+    await wait(400);
+    if ((await cards.count()) !== 1) throw new Error("Favourites from All shows " + (await cards.count()));
+    return `"${name.slice(0, 40)}" under Favourites from ${other} and from All`;
+  });
+
   await step("the dashboard keeps its layout after a visit to the editor and its dialogs, in the same page (the stylesheets of both stay loaded)", async () => {
     await page.goto(BASE + "/#/", { waitUntil: "load" });
     await page.getByText("What will you design today?").waitFor({ timeout: 20000 });

@@ -222,6 +222,29 @@ describe("<TemplatesPage>", () => {
       expect(await screen.findByText("No favourite templates yet")).toBeTruthy();
     });
 
+    it("shows every favourite when Favourites is picked from inside another category", async () => {
+      const user = userEvent.setup();
+      stubBox(960);
+      const first = TEMPLATES[0];
+      const other = CATEGORY_ORDER.find((id) => id !== first.category && TEMPLATES.some((template) => template.category === id))!;
+      const view = mountTemplates();
+      await waitFor(() => expect(cards().length).toBeGreaterThan(0));
+      await user.click(within(cards()[0]).getByRole("button", { name: "Add to favourites" }));
+      await screen.findByText(`Added “${first.name}” to your favourites`);
+      // the route moves to another category, as clicking its chip does
+      view.rerender(
+        <>
+          <TemplatesPage category={other} />
+          <Hosts />
+        </>,
+      );
+      await waitFor(() => expect(chip(TEMPLATE_CATEGORY_LABELS[other]).getAttribute("aria-selected")).toBe("true"));
+      await user.click(chip("Favourites"));
+      await waitFor(() => expect(cards()).toHaveLength(1));
+      expect(within(cards()[0]).getByText(first.name)).toBeTruthy();
+      expect(screen.queryByText("No favourite templates yet")).toBeNull();
+    });
+
     it("tells apart 'no favourites' from 'nothing matches' when searching among them", async () => {
       const user = userEvent.setup();
       stubBox(960);

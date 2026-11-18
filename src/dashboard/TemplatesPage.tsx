@@ -49,8 +49,10 @@ export function TemplatesPage({ category }: { category?: string }) {
   }, []);
 
   const results = useMemo(() => {
-    const found = searchTemplates(query, activeCategory);
-    return onlyFavourites ? found.filter((template) => favourites.has(template.id)) : found;
+    // Favourites is a chip beside the categories, not inside one: it spans every category, even when the
+    // route still names the category the person was on when they picked it
+    if (onlyFavourites) return searchTemplates(query, null).filter((template) => favourites.has(template.id));
+    return searchTemplates(query, activeCategory);
   }, [query, activeCategory, onlyFavourites, favourites]);
 
   const chipIds = [...CATEGORY_ORDER.filter((id) => (counts.get(id) ?? 0) > 0 || id === activeCategory)];

@@ -252,6 +252,67 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
     return JSON.stringify(e.effect).slice(0, 60) + " curve=" + c.curve;
   });
 
+  await step("text: curved text draws the Neon glow it shows as chosen (read from the pixels with and without Neon)", async () => {
+    /** pixels of the glow's pink (#ff2fb3) around the text on the screen, with nothing selected and the pointer away */
+    const pinkAround = async () => {
+      const e = await SEL();
+      const id = e.id;
+      await page.evaluate(() => window.__editor.getState().actions.clearSelection());
+      await page.mouse.move(4, 4);
+      await wait(600);
+      const frame = await page.locator(".cf-pageframe").boundingBox();
+      const zoom = await page.evaluate(() => window.__editor.getState().zoom);
+      const pad = e.fontSize * 0.8;
+      const clip = {
+        x: Math.max(0, frame.x + (e.x - pad) * zoom),
+        y: Math.max(0, frame.y + (e.y - pad) * zoom),
+        width: (e.width + pad * 2) * zoom,
+        height: (e.height + pad * 2) * zoom,
+      };
+      const png = await page.screenshot({ clip });
+      const pink = await page.evaluate(async (bytes) => {
+        const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
+        const c = document.createElement("canvas");
+        c.width = bitmap.width;
+        c.height = bitmap.height;
+        const g = c.getContext("2d", { willReadFrequently: true });
+        g.drawImage(bitmap, 0, 0);
+        const d = g.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i] - d[i + 1] > 70 && d[i + 2] > 110 && d[i + 2] < 235) n++;
+        return n;
+      }, Array.from(png));
+      await page.evaluate((elId) => window.__editor.getState().actions.select([elId]), id);
+      await wait(300);
+      return pink;
+    };
+    const tile = (name) => page.locator(".cf-fx__tile", { hasText: name }).first();
+    if (
+      !(await tile("Neon")
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await tbBtn("Effects").click();
+      await wait(600);
+    }
+    if (!(await SEL()).curve) throw new Error("the text is not curved");
+    await tile("None").click();
+    await wait(300);
+    const without = await pinkAround();
+    await tile("Neon").click();
+    await wait(300);
+    const e = await SEL();
+    if (e.effect.kind !== "neon" || !e.curve) throw new Error("effect " + JSON.stringify(e.effect) + " curve " + e.curve);
+    if ((await tile("Neon").getAttribute("aria-pressed")) !== "true") throw new Error("the panel does not show Neon as chosen");
+    const glow = await pinkAround();
+    await shot("curved-neon");
+    if (glow < 300 || glow < without * 5 + 300) throw new Error(`the curved text has ${glow} pink pixels with Neon and ${without} without: no glow is drawn`);
+    // back to the shadow the steps before chose
+    await tile("Shadow").click();
+    await wait(300);
+    return `${without} -> ${glow} pink pixels around the curved text`;
+  });
+
   await step("text: Position panel - arrange + align to page", async () => {
     await openToolbarPanel("Position");
     await shot("position");
@@ -267,6 +328,54 @@ fs.writeFileSync(PNG_PATH, makePng(64, 48));
     const after = await SEL();
     if (before.x === after.x && before.y === after.y) throw new Error("position unchanged");
     return `(${Math.round(before.x)},${Math.round(before.y)}) -> (${Math.round(after.x)},${Math.round(after.y)})`;
+  });
+
+  await step("side panel: Delete and Backspace right after an insert remove the new element; the panel's search keeps Backspace", async () => {
+    await tab("Elements");
+    await back();
+    await page.getByRole("button", { name: "Browse shapes" }).click();
+    await wait(400);
+    const item = page.locator(".cf-sidepanel .cf-ditem").nth(2);
+    const n0 = (await S()).n;
+    const insertAndRemove = async (how, key) => {
+      if (how === "click") await item.click();
+      else {
+        await item.focus();
+        await page.keyboard.press("Enter");
+      }
+      await wait(300);
+      const s = await S();
+      if (s.n !== n0 + 1 || s.sel.length !== 1 || s.sel[0] !== s.ids[s.ids.length - 1])
+        throw new Error(`${how}: not inserted and selected (${n0} -> ${s.n}, ${s.sel.length} selected)`);
+      const focus = await page.evaluate(() => document.activeElement?.className || "");
+      if (!/cf-ditem/.test(focus)) throw new Error(`${how}: the keyboard left the panel item (${focus})`);
+      await page.keyboard.press(key);
+      await wait(300);
+      const after = await S();
+      if (after.n !== n0) throw new Error(`${how} + ${key}: ${n0} -> ${s.n} -> ${after.n} elements`);
+    };
+    await insertAndRemove("click", "Delete");
+    await insertAndRemove("click", "Backspace");
+    await insertAndRemove("Enter", "Delete");
+    // typing in the panel's search box after an insert still types
+    await item.click();
+    await wait(300);
+    const search = page.locator(".cf-sidepanel").getByRole("searchbox").first();
+    await search.click();
+    await page.keyboard.type("star");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Backspace");
+    const value = await search.inputValue();
+    const s = await S();
+    if (value !== "st" || s.n !== n0 + 1) throw new Error(`search "${value}", ${s.n} elements (${n0 + 1} expected)`);
+    await search.fill("");
+    await wait(300);
+    // and the shape is still selected: Delete from the item takes it away, leaving the page as it was
+    await item.focus();
+    await page.keyboard.press("Delete");
+    await wait(300);
+    if ((await S()).n !== n0) throw new Error("the last shape was not removed");
+    return `${n0} -> ${n0 + 1} -> ${n0} by click + Delete, click + Backspace and Enter + Delete; search typed "st"`;
   });
 
   // ---------- LAYERS / ARRANGE / LOCK / HIDE ----------
