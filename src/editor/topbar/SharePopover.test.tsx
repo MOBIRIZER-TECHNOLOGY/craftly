@@ -6,6 +6,8 @@ import { chromeDesign, renderChrome } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor } from "@/test/helpers";
 import { copyPageAsImage, printDesign, saveProjectFile } from "./designActions";
 import { SharePanel, SharePopover } from "./SharePopover";
+import { applySession } from "@/cloud/state";
+import { getSummary, saveDesign } from "@/core/library";
 
 // The actions have their own tests (designActions.test.tsx): here only the wiring of the tiles is checked.
 vi.mock("./designActions", async (importOriginal) => {
@@ -123,6 +125,33 @@ describe("<SharePopover>", () => {
     expect(within(popover()).getByRole("combobox", { name: "File type" })).toBeTruthy();
     await user.click(within(popover()).getByRole("button", { name: "Back to share" }));
     expect(within(popover()).getByRole("heading", { name: "Share design" })).toBeTruthy();
+  });
+});
+
+describe("<SharePanel> for a design of a team's space (B11)", () => {
+  const ANN = { id: "user_ann_0000000000001", email: "ann@example.org", name: "Ann Lee" };
+  const TEAM = { id: "team_studio_000000001", name: "Studio", role: "editor" as const };
+  afterEach(() => act(() => applySession(null)));
+
+  /** a design saved in the library while `space` is the space the dashboard shows: its record is in that space */
+  const savedIn = async (space: string, title: string) => {
+    act(() => applySession({ server: "https://accounts.example.org", token: "T".repeat(43), user: ANN, device: "Test", teams: [TEAM], activeSpace: space }));
+    const design = chromeDesign(title);
+    await saveDesign(design);
+    expect((await getSummary(design.id))?.space).toBe(space);
+    return design;
+  };
+
+  it("says the design is synced to the team's server, not kept on this device", async () => {
+    await renderChrome(<SharePanel onClose={() => undefined} />, await savedIn(TEAM.id, "Team poster"));
+    expect(await screen.findByText(/^This design belongs to Studio and is synced to the team's server/)).toBeTruthy();
+    expect(screen.queryByText(/Craftly keeps your designs on this device/)).toBeNull();
+  });
+
+  it("still says on this device for a design of the person's own space", async () => {
+    await renderChrome(<SharePanel onClose={() => undefined} />, await savedIn(ANN.id, "My poster"));
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getByText(/Craftly keeps your designs on this device/)).toBeTruthy();
   });
 });
 

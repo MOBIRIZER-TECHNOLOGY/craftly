@@ -55,6 +55,11 @@ interface PresenceStore {
   me: number | null;
   /** The name this person gave ("" for none). */
   name: string;
+  /**
+   * The name the server hears this person under whatever this browser says, from its welcome: an account's, for a seat of a team's
+   * design joined with a session. Null for none (a seat joined with a key, whose person names themselves) and without a connection.
+   */
+  fixedName: string | null;
   /** The others, in the order of their numbers. */
   people: Person[];
 }
@@ -73,7 +78,10 @@ export function savedName(): string {
   }
 }
 
-export const usePresence = create<PresenceStore>(() => ({ me: null, name: savedName(), people: [] }));
+export const usePresence = create<PresenceStore>(() => ({ me: null, name: savedName(), fixedName: null, people: [] }));
+
+/** The name this person is shown under to themselves: the one the server hears them under when it fixes one, or the one they gave. */
+export const myName = (s: Pick<PresenceStore, "name" | "fixedName">): string => s.fixedName ?? s.name;
 
 /** Takes the name a person typed, keeps it on this device, and gives back what the others will see. */
 export function saveName(typed: string): string {
@@ -119,7 +127,7 @@ export function forgetStale(now: number): void {
 
 /** The connection is gone: nobody is known to be here, and this person has no number. */
 export function clearPresence(): void {
-  usePresence.setState({ me: null, people: [] });
+  usePresence.setState({ me: null, fixedName: null, people: [] });
 }
 
 /* ---------------- what is said about this person ---------------- */
@@ -158,10 +166,11 @@ function current(): PresenceState | null {
 
 /**
  * Says where this person is, through `send` (which answers whether it could), from now until the returned function is called.
- * `me` is the number the server gave this connection.
+ * `me` is the number the server gave this connection, and `fixedName` the name the server hears this person under whatever is said
+ * here (an account's), if it fixes one.
  */
-export function startPresence(send: (state: PresenceState) => boolean, me: number): () => void {
-  usePresence.setState({ me });
+export function startPresence(send: (state: PresenceState) => boolean, me: number, fixedName: string | null = null): () => void {
+  usePresence.setState({ me, fixedName });
   let lastSaid = "";
   let lastAt = -Infinity;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -207,6 +216,6 @@ export function startPresence(send: (state: PresenceState) => boolean, me: numbe
     offName();
     pointerListeners.delete(soon);
     doc?.removeEventListener("visibilitychange", soon);
-    if (usePresence.getState().me === me) usePresence.setState({ me: null });
+    if (usePresence.getState().me === me) usePresence.setState({ me: null, fixedName: null });
   };
 }

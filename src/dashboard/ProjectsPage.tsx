@@ -26,6 +26,7 @@ import {
   type SelectOption,
 } from "@/ui";
 import type { Asset, DesignSummary, Folder } from "@/core/types";
+import { useActiveTeam } from "@/cloud/state";
 import { m } from "@/i18n";
 import { navigate } from "@/router";
 import { IMAGE_ACCEPT, createFolderAction, deleteFolderAction, moveDesignAction, renameFolderAction, uploadImageFiles } from "./actions";
@@ -91,6 +92,8 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
   const { active: designs, ready: designsReady } = useDesigns();
   const { folders, ready: foldersReady } = useFolders();
   const { assets, ready: assetsReady } = useAssets();
+  // what a team's space holds is synced to the team's server, not kept on this device only: the words say where it is
+  const team = useActiveTeam();
   const now = useNow();
 
   const [tab, setTab] = useState<Tab>("all");
@@ -280,7 +283,7 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
     header = (
       <PageHeader
         title={m.dashboard.shell.nav.projects}
-        subtitle={m.dashboard.projects.subtitle}
+        subtitle={team ? m.dashboard.projects.teamSubtitle(team.name) : m.dashboard.projects.subtitle}
         actions={
           <>
             <Button variant="secondary" icon={<IconFolderPlus aria-hidden="true" />} onClick={() => void createFolderAction()}>
@@ -329,7 +332,7 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
         headingLevel={2}
         icon={<IconFolder />}
         title={m.dashboard.projects.firstTitle}
-        text={m.dashboard.projects.firstText}
+        text={team ? m.dashboard.projects.teamFirstText : m.dashboard.projects.firstText}
         action={
           <div className="cf-projects__cta">
             <Button variant="primary" size="lg" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()}>
@@ -398,7 +401,7 @@ export function ProjectsPage({ folderId }: { folderId?: string }) {
         headingLevel={2}
         icon={<IconFolder />}
         title={m.dashboard.projects.noDesigns}
-        text={m.dashboard.projects.noDesignsText}
+        text={team ? m.dashboard.projects.teamNoDesignsText : m.dashboard.projects.noDesignsText}
         action={
           <Button variant="primary" icon={<IconPlus aria-hidden="true" />} onClick={() => openCreateDialog()}>
             {m.dashboard.shared.createDesign}

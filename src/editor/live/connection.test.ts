@@ -331,6 +331,37 @@ describe("stopping to share", () => {
     expect(el("a")).toBeTruthy();
   });
 
+  it("tells a person who joined by the link, in plain words and once, that the owner stopped sharing (B10)", async () => {
+    const link = await shareDesign(address, env);
+    const info = vi.spyOn(toast, "info");
+    try {
+      // this browser is the one who was given the edit link: no owner key
+      stops.push(connectLive({ server: link.server, room: link.room, key: link.key, role: "edit" }, env));
+      await until("live", () => useLiveStatus.getState().status === "live");
+      const res = await fetch(`${address}/api/rooms/${link.room}`, { method: "DELETE", headers: { "x-craftly-key": link.ownerKey! } });
+      expect(res.ok).toBe(true);
+      await until("this browser to be sent away", () => useLiveStatus.getState().status === "denied");
+      expect(useLiveStatus.getState()).toMatchObject({ reason: "not-found", stopped: true });
+      expect(info.mock.calls.filter(([text]) => text === "The owner stopped sharing this design. You can go on with your own copy on this device.")).toHaveLength(1);
+      expect(el("a")).toBeTruthy();
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it("does not say the owner stopped sharing to the owner, nor to a link to a room that was never there", async () => {
+    const link = await shareDesign(address, env);
+    stops.push(connectLive({ ...link, room: "A".repeat(22) }, env));
+    await until("the refusal", () => useLiveStatus.getState().reason === "not-found");
+    expect(useLiveStatus.getState().stopped).toBe(false);
+    stops.splice(0).forEach((stop) => stop());
+    stops.push(connectLive(link, env));
+    await until("live", () => useLiveStatus.getState().status === "live");
+    await fetch(`${address}/api/rooms/${link.room}`, { method: "DELETE", headers: { "x-craftly-key": link.ownerKey! } });
+    await until("the owner's connection to be refused", () => useLiveStatus.getState().status === "denied");
+    expect(useLiveStatus.getState().stopped).toBe(false);
+  });
+
   it("forgets the link of a room that the server no longer has, says why when the server refuses, and keeps the link when it cannot be reached", async () => {
     const link = await shareDesign(address, env);
     const reply = (status: number) => ({ ok: status < 400, status, json: async () => ({ error: "the server says no" }) }) as unknown as Response;

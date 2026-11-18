@@ -19,7 +19,7 @@ import type { Design, DesignElement } from "@/core/types";
 import { commentsProblem, isCommentId, readComment, readCommentPatch, readReply, readReplyPatch } from "@/core/comments";
 import { elementProblem } from "@/core/usableElement";
 import type { Op } from "./ops";
-import { parsePresence, type PresenceHeard, type PresenceSaid } from "./presence";
+import { cleanName, parsePresence, PRESENCE_NAME_MAX, type PresenceHeard, type PresenceSaid } from "./presence";
 
 export type Role = "edit" | "view";
 export const canEdit = (role: Role): boolean => role === "edit";
@@ -75,10 +75,11 @@ export function joinCredential(msg: unknown): { key: string } | { session: strin
  * `peer` in a welcome is the number the server gave this connection, under which the others hear of this person. A server from
  * before there was presence sends none, and a browser then says nothing about where it is, to a server that would not pass it on.
  * `features` are those of the join that the server supports; a server from before features sends none, and a browser then sends it
- * nothing of any feature.
+ * nothing of any feature. `name` is the name the others hear for this person whatever their browser says (an account's, for a seat
+ * joined with a session): this person is shown under it too. A seat joined with a key gets none, and its person names themselves.
  */
 export type ServerMsg =
-  | { t: "welcome"; role: Role; rev: number; lastSeq: number; design: Design; peer?: number; features?: Feature[] }
+  | { t: "welcome"; role: Role; rev: number; lastSeq: number; design: Design; peer?: number; features?: Feature[]; name?: string }
   | { t: "ack"; seq: number; rev: number }
   | { t: "rejected"; seq: number; reason: string }
   | { t: "ops"; rev: number; ops: Op[] }
@@ -395,10 +396,14 @@ export function parseServerMsg(value: unknown): ServerMsg | string | null {
       if (!isCount(value.rev) || !isCount(value.lastSeq)) return "welcome: the revision and the last batch are counts";
       if (value.peer !== undefined && !isCount(value.peer)) return "welcome: the number of a connection is a count";
       if (value.features !== undefined && !isFeatureList(value.features)) return "welcome: the features are a few short names";
+      if (value.name !== undefined && (typeof value.name !== "string" || value.name.length > PRESENCE_NAME_MAX)) return "welcome: the name is a short text";
       const problem = checkDesign(value.design);
       if (problem) return `welcome: ${problem}`;
       const welcome: Extract<ServerMsg, { t: "welcome" }> = { t: "welcome", role: value.role, rev: value.rev, lastSeq: value.lastSeq, design: value.design as Design };
       if (value.peer !== undefined) welcome.peer = value.peer;
+      // (made into a name presence may say, as any name that is shown; one that is left with nothing is no name)
+      const name = typeof value.name === "string" ? cleanName(value.name) : "";
+      if (name) welcome.name = name;
       // (a newer server may name features that this version does not know: they are not kept)
       if (value.features !== undefined) welcome.features = value.features.filter((name): name is Feature => (FEATURES as readonly string[]).includes(name));
       return welcome;

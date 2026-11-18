@@ -51,6 +51,15 @@ describe("activeNav", () => {
     expect(activeNav({ name: "design", id: "d_1" })).toBe("home");
     expect(activeNav({ name: "whatever" })).toBe("home");
   });
+
+  it("is none of the nav on the account's pages and a team's page, which no entry of the nav is", () => {
+    for (const name of ["signin", "signup", "reset", "invite"]) expect(activeNav({ name })).toBeNull();
+    expect(activeNav({ name: "reset", id: "code" })).toBeNull();
+    expect(activeNav({ name: "invite", id: "code" })).toBeNull();
+    expect(activeNav({ name: "team", id: "team_studio_000000001" })).toBeNull();
+    // `#/team` alone shows Home
+    expect(activeNav({ name: "team" })).toBe("home");
+  });
 });
 
 describe("<Shell>", () => {
@@ -75,6 +84,13 @@ describe("<Shell>", () => {
     it("marks Home for a route outside the menu", () => {
       mountShell({ name: "design", id: "d_1" });
       expect(current(railNav())).toBe("Home");
+    });
+
+    it.each<[string, string?]>([["signin"], ["signup"], ["reset"], ["invite"], ["team", "team_studio_000000001"]])("marks no page as current on #/%s", (name, id) => {
+      mountShell({ name, id });
+      expect(within(railNav()).queryByRole("link", { current: "page" })).toBeNull();
+      expect(within(tabBar()).queryByRole("link", { current: "page" })).toBeNull();
+      expect(within(railNav()).getByRole("link", { name: "Home" }).classList.contains("is-active")).toBe(false);
     });
 
     it("tells the page layout which page is open", () => {

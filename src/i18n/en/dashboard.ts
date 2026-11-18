@@ -499,6 +499,10 @@ export const dashboard = {
     folderNotFound: "Folder not found",
     folderOptions: "Folder options",
     subtitle: "Your designs, folders and uploads, saved on this device.",
+    /** subtitle, firstText and noDesignsText in a team's space, whose designs are synced to the team's server */
+    teamSubtitle: (team: string) => `The designs, folders and uploads of ${team}, synced to the team's server.`,
+    teamFirstText: "Designs you create here are synced to the team's server, so everybody in the team can open them. Pick a size, start from a template or upload a photo.",
+    teamNoDesignsText: "Designs you create appear here. Everything is synced to the team's server.",
     missingTitle: "This folder doesn't exist",
     missingText: "It may have been deleted. Your designs are safe in Projects.",
     backToProjects: "Back to Projects",
@@ -589,6 +593,7 @@ export const dashboard = {
   /** TrashPage.tsx */
   trash: {
     subtitle: "Designs in the trash are kept on this device until you delete them.",
+    teamSubtitle: "Designs in the trash are kept on the team's server until you delete them.",
     loading: "Loading the trash",
     emptyTitle: "The trash is empty",
     emptyText: "Designs you move to the trash show up here, and you can restore them whenever you like.",

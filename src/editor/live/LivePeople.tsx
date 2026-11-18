@@ -10,7 +10,7 @@ import { useState } from "react";
 import { PRESENCE_NAME_MAX } from "@/collab/presence";
 import { m } from "@/i18n";
 import { TextField } from "@/ui";
-import { colorOf, saveName, shownName, usePresence } from "./presence";
+import { colorOf, myName, saveName, shownName, usePresence } from "./presence";
 import "./live.css";
 
 /** How many people are shown by their initials before the rest are summed up. */
@@ -27,10 +27,11 @@ export function initials(name: string): string {
 
 export function LivePeople() {
   const me = usePresence((s) => s.me);
-  const myName = usePresence((s) => s.name);
+  // (a seat the server names, an account's, is shown under that name here too, as the others see it)
+  const mine = shownName(usePresence(myName), me ?? 0);
   const others = usePresence((s) => s.people);
   if (me === null) return null;
-  const all = [{ peer: me, name: m.editor.live.me(shownName(myName, me)), short: initials(shownName(myName, me)), color: colorOf(me) }].concat(
+  const all = [{ peer: me, name: m.editor.live.me(mine), short: initials(mine), color: colorOf(me) }].concat(
     others.map((p) => ({ peer: p.peer, name: p.name, short: initials(p.name), color: p.color })),
   );
   const shown = all.length > SHOWN + 1 ? all.slice(0, SHOWN) : all;

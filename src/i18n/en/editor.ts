@@ -481,8 +481,12 @@ export const editor = {
       connecting: "Connecting...",
       reconnecting: "Reconnecting...",
       denied: "Not allowed in",
+      /** a person who joined by a link, after its owner pressed Stop sharing */
+      stopped: "Sharing stopped",
       off: "Not connected",
     },
+    /** said to a person who joined by a link when its owner stops sharing: in a message, in the Share panel and on the top bar mark */
+    ownerStopped: "The owner stopped sharing this design. You can go on with your own copy on this device.",
     copyFailed: "The link could not be copied. Select it and copy it by hand.",
     copy: "Copy",
     copied: "Copied",

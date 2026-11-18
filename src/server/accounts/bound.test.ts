@@ -283,6 +283,9 @@ describe("joining a bound room", () => {
     await until("each to hear the other", () => nameHeard(ann).length > 0 && nameHeard(bob).length > 0);
     expect(nameHeard(bob)).toEqual(["Owner"]);
     expect(nameHeard(ann)).toEqual(["Eddie"]);
+    // and each is told, in their welcome, the name the others hear for them: they are shown to themselves under it (B4)
+    expect(ann.welcome()).toMatchObject({ name: "Owner" });
+    expect(bob.welcome()).toMatchObject({ name: "Eddie" });
   });
 });
 

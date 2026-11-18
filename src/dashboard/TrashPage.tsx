@@ -1,6 +1,7 @@
 import { memo, useId } from "react";
 import { Button, EmptyState, IconTrash, IconUndo, openContextMenu } from "@/ui";
 import type { DesignSummary } from "@/core/types";
+import { useActiveTeam } from "@/cloud/state";
 import { deleteForeverAction, emptyTrashAction, restoreDesignAction } from "./actions";
 import { useDesigns, useNow } from "./data";
 import { DesignCardSkeleton } from "./DesignCard";
@@ -16,12 +17,14 @@ import "./TrashPage.css";
 export function TrashPage() {
   const { trashed, ready } = useDesigns();
   const now = useNow();
+  // a team's trash is synced to the team's server like the rest of its designs
+  const team = useActiveTeam();
 
   return (
     <Page className="cf-trash">
       <PageHeader
         title={m.dashboard.shell.nav.trash}
-        subtitle={m.dashboard.trash.subtitle}
+        subtitle={team ? m.dashboard.trash.teamSubtitle : m.dashboard.trash.subtitle}
         actions={
           trashed.length > 0 ? (
             <Button variant="secondary" className="cf-trash__empty-btn" icon={<IconTrash aria-hidden="true" />} onClick={() => void emptyTrashAction(trashed.length)}>

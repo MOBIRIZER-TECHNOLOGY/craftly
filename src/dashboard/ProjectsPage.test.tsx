@@ -8,6 +8,8 @@ import { toast } from "@/ui";
 import { closeCreateDialog, useCreateDialog } from "./createDialogState";
 import { DESIGN_DRAG_TYPE } from "./DesignCard";
 import { ProjectsPage } from "./ProjectsPage";
+import { TrashPage } from "./TrashPage";
+import { applySession } from "@/cloud/state";
 
 const VIEW_KEY = "craftly:projects-view";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -109,6 +111,36 @@ describe("<ProjectsPage> loading and empty states", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Projects" })).toBeTruthy();
     expect(screen.getByText("Your designs, folders and uploads, saved on this device.")).toBeTruthy();
     for (const name of ["Create folder", "Upload", "Create design"]) expect(screen.getAllByRole("button", { name }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("<ProjectsPage> and <TrashPage> in a team's space (B11)", () => {
+  const ANN = { id: "user_ann_0000000000001", email: "ann@example.org", name: "Ann Lee" };
+  const TEAM = { id: "team_studio_000000001", name: "Studio", role: "editor" as const };
+  const signIn = (activeSpace: string) =>
+    act(() => applySession({ server: "https://accounts.example.org", token: "T".repeat(43), user: ANN, device: "Test", teams: [TEAM], activeSpace }));
+  afterEach(() => act(() => applySession(null)));
+
+  it("says that what is there is synced to the team's server, not saved on this device", async () => {
+    signIn(TEAM.id);
+    mountProjects();
+    await screen.findByText("Start your first project");
+    expect(screen.getByText("The designs, folders and uploads of Studio, synced to the team's server.")).toBeTruthy();
+    expect(screen.getByText(/^Designs you create here are synced to the team's server/)).toBeTruthy();
+    expect(screen.queryByText(/on this device/)).toBeNull();
+  });
+
+  it("says the trash of a team is kept on the team's server", async () => {
+    signIn(TEAM.id);
+    render(<TrashPage />);
+    expect(await screen.findByText("Designs in the trash are kept on the team's server until you delete them.")).toBeTruthy();
+  });
+
+  it("still says on this device in the person's own space", async () => {
+    signIn(ANN.id);
+    mountProjects();
+    await screen.findByText("Start your first project");
+    expect(screen.getByText("Your designs, folders and uploads, saved on this device.")).toBeTruthy();
   });
 });
 

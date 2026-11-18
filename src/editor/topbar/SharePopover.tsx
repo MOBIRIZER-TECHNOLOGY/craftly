@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { spaceTeam, useCloud, type SessionTeam } from "@/cloud/state";
+import { getSummary } from "@/core/library";
 import { useEditor } from "@/core/store";
 import { DownloadPanel } from "@/export/DownloadPanel";
 import { m } from "@/i18n";
@@ -26,12 +28,38 @@ function Tile({ icon, label, busy, disabled, onClick }: TileProps) {
 }
 
 /**
+ * The team whose space the open design is in, for the signed-in person: a design of a team's space is synced to the team's server,
+ * not kept on this device only. Null for a design of this device or of the person's own space, and while nobody is signed in.
+ */
+function useDesignTeam(): SessionTeam | null {
+  const designId = useEditor((s) => s.design?.id ?? "");
+  const session = useCloud((s) => s.session);
+  const [space, setSpace] = useState<string | null>(null);
+  useEffect(() => {
+    let gone = false;
+    if (!session || !designId) {
+      setSpace(null);
+      return;
+    }
+    // (the space is kept with the design's record in the library, not in the design)
+    getSummary(designId)
+      .then((summary) => !gone && setSpace(summary?.space ?? null))
+      .catch(() => !gone && setSpace(null));
+    return () => {
+      gone = true;
+    };
+  }, [session, designId]);
+  return spaceTeam(space, session);
+}
+
+/**
  * The content of the share popover (and of the "share" dialog): local equivalents of the share tiles.
  * Download swaps the panel for the export options with a back arrow.
  */
 export function SharePanel({ onClose }: { onClose: () => void }) {
   const [view, setView] = useState<"main" | "download">("main");
   const [busy, setBusy] = useState<"project" | "image" | null>(null);
+  const team = useDesignTeam();
 
   if (view === "download") {
     return (
@@ -93,7 +121,7 @@ export function SharePanel({ onClose }: { onClose: () => void }) {
         <LiveSection />
         <p className="cf-share__note">
           <IconInfo className="cf-share__note-icon" aria-hidden="true" />
-          <span>{m.editorChrome.share.note}</span>
+          <span>{team ? m.editorChrome.share.teamNote(team.name) : m.editorChrome.share.note}</span>
         </p>
       </div>
     </div>

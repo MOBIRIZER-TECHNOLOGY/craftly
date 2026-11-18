@@ -44,12 +44,20 @@ export interface LiveStatusState {
   reason: DeniedReason | null;
   /** what the key allows, known once the server has answered */
   role: Role | null;
+  /**
+   * The owner of a design that this person joined by a link stopped sharing it: the room this person was in is gone. (The server
+   * says that the room is not there; for somebody who was in it with a link, that is what it means.)
+   */
+  stopped: boolean;
 }
 
 /** What the top bar and the Share panel show about the connection of the open design. */
-export const useLiveStatus = create<LiveStatusState>(() => ({ status: "off", reason: null, role: null }));
+export const useLiveStatus = create<LiveStatusState>(() => ({ status: "off", reason: null, role: null, stopped: false }));
 
-const OFF: LiveStatusState = { status: "off", reason: null, role: null };
+const OFF: LiveStatusState = { status: "off", reason: null, role: null, stopped: false };
+
+/** What a person is told about the connection when it ends: the owner stopped sharing, or why it was refused. */
+export const endedText = (s: Pick<LiveStatusState, "reason" | "stopped">): string | null => (s.stopped ? m.editor.live.ownerStopped : s.reason ? deniedText(s.reason) : null);
 
 /** What a person is told when the connection ends for this reason. */
 export const deniedText = (reason: DeniedReason): string => m.editor.live.denied[reason];
@@ -243,13 +251,17 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
         looking = true;
         actions().setMode("view");
       }
-      useLiveStatus.setState({ status, reason, role: live.session.role });
+      // A room that is gone for somebody who was in it by a link (not with a session: a team's room, which is asked for again; not
+      // its owner, who closed it) is one whose owner stopped sharing it. They are told so in plain words, once.
+      const stopped = status === "denied" && reason === "not-found" && reachedLive && !env.session && !link.ownerKey;
+      useLiveStatus.setState({ status, reason, role: live.session.role, stopped });
+      if (stopped && !closed) toast.info(m.editor.live.ownerStopped, { duration: 0 });
       if (status === "denied") env.onDenied?.(reason);
       // what the welcome said of comments; while the connection is away it stays what it was
       if (status === "live") useComments.setState({ sharing: live.sharesComments ? "shared" : "unsupported" });
       presenceOff();
       const me = live.peer;
-      if (me !== null) stopPresence = startPresence((state) => live.present(state), me);
+      if (me !== null) stopPresence = startPresence((state) => live.present(state), me, live.fixedName);
     },
     onPresence: (heard) => {
       heardPresence(heard);
@@ -262,7 +274,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       toast.info(m.editor.live.typedFirst(shownName(heard.name, heard.peer)));
     },
   });
-  useLiveStatus.setState({ status: "connecting", reason: null, role: null });
+  useLiveStatus.setState({ status: "connecting", reason: null, role: null, stopped: false });
   actions().startLive({
     change(before, after) {
       const known = new Set(collectAssetIds(before));

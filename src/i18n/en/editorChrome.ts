@@ -60,6 +60,9 @@ export const editorChrome = {
     print: "Print",
     copyAsImage: "Copy as image",
     note: "Craftly keeps your designs on this device. To move one to another browser or computer, save a project file and open it there - or download the design as an image or PDF to send it to someone.",
+    /** the same note for a design of a team's space, which is synced to the team's server */
+    teamNote: (team: string) =>
+      `This design belongs to ${team} and is synced to the team's server, so everybody in the team can open it. To send it to someone else, save a project file or download it as an image or PDF.`,
   },
   rename: {
     title: "Rename design",

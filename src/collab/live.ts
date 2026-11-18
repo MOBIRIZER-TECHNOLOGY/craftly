@@ -163,6 +163,11 @@ export class Live {
     return this.session.status === "live" ? this.session.peer : null;
   }
 
+  /** The name the server hears this person under whatever this browser says (an account's): null while not in the room, and for none. */
+  get fixedName(): string | null {
+    return this.session.status === "live" ? this.session.name : null;
+  }
+
   /**
    * Says where this person is, at once and not behind the edits that wait for an image: whether it was said. It is said only in
    * the room, and only to a server that gave this connection a number: one from before there was presence would count the

@@ -187,6 +187,16 @@ describe("who is here, in the top bar", () => {
     expect(list.querySelector(".cf-live-people__count")?.textContent).toBe("3");
   });
 
+  it("shows this person under the name the server gave their seat (an account's), over the one they typed and over Guest (B4)", () => {
+    usePresence.setState({ name: "Typed here", fixedName: "Val Owner" });
+    render(<LivePeople />);
+    const item = screen.getByRole("listitem");
+    expect(item.querySelector(".cf-sr-only")?.textContent).toBe("Val Owner (you)");
+    expect(item.querySelector(".cf-live-people__initials")?.textContent).toBe("VO");
+    act(() => usePresence.setState({ name: "", fixedName: "Val Owner" }));
+    expect(screen.getByRole("listitem").getAttribute("title")).toBe("Val Owner (you)");
+  });
+
   it("says one person when this person is alone", () => {
     render(<LivePeople />);
     expect(screen.getByRole("list", { name: "1 person here" })).toBeTruthy();

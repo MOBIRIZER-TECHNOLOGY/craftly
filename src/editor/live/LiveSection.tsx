@@ -13,7 +13,7 @@ import { useEditor } from "@/core/store";
 import type { LiveLink } from "@/core/types";
 import { m } from "@/i18n";
 import { Badge, Button, TextField, toast } from "@/ui";
-import { CreateKeyError, deniedText, shareDesign, stopSharing, useLiveStatus } from "./connection";
+import { CreateKeyError, endedText, shareDesign, stopSharing, useLiveStatus } from "./connection";
 import { rememberShared } from "./joined";
 import { joinUrl } from "./links";
 import { NameField } from "./LivePeople";
@@ -38,11 +38,11 @@ const savedServer = (): string => {
 };
 
 /** How the connection is, in words. */
-export function liveStatusText(status: ReturnType<typeof useLiveStatus.getState>["status"], role: "edit" | "view" | null): string {
+export function liveStatusText(status: ReturnType<typeof useLiveStatus.getState>["status"], role: "edit" | "view" | null, stopped = false): string {
   if (status === "live") return role === "view" ? m.editor.live.status.liveView : m.editor.live.status.live;
   if (status === "connecting") return m.editor.live.status.connecting;
   if (status === "reconnecting") return m.editor.live.status.reconnecting;
-  if (status === "denied") return m.editor.live.status.denied;
+  if (status === "denied") return stopped ? m.editor.live.status.stopped : m.editor.live.status.denied;
   return m.editor.live.status.off;
 }
 
@@ -79,7 +79,8 @@ function CopyLink({ label, copyLabel, url, hint }: { label: string; copyLabel: s
 export function LiveSection() {
   const link = useEditor((s) => s.design?.live ?? null);
   const designId = useEditor((s) => s.design?.id ?? "");
-  const { status, role, reason } = useLiveStatus();
+  const { status, role, reason, stopped } = useLiveStatus();
+  const ended = status === "denied" ? endedText({ reason, stopped }) : null;
   const [server, setServer] = useState(savedServer);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -184,7 +185,7 @@ export function LiveSection() {
         <h3 className="cf-live__title" id="cf-live-title">
           {m.editor.live.title}
         </h3>
-        <Badge tone={status === "live" ? "success" : status === "denied" ? "danger" : "warning"}>{liveStatusText(status, role)}</Badge>
+        <Badge tone={status === "live" ? "success" : status === "denied" ? "danger" : "warning"}>{liveStatusText(status, role, stopped)}</Badge>
       </div>
       {owner ? (
         <>
@@ -205,9 +206,9 @@ export function LiveSection() {
           {problem}
         </p>
       ) : null}
-      {status === "denied" && reason ? (
+      {ended ? (
         <p className="cf-live__problem" role="alert">
-          {deniedText(reason)}
+          {ended}
         </p>
       ) : null}
       {asking ? (
@@ -235,14 +236,15 @@ export function LiveSection() {
 export function LiveBadge() {
   const shared: LiveLink | null = useEditor((s) => s.design?.live ?? null);
   const team = useTeamLink();
-  const { status, role } = useLiveStatus();
+  const { status, role, stopped } = useLiveStatus();
   const link = shared ?? team;
   if (!link) return null;
-  const title = shared ? (link.role === "view" ? m.editor.live.badgeView : m.editor.live.badgeEdit) : role === "view" ? m.cloud.live.viewing : m.cloud.live.joined;
+  const linkTitle = link.role === "view" ? m.editor.live.badgeView : m.editor.live.badgeEdit;
+  const title = stopped ? m.editor.live.ownerStopped : shared ? linkTitle : role === "view" ? m.cloud.live.viewing : m.cloud.live.joined;
   return (
     <span className={`cf-live-badge cf-live-badge--${status}`} role="status" title={title}>
       <span className="cf-live-badge__dot" aria-hidden="true" />
-      {liveStatusText(status, role)}
+      {liveStatusText(status, role, stopped)}
     </span>
   );
 }

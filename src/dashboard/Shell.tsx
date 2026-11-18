@@ -73,9 +73,15 @@ function readRailPreference(): boolean {
   }
 }
 
-/** The page the route belongs to (unknown routes show Home). */
-export function activeNav(route: Route): NavId {
-  return NAV.some((entry) => entry.id === route.name) ? (route.name as NavId) : "home";
+/** The account's pages (Dashboard.tsx): no entry of the nav is one of them. */
+const ACCOUNT_PAGES: ReadonlySet<string> = new Set(["signin", "signup", "reset", "invite"]);
+
+/** The entry of the nav the route belongs to: none for the account's pages and a team's page; Home for unknown routes, which show Home. */
+export function activeNav(route: Route): NavId | null {
+  if (NAV.some((entry) => entry.id === route.name)) return route.name as NavId;
+  // (a team's page is `#/team/<id>`; `#/team` alone shows Home)
+  if (ACCOUNT_PAGES.has(route.name) || (route.name === "team" && route.id)) return null;
+  return "home";
 }
 
 /* ------------------------------------------------------------------ */

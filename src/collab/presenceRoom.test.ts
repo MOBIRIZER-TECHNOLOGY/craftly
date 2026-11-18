@@ -74,6 +74,17 @@ describe("what one person says about where they are", () => {
     expect(cat.presences()).toMatchObject([{ name: "Ann Account" }]);
   });
 
+  it("is told to that member in their welcome, also after a join again, so that they are shown to themselves under it (B4)", () => {
+    const room = new Room(start());
+    const heard: ServerMsg[] = [];
+    const annPeer: Peer = { send: (msg) => heard.push(overTheWire(msg)) };
+    room.join(annPeer, "ann", "edit", { comments: true }, "Ann Account");
+    void room.receive(annPeer, { t: "join", client: "ann", session: "s" } as never);
+    expect(heard.filter((msg) => msg.t === "welcome")).toMatchObject([{ name: "Ann Account" }, { name: "Ann Account" }]);
+    // a seat joined with a key names itself: its welcome has no name
+    expect(person(room, "bob").heard[0]).not.toHaveProperty("name");
+  });
+
   it("is no part of the design: no revision, nothing saved, nothing acknowledged", () => {
     const room = new Room(start());
     let saves = 0;

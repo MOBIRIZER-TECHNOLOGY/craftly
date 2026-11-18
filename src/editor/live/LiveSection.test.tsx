@@ -28,7 +28,7 @@ let respond: (url: string, init?: RequestInit) => Response | Promise<Response>;
 beforeEach(() => {
   resetEditor();
   useEditor.getState().actions.openDesign(chromeDesign("Shared"));
-  useLiveStatus.setState({ status: "off", reason: null, role: null });
+  useLiveStatus.setState({ status: "off", reason: null, role: null, stopped: false });
   calls = [];
   respond = (_url, init) => answer(init?.method === "DELETE" ? 200 : 201, init?.method === "DELETE" ? { ok: true } : made);
   vi.stubGlobal(
@@ -58,6 +58,23 @@ describe("when the server turns this browser away, or is turned away", () => {
     useLiveStatus.setState({ status: "denied", reason, role: null });
     render(<LiveSection />);
     expect(screen.getByRole("alert").textContent).toMatch(words);
+  });
+
+  it("says in plain words that the owner stopped sharing, in the panel and on the top bar mark, not that the person is not allowed in (B10)", () => {
+    useEditor.getState().actions.setLiveLink({ server: link.server, room: link.room, key: link.key, role: "edit" });
+    useLiveStatus.setState({ status: "denied", reason: "not-found", role: "edit", stopped: true });
+    render(
+      <>
+        <LiveSection />
+        <LiveBadge />
+      </>,
+    );
+    expect(screen.getByRole("alert").textContent).toBe("The owner stopped sharing this design. You can go on with your own copy on this device.");
+    const badge = screen.getByRole("status");
+    expect(badge.textContent).toBe("Sharing stopped");
+    expect(badge.getAttribute("title")).toMatch(/owner stopped sharing/);
+    expect(screen.queryByText("Not allowed in")).toBeNull();
+    act(() => useLiveStatus.setState({ stopped: false }));
   });
 
   it("says nothing of the kind while the connection is fine", () => {
@@ -375,6 +392,7 @@ describe("the state of the connection in the top bar", () => {
     expect(liveStatusText("connecting", null)).toBe("Connecting...");
     expect(liveStatusText("reconnecting", "edit")).toBe("Reconnecting...");
     expect(liveStatusText("denied", null)).toBe("Not allowed in");
+    expect(liveStatusText("denied", "edit", true)).toBe("Sharing stopped");
     expect(liveStatusText("closed", null)).toBe("Not connected");
   });
 });

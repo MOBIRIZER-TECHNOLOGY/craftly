@@ -187,6 +187,8 @@ export class Room {
       lastSeq: this.lastOf(client),
       design: comments ? this.design : withoutComments(this.design),
       peer: member.peer,
+      // the name the others hear for this person is the one it is shown under itself (an account's: `present`)
+      ...(member.name ? { name: member.name } : {}),
     };
     peer.send(comments ? { ...welcome, features: [COMMENTS] } : welcome);
     // where the others are, as each last said it: without this a newcomer would see nobody until they move

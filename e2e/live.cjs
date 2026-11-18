@@ -437,12 +437,21 @@ async function startServer() {
     await panel.getByRole("button", { name: "Stop sharing" }).click();
     await panel.getByRole("group", { name: "Stop sharing" }).getByRole("button", { name: "Stop sharing" }).click();
     await ann.page.waitForFunction(() => !window.__editor.getState().design.live, null, { timeout: 10000 });
-    await bob.page.waitForFunction(() => document.querySelector(".cf-live-badge")?.textContent === "Not allowed in", null, { timeout: 15000 });
+    // the others are told in plain words that the owner stopped sharing, not that they are "Not allowed in" (B10)
+    await bob.page.waitForFunction(() => document.querySelector(".cf-live-badge")?.textContent === "Sharing stopped", null, { timeout: 15000 });
+    const words = "The owner stopped sharing this design. You can go on with your own copy on this device.";
+    await bob.page.locator(".cf-toast__message", { hasText: words }).first().waitFor({ timeout: 5000 });
+    const title = await bob.page.locator(".cf-live-badge").first().getAttribute("title");
+    if (title !== words) throw new Error("the top bar mark says: " + title);
+    await bob.page.getByRole("button", { name: "Share" }).click();
+    const said = await bob.page.getByRole("dialog", { name: "Share design" }).getByRole("alert").first().textContent();
+    if (said !== words) throw new Error("the Share panel says: " + said);
+    await bob.page.keyboard.press("Escape");
     const a = await look(ann);
     const b = await look(bob);
     if (a.els.length !== 3 || b.els.length !== 3) throw new Error("a copy was lost: " + JSON.stringify([a.els.length, b.els.length]));
     await shot(bob, "sent-away");
-    return "Ann: own again, Bob: sent away, both keep their 2 boxes and the arrow";
+    return "Ann: own again, Bob: told the owner stopped sharing, both keep their 2 boxes and the arrow";
   });
 
   /* ---------------- the keys ---------------- */

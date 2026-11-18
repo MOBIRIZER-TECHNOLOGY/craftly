@@ -69,6 +69,8 @@ export class Session {
   role: Role | null = null;
   /** The number the server gave this connection, under which the others hear of this person; null without a connection, and with a server that gives none. */
   peer: number | null = null;
+  /** The name the server hears this person under whatever this browser says (an account's), from its welcome; null for none. */
+  name: string | null = null;
   rev = 0;
   /**
    * Whether comments are shared with this server: this browser said in its join that it understands them and the welcome said
@@ -162,6 +164,7 @@ export class Session {
   /** The connection is gone; whatever was not confirmed is kept and sent again when there is another. */
   close(): void {
     this.peer = null;
+    this.name = null;
     if (this.status !== "ended") this.status = "offline";
   }
 
@@ -224,6 +227,7 @@ export class Session {
   private welcome(msg: Extract<ServerMsg, { t: "welcome" }>): Outcome {
     this.role = msg.role;
     this.peer = msg.peer ?? null;
+    this.name = msg.name ?? null;
     this.sharesComments = (this.opts.features ?? []).includes(COMMENTS) && (msg.features ?? []).includes(COMMENTS);
     // A server that does not share comments may still hold some, from the design that made its room: they are frozen there, and
     // are not shown. What this browser made of comments while it waited stays on its own copy, and is not sent.

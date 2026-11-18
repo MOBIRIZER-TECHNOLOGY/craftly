@@ -268,6 +268,7 @@ describe("parseServerMsg: what a server says, before anything of it is used", ()
     { t: "welcome", role: "edit", rev: 3, lastSeq: 2, design: design() },
     { t: "welcome", role: "view", rev: 0, lastSeq: 0, design: design() },
     { t: "welcome", role: "edit", rev: 3, lastSeq: 2, design: design(), peer: 7 },
+    { t: "welcome", role: "edit", rev: 3, lastSeq: 2, design: design(), peer: 7, name: "Val Owner" },
     { t: "ack", seq: 4, rev: 9 },
     { t: "rejected", seq: 4, reason: "this link is read-only" },
     { t: "ops", rev: 5, ops: [{ k: "el.del", page: "p", id: "a" }] },
@@ -284,6 +285,14 @@ describe("parseServerMsg: what a server says, before anything of it is used", ()
     expect(parseServerMsg({ t: "ack", seq: 1, rev: 2, evil: { polluted: true } })).toEqual({ t: "ack", seq: 1, rev: 2 });
     const welcome = parseServerMsg({ t: "welcome", role: "edit", rev: 1, lastSeq: 0, design: design(), extra: 1 }) as unknown as Record<string, unknown>;
     expect(Object.keys(welcome).sort()).toEqual(["design", "lastSeq", "rev", "role", "t"]);
+  });
+
+  it("keeps the name of a welcome only as a name presence may say, and none that is left with nothing", () => {
+    const named = (name: unknown) => parseServerMsg({ t: "welcome", role: "edit", rev: 1, lastSeq: 0, design: design(), peer: 1, name }) as Record<string, unknown> | string;
+    expect(named(" Val\u0000 Owner\n")).toMatchObject({ name: "Val Owner" });
+    expect(named("\u0000 ")).not.toHaveProperty("name");
+    expect(named(5)).toMatch(/^welcome: /);
+    expect(named("x".repeat(41))).toMatch(/^welcome: /);
   });
 
   it("lets a kind of message pass that a newer server may send and this version does not know", () => {

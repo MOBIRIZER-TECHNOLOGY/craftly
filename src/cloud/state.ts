@@ -85,6 +85,18 @@ export function useAccount() {
   };
 }
 
+/**
+ * The team a space is, of those of the signed-in person: what is in it is synced to the team's server, not kept on this device
+ * only. Null for the person's own space, for no space (a design of this device only), and while nobody is signed in.
+ */
+export function spaceTeam(space: string | null | undefined, session = useCloud.getState().session): SessionTeam | null {
+  if (!session || !space || space === session.user.id) return null;
+  return session.teams.find((team) => team.id === space) ?? null;
+}
+
+/** The team whose space the dashboard shows; null in the person's own space and while nobody is signed in. */
+export const useActiveTeam = (): SessionTeam | null => useCloud((s) => spaceTeam(s.session?.activeSpace, s.session));
+
 /** The role of the signed-in person in a space; null when they are not in it (or nobody is signed in). */
 export function roleIn(space: string | undefined, session = useCloud.getState().session): Role | null {
   if (!session || !space) return null;

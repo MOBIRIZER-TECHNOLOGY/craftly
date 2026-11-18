@@ -577,6 +577,13 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
       });
     await until("the laptop sees Bob by name", async () => JSON.stringify(await peopleOf(laptop)) === JSON.stringify(["Bob"]));
     await until("bob sees Ann by name", async () => JSON.stringify(await peopleOf(bob)) === JSON.stringify(["Ann"]));
+    // and each sees themselves in the top bar under the name of their account too, with its initials, not as "Guest 1 (you)" (B4)
+    const selfOf = async (who) => {
+      const me = who.page.getByRole("list", { name: "2 people here" }).getByRole("listitem").first();
+      return { name: await me.getAttribute("title"), initials: (await me.locator(".cf-live-people__initials").textContent()).trim() };
+    };
+    await until("the laptop sees itself as Ann", async () => JSON.stringify(await selfOf(laptop).catch(() => null)) === JSON.stringify({ name: "Ann (you)", initials: "A" }));
+    await until("bob sees himself as Bob", async () => JSON.stringify(await selfOf(bob).catch(() => null)) === JSON.stringify({ name: "Bob (you)", initials: "B" }));
     await shot(bob, "live-with-team");
     const ws = [...laptop.sockets, ...bob.sockets].filter((s) => s.url.startsWith(SERVER.replace(/^http/, "ws")));
     if (!ws.length) throw new Error("no socket to the server");
