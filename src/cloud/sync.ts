@@ -40,6 +40,11 @@ export interface SyncReport {
   forked: number;
   deleted: number;
   skipped: number;
+  /**
+   * changes that wait because the server has the design open live (409 `live`): its room writes it back when everybody has left,
+   * and then this device's change is sent or kept as a copy. Not "synced": the status says they wait for that.
+   */
+  live: number;
   /** a design or a space that could not be synced, with the words that say why */
   problems: string[];
   /** sync stopped before it was done: too many conflict copies, a full space, or a session that ended */
@@ -51,7 +56,7 @@ export interface SyncOptions {
   fetch?: typeof fetch;
 }
 
-const newReport = (): SyncReport => ({ pulled: 0, pushed: 0, conflicts: 0, trashed: 0, forked: 0, deleted: 0, skipped: 0, problems: [], stopped: null });
+const newReport = (): SyncReport => ({ pulled: 0, pushed: 0, conflicts: 0, trashed: 0, forked: 0, deleted: 0, skipped: 0, live: 0, problems: [], stopped: null });
 
 const connOf = (session: CloudSession, options: SyncOptions): Conn => ({ server: session.server, token: session.token, fetch: options.fetch });
 
@@ -227,23 +232,61 @@ export async function markInStep(id: string, room: Design): Promise<boolean> {
 
 /**
  * Sends one design now, if it waits, whether or not an editor has it open (the one that asks): before it is opened live with the
- * team, so that the room is made from what was edited here. Whether the content here is then what the server has: true when
- * nobody is signed in or the design is no space's (nothing to send), false when it could not be sent (a conflict, which the next
- * sync after the editor closes deals with, a full space, a design open live elsewhere, a refusal) or the person may not send it.
+ * team, so that the room is made from what was edited here. Whether the content here is then what the server has: "in-step" when
+ * it is, or nobody is signed in or the design is no space's (nothing to send); "live" when the server refused it because the design
+ * is open live there right now (the caller may keep the edit as a copy, `keepAsCopy`, and join); "unsent" when it could not be sent
+ * otherwise (a conflict, which the next sync after the editor closes deals with, a full space, a refusal) or the person may not send it.
  */
-export async function sendOne(id: string, options: SyncOptions = {}): Promise<boolean> {
+export async function sendOne(id: string, options: SyncOptions = {}): Promise<"in-step" | "live" | "unsent"> {
   const session = useCloud.getState().session;
   const summary = (await listDesigns()).find((s) => s.id === id);
-  if (!session || !summary?.space) return true;
+  if (!session || !summary?.space) return "in-step";
   const role = roleIn(summary.space, session);
   const record = (await dbGetAll<SyncRecord>("sync")).find((r) => r.id === id) ?? null;
-  if (!isDirty({ revision: summary.revision ?? null, record })) return true;
-  if (!writes(role)) return false;
+  if (!isDirty({ revision: summary.revision ?? null, record })) return "in-step";
+  if (!writes(role)) return "unsent";
   // (the editor that asks holds the design's lock: a conflict or a new id, which need it, are left to the sync after it closes)
   const run: SpaceRun = { conn: connOf(session, options), space: summary.space, role: role as Role, device: session.device, report: newReport(), hold: false, full: false };
   await push(run, id, record?.serverRev ?? null);
   const [after, now] = await Promise.all([getSummary(id), dbGet<SyncRecord>("sync", id)]);
-  return !!after && !isDirty({ revision: after.revision ?? null, record: now ?? null });
+  if (after && !isDirty({ revision: after.revision ?? null, record: now ?? null })) return "in-step";
+  return run.report.live ? "live" : "unsent";
+}
+
+/**
+ * Keeps the design here, as it was last saved, as a design of its own in the same space, "Title (edited on Device)", as a
+ * conflict does: for an edit made here that cannot reach the server because the design is open live there (`sendOne` answered
+ * "live"). The design under the id is left as it is, for the room to replace when it is joined (and for its lock holder, the
+ * editor, to keep saving); the copy has a new id that no room holds, and it is sent at once (or by the next sync when that fails).
+ * The copy's title, or null when there is no such design here.
+ */
+export async function keepAsCopy(id: string, options: SyncOptions = {}): Promise<string | null> {
+  const session = useCloud.getState().session;
+  if (!session) return null;
+  const copyId = uid("d");
+  const title = await writeTransaction(["designs", "summaries"], async (tx) => {
+    const designs = tx.objectStore("designs");
+    const summaries = tx.objectStore("summaries");
+    const [mine, summary] = await Promise.all([wrap<Design | undefined>(designs.get(id)), wrap<DesignSummary | undefined>(summaries.get(id))]);
+    if (!mine || !summary?.space) return null;
+    const now = Date.now();
+    const copy: Design = { ...mine, id: copyId, title: m.cloud.sync.editedOn(mine.title, session.device), createdAt: now, updatedAt: now };
+    delete copy.live;
+    designs.put(copy);
+    // (no record of sync: a design the server never had, sent as a new one)
+    summaries.put({ ...summarize(copy, summary.thumbnail), space: summary.space, revision: uid("revision") });
+    return copy.title;
+  });
+  if (title === null) return null;
+  notifyLibrary();
+  const space = (await getSummary(copyId))?.space;
+  const role = space ? roleIn(space, session) : null;
+  if (space && writes(role)) {
+    const run: SpaceRun = { conn: connOf(session, options), space, role: role as Role, device: session.device, report: newReport(), hold: false, full: false };
+    // (offline, or refused: the copy waits here and the next sync sends it)
+    await push(run, copyId, null).catch(() => undefined);
+  }
+  return title;
 }
 
 /* ---------------- a space ---------------- */
@@ -301,8 +344,10 @@ async function push(run: SpaceRun, id: string, baseRev: number | null): Promise<
       case "deleted":
         return fork(run, id);
       case "live":
-        // the design is open live on the server: its room writes it back when it is done, and then this is looked at again
+        // the design is open live on the server: its room writes it back when it is done, and then this is looked at again (a
+        // conflict then keeps this edit as a copy). Meanwhile the status says it waits for that, never "Synced".
         run.report.skipped++;
+        run.report.live++;
         return;
       case "quota":
         run.full = true;
@@ -423,7 +468,7 @@ async function deleteThere(run: SpaceRun, id: string): Promise<void> {
     await api.deleteDesign(run.conn, run.space, id);
   } catch (error) {
     if (!(error instanceof CloudError)) throw error;
-    if (error.code === "live") return;
+    if (error.code === "live") return void run.report.live++;
     if (error.code === "forbidden") {
       // only an owner deletes for good: the design stays the team's, and comes back here with the feed read again from the start
       await dbDelete("sync", id);
@@ -772,6 +817,8 @@ async function runSync(session: CloudSession, options: SyncOptions): Promise<Syn
   const waiting = await countWaiting(session);
   if (report.stopped === "conflicts") setSyncStatus({ state: "problem", problem: m.cloud.sync.tooManyConflicts(MAX_CONFLICT_COPIES), waiting });
   else if (report.problems.length) setSyncStatus({ state: "problem", problem: report.problems[0], waiting });
+  // what waits for a room on the server is not in step: no "Synced", and no new "Last synced" either
+  else if (report.live && waiting) setSyncStatus({ state: "live", problem: null, waiting });
   else setSyncStatus({ state: "synced", problem: null, waiting, lastSyncedAt: Date.now() });
   return report;
 }

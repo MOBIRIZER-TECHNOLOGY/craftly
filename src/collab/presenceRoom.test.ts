@@ -56,6 +56,24 @@ describe("what one person says about where they are", () => {
     expect(ana.presences()).toEqual([]);
   });
 
+  it("carries the name the host gave a member (an account's) over whatever their browser says, also after a join again", () => {
+    const room = new Room(start());
+    const bob = person(room, "bob");
+    const heard: ServerMsg[] = [];
+    const annPeer: Peer = { send: (msg) => heard.push(overTheWire(msg)) };
+    room.join(annPeer, "ann", "edit", { comments: true }, "Ann Account");
+    const said = (over: Partial<PresenceState>) => room.receive(annPeer, { t: "presence", ...state(over) } as never);
+    void said({ name: "" });
+    void said({ name: "Somebody else" });
+    // asking for the design again keeps the name
+    void room.receive(annPeer, { t: "join", client: "ann", session: "s" } as never);
+    void said({ name: "Guest" });
+    expect(bob.presences().map((p) => ("name" in p ? p.name : null))).toEqual(["Ann Account", "Ann Account", "Ann Account"]);
+    // and a newcomer hears it as well
+    const cat = person(room, "cat");
+    expect(cat.presences()).toMatchObject([{ name: "Ann Account" }]);
+  });
+
   it("is no part of the design: no revision, nothing saved, nothing acknowledged", () => {
     const room = new Room(start());
     let saves = 0;

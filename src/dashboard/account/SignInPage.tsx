@@ -2,10 +2,11 @@
  * `#/signin` and `#/signup` (docs/ACCOUNTS.md, "Client"): signing in to an account server, or making an account there, with the
  * server's host shown plainly. The fields carry `autocomplete` so that a password manager fills and keeps them. After a sign-up the
  * recovery code is shown once. After either, a person with designs on this device only is asked whether to move them in.
- * With `inviteCode` (the invite page), a new account is made with the invite and an existing one joins the team after signing in.
+ * With `inviteCode` (the invite page), a new account is made with the invite and an existing one joins the team after signing in;
+ * `inviteServer` is the account server the invite link names, which the form starts with (its host shown plainly) over any other.
  */
 import { useState, type FormEvent } from "react";
-import { cloudErrorText } from "@/cloud/api";
+import { cloudErrorText, hostOf } from "@/cloud/api";
 import { localOnlyDesigns, redeemInvite, signInAccount, signUpAccount } from "@/cloud/account";
 import { m } from "@/i18n";
 import { navigate } from "@/router";
@@ -25,9 +26,9 @@ async function arrive(): Promise<void> {
   if (local.length) openAccountDialog("move");
 }
 
-export function SignInPage({ mode, inviteCode }: { mode: "signin" | "signup"; inviteCode?: string }) {
+export function SignInPage({ mode, inviteCode, inviteServer }: { mode: "signin" | "signup"; inviteCode?: string; inviteServer?: string }) {
   const [current, setMode] = useState(mode);
-  const [server, setServer] = useState(startingServer);
+  const [server, setServer] = useState(() => inviteServer ?? startingServer());
   const [serverError, setServerError] = useState<string | undefined>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -99,6 +100,7 @@ export function SignInPage({ mode, inviteCode }: { mode: "signin" | "signup"; in
       <PageHeader title={inviteCode ? m.cloud.invite.title : title} subtitle={inviteCode ? m.cloud.invite.signInFirst : m.cloud.signIn.intro} />
       <form className="cf-acct__card cf-acct__form" onSubmit={(event) => void submit(event)} aria-label={title} noValidate>
         {inviteCode ? <h2 className="cf-acct__section-title">{title}</h2> : null}
+        {inviteServer ? <p className="cf-acct__text">{m.cloud.invite.server(hostOf(inviteServer))}</p> : null}
         <ServerField value={server} onChange={setServer} error={serverError} />
         {signingUp ? (
           <TextField label={m.cloud.signUp.name} name="name" autoComplete="name" required maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />

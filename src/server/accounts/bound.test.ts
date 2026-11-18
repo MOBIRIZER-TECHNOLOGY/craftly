@@ -268,6 +268,22 @@ describe("joining a bound room", () => {
     const back = (await call(b, "GET", `/api/spaces/${teamId}/designs/d1`, { token: owner.token })).body;
     expect(back.design.pages[0].elements[0]).toMatchObject({ id: "a", x: 11, y: 22 });
   });
+
+  it("names each member to the others by their account, not by what their browser says", async () => {
+    const b = await boot({}, { idleCloseMs: IDLE });
+    const { owner, teamId, members } = await teamWith(b, ["editor"]);
+    const { room } = (await openLive(b, owner.token, teamId)).body;
+    const ann = await member(b, room, owner.token, "ann");
+    const bob = await member(b, room, members[0].token, "bob");
+    const where = { page: "p", pointer: { x: 1, y: 1 }, selection: [], editing: null };
+    // a browser that gives no name (shown as "Guest 1" before), and one that claims another person's
+    ann.say({ t: "presence", name: "", ...where });
+    bob.say({ t: "presence", name: "Owner", ...where });
+    const nameHeard = (s: Sock) => s.heard.flatMap((m) => (m.t === "presence" && "name" in m ? [m.name] : []));
+    await until("each to hear the other", () => nameHeard(ann).length > 0 && nameHeard(bob).length > 0);
+    expect(nameHeard(bob)).toEqual(["Owner"]);
+    expect(nameHeard(ann)).toEqual(["Eddie"]);
+  });
 });
 
 describe("while a bound room is in memory", () => {

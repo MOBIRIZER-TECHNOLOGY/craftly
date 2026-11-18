@@ -60,6 +60,12 @@ export const cloud = {
     synced: "Synced",
     syncing: "Syncing…",
     offline: (n: number) => (n ? plural(n, { one: `Offline, ${num(n)} change waiting`, other: `Offline, ${num(n)} changes waiting` }) : "Offline"),
+    /** changes that wait because their design is open live on the server: its room writes it back when everybody has left */
+    live: (n: number) =>
+      plural(n, {
+        one: `${num(n)} change waiting: the design is being edited live`,
+        other: `${num(n)} changes waiting: their designs are being edited live`,
+      }),
     problem: "Sync has a problem",
     syncNow: "Sync now",
     lastSynced: (at: number) => `Last synced ${date(at, { hour: "numeric", minute: "2-digit" })}`,
@@ -142,6 +148,9 @@ export const cloud = {
     title: "Join a team",
     body: "You were invited to a team on Craftly. Its designs open for you on every device you sign in on.",
     server: (host: string) => `The team is on ${host}.`,
+    /** signed in to another server than the one the invite is for */
+    otherServer: (inviteHost: string, signedInHost: string) =>
+      `This invite is for a team on ${inviteHost}, but you are signed in on ${signedInHost}. Sign out first, then open the link again.`,
     join: "Join the team",
     working: "Joining…",
     signInFirst: "Sign in or create an account to join.",
@@ -254,7 +263,7 @@ export const cloud = {
   live: {
     title: "Your team",
     editLive: "Edit live with your team",
-    hint: "Everybody in the team who opens it edits with you, live. No link is needed.",
+    hint: "Members of the team who open this design and press “Edit live with your team” edit it with you, live. No link is needed.",
     viewHint: "You are a viewer in this team: you see the design live and cannot change it.",
     joining: "Joining…",
     joined: "Live with your team",
@@ -264,5 +273,7 @@ export const cloud = {
     /** "Edit live" refused: what was edited here could not be sent, and the room starts from the server's copy */
     unsent:
       "Changes made to this design here have not reached the server yet, so it cannot be edited live now. Close it and let it sync (if it was changed on another device too, your changes are kept as a copy), then try again.",
+    /** "Edit live" while the team had the design open live and this device had changes the room does not have: they were kept as a copy */
+    keptCopy: (title: string) => `Your changes made before joining are kept as “${title}”. You are now editing the team's version live.`,
   },
 };

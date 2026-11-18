@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import * as api from "@/cloud/api";
 import { cloudErrorText } from "@/cloud/api";
 import { currentConn } from "@/cloud/account";
+import { inviteUrl } from "@/cloud/inviteLink";
 import { setActiveSpace, updateSession, useCloud } from "@/cloud/state";
 import type { CloudInvite, CloudMember, CloudTeam, Role } from "@/cloud/validate";
 import { m } from "@/i18n";
@@ -16,9 +17,6 @@ import { Page, PageHeader } from "../Page";
 import "./account.css";
 
 const ROLES: Role[] = ["owner", "editor", "viewer"];
-
-/** The address of the invite page of this copy of Craftly, with the code. */
-const inviteUrl = (code: string) => `${window.location.origin}${window.location.pathname}#/invite/${code}`;
 
 export function TeamPage({ teamId }: { teamId: string }) {
   const session = useCloud((s) => s.session);
@@ -133,7 +131,8 @@ export function TeamPage({ teamId }: { teamId: string }) {
         uses: Math.max(1, Math.min(100, Number(uses) || 1)),
         hours: Math.max(1, Math.min(720, Number(hours) || 72)),
       });
-      setMade(inviteUrl(invite.code));
+      // the invite page of this copy of Craftly, with the code and the account server it is for (inviteLink.ts)
+      setMade(inviteUrl(`${window.location.origin}${window.location.pathname}`, invite.code, conn.server));
     });
   };
 

@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDesign } from "@/core/factory";
 import { getSummary, listDesigns, saveDesign } from "@/core/library";
+import { inviteUrl, parseInvite } from "@/cloud/inviteLink";
 import { applySession, saveSession, useCloud } from "@/cloud/state";
 import { stopSync } from "@/cloud/sync";
 import { designsStore } from "@/dashboard/data";
@@ -118,6 +119,42 @@ describe("an invite", () => {
     expect(useCloud.getState().session?.activeSpace).toBe(team.id);
   });
 
+  it("takes the server the link names, shows its host plainly, and asks for no address", async () => {
+    const ann = await signUp(b, { name: "Ann" });
+    const team = (await call(b, "POST", "/api/teams", { token: ann.token, body: { name: "Studio" } })).body.team;
+    const code = (await call(b, "POST", `/api/teams/${team.id}/invites`, { token: ann.token, body: { role: "editor", uses: 1, hours: 1 } })).body.code;
+    // no server from the build or an earlier visit: only the link names it
+    const part = inviteUrl("http://app.example.org/", code, b.base).split("#/invite/")[1];
+    const user = userEvent.setup();
+    render(
+      <>
+        <InvitePage code={part} />
+        <Hosts />
+      </>,
+    );
+    expect(screen.getByText(`The team is on ${host()}.`)).toBeTruthy();
+    expect(screen.queryByText(/No account server is set up/)).toBeNull();
+    expect(screen.queryByLabelText("Account server")).toBeNull();
+    await user.type(screen.getByLabelText("Your name"), "Bob");
+    await user.type(screen.getByLabelText("Email"), "bob2@example.org");
+    await user.type(screen.getByLabelText("Password"), PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("heading", { name: "Keep your recovery code" })).toBeTruthy();
+    stopSync();
+    expect(useCloud.getState().session).toMatchObject({ server: b.base, teams: [{ id: team.id, name: "Studio", role: "editor" }] });
+  });
+
+  it("does not offer to join with a session of another server than the link names", async () => {
+    const ann = await signUp(b, { name: "Ann" });
+    act(() => applySession({ server: b.base, token: ann.token, user: ann.user, device: "Test", teams: [], activeSpace: ann.user.id }));
+    const part = inviteUrl("http://app.example.org/", "AbCdEfGhIjKlMnOpQrStUv", "https://elsewhere.example.org").split("#/invite/")[1];
+    render(<InvitePage code={part} />);
+    expect(screen.getByRole("alert").textContent).toBe(
+      `This invite is for a team on elsewhere.example.org, but you are signed in on ${host()}. Sign out first, then open the link again.`,
+    );
+    expect(screen.queryByRole("button", { name: "Join the team" })).toBeNull();
+  });
+
   it("says so for a link that is not an invite", () => {
     render(<InvitePage code="not-a-code" />);
     expect(screen.getByText("This link is not an invite. Ask for a new one.")).toBeTruthy();
@@ -153,7 +190,9 @@ describe("a team", () => {
 
     await user.click(screen.getByRole("button", { name: "Make invite" }));
     const link = (await screen.findByLabelText("Invite link")) as HTMLInputElement;
-    expect(link.value).toMatch(/#\/invite\/[A-Za-z0-9_-]{22}$/);
+    // the link names the account server, after the # (inviteLink.ts)
+    expect(link.value).toMatch(/#\/invite\/[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]+$/);
+    expect(parseInvite(link.value.split("#/invite/")[1])?.server).toBe(b.base);
     expect(await screen.findByText(/^Editor, 5 uses left/)).toBeTruthy();
 
     // the switcher: the team's space lists the team's designs, and only them

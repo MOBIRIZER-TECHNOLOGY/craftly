@@ -1,6 +1,7 @@
 /**
  * "Edit live with your team", in the Share panel of a design of a team (docs/ACCOUNTS.md): no link, no key. Shown only while the
- * person is signed in and the open design is in one of their teams' spaces; a viewer sees the design live, read-only.
+ * person is signed in and the open design is in one of their teams' spaces; a viewer sees the design live, read-only. While it is
+ * on, the Share panel offers no link session beside it (LiveSection hides itself), and the top bar shows the Live badge.
  */
 import { useEffect, useState } from "react";
 import { useCloud } from "@/cloud/state";
@@ -60,6 +61,11 @@ export function TeamLiveSection() {
       {live?.notice && !on ? (
         <p className="cf-live__text" role="status">
           {live.notice}
+        </p>
+      ) : null}
+      {live?.kept ? (
+        <p className="cf-live__text" role="status">
+          {live.kept}
         </p>
       ) : null}
       {problem ? (

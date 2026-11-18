@@ -38,6 +38,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { checkDesign, joinCredential, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type JoinMsg, type Role, type ServerMsg } from "@/collab/protocol";
+import { cleanName } from "@/collab/presence";
 import { DesignTooLarge, Room, type Peer } from "@/collab/room";
 import type { Design } from "@/core/types";
 import { ACCOUNT_CORS, createAccounts, type Accounts, type AccountsOptions, type LiveHooks } from "./accounts";
@@ -1267,7 +1268,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     let pending: { msg: ClientMsg; bytes: number }[] | null = null;
 
     /** Lets the connection in with a role (its key or session was good): its place in the room, and the design. False when it was turned away. */
-    const admit = (msg: JoinMsg, role: Role): boolean => {
+    const admit = (msg: JoinMsg, role: Role, name?: string): boolean => {
       if (typeof msg.client !== "string" || !CLIENT_NAME.test(msg.client)) {
         deny(ws, "bad-request");
         return false;
@@ -1283,7 +1284,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         if (now() - l.usedAt >= noteUseEvery) noteUse(l);
       }
       // what the browser understands beyond what every version does (a join from before features names none)
-      for (const old of l.room.join(peer, msg.client, role, joinFeatures(msg))) {
+      for (const old of l.room.join(peer, msg.client, role, joinFeatures(msg), name)) {
         const other = peerSockets.get(old);
         if (other && other !== ws) other.close(4000, "replaced");
       }
@@ -1301,7 +1302,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       pending = [];
       try {
         const tokenHash = sha256Hex(session);
-        let found: { userId: string; role: TeamRole } | null = null;
+        let found: { userId: string; name: string; role: TeamRole } | null = null;
         for (let tries = 0; ; tries++) {
           const before = accessChanges;
           found = await (accounts as Accounts).bound.roleInSpace(tokenHash, space);
@@ -1319,7 +1320,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           return void deny(ws, "no-access");
         }
         const role = roomRole(found.role);
-        if (!admit(msg, role)) return;
+        // the others hear this person under their account's name, made into one presence may say; never what the browser claims
+        if (!admit(msg, role, cleanName(found.name))) return;
         metrics.count("session_joins_total");
         l.seats.set(ws, { userId: found.userId, tokenHash, role });
         // a viewer does not keep the room in memory (`held`): with nobody else in it, it leaves as an empty room does

@@ -65,6 +65,11 @@ interface Member {
   heard: number;
   /** Whether this browser said in its join that it understands comments: one that did not is sent nothing of them. */
   comments: boolean;
+  /**
+   * The name the others hear for this person whatever their browser says: their account's, for a seat of a bound room joined with
+   * a session (the server knows who it is). Undefined for a join with a key, whose person names themselves.
+   */
+  name?: string;
 }
 
 /** What a browser said in its join that it understands (`joinFeatures` in protocol.ts reads it). */
@@ -153,9 +158,10 @@ export class Room {
   /**
    * Lets a connection in: it is sent the design, the revision, and the last batch of its own that was applied. A client that comes
    * back on another connection replaces the old one, which is no longer told anything; the peers that were replaced are returned so
-   * that the host can close them.
+   * that the host can close them. `name`, when given, is the name the others hear for this person, over the one their browser says
+   * (an account's, `Member.name`).
    */
-  join(peer: Peer, client: string, role: Role, features?: JoinFeatures): Peer[] {
+  join(peer: Peer, client: string, role: Role, features?: JoinFeatures, name?: string): Peer[] {
     const replaced: Peer[] = [];
     for (const [other, member] of this.members) {
       if (member.client === client && other !== peer) {
@@ -166,7 +172,9 @@ export class Room {
     // a connection that asks for the design again keeps its number, what it said about where it is, and what it understands
     const had = this.members.get(peer);
     const comments = features ? features.comments === true : (had?.comments ?? false);
+    const fixed = name ?? had?.name;
     const member: Member = { client, role, peer: had?.peer ?? ++this.numbered, presence: had?.presence ?? null, heard: had?.heard ?? 0, comments };
+    if (fixed !== undefined) member.name = fixed;
     this.members.set(peer, member);
     if (this.lastSeq.has(client)) this.seen.set(client, this.now());
     // A browser that understands comments is told that they are shared here, and is sent them with the design. One that did not
@@ -223,6 +231,8 @@ export class Room {
     if (typeof said === "string") return;
     const at = this.now();
     const state = canEdit(member.role) ? said : { ...said, selection: [], editing: null };
+    // a person the server knows is heard under their account's name, never under one their browser claims
+    if (member.name !== undefined) state.name = member.name;
     if (state.editing !== null) {
       for (const other of this.members.values()) {
         if (other !== member && other.presence?.editing === state.editing && at - other.heard <= PRESENCE_STALE_MS) state.editing = null;

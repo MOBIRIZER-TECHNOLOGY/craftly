@@ -270,7 +270,7 @@ The client: `src/core/persistence.ts` (step 2), `src/core/library.ts` (`space`, 
 (`state.ts`, `api.ts`, `validate.ts`, `account.ts`, `syncPlan.ts`, `sync.ts`, `syncStatus.ts`, `locks.ts`),
 `src/dashboard/account/` (the screens), `src/editor/live/teamLive.ts` and `TeamLiveSection.tsx` (team designs live), and the join
 with a session in `src/collab/session.ts` and `live.ts`. Tests: `src/core/schema/dbStep2.dom.test.ts`, `persistedShapes.test.ts`,
-`src/cloud/syncPlan.test.ts`, `validate.test.ts`, `sync.dom.test.ts` (a real server on port 0), `signOutNoBlobs.dom.test.ts`,
+`src/cloud/syncPlan.test.ts`, `validate.test.ts`, `inviteLink.test.ts`, `sync.dom.test.ts` (a real server on port 0), `signOutNoBlobs.dom.test.ts`,
 `backup.dom.test.ts`, `src/editor/live/teamLive.dom.test.ts`, `src/editor/EditorLock.test.tsx`,
 `src/dashboard/account/screens.test.tsx` and `Shell.test.tsx` (a real server too), and `e2e/accounts.cjs`. Where it differs from
 the design above, or says more:
@@ -310,7 +310,10 @@ the design above, or says more:
   design, and the editor opens the team's designs read-only (the mode of a view link), live or not. New designs go into the space
   being shown only for an owner or editor; otherwise into the person's own.
 - **`409 live`** on a `PUT` leaves the design waiting; when the room has written it back, the feed brings the new revision and the
-  conflict is resolved as above (usually as the same content).
+  conflict is resolved as above (usually as the same content). Meanwhile the status is not "Synced": a run that met `409 live`
+  (and no problem) says "N changes waiting: … being edited live" (`state: "live"`, `SyncReport.live`), and sets no new "Last
+  synced". It never deadlocks: the room leaves memory `idleCloseMs` after the last person leaves and writes back; and a member who
+  wants in sooner presses Edit live, which keeps the edit as a copy (below).
 - **Leaving a team, or being removed:** the team's designs and folders stay on the device as the person's own (no `space`), with
   the next sync after the server stops listing the team. Copies already there cannot be taken back, as the design says.
 - **The locks.** `craftly-sync` is taken by each run with `ifAvailable` (a tab that finds it held skips that run), rather than held by
@@ -320,7 +323,16 @@ the design above, or says more:
   missing), so that a write of sync under way ends first; every write of sync to a design takes that lock with `ifAvailable` too,
   and a design held is skipped (the space's cursor stays where it was, so its changes are read again).
 - **Team designs live.** "Edit live with your team" first saves and sends the design if it waits (`sendOne`, which may, because
-  only this editor holds it), so that the room is made from it. When it cannot be sent (a conflict, a new id, a full space, a
+  only this editor holds it), so that the room is made from it. **When the server refuses it because the team has the design open
+  live** (409 `live`: a member edited it before pressing Edit live, while the owner was live), the edit is kept as a copy,
+  "Title (edited on Device)" in the same space under a new id (`keepAsCopy` in sync.ts: the design as last saved, no sync record,
+  sent at once as a new design and otherwise by the next sync), the panel says so in one line (`m.cloud.live.keptCopy`), and the
+  room is joined: its welcome replaces the design here with the team's version, and leaving marks it in step as usual. The design
+  under the id is not touched meanwhile (the editor holds its lock and its revision). This was chosen over waiting for the room
+  (it may stay open for hours) and over making the copy in sync whenever a `PUT` meets `409 live` (that would also copy the
+  content of somebody who left a room without the copy being marked in step, which the room writes back as the same content
+  anyway). Should the join fail after the copy was made, the design here still waits, and the conflict after the room writes back
+  may make a second, identical copy: never a loss. When it cannot be sent otherwise (a conflict, a new id, a full space, a
   refusal, a save that did not finish), the room is not joined: the person is told to close the design and let it sync (a
   conflict then makes its copy as usual). Then `POST …/live` and the join with the session (`Session`/`Live` take `session` in
   place of `key`; the room's pictures go with `Authorization: Bearer`). Sent away (`no-access`, a role lowered or a removal) or a
@@ -329,16 +341,28 @@ the design above, or says more:
   closed with 4004) sees the space's copy, read-only, with a note saying why, and no error; leaving a room keeps a viewer's
   read-only mode. A room's "Title (edited live)" copy comes with the feed as any new design does. When live editing stops, the copy here is marked in step (the room writes it back itself) only when the room was joined, every edit
   got there, and the content here, once its last save is written, is the room's; otherwise it stays to be sent, and sync takes the
-  same content on both sides without a copy.
+  same content on both sides without a copy. While the design is live with the team, the top bar shows the Live badge (as for a
+  link), and the Share panel offers no link session beside it ("Start live session" is hidden: it would be a second room of the
+  same design). The panel says that members are live once they press "Edit live with your team", not when they open the design.
+- **The name in a team's room** is the account's: the server takes it with the role when a session joins (`roleInSpace` gives
+  `name`), and the room (`Room.join(…, name)`) passes on that name, made into one presence may say (`cleanName`), for every
+  presence of that seat, over whatever the browser says (a viewer's too, and after a join again). A join with a key names itself
+  as before.
 - **Signing out** sends what waits, ends the session on the server when it can, and then removes the account's designs (with
   their versions), folders and the uploads of the account that no remaining design uses, or keeps them as designs of this device
   only. The dialog offers keeping them, ticked, when something could not be sent. What still waits after that last sync (it
   failed, another tab was syncing, an editor has the design open) is counted again and always kept, as designs of this device
   only with their folders and uploads, and a note says how many. Uploads put back are stored as the browser can keep them (their
   bytes where the database keeps no Blob).
-- **An invite link** is `#/invite/<code>` of the page that made it; it does not name the server, which the person who opens it
-  types unless the build names one (`VITE_CRAFTLY_ACCOUNT_SERVER`). A server typed in is remembered in `localStorage`
-  (`craftly.account.server`) for the next sign-in.
+- **An invite link** is `#/invite/<code>.<server>` of the page that made it (`src/cloud/inviteLink.ts`), `<server>` the account
+  server's address in base64url, as a live link carries its server. All of it is after the `#`, which a browser sends to no server
+  and puts in no Referer, so the code reaches only the account server, in the body of the sign-up or redeem. It is read strictly
+  on arrival (the code as the server makes them, the server as `normalizeAccountServer` takes a typed one: http or https, no user,
+  query or hash), else "This link is not an invite"; the sign-up form starts with that server over the build's or a remembered
+  one, shows its host plainly ("The team is on host.", "Server: host" with Change server), and asks for no address. Signed in on
+  another server, the page says so and offers no join. A link of before, `#/invite/<code>`, still works and names no server: the
+  person types it unless the build names one (`VITE_CRAFTLY_ACCOUNT_SERVER`). A server typed in or taken from a link is
+  remembered in `localStorage` (`craftly.account.server`) for the next sign-in once the form is sent.
 - **The device's name** ("Chrome on Windows") is made from the browser's user agent, for the list of devices and "(edited on …)".
 - **Not built:** restoring a server revision from the app (the endpoints are there), a list of a team's designs on the server that
   are not on the device yet beyond what sync brings, the operator's reset in the journey (the reset page is there; no test drives it), and a check of the sync lock across tabs in a real browser (the journey uses one tab per device).

@@ -7,8 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { designLock, holdLock } from "@/cloud/locks";
 import { saveSession } from "@/cloud/state";
 import { countWaiting, stopSync, syncOnce } from "@/cloud/sync";
+import { statusWords, useSyncStatus } from "@/cloud/syncStatus";
 import { createDesign, createPage } from "@/core/factory";
-import { getDesignForEditing, saveDesign } from "@/core/library";
+import { getDesignForEditing, listDesigns, saveDesign } from "@/core/library";
 import { useEditor } from "@/core/store";
 import type { Design } from "@/core/types";
 import { m } from "@/i18n";
@@ -74,6 +75,41 @@ it("is refused, with words, when an edit made here could not be sent because the
   expect(useTeamLive.getState()).toMatchObject({ link: null, error: m.cloud.live.unsent });
   // the edit still waits, to become a copy when the editor closes and sync runs
   expect(await countWaiting()).toBe(1);
+});
+
+describe("while the team has the design open live", () => {
+  const openLive = async () => expect((await call(b, "POST", `/api/spaces/${team}/designs/${shared.id}/live`, { token: other })).status).toBe(200);
+  const titles = async () => (await listDesigns()).map((d) => d.title).sort();
+
+  it("keeps an edit made here as a copy, says so in one line, and joins the room with the team's version", async () => {
+    await openLive();
+    await edit(shared.id);
+    await startTeamLive(shared.id);
+    const state = useTeamLive.getState();
+    expect(state.link?.room).toBeTruthy();
+    expect(state.error).toBeNull();
+    const copy = "Team flyer (edited on Test laptop)";
+    expect(state.kept).toBe(m.cloud.live.keptCopy(copy));
+    expect(await titles()).toEqual(["Team flyer", copy]);
+    // the copy went to the team at once, as a design of its own (no room holds its id), with the edit in it
+    const there = await call(b, "GET", `/api/spaces/${team}/changes?since=0`, { token: other });
+    const sent = there.body.designs.find((d: { title: string }) => d.title === copy);
+    expect(sent).toBeTruthy();
+    expect((await call(b, "GET", `/api/spaces/${team}/designs/${sent.id}`, { token: other })).body.design.pages).toHaveLength(shared.pages.length + 1);
+  });
+
+  it("says the edit waits for the live editing, not Synced, when sync is refused for it", async () => {
+    await openLive();
+    release?.();
+    release = null;
+    await edit(shared.id);
+    const report = await syncOnce();
+    expect(report?.live).toBe(1);
+    expect(useSyncStatus.getState()).toMatchObject({ state: "live", waiting: 1 });
+    expect(statusWords(useSyncStatus.getState(), { synced: "Synced", syncing: "", offline: () => "", live: m.cloud.status.live, problem: "" })).toBe(
+      "1 change waiting: the design is being edited live",
+    );
+  });
 });
 
 it("leaves an edit made here waiting when the room was never reached", async () => {

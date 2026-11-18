@@ -4,9 +4,11 @@
  * again). Without an account nothing changes and nothing is asked of the server. Then one person signs up on a laptop with the
  * server typed in and moves the laptop's design in, signs in on a phone (a second browser context) and finds it there, edits the same
  * design on both while the laptop is offline (a conflict: the server's design stays under its id, the laptop's edit becomes a copy
- * "(edited on …)"), makes a team and invites a second person by link, who makes an account from the invite; a team design reaches
- * the second person, both edit it live from Share without any link (the socket shows the session in its first message, never a key,
- * and nothing secret is in its address), the owner lowers the second person to viewer (who is sent out and comes back read-only)
+ * "(edited on …)"), makes a team and invites a second person by link (which names the account server after the #), who makes an
+ * account from the invite without typing a server; a team design reaches the second person, who edits it while the owner has it
+ * live (sync says the change waits for the live editing; Edit live keeps it as a copy "(edited on …)" that reaches the owner, and
+ * joins with the team's version), both edit it live from Share without any link (the socket shows the session in its first message,
+ * never a key, and nothing secret is in its address; each sees the other under their account's name), the owner lowers the second person to viewer (who is sent out and comes back read-only)
  * and then removes them (their copy stays theirs); the phone signs out (the account's designs leave it); the server stops (the
  * laptop says offline with what waits) and comes back (it is sent); and the sign-in and the account menu work in Hindi, with the
  * words read from the app's own catalogs.
@@ -121,7 +123,10 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     });
     // every request to the account server, and every socket with what it says first
     const requests = [];
+    // (and the address of every request of the page, to any host: what a secret after the # must never be in)
+    const everyUrl = [];
     page.on("request", (r) => {
+      everyUrl.push(r.url());
       if (r.url().startsWith(SERVER)) requests.push(r.method() + " " + r.url().slice(SERVER.length));
     });
     const sockets = [];
@@ -132,7 +137,7 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
         if (entry.first === null) entry.first = String(frame.payload);
       });
     });
-    return { ctx, page, name, requests, sockets };
+    return { ctx, page, name, requests, everyUrl, sockets };
   };
   const laptop = await open("laptop");
   const phone = await open("phone", { viewport: { width: 390, height: 844 } });
@@ -390,15 +395,23 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     const link = laptop.page.getByLabel("Invite link");
     await link.waitFor({ timeout: 10000 });
     inviteLink = await link.inputValue();
-    if (!/#\/invite\/[A-Za-z0-9_-]{22}$/.test(inviteLink)) throw new Error("the invite link is " + inviteLink);
+    // the link names the account server, as a live link does, and all of it is after the # (sent to no server)
+    const match = /^([^#]*)#\/invite\/([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]+)$/.exec(inviteLink);
+    if (!match) throw new Error("the invite link is " + inviteLink);
+    if (Buffer.from(match[3], "base64url").toString("utf8") !== SERVER) throw new Error("the invite link names " + Buffer.from(match[3], "base64url").toString("utf8"));
+    if (match[1].includes(match[2])) throw new Error("the invite code is before the #");
     await shot(laptop, "team-page");
-    return "invite for an editor";
+    return "invite for an editor, naming " + new URL(SERVER).host;
   });
 
-  await step("a second person makes an account from the invite and is in the team", async () => {
+  await step("a second person makes an account from the invite, on the server the link names, and is in the team", async () => {
+    // (bob's browser has never been told of a server: only the link names it)
     await bob.page.goto(inviteLink, { waitUntil: "load" });
     await bob.page.getByRole("heading", { name: "Join a team" }).waitFor({ timeout: 20000 });
-    await bob.page.getByLabel("Account server").fill(SERVER);
+    const host = new URL(SERVER).host;
+    await bob.page.getByText(`The team is on ${host}.`).waitFor({ timeout: 10000 });
+    if (await bob.page.getByText(/No account server is set up/).count()) throw new Error("bob is asked to type a server");
+    if (await bob.page.getByLabel("Account server").count()) throw new Error("bob is shown a field for the server");
     await bob.page.getByLabel("Your name").fill("Bob");
     await bob.page.getByLabel("Email").fill(bobAccount.email);
     await bob.page.getByLabel("Password", { exact: true }).fill(bobAccount.password);
@@ -414,7 +427,11 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     const team = await api(SERVER, "GET", `/api/teams/${teamId}`, annToken);
     const member = team.body.members.find((m) => m.name === "Bob");
     if (!member || member.role !== "editor") throw new Error("bob is " + JSON.stringify(member));
-    return "Bob is an editor of Studio";
+    // the invite's code went to the account server only, and the link's # to nobody
+    const inviteCode = /#\/invite\/([A-Za-z0-9_-]{22})/.exec(inviteLink)[1];
+    const leaked = bob.everyUrl.filter((u) => u.includes(inviteCode));
+    if (leaked.length) throw new Error("the invite code is in a request's address: " + leaked[0]);
+    return "Bob is an editor of Studio; the server was not typed";
   });
 
   await step("a design of the team reaches the other member", async () => {
@@ -442,9 +459,82 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     await who.page.keyboard.press("Escape");
   };
 
-  await step("both edit the team's design live from Share, without any link, joined with their sessions", async () => {
+  const isLive = (who) => who.page.evaluate(() => !!window.__editor && window.__editor.getState().live === true).catch(() => false);
+  /** a box of this colour added in the editor, as a person adds one */
+  const addBox = (who, id, color) =>
+    who.page.evaluate(
+      ([boxId, fill]) => {
+        const { actions } = window.__editor.getState();
+        const box = {
+          id: boxId,
+          type: "shape",
+          shape: "rect",
+          x: 100,
+          y: 100,
+          width: 200,
+          height: 120,
+          rotation: 0,
+          opacity: 1,
+          fill: { type: "solid", color: fill },
+          stroke: null,
+          radius: 0,
+        };
+        actions.addElements([box], { center: false, select: false });
+      },
+      [id, color],
+    );
+  const hasColor = (design, color) => design.pages.some((p) => p.elements.some((e) => e.fill && e.fill.color === color));
+
+  await step("a member's edit made before joining the team's live room is kept as a copy, says so, and reaches the owner", async () => {
+    // the owner edits live; the member opens the design and edits it before pressing Edit live (the server refuses writes meanwhile)
     await goLive(laptop);
-    await goLive(bob);
+    await bob.page.goto(BASE + "/#/design/" + encodeURIComponent(flyerId), { waitUntil: "load" });
+    await bob.page.locator(".cf-workspace").waitFor({ timeout: 30000 });
+    await addBox(bob, "b", "#1f6feb");
+    await until("bob's edit is saved", async () => (await bob.page.evaluate(() => window.__editor.getState().saveState)) === "saved");
+    // closed and synced, the edit waits for the room: the status says so, not "Synced"
+    await bob.page.goto(BASE + "/#/", { waitUntil: "load" });
+    await bob.page.getByText("Team flyer").first().waitFor({ timeout: 15000 });
+    await syncNow(bob);
+    await until("bob's status says the change waits for the live editing", async () => (await syncStatus(bob)) === "Sync: 1 change waiting: the design is being edited live");
+    await shot(bob, "waiting-live");
+    // opened again, Edit live keeps the edit as a copy and joins the room with the team's version
+    await bob.page.goto(BASE + "/#/design/" + encodeURIComponent(flyerId), { waitUntil: "load" });
+    await bob.page.locator(".cf-workspace").waitFor({ timeout: 30000 });
+    await bob.page.getByRole("button", { name: "Share" }).click();
+    const panel = bob.page.getByRole("dialog", { name: "Share design" });
+    await panel.getByRole("button", { name: "Edit live with your team" }).click();
+    const said = panel.getByText(/^Your changes made before joining are kept as “Team flyer \(edited on .+\)”\. You are now editing the team's version live\.$/);
+    await said.waitFor({ timeout: 20000 });
+    await until("bob is live", () => isLive(bob));
+    // while live with the team the panel offers no link session, and the top bar shows Live
+    if (await panel.getByRole("button", { name: "Start live session" }).count()) throw new Error("a link session is offered while live with the team");
+    await shot(bob, "kept-copy");
+    await bob.page.keyboard.press("Escape");
+    await bob.page.locator(".cf-live-badge").first().waitFor({ timeout: 10000 });
+    await until(
+      "bob's editor has the room's version",
+      async () => !(await bob.page.evaluate(() => window.__editor.getState().design.pages.some((p) => p.elements.some((e) => e.id === "b")))),
+    );
+    // the copy went to the team, with the edit, and the owner gets it
+    let copy = null;
+    await until("the team has bob's copy", async () => {
+      const changes = await api(SERVER, "GET", `/api/spaces/${teamId}/changes?since=0`, annToken);
+      copy = changes.body.designs.find((d) => /^Team flyer \(edited on .+\)$/.test(d.title)) ?? null;
+      return copy !== null;
+    });
+    const there = await api(SERVER, "GET", `/api/spaces/${teamId}/designs/${copy.id}`, annToken);
+    if (!hasColor(there.body.design, "#1f6feb")) throw new Error("the copy on the server does not have bob's edit");
+    await until("the owner has bob's copy", async () => {
+      await syncNow(laptop);
+      return (await designs(laptop)).some((d) => d.id === copy.id);
+    });
+    return `"${copy.title}" on the server and on the owner's laptop; bob live with the team's version`;
+  });
+
+  await step("both edit the team's design live from Share, without any link, joined with their sessions", async () => {
+    if (!(await isLive(laptop))) await goLive(laptop);
+    if (!(await isLive(bob))) await goLive(bob);
     await laptop.page.evaluate(() => {
       const { actions } = window.__editor.getState();
       actions.addElements(
@@ -473,6 +563,20 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     await until("bob sees the laptop's box", async () =>
       bob.page.evaluate(() => window.__editor.getState().design.pages[0].elements.some((e) => e.fill && e.fill.color === "#d9222a")),
     );
+    // each sees the other under the name of their account (neither typed a name for live editing), not as "Guest 1"
+    const peopleOf = (who) =>
+      who.page.evaluate(async () => {
+        const path = "/src/editor/live/presence.ts";
+        const loaded = performance
+          .getEntriesByType("resource")
+          .map((e) => e.name)
+          .filter((name) => new URL(name).pathname === path)
+          .pop();
+        const presence = await import(loaded ?? path);
+        return presence.usePresence.getState().people.map((p) => p.name);
+      });
+    await until("the laptop sees Bob by name", async () => JSON.stringify(await peopleOf(laptop)) === JSON.stringify(["Bob"]));
+    await until("bob sees Ann by name", async () => JSON.stringify(await peopleOf(bob)) === JSON.stringify(["Ann"]));
     await shot(bob, "live-with-team");
     const ws = [...laptop.sockets, ...bob.sockets].filter((s) => s.url.startsWith(SERVER.replace(/^http/, "ws")));
     if (!ws.length) throw new Error("no socket to the server");

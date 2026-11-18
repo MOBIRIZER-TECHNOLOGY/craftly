@@ -275,14 +275,15 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
    * The role in a space of whoever holds the session of this token's hash: owner of their own space, their role in a team's;
    * null when the session lets nobody in or its person is not in the space. What a socket of a bound room is let in with (live.ts).
    */
-  const roleInSpace = async (tokenHash: string, space: string, use = true): Promise<{ userId: string; role: TeamRole } | null> => {
+  const roleInSpace = async (tokenHash: string, space: string, use = true): Promise<{ userId: string; name: string; role: TeamRole } | null> => {
     if (!SERVER_ID.test(space)) return null;
     const authed = await sessionOf(tokenHash, use);
     if (!authed) return null;
     const { user } = authed;
-    if (space === user.id) return { userId: user.id, role: "owner" };
+    // (the name is what the others in a bound room hear this person as: the account's, not what a browser says)
+    if (space === user.id) return { userId: user.id, name: user.name, role: "owner" };
     const team = await storage.loadTeam(space);
-    return team && Object.hasOwn(team.members, user.id) ? { userId: user.id, role: team.members[user.id] } : null;
+    return team && Object.hasOwn(team.members, user.id) ? { userId: user.id, name: user.name, role: team.members[user.id] } : null;
   };
 
   /** Tells the live server that who may be in its bound rooms may have changed (see `LiveHooks.recheck`). */

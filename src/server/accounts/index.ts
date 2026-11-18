@@ -103,10 +103,10 @@ export interface Accounts {
   /** What the rooms bound to designs of spaces ask of the accounts (live.ts). */
   bound: {
     /**
-     * The person behind a session (the SHA-256 of its token, hex) and their role in a space; null when it lets nobody in there.
-     * `use` false looks again at a seat without counting it as a use of the session (which would keep it alive).
+     * The person behind a session (the SHA-256 of its token, hex), their account's name and their role in a space; null when it
+     * lets nobody in there. `use` false looks again at a seat without counting it as a use of the session (which would keep it alive).
      */
-    roleInSpace(tokenHash: string, space: string, use?: boolean): Promise<{ userId: string; role: TeamRole } | null>;
+    roleInSpace(tokenHash: string, space: string, use?: boolean): Promise<{ userId: string; name: string; role: TeamRole } | null>;
     /** Writes a room's design back to its space (`writeBack` in spaces.ts), or as a copy when the space moved on past `baseRev`; throws when it cannot. */
     writeBack(space: string, designId: string, design: Record<string, unknown>, startTitle: string | undefined, baseRev: number): Promise<WriteBack>;
   };

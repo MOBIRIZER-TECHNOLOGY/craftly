@@ -29,9 +29,14 @@ export interface TeamLiveState {
    * when the last editor left and the room closed). Not a problem: there is nothing live to see.
    */
   notice: string | null;
+  /**
+   * The one line that says what became of edits made here that the team's room did not have when "Edit live" was pressed: kept as a
+   * copy, "Title (edited on Device)", and the room's version is the one edited live.
+   */
+  kept: string | null;
 }
 
-const NONE = { link: null, session: null, joining: false, error: null, notice: null };
+const NONE = { link: null, session: null, joining: false, error: null, notice: null, kept: null };
 
 export const useTeamLive = create<TeamLiveState>(() => ({ designId: null, ...NONE }));
 
@@ -58,14 +63,24 @@ export async function startTeamLive(designId: string, again = false): Promise<vo
   const session = useCloud.getState().session;
   const team = await teamOf(designId);
   if (!session || !team) throw new Error(m.cloud.errors.forbidden);
-  useTeamLive.setState({ designId, joining: true, error: null, notice: null });
+  useTeamLive.setState({ designId, joining: true, error: null, notice: null, ...(again ? {} : { kept: null }) });
   try {
     // what was edited here and not sent yet goes to the server first: the room is made from the server's design, so the room is not
     // joined over edits that did not get there (a conflict, a full space, a save that did not finish): they would be lost
     if (!again && team.role !== "viewer") {
       const [{ settleSaves }, sync] = await Promise.all([import("@/settleSaves"), import("@/cloud/sync")]);
       const saved = await settleSaves(3000);
-      if (saved !== "saved" || !(await sync.sendOne(designId))) throw new Unsent(m.cloud.live.unsent);
+      if (saved !== "saved") throw new Unsent(m.cloud.live.unsent);
+      const sent = await sync.sendOne(designId);
+      if (sent === "live") {
+        // The team has the design open live, and the server takes no write of it until its room is written back, which may be
+        // long. Waiting would hold the edit here and the person out of the room. So the edit is kept as a copy (as a conflict
+        // keeps one), and the room's version is joined: nothing is lost, and nothing waits on anybody.
+        const title = await sync.keepAsCopy(designId);
+        if (title === null) throw new Unsent(m.cloud.live.unsent);
+        // (said at once: the copy is there whether or not the room is reached after this)
+        useTeamLive.setState({ kept: m.cloud.live.keptCopy(title) });
+      } else if (sent !== "in-step") throw new Unsent(m.cloud.live.unsent);
     }
     const room = await api.openLive({ server: session.server, token: session.token }, team.space, designId);
     useTeamLive.setState({ designId, link: { server: session.server, room: room.room, key: "", role: room.role }, session: session.token, joining: false, error: null });

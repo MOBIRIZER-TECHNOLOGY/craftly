@@ -14,6 +14,9 @@ import { useLiveStatus } from "./connection";
 import { LiveBadge, LiveSection, liveStatusText } from "./LiveSection";
 import { parseJoinToken } from "./links";
 import { usePresence } from "./presence";
+import { stopTeamLive, useTeamLive } from "./teamLive";
+import { cloud as enCloud } from "@/i18n/en/cloud";
+import { cloud as hiCloud } from "@/i18n/hi/cloud";
 
 const made = { ownerKey: "owner-key", room: "TW-FaxWt8edjpnT-bGQyjA", editKey: "WjGO30NJy5udhntaj-8j9w", viewKey: "BXQddjRR35eABAbZ6Hib_Q" };
 const link: LiveLink = { server: "https://live.example.test", room: made.room, key: made.editKey, role: "edit", viewKey: made.viewKey, ownerKey: made.ownerKey };
@@ -62,6 +65,45 @@ describe("when the server turns this browser away, or is turned away", () => {
     useLiveStatus.setState({ status: "live", reason: null, role: "edit" });
     render(<LiveSection />);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("while the design is edited live with its team (no link)", () => {
+  const teamLink: LiveLink = { server: "https://accounts.example.test", room: "TW-FaxWt8edjpnT-bGQyjA", key: "", role: "edit" };
+  afterEach(() => stopTeamLive());
+
+  it("offers no link session beside it, and the top bar shows the Live badge", () => {
+    act(() => useTeamLive.setState({ designId: useEditor.getState().design!.id, link: teamLink, session: "s" }));
+    useLiveStatus.setState({ status: "live", reason: null, role: "edit" });
+    render(
+      <>
+        <LiveSection />
+        <LiveBadge />
+      </>,
+    );
+    expect(screen.queryByRole("button", { name: "Start live session" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Work together" })).toBeNull();
+    const badge = screen.getByRole("status");
+    expect(badge.textContent).toBe(liveStatusText("live", "edit"));
+    expect(badge.getAttribute("title")).toBe("Live with your team");
+  });
+
+  it("says, in English and in Hindi, that a member is live only once they press the button", () => {
+    // a member who opens the design is not live until they press "Edit live with your team": the words say that
+    for (const catalog of [enCloud, hiCloud]) expect(catalog.live.hint).toContain(`“${catalog.live.editLive}”`);
+  });
+
+  it("offers the link session again, and no badge, once the team's room is left", () => {
+    act(() => useTeamLive.setState({ designId: useEditor.getState().design!.id, link: teamLink, session: "s" }));
+    act(() => stopTeamLive());
+    render(
+      <>
+        <LiveSection />
+        <LiveBadge />
+      </>,
+    );
+    expect(screen.getByRole("button", { name: "Start live session" })).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
 

@@ -17,7 +17,14 @@ import { CreateKeyError, deniedText, shareDesign, stopSharing, useLiveStatus } f
 import { rememberShared } from "./joined";
 import { joinUrl } from "./links";
 import { NameField } from "./LivePeople";
+import { useTeamLive } from "./teamLive";
 import "./live.css";
+
+/** Whether the open design is edited live with its team (teamLive.ts), with no link: the room the editor is joined to. */
+function useTeamLink(): LiveLink | null {
+  const designId = useEditor((s) => s.design?.id ?? "");
+  return useTeamLive((s) => (s.designId === designId && designId ? s.link : null));
+}
 
 const SERVER_KEY = "craftly.live.server";
 const DEFAULT_SERVER = CONFIGURED_SERVER ?? "http://localhost:8787";
@@ -81,6 +88,7 @@ export function LiveSection() {
   const [keyAsked, setKeyAsked] = useState(false);
   const [createKey, setCreateKey] = useState("");
   const [keyProblem, setKeyProblem] = useState<string | null>(null);
+  const team = useTeamLink();
 
   /** Another address is another server: the question was not its question, and the key is not shown to it. */
   const changeServer = (address: string) => {
@@ -125,6 +133,9 @@ export function LiveSection() {
       setBusy(false);
     }
   };
+
+  // edited live with the team already: a link session of the same design would be a second room beside it, so none is offered
+  if (!link && team) return null;
 
   if (!link) {
     return (
@@ -220,13 +231,16 @@ export function LiveSection() {
   );
 }
 
-/** The state of the connection in the top bar, for a design that is shared. */
+/** The state of the connection in the top bar, for a design that is shared by a link or edited live with its team. */
 export function LiveBadge() {
-  const link: LiveLink | null = useEditor((s) => s.design?.live ?? null);
+  const shared: LiveLink | null = useEditor((s) => s.design?.live ?? null);
+  const team = useTeamLink();
   const { status, role } = useLiveStatus();
+  const link = shared ?? team;
   if (!link) return null;
+  const title = shared ? (link.role === "view" ? m.editor.live.badgeView : m.editor.live.badgeEdit) : role === "view" ? m.cloud.live.viewing : m.cloud.live.joined;
   return (
-    <span className={`cf-live-badge cf-live-badge--${status}`} role="status" title={link.role === "view" ? m.editor.live.badgeView : m.editor.live.badgeEdit}>
+    <span className={`cf-live-badge cf-live-badge--${status}`} role="status" title={title}>
       <span className="cf-live-badge__dot" aria-hidden="true" />
       {liveStatusText(status, role)}
     </span>

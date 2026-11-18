@@ -17,7 +17,13 @@ export function SyncStatus({ compact = false, className }: { compact?: boolean; 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   if (!signedIn || status.state === "off") return null;
-  const words = statusWords(status, { synced: m.cloud.status.synced, syncing: m.cloud.status.syncing, offline: m.cloud.status.offline, problem: m.cloud.status.problem });
+  const words = statusWords(status, {
+    synced: m.cloud.status.synced,
+    syncing: m.cloud.status.syncing,
+    offline: m.cloud.status.offline,
+    live: m.cloud.status.live,
+    problem: m.cloud.status.problem,
+  });
   const icon =
     status.state === "syncing" ? (
       <Spinner size={16} />
@@ -55,7 +61,7 @@ export function SyncStatus({ compact = false, className }: { compact?: boolean; 
         {compact ? null : <span className="cf-syncstatus__text">{words}</span>}
       </Button>
       <span className="cf-sr-only" role="status" aria-live="polite">
-        {status.state === "problem" || status.state === "offline" ? words : ""}
+        {status.state === "problem" || status.state === "offline" || status.state === "live" ? words : ""}
       </span>
       <Popover open={open} anchor={anchor} onClose={() => setOpen(false)} placement="bottom-end" offset={6} className="cf-syncpop" aria-label={m.cloud.status.details}>
         <div className="cf-syncpop__body">
