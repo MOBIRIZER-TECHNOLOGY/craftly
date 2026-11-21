@@ -71,7 +71,7 @@
     "@fontsource/space-mono": "^5.3.0",
     "@fontsource/yeseva-one": "^5.3.0",
     "fontkit": "2.0.4",
-    "immer": "^11.2.9",
+    "immer": "^11.2.10",
     "lucide": "^1.68.0",
     "lucide-react": "^1.68.0",
     "onnxruntime-web": "1.31.1",
