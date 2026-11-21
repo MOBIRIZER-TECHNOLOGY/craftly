@@ -41,6 +41,26 @@ describe("<Dashboard>", () => {
       expect(navLink(nav).getAttribute("aria-current")).toBe("page");
     });
 
+    // the account screens are loaded when one is opened; each names the tab after itself
+    it.each([
+      ["#/signin", "Sign in", "Sign in"],
+      ["#/signup", "Create account", "Create account"],
+      ["#/reset", "Set a new password", "Set a new password"],
+      ["#/reset/AAAAAAAAAAAAAAAAAAAAAA", "Set a new password", "Set a new password"],
+      ["#/invite/not-a-code", "Join a team", "Join a team"],
+      // a team's page asks a person who is not signed in to sign in first
+      ["#/team/t_1", "Sign in", "Team members"],
+    ])("loads the account screen of %s", async (hash, title, tab) => {
+      await mountApp(hash);
+      expect(await heading(title)).toBeTruthy();
+      await waitFor(() => expect(document.title).toBe(tab));
+    });
+
+    it("shows the home page for a team route without a team", async () => {
+      await mountApp("#/team");
+      expect(await heading("What will you design today?")).toBeTruthy();
+    });
+
     it("shows the home page for a route it does not know", async () => {
       await mountApp("#/nowhere");
       expect(await heading("What will you design today?")).toBeTruthy();
