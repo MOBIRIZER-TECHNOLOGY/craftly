@@ -43,7 +43,7 @@ jobs:
         run: npm run server:smoke
       - name: Keep the coverage report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage
           path: coverage
@@ -91,7 +91,7 @@ jobs:
           BASE=http://127.0.0.1:4174 OFFLINE=1 npm run e2e
       - name: Keep the screenshots of failed checks and the server logs
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-failures
           path: |
