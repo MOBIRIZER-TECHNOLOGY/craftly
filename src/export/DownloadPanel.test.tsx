@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape, solid } from "@/core/factory";
@@ -211,7 +211,8 @@ describe("<DownloadPanel> choices", () => {
     radio("Bleed", "3 mm").focus();
     await user.keyboard("{ArrowRight}");
     expect(radio("Bleed", "0.125 in").getAttribute("aria-checked")).toBe("true");
-    expect(document.activeElement).toBe(radio("Bleed", "0.125 in"));
+    // the group moves the focus in the next animation frame, which a busy machine can run after the next key: wait for it
+    await waitFor(() => expect(document.activeElement).toBe(radio("Bleed", "0.125 in")));
     expect(stored().bleed).toBe("eighth");
     expect(screen.getByText(/extended 3\.175 mm beyond every edge/)).toBeTruthy();
     await user.keyboard("{ArrowRight}");

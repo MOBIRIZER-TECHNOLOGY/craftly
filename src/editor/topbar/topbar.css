@@ -38,7 +38,11 @@
 
 .cf-topbar__group {
   display: flex;
-  flex: none;
+  /* the groups keep their width while the title has room to give; once it has folded away they give way too, and their text
+     buttons (File, Resize, Present, Share) end in an ellipsis instead of pushing the bar wider than the screen. How wide a
+     label is depends on the font that draws it (Hindi falls back to a different system font on every platform), so no
+     breakpoint can promise that the labels fit (e2e/mobile.cjs, the tablet in Hindi). The icon buttons never shrink. */
+  flex: 0 1 auto;
   align-items: center;
   gap: 2px;
   min-width: 0;
@@ -319,6 +323,17 @@
   .cf-topbar__mode .cf-topbar__lbl {
     display: none;
   }
+  /* Present is its play icon from here down (its name stays on the button): on a tablet the words of File, Resize and Share,
+     longer in Hindi, need the room */
+  .cf-topbar__split-main .cf-topbar__lbl--share {
+    display: none;
+  }
+  .cf-topbar__split-main .cf-btn__icon {
+    display: inline-flex;
+  }
+  .cf-topbar__split-main.cf-btn {
+    padding: 0 10px;
+  }
   .cf-topbar__mode.cf-btn {
     padding: 0 6px 0 8px;
   }
@@ -331,12 +346,8 @@
   .cf-topbar__lbl--share {
     display: none;
   }
-  .cf-topbar__split-main .cf-btn__icon,
   .cf-topbar__share .cf-btn__icon {
     display: inline-flex;
-  }
-  .cf-topbar__split-main.cf-btn {
-    padding: 0 10px;
   }
   .cf-btn.cf-topbar__share {
     width: 40px;
