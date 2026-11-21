@@ -473,6 +473,22 @@ describe("keys and pointer", () => {
     expect(rig.container.querySelector("[data-cf-text-editor]")).toBe(editor);
   });
 
+  it("lets Save and Print through to the editor's shortcuts, and keeps the other Ctrl keys with the text", async () => {
+    const { editor } = await openEditor();
+    const seen: string[] = [];
+    const listen = (e: KeyboardEvent) => seen.push(`${e.metaKey ? "Cmd" : "Ctrl"}+${e.key}`);
+    window.addEventListener("keydown", listen);
+    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "s", metaKey: true });
+    fireEvent.keyDown(editor, { key: "p", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "P", ctrlKey: true, shiftKey: true });
+    window.removeEventListener("keydown", listen);
+    expect(seen).toEqual(["Ctrl+s", "Cmd+s", "Ctrl+p"]);
+    expect(state().editingTextId).toBe("t");
+  });
+
   it("Escape saves the text and leaves editing", async () => {
     const { rig, editor } = await openEditor();
     editor.innerHTML = "<div>Changed</div>";

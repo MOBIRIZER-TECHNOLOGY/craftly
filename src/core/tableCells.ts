@@ -27,7 +27,10 @@ export function tableCellAt(table: TableElement, point: Point): TableCell | null
   const { width, height } = table;
   if (!(width > 0) || !(height > 0) || !table.colWidths.length || !table.rowHeights.length) return null;
   const centre = { x: table.x + width / 2, y: table.y + height / 2 };
-  const local = table.rotation ? rotatePoint(point, centre, -table.rotation) : point;
+  const turned = table.rotation ? rotatePoint(point, centre, -table.rotation) : point;
+  // the painter turns, then mirrors (src/render/renderPage.ts): turned back, a mirrored table is mirrored back too, so that a
+  // click on the column drawn on the left of a table flipped left to right opens that column, the last one
+  const local = { x: table.flipH ? 2 * centre.x - turned.x : turned.x, y: table.flipV ? 2 * centre.y - turned.y : turned.y };
   const x = local.x - table.x;
   const y = local.y - table.y;
   // a hair of tolerance: turning a point back leaves it a rounding error off the edge it was on

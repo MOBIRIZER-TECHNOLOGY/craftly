@@ -22,7 +22,7 @@ import { CloudError, type Conn } from "./api";
 import { designLock, heldLocks, SYNC_LOCK, tryLock } from "./locks";
 import { CURSORS_KEY, FOLDERS_KEY, roleIn, updateSession, useCloud, type CloudSession, type Role } from "./state";
 import { setSyncStatus, useSyncStatus } from "./syncStatus";
-import { isDirty, changedHere, metaOf, planSync, type LocalDesign, type SyncAction } from "./syncPlan";
+import { isDirty, changedHere, metaOf, planSync, withLaterChanges, type LocalDesign, type SyncAction } from "./syncPlan";
 import { BadAnswer, MAX_THUMBNAIL, NewerDesign, THUMBNAIL, checkDesign, migrateDesign, type Changes } from "./validate";
 
 /** At most this many "(edited on …)" copies in one run; past that sync stops and says so. */
@@ -501,7 +501,7 @@ async function metaPush(run: SpaceRun, id: string, patch: Partial<SyncedMeta>): 
 }
 
 /** Takes the server's details where they did not change here; the content stays in step when it was. */
-async function metaPull(run: SpaceRun, id: string, meta: SyncedMeta, remote: SyncedMeta): Promise<void> {
+async function metaPull(run: SpaceRun, id: string, planned: SyncedMeta, remote: SyncedMeta, local: SyncedMeta): Promise<void> {
   const done = await tryLock(designLock(id), () =>
     writeTransaction(["designs", "summaries", "sync"], async (tx) => {
       const designs = tx.objectStore("designs");
@@ -513,6 +513,8 @@ async function metaPull(run: SpaceRun, id: string, meta: SyncedMeta, remote: Syn
         wrap<SyncRecord | undefined>(sync.get(id)),
       ]);
       if (!design || !summary || !record) return true;
+      // a detail changed here while this run went on (a rename, a star: updateSummary takes no lock of the design) is kept
+      const meta = withLaterChanges(planned, local, metaOfSummary(summary));
       const revision = uid("revision");
       designs.put({ ...design, ...meta });
       summaries.put({ ...summary, ...meta, revision });
@@ -557,7 +559,7 @@ async function act(run: SpaceRun, action: SyncAction, local: Map<string, LocalDe
       if (mayWrite) await metaPush(run, action.id, action.patch);
       return;
     case "meta-pull":
-      return metaPull(run, action.id, action.meta, action.remote);
+      return metaPull(run, action.id, action.meta, action.remote, action.local);
     case "skip":
       run.report.skipped++;
       run.hold = true;

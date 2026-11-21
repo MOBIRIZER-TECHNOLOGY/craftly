@@ -28,6 +28,15 @@ describe("the cell of a table under a point of the page", () => {
     expect(tableCellAt(t, { x: centre.x - 80, y: centre.y + 250 })).toEqual({ row: 2, col: 2 });
   });
 
+  it("finds the cell that is drawn under the point in a mirrored table", () => {
+    // mirrored left to right, the last column is drawn on the left; top to bottom, the last row is drawn at the top
+    expect(tableCellAt(createTable({ x: 100, y: 200, width: 600, height: 240, flipH: true }), { x: 110, y: 210 })).toEqual({ row: 0, col: 2 });
+    expect(tableCellAt(createTable({ x: 100, y: 200, width: 600, height: 240, flipV: true }), { x: 110, y: 210 })).toEqual({ row: 2, col: 0 });
+    // turned a quarter and mirrored: turned back first, then mirrored back, as it was drawn
+    const t = createTable({ x: 100, y: 200, width: 600, height: 240, rotation: 90, flipH: true });
+    expect(tableCellAt(t, { x: 400 + 80, y: 320 - 250 })).toEqual({ row: 0, col: 2 });
+  });
+
   it("gives the nearest cell for a point on the edge, and nothing outside the table", () => {
     expect(tableCellAt(table(), { x: 100, y: 200 })).toEqual({ row: 0, col: 0 });
     expect(tableCellAt(table(), { x: 700, y: 440 })).toEqual({ row: 2, col: 2 });

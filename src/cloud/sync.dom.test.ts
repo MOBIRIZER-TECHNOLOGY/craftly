@@ -14,6 +14,7 @@ import {
   moveToTrash,
   saveDesign,
   setStarred,
+  renameDesign,
   deleteForever,
   createFolder,
   getDesignForEditing,
@@ -168,6 +169,23 @@ describe("taking what changed on another device", () => {
     expect((await remote(design.id)).body.design).toMatchObject({ starred: true, title: "Renamed there" });
     // a detail is no edit of the content: the server still has revision 1
     expect((await remote(design.id)).body.rev).toBe(1);
+  });
+
+  it("keeps a rename made here while the details were being synced, and sends it next time", async () => {
+    const design = await local("Shared");
+    await run();
+    await setStarred(design.id, true);
+    await call(b, "PATCH", `/api/spaces/${space()}/designs/${design.id}/meta`, { token: other, body: { title: "Renamed there" } });
+    // the person renames the design while the star is being sent, after the run has made its plan
+    const during: typeof fetch = async (input, init) => {
+      if (init?.method === "PATCH" && String(input).includes(`/designs/${design.id}/meta`)) await renameDesign(design.id, "Renamed meanwhile");
+      return fetch(input, init);
+    };
+    await syncOnce({ fetch: during });
+    expect(await getSummary(design.id)).toMatchObject({ starred: true, title: "Renamed meanwhile" });
+    expect(await countWaiting()).toBe(1);
+    await run();
+    expect((await remote(design.id)).body.design).toMatchObject({ starred: true, title: "Renamed meanwhile" });
   });
 
   it("moves a design the other device deleted to the Trash, never deleting it", async () => {

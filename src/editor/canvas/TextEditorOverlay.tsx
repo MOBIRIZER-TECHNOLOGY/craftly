@@ -402,7 +402,11 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
       style={style}
       onInput={commit}
       onKeyDown={(e) => {
-        e.stopPropagation();
+        // the keys stay with the text, but for Save and Print: the editor's own shortcuts (src/editor/hotkeys.ts, Editor.tsx)
+        // would never see them, and the browser would take them ("Save page as", a print of the editor around the page)
+        const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
+        const key = e.key.toLowerCase();
+        if (!(mod && (key === "s" || (key === "p" && !e.shiftKey)))) e.stopPropagation();
         if (e.key === "Escape") {
           e.preventDefault();
           commit();

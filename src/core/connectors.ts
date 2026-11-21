@@ -43,11 +43,16 @@ export function lineFromPoints(start: Point, end: Point): Pick<LineElement, "x" 
   return { x: (start.x + end.x) / 2 - length / 2, y: (start.y + end.y) / 2, width: length, height: 0, rotation: length ? Math.atan2(dy, dx) / DEG : 0 };
 }
 
-/** The two ends of a line, on the page. */
-export function lineEndpoints(line: Pick<LineElement, "x" | "y" | "width" | "height" | "rotation">): { start: Point; end: Point } {
+/**
+ * The two ends of a line, on the page, where they are drawn: a line mirrored left to right (`flipH`) has its start on the right
+ * of its box (src/render/renderPage.ts turns, then mirrors). A mirror top to bottom moves neither end: they sit on the middle.
+ */
+export function lineEndpoints(line: Pick<LineElement, "x" | "y" | "width" | "height" | "rotation"> & { flipH?: boolean }): { start: Point; end: Point } {
   const centre = boxCenter(line);
   const y = line.y + line.height / 2;
-  return { start: rotatePoint({ x: line.x, y }, centre, line.rotation), end: rotatePoint({ x: line.x + line.width, y }, centre, line.rotation) };
+  const left = rotatePoint({ x: line.x, y }, centre, line.rotation);
+  const right = rotatePoint({ x: line.x + line.width, y }, centre, line.rotation);
+  return line.flipH ? { start: right, end: left } : { start: left, end: right };
 }
 
 type End = { frame: Frame; anchor: Anchor } | { point: Point };
@@ -161,7 +166,8 @@ function reflowLine(line: LineElement, { here, there, nested }: Surroundings): L
   // changed by hand, with its elements and its attachments as they were: it is where the person put it, and no longer attached
   if (previous && previous !== line && !attachmentsChanged && !targetsMoved && !right) return { ...line, start: null, end: null };
   if (right && intact) return line;
-  return { ...line, ...lineFromPoints(aimed.start, aimed.end), start, end };
+  // lineFromPoints puts the start on the left of the box: a mirror left over from a flip would draw it on the right
+  return { ...line, ...lineFromPoints(aimed.start, aimed.end), ...(line.flipH ? { flipH: false } : {}), start, end };
 }
 
 /**

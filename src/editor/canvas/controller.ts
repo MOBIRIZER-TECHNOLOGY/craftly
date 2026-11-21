@@ -1020,16 +1020,19 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const types = Array.from(e.dataTransfer?.types ?? []);
     if (types.includes(DRAG_MIME) || types.includes("Files")) {
       e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      // where nothing can be added (View mode, no design) the pointer says so, and the drop is still taken (onDrop)
+      const s = st();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = s.design && s.mode !== "view" ? "copy" : "none";
     }
   }
 
   async function onDrop(e: DragEvent) {
-    const s = st();
-    if (!s.design || s.mode === "view") return;
     const types = Array.from(e.dataTransfer?.types ?? []);
     if (!types.includes(DRAG_MIME) && !types.includes("Files")) return;
+    // taken even where nothing is added: a file left to the browser would open in the tab, in place of the editor
     e.preventDefault();
+    const s = st();
+    if (!s.design || s.mode === "view") return;
     const pt = toDesign(e);
     const files = Array.from(e.dataTransfer?.files ?? []).filter(isAcceptedImage);
     if (files.length) {
