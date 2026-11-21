@@ -5,6 +5,7 @@ import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { ImageCrop, ImageElement } from "@/core/types";
 import { m } from "@/i18n";
 import { imageUrl } from "@/render/images";
+import { useDragEnd } from "./dragEnd";
 import { HANDLE_VEC, type Handle } from "./resize";
 
 /* ------------------------------------------------------------------ */
@@ -70,6 +71,7 @@ const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
   const [url, setUrl] = useState<string | null>(null);
+  const dragEnd = useDragEnd();
   useEffect(() => {
     let live = true;
     void imageUrl(el.src as string).then((u) => live && setUrl(u));
@@ -100,15 +102,22 @@ function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
     const sy = e.clientY;
     actions.beginTransaction();
     const move = (ev: PointerEvent) => onMove(toLocal(ev.clientX - sx, ev.clientY - sy));
+    // once, whichever comes first: the pointer is released, cancelled or loses its capture, or the crop closes (useDragEnd)
     const up = () => {
+      if (dragEnd.current !== up) return;
+      dragEnd.current = null;
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
       target.removeEventListener("pointercancel", up);
+      target.removeEventListener("lostpointercapture", up);
       actions.endTransaction();
     };
+    dragEnd.current?.();
+    dragEnd.current = up;
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up);
     target.addEventListener("pointercancel", up);
+    target.addEventListener("lostpointercapture", up);
   };
 
   const startPan = (e: React.PointerEvent) => {

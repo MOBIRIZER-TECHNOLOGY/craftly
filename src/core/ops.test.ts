@@ -140,6 +140,29 @@ describe("grouping", () => {
     const [a] = ungroup(p, g.id);
     expect(findElement(p, a)!.rotation).toBe(90);
   });
+  it("ungroup of a group mirrored on one axis turns the children the other way, as they were drawn", () => {
+    for (const axis of ["flipH", "flipV"] as const) {
+      const p = pageWith(2);
+      findElement(p, "e0")!.rotation = 30;
+      const g = groupElements(p, ["e0", "e1"])!;
+      g[axis] = true;
+      g.rotation = 10;
+      ungroup(p, g.id);
+      const child = findElement(p, "e0")!;
+      // drawn as rotate(10°) · mirror · rotate(30°) = rotate(10° − 30°) · mirror
+      expect(child.rotation).toBe(-20);
+      expect(child[axis]).toBe(true);
+    }
+  });
+  it("ungroup of a group mirrored on both axes (a half turn) keeps the children's turn", () => {
+    const p = pageWith(2);
+    findElement(p, "e0")!.rotation = 30;
+    const g = groupElements(p, ["e0", "e1"])!;
+    g.flipH = true;
+    g.flipV = true;
+    ungroup(p, g.id);
+    expect(findElement(p, "e0")!.rotation).toBe(30);
+  });
   it("ungroup gives the children the blend mode of the group, and keeps the one a child has of its own", () => {
     const p = pageWith(3);
     const g = groupElements(p, ["e0", "e1", "e2"])!;

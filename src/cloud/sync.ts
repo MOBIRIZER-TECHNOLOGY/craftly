@@ -372,7 +372,10 @@ async function push(run: SpaceRun, id: string, baseRev: number | null): Promise<
     const now = await wrap<DesignSummary | undefined>(tx.objectStore("summaries").get(id));
     // a new design sent its details with its content; one the server had keeps the details that were in step
     const syncedMeta = baseRev === null || !before?.syncedMeta ? metaOfSummary(summary) : before.syncedMeta;
-    sync.put({ id, space: run.space, serverRev: rev, syncedRevision: now ? sentRevision : null, syncedMeta } satisfies SyncRecord);
+    // deleted for good while it was being sent (deleteForever takes no lock of the design): the server has it now, so its deletion
+    // waits to be sent, as a tombstone; a record without one would have the next run take it back from the feed
+    const deleted = now ? {} : { tombstone: true };
+    sync.put({ id, space: run.space, serverRev: rev, syncedRevision: now ? sentRevision : null, syncedMeta, ...deleted } satisfies SyncRecord);
   });
   run.report.pushed++;
 }

@@ -207,6 +207,22 @@ describe("taking what changed on another device", () => {
     expect((await remote(design.id)).body.code).toBe("deleted");
     expect(await dbGet<SyncRecord>("sync", design.id)).toBeUndefined();
   });
+
+  it("keeps a deletion made while the design was being sent, and sends it, rather than taking the design back", async () => {
+    const design = await local("Gone on the way");
+    // the person deletes it for good while its upload is under way
+    const during: typeof fetch = async (input, init) => {
+      if (init?.method === "PUT" && String(input).includes(`/designs/${design.id}`)) await deleteForever(design.id);
+      return fetch(input, init);
+    };
+    const first = await syncOnce({ fetch: during });
+    expect(first?.pushed).toBe(1);
+    expect(await dbGet<SyncRecord>("sync", design.id)).toMatchObject({ tombstone: true });
+    const report = await run();
+    expect(report.deleted).toBe(1);
+    expect((await remote(design.id)).body.code).toBe("deleted");
+    expect(await getSummary(design.id)).toBeNull();
+  });
 });
 
 describe("a conflict", () => {

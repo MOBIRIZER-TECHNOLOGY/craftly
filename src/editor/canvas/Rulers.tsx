@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useEditor } from "@/core/store";
 import { m } from "@/i18n";
+import { useDragEnd } from "./dragEnd";
 import { designToScreen, screenToDesign, useView } from "./viewStore";
 
 export const RULER = 22;
@@ -163,7 +164,9 @@ export function Guides() {
   const zoom = useEditor((s) => s.zoom);
   const showRulers = useEditor((s) => s.showRulers);
   const mode = useEditor((s) => s.mode);
-  if (!guides || (!guides.vertical.length && !guides.horizontal.length) || !showRulers) return null;
+  const shown = !!guides && (guides.vertical.length > 0 || guides.horizontal.length > 0) && showRulers;
+  const dragEnd = useDragEnd(shown);
+  if (!guides || !shown) return null;
 
   const drag = (e: ReactPointerEvent, axis: "v" | "h", index: number) => {
     if (mode === "view") return;
@@ -181,17 +184,33 @@ export function Guides() {
     };
     const move = (ev: PointerEvent) => actions.moveGuide(axis, index, pos(ev).value);
     // a cancelled drag still closes the undo step (left open, it would block undo and the history), but it removes nothing:
-    // the guide stays where the pointer last put it
-    const up = (ev: PointerEvent) => {
+    // the guide stays where the pointer last put it. Once, whichever comes first: the pointer is released, cancelled or loses
+    // its capture, or the guides are hidden (useDragEnd)
+    let done = false;
+    const finish = () => {
+      if (done) return false;
+      done = true;
+      if (dragEnd.current === stop) dragEnd.current = null;
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
       target.removeEventListener("pointercancel", up);
-      if (ev.type !== "pointercancel" && pos(ev).overRuler) actions.removeGuide(axis, index);
+      target.removeEventListener("lostpointercapture", up);
+      return true;
+    };
+    const up = (ev: PointerEvent) => {
+      if (!finish()) return;
+      if (ev.type === "pointerup" && pos(ev).overRuler) actions.removeGuide(axis, index);
       actions.endTransaction();
     };
+    const stop = () => {
+      if (finish()) actions.endTransaction();
+    };
+    dragEnd.current?.();
+    dragEnd.current = stop;
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up);
     target.addEventListener("pointercancel", up);
+    target.addEventListener("lostpointercapture", up);
   };
 
   const line = (axis: "v" | "h", pos: number, index: number) => (

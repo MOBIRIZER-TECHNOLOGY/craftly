@@ -211,6 +211,20 @@ describe("panning the picture", () => {
     expect(img().crop.x).toBe(cancelled);
   });
 
+  it("closes the drag's undo step when crop mode ends before the pointer is released, so undo still works", async () => {
+    const rig = await crop({}, 2);
+    const before = state().past.length;
+    const target = windowOf(rig);
+    rig.pointerAt("pointerDown", 0, 0, { target });
+    rig.pointerAt("pointerMove", 40, 25, { target });
+    // Esc, or anything else that ends crop mode, while the picture is held: the overlay goes and its pointerup never comes
+    act(() => getActions().endCrop());
+    await waitFor(() => expect(rig.container.querySelector("[data-cf-crop]")).toBeNull());
+    expect(state().past).toHaveLength(before + 1);
+    act(() => getActions().undo());
+    expect(img().crop.x).toBe(-0.5);
+  });
+
   it("does not start a canvas gesture while the picture is pressed", async () => {
     const rig = await crop({}, 2);
     rig.down(600, 350, { target: windowOf(rig) });

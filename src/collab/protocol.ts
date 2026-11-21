@@ -253,6 +253,30 @@ function checkCommentOp(op: Record<string, unknown>): string | null {
   }
 }
 
+/** The properties of a design that a welcome is refused without, in the order they are asked about. */
+const DESIGN_CHECKED = ["title", "width", "height", "unit", "typeId"] as const;
+
+/**
+ * What is wrong with one of those properties, if anything: a title that is text, a size that is a number above 0 (one that is not
+ * finite is refused by the walk of `checkValue`), and a unit and a type that are text when they are there. A `design` operation is
+ * held to the same rules as a whole design: without this an editor could set `width: 0` or `title: 5`, the server would keep it,
+ * and every later welcome of the room would be refused by every browser that joins.
+ */
+function designPropProblem(key: string, value: unknown): string | null {
+  switch (key) {
+    case "title":
+      return typeof value === "string" ? null : "a design needs a title";
+    case "width":
+    case "height":
+      return typeof value === "number" && value > 0 ? null : "a design needs a size";
+    case "unit":
+    case "typeId":
+      return value === undefined || typeof value === "string" ? null : `${key} is text`;
+    default:
+      return null;
+  }
+}
+
 /** The operations, if every one of them has the form it should; otherwise what is wrong with the first that has not. */
 export function checkOps(value: unknown): Op[] | string {
   if (!Array.isArray(value)) return "a batch is a list of operations";
@@ -264,6 +288,7 @@ export function checkOps(value: unknown): Op[] | string {
     switch (op.k) {
       case "design":
         error = checkProps(op);
+        if (!error && isObject(op.set)) for (const [key, v] of Object.entries(op.set)) error = error ?? designPropProblem(key, v);
         break;
       case "page.add":
         if (!isObject(op.page) || !isId(op.page.id) || !Array.isArray(op.page.elements) || !isIndex(op.index)) error = "page.add needs a page with elements and an index";
@@ -366,9 +391,10 @@ export function checkSets(before: Design, after: Design, ops: readonly Op[]): st
  */
 export function checkDesign(value: unknown): string | null {
   if (!isObject(value)) return "a design is an object";
-  if (typeof value.title !== "string") return "a design needs a title";
-  for (const size of [value.width, value.height]) if (typeof size !== "number" || size <= 0) return "a design needs a size"; // a size that is not finite is refused by the walk below
-  for (const key of ["unit", "typeId"]) if (value[key] !== undefined && typeof value[key] !== "string") return `${key} is text`;
+  for (const key of DESIGN_CHECKED) {
+    const problem = designPropProblem(key, value[key]);
+    if (problem) return problem;
+  }
   if (!Array.isArray(value.pages) || value.pages.length < 1) return "a design needs pages";
   for (const page of value.pages) {
     if (!isObject(page) || !isId(page.id) || !Array.isArray(page.elements)) return "a page needs an id and its elements";

@@ -196,7 +196,10 @@ export function ungroup(page: Page, groupId: ID): ID[] {
     const p = rotatePoint({ x: cx, y: cy }, gc, g.rotation);
     c.x = p.x - c.width / 2;
     c.y = p.y - c.height / 2;
-    c.rotation = (c.rotation + g.rotation) % 360;
+    // the group is drawn turned, then mirrored (src/render/renderPage.ts): a mirror on one axis turns what is inside it the other
+    // way, as flipElements has it; on both axes it is a half turn, which turns it the same way
+    const mirrored = !!g.flipH !== !!g.flipV;
+    c.rotation = ((mirrored ? -c.rotation : c.rotation) + g.rotation) % 360;
     if (g.flipH) c.flipH = !c.flipH;
     if (g.flipV) c.flipV = !c.flipV;
     c.opacity *= g.opacity;
