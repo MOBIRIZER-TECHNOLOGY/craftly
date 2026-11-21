@@ -8,7 +8,7 @@
  * a control that is off the screen fails instead of being brought in for us.
  */
 const fs = require("node:fs");
-const { launch, outDir, BASE, ENGINE } = require("./lib.cjs");
+const { launch, outDir, servesSource, BASE, ENGINE } = require("./lib.cjs");
 
 const OUT = outDir("mobile");
 const results = [];
@@ -18,6 +18,8 @@ let shotN = 0;
 const PHONE = { width: 375, height: 812 };
 const TABLET = { width: 768, height: 1024 };
 const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्ते" };
+/** the English words the journey taps, for a production build, which does not serve the catalogs in src/ */
+const EN = { file: "File", addTextBox: "Add a text box", shareDownload: "Download", download: "Download" };
 
 (async () => {
   const browser = await launch();
@@ -53,9 +55,10 @@ const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्�
     return ctx;
   };
 
-  /** the catalog of `lang`, as the dev server serves it */
-  const catalog = (lang) =>
-    page.evaluate(async (l) => {
+  /** the catalog of `lang`, as the dev server serves it; on a production build English as written above, and nothing for Hindi */
+  const catalog = async (lang) => {
+    if (!(await servesSource(page))) return lang === "en" ? EN : null;
+    return page.evaluate(async (l) => {
       const mod = await import(`/src/i18n/${l}/index.ts`);
       const c = mod[l];
       return {
@@ -65,6 +68,7 @@ const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्�
         download: c.exporting.panel.download,
       };
     }, lang);
+  };
 
   /** throws when the page scrolls sideways */
   const noSidewaysScroll = async (where) => {
@@ -149,6 +153,12 @@ const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्�
       await page.locator(".cf-dash").waitFor({ timeout: 40000 });
       return catalog(lang);
     })();
+    if (!words) {
+      // the dev server runs this pass in Hindi too (CI's first run); the words are never typed from memory
+      results.push(`SKIP [${lang}] phone 375 x 812  (the catalog is read from src/, which only the dev server serves)`);
+      await ctx.close();
+      continue;
+    }
 
     /* ---------------- the dashboard ---------------- */
     await step(`[${lang}] dashboard: Home, Templates, Projects, Brand and Trash do not scroll sideways on a phone`, async () => {
