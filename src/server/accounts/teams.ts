@@ -176,7 +176,7 @@ export async function setRole(ctx: Ctx, req: IncomingMessage, res: ServerRespons
   await teamFor(ctx, teamId, user.id, "manageMembers");
   const body = await readJson(req, SMALL_BODY);
   exactly(body, ["role"]);
-  if (!isTeamRole(body.role)) throw badRequest("a role is owner, editor or viewer");
+  if (!isTeamRole(body.role)) throw badRequest("a role is owner, editor, commenter or viewer");
   const role = body.role;
   await ctx.serial(`team:${teamId}`, async () => {
     const { team } = await teamFor(ctx, teamId, user.id, "manageMembers");
@@ -214,7 +214,7 @@ export async function createInvite(ctx: Ctx, req: IncomingMessage, res: ServerRe
   await teamFor(ctx, teamId, user.id, "invite");
   const body = await readJson(req, SMALL_BODY);
   exactly(body, ["role", "uses", "hours"]);
-  if (!isTeamRole(body.role)) throw badRequest("a role is owner, editor or viewer");
+  if (!isTeamRole(body.role)) throw badRequest("a role is owner, editor, commenter or viewer");
   const role = body.role;
   const uses = readCount(body.uses, "uses", 1, MAX_INVITE_USES);
   const hours = readCount(body.hours, "hours", 1, MAX_INVITE_HOURS);

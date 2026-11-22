@@ -5,8 +5,8 @@
  */
 import { rememberServer } from "./knownServers";
 import { Live, type LiveStatus, type SocketLike } from "@/collab/live";
-import { checkOps, COMMENTS, type DeniedReason, type Role } from "@/collab/protocol";
-import { announceArrivals, useComments } from "../comments/commentsStore";
+import { checkOps, COMMENTS, REVIEW, type DeniedReason, type Role } from "@/collab/protocol";
+import { announceArrivals, useComments, type CommentAccount } from "../comments/commentsStore";
 import type { Outbox } from "@/collab/session";
 import { uid } from "@/core/ids";
 import { saveDesign } from "@/core/library";
@@ -29,6 +29,11 @@ export interface LiveEnv {
   timeoutMs?: number;
   /** A member's session in place of the link's key: a room bound to a design of their team (docs/ACCOUNTS.md, src/editor/live/teamLive.ts). */
   session?: string;
+  /**
+   * Who this person is in a team's room: their account's id, and whether they are an owner of the team. What they write is signed
+   * with the id, which the server checks (docs/REVIEW.md); an owner may delete anybody's comment.
+   */
+  account?: CommentAccount;
   /** The server turned this browser away, or the room is gone: the team's room is then asked for again. */
   onDenied?: (reason: DeniedReason | null) => void;
   /**
@@ -100,7 +105,8 @@ function storedNames(prefix: string): string[] {
 
 export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   const actions = () => useEditor.getState().actions;
-  let looking = link.role === "view";
+  // (a commenter looks too: comments and the review are what they change, and the store lets those through: `commentsOnly`)
+  let looking = link.role !== "edit";
   if (looking) actions().setMode("view");
   let closed = false;
   let warned = false;
@@ -204,8 +210,9 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     key: link.key,
     session: env.session,
     createSocket: env.createSocket,
-    // this browser understands comments: a server that shares them says so in its welcome (docs/COLLABORATION.md, "Comments")
-    features: [COMMENTS],
+    // this browser understands comments and reviews: a server that shares them says so in its welcome (docs/COLLABORATION.md,
+    // "Comments"; docs/REVIEW.md)
+    features: [COMMENTS, REVIEW],
     outbox,
     onOutbox(outbox) {
       mark(outbox.queue.length ? outbox.client : null);
@@ -225,6 +232,8 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     prepareEdit: (design) => media.upload(design, allowedUploads),
     onSendError: showMediaError,
     onRejected(reason) {
+      // a review that came after an edit it had not seen (src/collab/seats.ts): there is nothing of the design to keep, only to look again
+      if (reason.startsWith("review.set:")) return void toast.error(m.editor.review.refused);
       const design = useEditor.getState().design;
       if (!design) return;
       // the design still has the refused edit in it here: it is taken out right after (onChange)
@@ -247,7 +256,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     },
     onStatus: (status, reason) => {
       if (status === "live") reachedLive = true;
-      if (status === "live" && live.session.role === "view" && !looking) {
+      if (status === "live" && live.session.role !== "edit" && !looking) {
         looking = true;
         actions().setMode("view");
       }
@@ -258,7 +267,8 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       if (stopped && !closed) toast.info(m.editor.live.ownerStopped, { duration: 0 });
       if (status === "denied") env.onDenied?.(reason);
       // what the welcome said of comments; while the connection is away it stays what it was
-      if (status === "live") useComments.setState({ sharing: live.sharesComments ? "shared" : "unsupported" });
+      if (status === "live")
+        useComments.setState({ sharing: live.sharesComments ? "shared" : "unsupported", reviews: live.sharesReview, commenting: live.session.role === "comment" });
       presenceOff();
       const me = live.peer;
       if (me !== null) stopPresence = startPresence((state) => live.present(state), me, live.fixedName);
@@ -285,7 +295,10 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     textHolder: (id) => typingIn(id)?.name ?? null,
     textRefused: (_id, holder) => void toast.info(m.editor.live.textTaken(holder)),
     sharesComments: () => live.sharesComments,
+    sharesReview: () => live.sharesReview,
+    commentsOnly: () => live.session.role === "comment",
   });
+  useComments.setState({ account: env.account ?? null });
   live.start();
   return () => {
     closed = true;
@@ -299,7 +312,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     actions().stopLive();
     if (looking) actions().setMode("edit");
     useLiveStatus.setState(OFF);
-    useComments.setState({ sharing: "local" });
+    useComments.setState({ sharing: "local", reviews: false, commenting: false, account: null });
   };
 }
 
@@ -409,8 +422,8 @@ export function joinDesign(link: LiveLink, env: LiveEnv = {}): Promise<{ design:
       url: websocketUrl(link),
       key: link.key,
       createSocket: env.createSocket,
-      // the copy that is kept has the comments of a server that shares them, and none of one that does not
-      features: [COMMENTS],
+      // the copy that is kept has the comments of a server that shares them, and none of one that does not (a review: the same)
+      features: [COMMENTS, REVIEW],
       onChange: () => {
         const design = live.design;
         const role = live.session.role;

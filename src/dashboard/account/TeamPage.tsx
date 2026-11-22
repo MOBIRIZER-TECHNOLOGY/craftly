@@ -16,7 +16,7 @@ import { Button, TextField, confirm, toast } from "@/ui";
 import { Page, PageHeader } from "../Page";
 import "./account.css";
 
-const ROLES: Role[] = ["owner", "editor", "viewer"];
+const ROLES: Role[] = ["owner", "editor", "commenter", "viewer"];
 
 export function TeamPage({ teamId }: { teamId: string }) {
   const session = useCloud((s) => s.session);

@@ -38,6 +38,7 @@ export function TeamLiveSection() {
 
   if (!team || shared) return null;
   const viewer = team.role === "viewer";
+  const commenter = team.role === "commenter";
   const on = !!live?.link;
 
   const start = async () => {
@@ -57,7 +58,7 @@ export function TeamLiveSection() {
         </h3>
         {on ? <Badge tone={status === "live" ? "success" : "neutral"}>{liveStatusText(status, role)}</Badge> : null}
       </div>
-      <p className="cf-live__text">{viewer ? m.cloud.live.viewHint : m.cloud.live.hint}</p>
+      <p className="cf-live__text">{viewer ? m.cloud.live.viewHint : commenter ? m.cloud.live.commentHint : m.cloud.live.hint}</p>
       {live?.notice && !on ? (
         <p className="cf-live__text" role="status">
           {live.notice}
@@ -80,7 +81,7 @@ export function TeamLiveSection() {
           </Button>
         ) : (
           <Button variant="primary" disabled={live?.joining} aria-busy={live?.joining || undefined} onClick={() => void start()}>
-            {live?.joining ? m.cloud.live.joining : m.cloud.live.editLive}
+            {live?.joining ? m.cloud.live.joining : commenter ? m.cloud.live.commentLive : m.cloud.live.editLive}
           </Button>
         )}
       </div>

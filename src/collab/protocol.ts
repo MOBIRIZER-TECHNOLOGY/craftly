@@ -17,12 +17,18 @@ import { isPlainColor } from "@/core/color";
 import { svgProblem } from "@/core/svgSafety";
 import type { Design, DesignElement } from "@/core/types";
 import { commentsProblem, isCommentId, readComment, readCommentPatch, readReply, readReplyPatch } from "@/core/comments";
+import { readReview, reviewProblem } from "@/core/review";
 import { elementProblem } from "@/core/usableElement";
 import type { Op } from "./ops";
 import { cleanName, parsePresence, PRESENCE_NAME_MAX, type PresenceHeard, type PresenceSaid } from "./presence";
 
-export type Role = "edit" | "view";
+/**
+ * What a seat may do in a room: edit the design, comment on it (comments, replies and the review, never the design: a team's
+ * commenter, docs/REVIEW.md), or look.
+ */
+export type Role = "edit" | "comment" | "view";
 export const canEdit = (role: Role): boolean => role === "edit";
+export const canComment = (role: Role): boolean => role === "edit" || role === "comment";
 
 /**
  * Why a browser is not let in or is sent away. `invalid` is never sent: it is what a browser says of a server that sent something it cannot use.
@@ -40,7 +46,12 @@ export const MAX_KEY_LENGTH = 200;
  * that it supports. Neither side sends the other anything of a feature the other did not name (docs/COLLABORATION.md, "Comments").
  */
 export const COMMENTS = "comments";
-export const FEATURES = [COMMENTS] as const;
+/**
+ * `review`: the review operation (`review.set`), a design with its `review` in a welcome, and the role `comment` (docs/REVIEW.md).
+ * A browser that did not name it is given `view` where it would be given `comment`: it would refuse a role it does not know.
+ */
+export const REVIEW = "review";
+export const FEATURES = [COMMENTS, REVIEW] as const;
 export type Feature = (typeof FEATURES)[number];
 
 /** A session of an account on the server (docs/ACCOUNTS.md): 32 random bytes in base64url. */
@@ -202,9 +213,10 @@ const isFeatureList = (v: unknown): v is string[] =>
  * What a browser said in its join that it understands (the server reads this; it is not checked otherwise, because a join from
  * before features has none): comments only when `features` is a short list of short names with "comments" in it.
  */
-export function joinFeatures(value: unknown): { comments: boolean } {
+export function joinFeatures(value: unknown): { comments: boolean; review: boolean } {
   const features = isObject(value) ? value.features : undefined;
-  return { comments: isFeatureList(features) && features.includes(COMMENTS) };
+  const listed = isFeatureList(features);
+  return { comments: listed && features.includes(COMMENTS), review: listed && features.includes(REVIEW) };
 }
 
 /** The fields of each comment operation, and no other (the other operations are older and are not held to their fields). */
@@ -215,6 +227,7 @@ const COMMENT_OP_FIELDS: Record<string, readonly string[]> = {
   "reply.add": ["k", "comment", "reply", "index"],
   "reply.set": ["k", "comment", "id", "set", "unset"],
   "reply.del": ["k", "comment", "id"],
+  "review.set": ["k", "review"],
 };
 
 /** What is wrong with a comment operation, if anything: each touches one comment or reply by its id (src/core/comments.ts reads the rest). */
@@ -248,8 +261,12 @@ function checkCommentOp(op: Record<string, unknown>): string | null {
       const read = op.set === undefined ? null : readReplyPatch(op.set);
       return typeof read === "string" ? read : removes();
     }
-    default:
+    case "reply.del":
       return isCommentId(op.comment) && isCommentId(op.id) ? null : "a deletion of a reply needs its id and that of its comment";
+    default: {
+      const read = readReview(op.review);
+      return typeof read === "string" ? read : null;
+    }
   }
 }
 
@@ -296,7 +313,7 @@ export function checkOps(value: unknown): Op[] | string {
         error = Object.hasOwn(COMMENT_OP_FIELDS, op.k) ? checkCommentOp(op) : `unknown operation ${op.k.slice(0, 40)}`;
     }
     // (a comment and a reply are read field by field above; they count towards what one batch may carry like everything else)
-    for (const part of [op.set, op.page, op.el, op.comment, op.reply]) error = error ?? (part === undefined ? null : checkValue(part, "", 0, budget));
+    for (const part of [op.set, op.page, op.el, op.comment, op.reply, op.review]) error = error ?? (part === undefined ? null : checkValue(part, "", 0, budget));
     if (error) return `${op.k}: ${error}`;
   }
   return value as Op[];
@@ -380,6 +397,9 @@ export function checkDesign(value: unknown): string | null {
   // the comments, as strictly as a comment operation (src/core/comments.ts); a design from before comments has none
   const comments = commentsProblem(value.comments);
   if (comments) return comments;
+  // the review, as strictly as its operation (src/core/review.ts); a design from before reviews has none
+  const review = reviewProblem(value.review);
+  if (review) return `the review: ${review}`;
   return checkValue(value, "", 0, { left: Infinity, depth: MAX_DESIGN_DEPTH });
 }
 
@@ -392,7 +412,7 @@ export function parseServerMsg(value: unknown): ServerMsg | string | null {
   if (!isObject(value) || typeof value.t !== "string") return "a message needs a kind";
   switch (value.t) {
     case "welcome": {
-      if (value.role !== "edit" && value.role !== "view") return "welcome: the role is edit or view";
+      if (value.role !== "edit" && value.role !== "comment" && value.role !== "view") return "welcome: the role is edit, comment or view";
       if (!isCount(value.rev) || !isCount(value.lastSeq)) return "welcome: the revision and the last batch are counts";
       if (value.peer !== undefined && !isCount(value.peer)) return "welcome: the number of a connection is a count";
       if (value.features !== undefined && !isFeatureList(value.features)) return "welcome: the features are a few short names";

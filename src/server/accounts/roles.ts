@@ -3,20 +3,23 @@
  * compares roles by hand, so that the rules are read (and tested, roles.test.ts) in one place.
  *
  *   owner   everything: members, invites, the team's name, deleting the team, deleting a design forever; a team always has one
- *   editor  makes, edits, trashes and restores designs and folders, and uploads
- *   viewer  reads and downloads
+ *   editor     makes, edits, trashes and restores designs and folders, and uploads
+ *   commenter  reads, and comments on a design live: comments, replies, approves (docs/REVIEW.md); never edits it
+ *   viewer     reads and downloads
  *
  * A person's own space is theirs as an owner. There are no permissions per folder in this version.
  */
 
-export type TeamRole = "owner" | "editor" | "viewer";
-export const TEAM_ROLES: readonly TeamRole[] = ["owner", "editor", "viewer"];
+export type TeamRole = "owner" | "editor" | "commenter" | "viewer";
+export const TEAM_ROLES: readonly TeamRole[] = ["owner", "editor", "commenter", "viewer"];
 
 export type Action =
   /** list the changes, open a design, its revisions, an upload */
   | "read"
   /** make or change a design, its details (title, folder, star, the trash), restore a revision */
   | "write"
+  /** comment on a design in its live room (and open that room): comments, replies, a review (docs/REVIEW.md) */
+  | "comment"
   /** put an upload */
   | "upload"
   /** make, rename, move or remove a folder */
@@ -30,17 +33,18 @@ export type Action =
   | "renameTeam"
   | "deleteTeam";
 
-export const ACTIONS: readonly Action[] = ["read", "write", "upload", "folders", "deleteForever", "manageMembers", "invite", "renameTeam", "deleteTeam"];
+export const ACTIONS: readonly Action[] = ["read", "write", "comment", "upload", "folders", "deleteForever", "manageMembers", "invite", "renameTeam", "deleteTeam"];
 
 const TABLE: Readonly<Record<TeamRole, ReadonlySet<Action>>> = {
   owner: new Set(ACTIONS),
-  editor: new Set<Action>(["read", "write", "upload", "folders"]),
+  editor: new Set<Action>(["read", "write", "comment", "upload", "folders"]),
+  commenter: new Set<Action>(["read", "comment"]),
   viewer: new Set<Action>(["read"]),
 };
 
-export const isTeamRole = (value: unknown): value is TeamRole => value === "owner" || value === "editor" || value === "viewer";
+export const isTeamRole = (value: unknown): value is TeamRole => (TEAM_ROLES as readonly unknown[]).includes(value);
 
 /** Whether a role may do an action. Anything that is not a role may do nothing. */
 export function can(role: TeamRole | null | undefined, action: Action): boolean {
-  return !!role && isTeamRole(role) && TABLE[role].has(action);
+  return isTeamRole(role) && TABLE[role].has(action);
 }

@@ -2,7 +2,7 @@
 
 Written 2026-11-05, after the test-coverage push, from the code, the test suite and measurements on a production build; the figures, the shipped rows and the open items were brought up to date on 2026-11-07. A feature-by-feature comparison with Canva, and the research behind it (image editing, local image generation, video, other AI features, the competitors), is in [`reports/Craftly versus Canva feature gaps.md`](../reports/Craftly%20versus%20Canva%20feature%20gaps.md). Three labels are used: **measured** (I ran it), **read** (I found it in the code) and **estimate** (my judgement: check it before you plan around it).
 
-**Current priority.** Build out collaboration and review after the 16 verified readiness fixes. The proposed sequence is presence, pinned comments and a commenter role, then safer same-object editing and revision-specific approval. Bulk creation, campaign packs and the design quality checker are also proposals. See the [collaboration plan](PLAN-DIAGRAMS-AND-COLLABORATION.md) and [current verification](VERIFICATION.md#production-readiness-regressions).
+**Current priority.** Build out collaboration and review after the 16 verified readiness fixes. Presence, pinned comments, a commenter role and revision-specific approval are built ([REVIEW.md](REVIEW.md) for the last two); safer same-object editing for table cells and a review dashboard are next. Bulk creation, campaign packs and the design quality checker are also proposals. See the [collaboration plan](PLAN-DIAGRAMS-AND-COLLABORATION.md) and [current verification](VERIFICATION.md#production-readiness-regressions).
 
 ## 0. How I read the request
 

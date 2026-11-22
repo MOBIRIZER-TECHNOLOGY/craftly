@@ -25,6 +25,7 @@ describe("people and sessions", () => {
   it("reads teams with roles it knows, and nothing else", () => {
     const user = { id: ID, email: "ann@example.org", name: "Ann" };
     expect(readMe({ user, teams: [{ id: ID, name: "Studio", role: "editor" }] }).teams).toEqual([{ id: ID, name: "Studio", role: "editor" }]);
+    expect(readMe({ user, teams: [{ id: ID, name: "Studio", role: "commenter" }] }).teams).toEqual([{ id: ID, name: "Studio", role: "commenter" }]);
     expect(() => readMe({ user, teams: [{ id: ID, name: "Studio", role: "admin" }] })).toThrow(BadAnswer);
     expect(() => readTeamPage({ team: { id: ID, name: "S", role: "owner" }, members: [{ id: ID, name: "A", email: "a@b", role: "god" }] })).toThrow(BadAnswer);
   });
@@ -91,5 +92,7 @@ describe("uploads, missing ids and rooms", () => {
     expect(readLive({ room, ws: `/ws?room=${room}`, role: "edit" })).toEqual({ room, ws: `/ws?room=${room}`, role: "edit" });
     expect(() => readLive({ room, ws: "wss://evil.example/ws", role: "edit" })).toThrow(BadAnswer);
     expect(() => readLive({ room, ws: `/ws?room=${room}`, role: "owner" })).toThrow(BadAnswer);
+    // a team's commenter comments in the room (docs/REVIEW.md)
+    expect(readLive({ room, ws: `/ws?room=${room}`, role: "comment" }).role).toBe("comment");
   });
 });

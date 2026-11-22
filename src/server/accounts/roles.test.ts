@@ -3,9 +3,32 @@ import { describe, expect, it } from "vitest";
 import { ACTIONS, can, isTeamRole, TEAM_ROLES, type Action, type TeamRole } from "./roles";
 
 const MATRIX: Record<TeamRole, Record<Action, boolean>> = {
-  owner: { read: true, write: true, upload: true, folders: true, deleteForever: true, manageMembers: true, invite: true, renameTeam: true, deleteTeam: true },
-  editor: { read: true, write: true, upload: true, folders: true, deleteForever: false, manageMembers: false, invite: false, renameTeam: false, deleteTeam: false },
-  viewer: { read: true, write: false, upload: false, folders: false, deleteForever: false, manageMembers: false, invite: false, renameTeam: false, deleteTeam: false },
+  owner: { read: true, write: true, comment: true, upload: true, folders: true, deleteForever: true, manageMembers: true, invite: true, renameTeam: true, deleteTeam: true },
+  editor: { read: true, write: true, comment: true, upload: true, folders: true, deleteForever: false, manageMembers: false, invite: false, renameTeam: false, deleteTeam: false },
+  commenter: {
+    read: true,
+    write: false,
+    comment: true,
+    upload: false,
+    folders: false,
+    deleteForever: false,
+    manageMembers: false,
+    invite: false,
+    renameTeam: false,
+    deleteTeam: false,
+  },
+  viewer: {
+    read: true,
+    write: false,
+    comment: false,
+    upload: false,
+    folders: false,
+    deleteForever: false,
+    manageMembers: false,
+    invite: false,
+    renameTeam: false,
+    deleteTeam: false,
+  },
 };
 
 describe("roles", () => {

@@ -13,7 +13,7 @@
  * id, the dates, the folder, the star and the trash of a design belong to each person's own library.
  */
 import { MAX_COMMENTS, MAX_REPLIES, type CommentPatch, type ReplyPatch } from "@/core/comments";
-import type { CommentReply, Design, DesignComment, DesignElement, GroupElement, ID, Page } from "@/core/types";
+import type { CommentReply, Design, DesignComment, DesignElement, DesignReview, GroupElement, ID, Page } from "@/core/types";
 
 export type Props = Record<string, unknown>;
 
@@ -31,7 +31,18 @@ export type Op =
   | { k: "el.del"; page: ID; id: ID }
   | { k: "el.move"; page: ID; id: ID; parent: ID | null; index: number }
   | { k: "el.set"; page: ID; id: ID; set?: Props; unset?: string[] }
-  | CommentOp;
+  | CommentOp
+  | ReviewOp;
+
+/**
+ * Where the design stands in a review (docs/REVIEW.md): the whole record, and the one that the server applied last wins. Sent only
+ * to a server that said in its welcome that it shares reviews, and passed on only to browsers that said in their join that they
+ * understand them, as comments are.
+ */
+export type ReviewOp = { k: "review.set"; review: DesignReview };
+
+/** Whether an operation is the one of a review, which only those who share reviews are sent. */
+export const isReviewOp = (op: Op): op is ReviewOp => op.k === "review.set";
 
 /**
  * The operations of comments (docs/COLLABORATION.md, "Comments"). Each touches one comment or one reply, named by its id, so that two
@@ -83,6 +94,7 @@ export function syncedView(d: Design): Props {
   if (d.guides !== undefined) view.guides = d.guides;
   // (no comments and an empty list are the same thing)
   if (d.comments?.length) view.comments = d.comments;
+  if (d.review) view.review = d.review;
   return view;
 }
 
@@ -236,7 +248,7 @@ function diffComments(prev: readonly DesignComment[], next: readonly DesignComme
 
 /**
  * The operations that take a copy of `prev` to `next`: deletions first, then changes, then moves, then additions; the comments
- * last, so that a page that comes back is there before the comments on it.
+ * after them, so that a page that comes back is there before the comments on it; the review last (it is never taken away).
  */
 export function diffDesign(prev: Design, next: Design): Op[] {
   if (prev === next) return [];
@@ -261,7 +273,8 @@ export function diffDesign(prev: Design, next: Design): Op[] {
       () => true,
     );
   }
-  return [...out.del, ...out.set, ...out.move, ...out.add, ...diffComments(prev.comments ?? [], next.comments ?? [])];
+  const review: Op[] = next.review && !jsonEqual(prev.review, next.review) ? [{ k: "review.set", review: next.review }] : [];
+  return [...out.del, ...out.set, ...out.move, ...out.add, ...diffComments(prev.comments ?? [], next.comments ?? []), ...review];
 }
 
 /* ---------------- replaying operations ---------------- */
@@ -496,6 +509,8 @@ function step(d: Design, op: Op, used?: IdCounts): Design {
       });
     case "reply.del":
       return inComment(d, op.comment, (c) => (c.replies.some((r) => r.id === op.id) ? { ...c, replies: c.replies.filter((r) => r.id !== op.id) } : c));
+    case "review.set":
+      return jsonEqual(d.review, op.review) ? d : { ...d, review: op.review };
   }
 }
 

@@ -114,11 +114,12 @@ async function edit(s: Sock, ops: unknown[]): Promise<Extract<ServerMsg, { t: "a
 }
 const moveA = (x: number) => [{ k: "el.set", page: "p", id: "a", set: { x } }];
 
-const comment = (id: string): DesignComment => ({
+/** A comment by `author`: in a team's room the server takes one only in the seat's own name (src/collab/seats.ts). */
+const comment = (id: string, author: DesignComment["author"] = { name: "Ann", colorIndex: 3 }): DesignComment => ({
   id,
   pageId: "p",
   anchor: { x: 1, y: 2 },
-  author: { name: "Ann", colorIndex: 3 },
+  author,
   createdAt: 1,
   text: `note ${id}`,
   resolved: false,
@@ -314,7 +315,8 @@ describe("writing back", () => {
     const { room } = (await openLive(b, members[0].token, teamId)).body;
     const s = await member(b, room, members[0].token, "eddie", ["comments"]);
     expect((await edit(s, moveA(42))).t).toBe("ack");
-    expect((await edit(s, [{ k: "comment.add", comment: comment("c1"), index: 0 }])).t).toBe("ack");
+    const eddie = { name: "Eddie", colorIndex: 3, id: members[0].user.id };
+    expect((await edit(s, [{ k: "comment.add", comment: comment("c1", eddie), index: 0 }])).t).toBe("ack");
     expect((await edit(s, [{ k: "design", set: { title: "Renamed live" } }])).t).toBe("ack");
     s.ws.close();
     const path = `/api/spaces/${teamId}/designs/d1`;

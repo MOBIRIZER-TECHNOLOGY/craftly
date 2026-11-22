@@ -293,3 +293,36 @@
     box-shadow: var(--sh-pop);
   }
 }
+
+/* The review at the top of the panel (ReviewSection.tsx, docs/REVIEW.md) */
+.cf-review {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-sm);
+}
+.cf-review__state,
+.cf-review__revision {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.cf-review__revision {
+  color: var(--c-ink-3);
+}
+.cf-review__revision.is-stale {
+  padding: 6px 8px;
+  border-radius: var(--r-xs);
+  background: var(--c-warning-soft);
+  color: var(--c-ink);
+}
+.cf-review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cf-comments-panel__hint p {
+  margin: 0 0 6px;
+}

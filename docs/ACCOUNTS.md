@@ -93,7 +93,8 @@ with `Retry-After`.
 
 **Roles** (one pure table, `can(role, action)` in `accounts/roles.ts`): an **owner** manages members, invites, the team's name,
 deleting the team and deleting forever, and a team always keeps one; an **editor** makes, edits, trashes and restores designs
-and folders and uploads; a **viewer** reads and downloads. The shared folders are the folders of the team's space; there are no
+and folders and uploads; a **commenter** (2026-11-22, [REVIEW.md](REVIEW.md)) reads, and comments on, reviews and approves a
+design in its live room, which they may open, without editing it; a **viewer** reads and downloads. The shared folders are the folders of the team's space; there are no
 per-folder permissions in this version.
 
 **Limits.** A design 16 MiB (`maxDesignBytes`) and it passes `checkDesign` (one carrying a `live` field is refused); a thumbnail

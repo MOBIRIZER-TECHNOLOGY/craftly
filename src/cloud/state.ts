@@ -10,7 +10,7 @@ import { setNewRecordSpace } from "@/core/library";
 import { metaGet, metaSet } from "@/core/persistence";
 import type { DesignSummary, Folder } from "@/core/types";
 
-export type Role = "owner" | "editor" | "viewer";
+export type Role = "owner" | "editor" | "commenter" | "viewer";
 export interface SessionUser {
   id: string;
   email: string;
@@ -50,7 +50,7 @@ export const useCloud = create<CloudState>(() => ({ loaded: false, session: null
 export const CONFIGURED_SERVER: string = (import.meta.env.VITE_CRAFTLY_ACCOUNT_SERVER ?? "").trim().replace(/\/+$/, "");
 
 const SERVER_ID = /^[A-Za-z0-9_-]{16,64}$/;
-const ROLES: readonly string[] = ["owner", "editor", "viewer"];
+const ROLES: readonly string[] = ["owner", "editor", "commenter", "viewer"];
 
 /** The record as it is read back: anything that is not one is no session (the person signs in again). */
 export function readSession(value: unknown): CloudSession | null {

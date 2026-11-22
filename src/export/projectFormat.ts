@@ -11,6 +11,7 @@ import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
 import { createMigrator, MigrationError, type MigrationStep } from "@/core/schema/migrator";
 import { isUsableElement } from "@/core/usableElement";
 import { usableComments } from "@/core/comments";
+import { usableReview } from "@/core/review";
 import { MAX_TRANSITION_DURATION } from "@/core/transition";
 import type { AnimDirection, Design, DesignElement, Fill, Page, PageTransition } from "@/core/types";
 import { m } from "@/i18n";
@@ -254,11 +255,14 @@ function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false
   });
   const now = Date.now();
   // the comments, checked as strictly as on the wire (src/core/comments.ts): what is not usable is left out and counted
-  const { comments: rawComments, ...rest } = raw;
+  const { comments: rawComments, review: rawReview, ...rest } = raw;
   const comments = usableComments(rawComments, new Set(pages.map((p) => p.id)), report);
+  // the review, when it is one (src/core/review.ts): a record that is not is left out
+  const review = usableReview(rawReview);
   return {
     ...portableDesign(rest as unknown as Design),
     ...(comments.length ? { comments } : {}),
+    ...(review ? { review } : {}),
     id: typeof raw.id === "string" && raw.id ? raw.id : `d_${now.toString(36)}`,
     title: typeof raw.title === "string" && raw.title.trim() ? raw.title.slice(0, MAX_TITLE_LENGTH) : "Untitled design",
     typeId: typeof raw.typeId === "string" ? raw.typeId : "custom",

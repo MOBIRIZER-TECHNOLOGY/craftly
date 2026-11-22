@@ -99,6 +99,25 @@ const COMMENTS = [
   "$.comments[]: object",
 ];
 /**
+ * A design's `review` and an author's `id` (2026-11-22, src/core/review.ts, docs/REVIEW.md): where the design stands in a review,
+ * about one revision of its content, and the account that wrote a comment, a reply or a review in a team's room. Optional for good:
+ * an older design has no review and its authors no id (nobody's, in a team's room). The review carries its own format (`v`), so
+ * that a later shape of it needs no new design version; a file's review that is not one is left out (`usableReview`).
+ */
+const REVIEW = [
+  "$.comments[].author.id: string",
+  "$.comments[].replies[].author.id: string",
+  "$.review.at: number",
+  "$.review.by.colorIndex: number",
+  "$.review.by.id: string",
+  "$.review.by.name: string",
+  "$.review.by: object",
+  "$.review.revision: string",
+  "$.review.state: string",
+  "$.review.v: number",
+  "$.review: object",
+];
+/**
  * A summary's `revision` (2026-11-10, src/core/library.ts): a new one with every write of the design, so that a tab that holds an
  * older copy does not write over a newer one. Optional for good: a summary stored before it has none, which is read as `null`.
  */
@@ -109,7 +128,8 @@ const REVISION = ["$.revision: string"];
  */
 const SPACE = ["$.space: string"];
 const ADDED: Record<string, string[]> = {
-  design: [...COMMENTS, ...LIVE_LINK, ...BLEND, ...LINE_ATTACHMENTS],
+  // (in the order a shape is written, sorted: the ids of authors fall among the lines of the comments)
+  design: [...COMMENTS, ...LIVE_LINK, ...BLEND, ...LINE_ATTACHMENTS, ...REVIEW].sort(),
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

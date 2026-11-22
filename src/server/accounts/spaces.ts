@@ -281,8 +281,9 @@ export async function getDesign(ctx: Ctx, req: IncomingMessage, res: ServerRespo
 
 /**
  * `POST …/designs/:id/live`: the room bound to a design, made from its current revision when there is none in memory (or kept on
- * the disk because writing it back failed: its copy is the newer). Making it is for those who may write (owner, editor): while
- * it is in memory the space refuses writes of the design, which is not a viewer's to cause. A viewer is given the room only while
+ * the disk because writing it back failed: its copy is the newer). Making it is for those who may write or comment (owner,
+ * editor, commenter: docs/REVIEW.md, a review is mostly done when nobody else has the design open): while it is in memory the
+ * space refuses writes of the design, which is not a viewer's to cause. A viewer is given the room only while
  * it is in memory or being made (somebody who may edit opened it), and 409 `not-live` otherwise; their seat does not keep it in
  * memory either (live.ts). The answer is what a browser joins with: the room, the socket's address on this server (as the address
  * of a link's socket is made from the server's), and the role the member's session will get there. No key: a bound room is
@@ -297,7 +298,7 @@ export async function openLive(ctx: Ctx, req: IncomingMessage, res: ServerRespon
   if (text.trim() && text.trim() !== "{}") throw badRequest("this takes no body");
   const live = ctx.server.live;
   if (!live) throw notFound("this server has no rooms");
-  if (!can(role, "write")) {
+  if (!can(role, "comment")) {
     const open = live.liveRoom(space, id);
     if (!open) throw refuse(409, "not-live", "nobody is editing this design live: open it from the space");
     return reply(res, 200, { room: open, ws: `/ws?room=${open}`, role: "view" });
@@ -313,7 +314,7 @@ export async function openLive(ctx: Ctx, req: IncomingMessage, res: ServerRespon
       return { design: withDetails(stored, entry), rev: entry.rev };
     }),
   );
-  reply(res, 200, { room, ws: `/ws?room=${room}`, role: "edit" });
+  reply(res, 200, { room, ws: `/ws?room=${room}`, role: can(role, "write") ? "edit" : "comment" });
 }
 
 /** What writing a room back did: the revision the space is at, and the id of the copy it made instead (or null); or its design is gone. */

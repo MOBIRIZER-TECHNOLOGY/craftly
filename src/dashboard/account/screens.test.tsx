@@ -340,6 +340,8 @@ describe("a team", () => {
     expect(await screen.findByRole("heading", { name: "Studio", level: 1 })).toBeTruthy();
     const role = screen.getByRole("combobox", { name: "Role of Bob" }) as HTMLSelectElement;
     expect(role.value).toBe("editor");
+    // (a commenter comments, reviews and approves without editing: docs/REVIEW.md)
+    expect([...role.options].map((o) => o.value)).toEqual(["owner", "editor", "commenter", "viewer"]);
     await user.selectOptions(role, "viewer");
     await waitFor(async () =>
       expect((await call(b, "GET", `/api/teams/${team.id}`, { token: ann.token })).body.members.find((m: { id: string }) => m.id === bob.user.id).role).toBe("viewer"),

@@ -47,7 +47,8 @@ export function JoinPage({ token, onOpen = open }: { token: string; onOpen?: (de
         if (agreed !== token && !isKnownServer(link.server)) return void (!cancelled && setAsking(link.server));
         const { design, role } = await joinDesign(link);
         if (cancelled) return;
-        const id = await saveJoined(design, { ...link, role });
+        // (a link's key edits or looks: `comment` is for a team's room only)
+        const id = await saveJoined(design, { ...link, role: role === "edit" ? "edit" : "view" });
         if (!cancelled) onOpen(id);
       } catch (error) {
         if (!cancelled) setProblem(error instanceof Error ? error.message : m.editor.live.join.openFailed);
