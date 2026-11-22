@@ -12,6 +12,8 @@
  *    a page and as a success, is kept as the shell: an error page of the host, or whatever answers another address
  *    (/robots.txt), is not
  *  - same-origin assets: cache first (any build's cache), filled lazily for anything that was not precached
+ *  - account requests (a token in the header, or asked not to be stored) go to the network untouched, and an answer marked
+ *    `cache-control: no-store` is never stored: an account server on the same address must not have a person's data kept here
  *  - WebAssembly files (the ONNX runtime of the on-device photo tools) go to a cache of their own: they are fetched on
  *    first use, not on the first visit, and a new build keeps them because their names change only with their content
  * Designs and uploads live in IndexedDB, so nothing else is needed to keep working offline.
@@ -98,6 +100,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (isModelFile(url)) return;
+  // an account server can be served from this address too: its requests carry the person's token, and the app asks for them not to
+  // be kept. A copy here would be served again after signing out, or to whoever signs in next, so they go to the network as they are
+  if (req.headers.has("authorization") || req.cache === "no-store") return;
 
   if (req.mode === "navigate") {
     event.respondWith(
@@ -125,7 +130,9 @@ self.addEventListener("fetch", (event) => {
         fetch(req).then((res) => {
           // a runtime file must really be one: a host that answers an unknown path with its home page (a 200 with HTML)
           // would otherwise get a web page stored under a .wasm name
-          if (res.ok && (!isRuntimeFile(url) || /wasm/.test(res.headers.get("content-type") || ""))) {
+          // and an answer the server says must not be kept (every answer of the account and live servers) is not
+          const keepable = !/no-store/i.test(res.headers.get("cache-control") || "");
+          if (res.ok && keepable && (!isRuntimeFile(url) || /wasm/.test(res.headers.get("content-type") || ""))) {
             const copy = res.clone();
             caches.open(isRuntimeFile(url) ? RUNTIME : VERSION).then((c) => c.put(req, copy));
           }

@@ -199,6 +199,30 @@ describe("the service worker", () => {
       expect(await worker.request("/models/isnet.onnx")).toBeUndefined();
     });
 
+    it("leaves an account request to the browser when the account server shares the app's address: it carries a token, or asks not to be kept", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/api/me", '{"user":"ana"}', "application/json");
+      const before = worker.network.calls.length;
+      expect(await worker.request("/api/me", { headers: { authorization: "Bearer t" } })).toBeUndefined();
+      expect(await worker.request("/api/me", { cache: "no-store" })).toBeUndefined();
+      // so nothing of the person is fetched here, or stored for whoever signs in next
+      expect(worker.network.calls).toHaveLength(before);
+      await tick();
+      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/api/me`)).toBe(false);
+    });
+
+    it("passes on, without storing, an answer the server says must not be kept", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/api/rooms/r1", () => new Response('{"room":"r1"}', { status: 200, headers: { "content-type": "application/json", "cache-control": "No-Store" } }));
+      expect(await text(await worker.request("/api/rooms/r1"))).toBe('{"room":"r1"}');
+      await tick();
+      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/api/rooms/r1`)).toBe(false);
+      // and the next time it is asked for, it is the network that answers
+      const before = worker.network.calls.length;
+      await worker.request("/api/rooms/r1");
+      expect(worker.network.calls).toHaveLength(before + 1);
+    });
+
     it("opens a page from the network first, and keeps the latest copy as the shell", async () => {
       const worker = await running("b1");
       worker.network.serve("/index.html", "<html>fresh from the server</html>", "text/html");
