@@ -50,7 +50,9 @@ deployments (5173 and 8787), and cookies across sites need `SameSite=None`, whic
 - CORS allows the `authorization` header, so requests are preflighted; `ALLOW_ORIGIN` lists the app's origin.
 - On a WebSocket the token goes in the `join` message, never in the address (the rule keys follow today).
 - CSP: only `connect-src`, which `VITE_CRAFTLY_CSP_CONNECT` already adds. Pictures are fetched with the token and shown as `blob:`
-  or `data:` addresses, which `img-src` allows. The service worker ignores other origins, so answers are never cached.
+  or `data:` addresses, which `img-src` allows. The service worker ignores other origins, and on the app's own origin it leaves
+  every request with a token or `cache: "no-store"` to the network and stores no answer marked `cache-control: no-store`, so answers
+  are never cached either way.
 
 **Rate limits** (`hourlyLimit`): failed sign-ins 20 an hour per address and 10 per account and address, with an account-wide cap
 of 100 so that one address cannot lock someone out; sign-ups 5 an hour per address; invite and reset codes 20. A refusal is 429
