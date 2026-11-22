@@ -459,7 +459,8 @@ export interface LiveLink {
   server: string;
   room: string;
   key: string;
-  role: "edit" | "view";
+  /** `comment` only for a team's room (a commenter, docs/REVIEW.md): a link's key edits or looks */
+  role: "edit" | "comment" | "view";
   viewKey?: string;
   ownerKey?: string;
 }
@@ -471,6 +472,11 @@ export interface LiveLink {
 export interface CommentAuthor {
   name: string;
   colorIndex: number;
+  /**
+   * The account's user id, for a comment, reply or review written in a team's room (docs/REVIEW.md): the server checks it there,
+   * and only the author may change or delete what they wrote. None for what was written anywhere else.
+   */
+  id?: string;
 }
 
 /**
@@ -510,6 +516,22 @@ export interface DesignComment {
   replies: CommentReply[];
 }
 
+/** The states of a review: asked for, approved, or changes asked for (docs/REVIEW.md). */
+export type ReviewState = "requested" | "approved" | "changes";
+
+/**
+ * Where a design stands in a review: the last state somebody set, about one revision of the content (`contentRevision` in
+ * src/core/review.ts), so that an edit after it leaves it about an earlier version. `v` is the format of this record.
+ */
+export interface DesignReview {
+  v: 1;
+  state: ReviewState;
+  revision: string;
+  by: CommentAuthor;
+  /** epoch ms */
+  at: number;
+}
+
 export interface Design {
   id: ID;
   title: string;
@@ -533,6 +555,8 @@ export interface Design {
   live?: LiveLink;
   /** notes pinned to places of the pages; none is the same as an empty list (an older design has none) */
   comments?: DesignComment[];
+  /** where the design stands in a review (docs/REVIEW.md); none when no review was asked for */
+  review?: DesignReview;
   /**
    * The format of this document (src/core/schema/design.ts): CURRENT_DESIGN_VERSION when this build wrote it. A design read
    * from storage or a file passes through `migrateDesign` first, so the editor only ever holds the current version.

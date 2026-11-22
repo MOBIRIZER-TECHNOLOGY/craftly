@@ -19,7 +19,7 @@ import { elementPath } from "@/core/penShape";
 import { stopPathEdit, startPathEdit, usePathEdit } from "./pathEditStore";
 import { cancelPen, finishPen, forgetPenCursor, hidePenCursor, penCursorShown, penDrag, penHover, penPress } from "./penTool";
 import { insertImageFiles, insertPayload, readDragPayload, DRAG_MIME } from "../insert";
-import { placeDraft } from "../comments/commentsStore";
+import { placeDraft, useComments } from "../comments/commentsStore";
 import { selectionFrame } from "./frame";
 import { useGesture } from "./gestureStore";
 import { fingerSpan, pinchZoom, scrollToKeep } from "./pinch";
@@ -374,7 +374,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       startHandleGesture(e, handleAttr);
       return;
     }
-    if (s.mode === "view") return;
+    // (a team's commenter places pins in the read-only mode: docs/REVIEW.md)
+    if (s.mode === "view" && !(s.tool === "comment" && useComments.getState().commenting)) return;
     if (s.tool === "pen") {
       startPen(e);
       return;

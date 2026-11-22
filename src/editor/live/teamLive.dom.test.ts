@@ -162,3 +162,40 @@ describe("a viewer", () => {
     }
   });
 });
+
+describe("a commenter (docs/REVIEW.md)", () => {
+  let cora: Awaited<ReturnType<typeof signUp>>;
+  beforeEach(async () => {
+    cora = await signUp(b, { name: "Cora" });
+    const invite = (await call(b, "POST", `/api/teams/${team}/invites`, { token: other, body: { role: "commenter", uses: 1, hours: 1 } })).body;
+    expect((await call(b, "POST", "/api/invites/redeem", { token: cora.token, body: { code: invite.code } })).status).toBe(200);
+    release?.();
+    stopSync();
+    await saveSession({ server: b.base, token: cora.token, user: cora.user, device: "Cora's laptop", teams: [], activeSpace: cora.user.id });
+    await run();
+    release = holdLock(designLock(shared.id));
+  });
+
+  it("opens the room with nobody else in it, sends nothing first, and joins signed as their account", async () => {
+    // an edit here is never sent by a commenter: the room is asked for at once
+    await edit(shared.id);
+    await startTeamLive(shared.id);
+    expect(useTeamLive.getState()).toMatchObject({ link: { role: "comment" }, account: { id: cora.user.id, owner: false }, error: null });
+    expect((await call(b, "GET", `/api/spaces/${team}/designs/${shared.id}`, { token: other })).body.rev).toBe(1);
+  });
+
+  it("opens the team's designs read-only, and stays so when the room is left", async () => {
+    const open = await getDesignForEditing(shared.id);
+    useEditor.getState().actions.openDesign(open!.design);
+    try {
+      await applyTeamRole(shared.id);
+      expect(useEditor.getState().mode).toBe("view");
+      const leave = connectTeamLive(shared.id, { server: "http://127.0.0.1:9", room: "r_nowhere", key: "", role: "comment" }, "a session");
+      leave();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(useEditor.getState().mode).toBe("view");
+    } finally {
+      useEditor.getState().actions.closeDesign();
+    }
+  });
+});

@@ -1,9 +1,10 @@
 /**
  * The Comments panel: every thread of the design, those of the open page first and then those of the other pages, filtered by
  * Open, Resolved or All. A thread shows its author, when it was written, its text and its replies, a box to answer, Resolve or
- * Reopen, and Edit and Delete for this person's own messages (Delete asks first). "Show on page" goes to the page of the thread
- * and marks its pin. The panel says plainly when comments are not shared (a server from before comments) and when this person may
- * only read them (a link that only lets people look, or the Viewing mode).
+ * Reopen, and Edit and Delete for this person's own messages (Delete asks first; an owner of a team deletes anybody's in its room).
+ * "Show on page" goes to the page of the thread and marks its pin. The panel says plainly when comments are not shared (a server
+ * from before comments) and when this person may only read them (a link that only lets people look, or the Viewing mode). Above
+ * the threads, the review (ReviewSection.tsx) while it is shared.
  *
  * Everything that people wrote is put into the page as text. The panel is a region of its own beside the page, not a dialog: the
  * keyboard goes in and out of it freely, and Esc or Close puts it back on the Comments button.
@@ -12,22 +13,15 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEv
 import { MAX_COMMENT_TEXT } from "@/core/comments";
 import { useEditor } from "@/core/store";
 import type { CommentAuthor, CommentReply, Design, DesignComment, ID } from "@/core/types";
-import { date, m } from "@/i18n";
+import { m } from "@/i18n";
 import { Button, IconButton, IconClose } from "@/ui";
 import { useLiveStatus } from "../live/connection";
 import { authorColor } from "./CommentsOverlay";
-import { isMine, myAuthor, numbered, rememberMine, useComments, type CommentFilter } from "./commentsStore";
+import { isMine, mayDelete, myAuthor, numbered, rememberMine, useComments, when, type CommentFilter } from "./commentsStore";
+import { ReviewSection } from "./ReviewSection";
 import "./comments.css";
 
 const FILTERS: CommentFilter[] = ["open", "resolved", "all"];
-
-const when = (ms: number): string => {
-  try {
-    return date(ms, { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return new Date(ms).toISOString();
-  }
-};
 
 /** The name of the page a thread is on, as the page strip says it. */
 const pageLabel = (design: Design, pageId: ID): string => {
@@ -51,6 +45,8 @@ function PanelBody() {
   const mode = useEditor((s) => s.mode);
   const role = useLiveStatus((s) => s.role);
   const sharing = useComments((s) => s.sharing);
+  const reviews = useComments((s) => s.reviews);
+  const commenting = useComments((s) => s.commenting);
   const filter = useComments((s) => s.filter);
   const showResolved = useComments((s) => s.showResolved);
   const headingId = useId();
@@ -59,7 +55,8 @@ function PanelBody() {
     backToButton();
   };
   if (!design) return null;
-  const canWrite = mode === "edit";
+  // (a team's commenter writes comments in the read-only mode: docs/REVIEW.md)
+  const canWrite = mode === "edit" || commenting;
   const wanted = (c: DesignComment) => filter === "all" || (filter === "resolved") === c.resolved;
   const here = numbered(design, activePageId).filter(({ comment }) => wanted(comment));
   const elsewhere = design.pages
@@ -89,9 +86,17 @@ function PanelBody() {
         <p className="cf-comments-panel__note" role="note">
           {role === "view" ? m.editor.comments.viewOnlyLink : m.editor.comments.viewing}
         </p>
+      ) : commenting ? (
+        <div className="cf-comments-panel__hint">
+          <p>{m.editor.review.commenterHint}</p>
+          <Button size="sm" variant="secondary" onClick={() => useEditor.getState().actions.setTool("comment")}>
+            {m.editor.review.addComment}
+          </Button>
+        </div>
       ) : (
         <p className="cf-comments-panel__hint">{m.editor.comments.hint}</p>
       )}
+      {reviews ? <ReviewSection mayRequest={mode === "edit"} mayDecide={canWrite} /> : null}
       <fieldset className="cf-comments-panel__filter">
         <legend className="cf-sr-only">{m.editor.comments.filterLegend}</legend>
         {FILTERS.map((f) => (
@@ -191,7 +196,8 @@ function Thread({ comment, number, design, canWrite, page }: { comment: DesignCo
         at={comment.createdAt}
         edited={comment.editedAt}
         text={comment.text}
-        mine={canWrite && isMine(comment.id, design)}
+        mine={canWrite && isMine(comment, design)}
+        deletable={canWrite && mayDelete(comment, design)}
         what="comment"
         onEdit={(text) => actions.editComment(comment.id, text)}
         onDelete={() => actions.deleteComment(comment.id)}
@@ -228,7 +234,8 @@ function ReplyItem({ reply, comment, design, canWrite }: { reply: CommentReply; 
       at={reply.createdAt}
       edited={reply.editedAt}
       text={reply.text}
-      mine={canWrite && isMine(reply.id, design)}
+      mine={canWrite && isMine(reply, design)}
+      deletable={canWrite && mayDelete(reply, design)}
       what="reply"
       onEdit={(text) => actions.editComment(comment.id, text, reply.id)}
       onDelete={() => actions.deleteComment(comment.id, reply.id)}
@@ -236,13 +243,14 @@ function ReplyItem({ reply, comment, design, canWrite }: { reply: CommentReply; 
   );
 }
 
-/** One message (a comment or a reply): who, when, what; and Edit and Delete for this person's own. Delete asks first. */
+/** One message (a comment or a reply): who, when, what; Edit for this person's own, Delete for what they may delete. Delete asks first. */
 function Message({
   author,
   at,
   edited,
   text,
   mine,
+  deletable,
   what,
   onEdit,
   onDelete,
@@ -252,6 +260,7 @@ function Message({
   edited?: number;
   text: string;
   mine: boolean;
+  deletable: boolean;
   what: "comment" | "reply";
   onEdit(text: string): void;
   onDelete(): void;
@@ -288,7 +297,7 @@ function Message({
     <div className="cf-comment__message">
       <Byline author={author} at={at} edited={edited} />
       {body}
-      {mine && !editing ? (
+      {deletable && !editing ? (
         asking ? (
           <div className="cf-comment__confirm" role="group" aria-label={m.editor.comments.deleteThis[what]}>
             <span>{m.editor.comments.deleteQuestion[what]}</span>
@@ -309,9 +318,11 @@ function Message({
           </div>
         ) : (
           <div className="cf-comment__own">
-            <Button ref={editButton} size="sm" variant="ghost" aria-label={m.editor.comments.editLabel[what]} onClick={() => setEditing(true)}>
-              {m.editor.comments.edit}
-            </Button>
+            {mine ? (
+              <Button ref={editButton} size="sm" variant="ghost" aria-label={m.editor.comments.editLabel[what]} onClick={() => setEditing(true)}>
+                {m.editor.comments.edit}
+              </Button>
+            ) : null}
             <Button ref={deleteButton} size="sm" variant="ghost" aria-label={m.editor.comments.deleteLabel[what]} onClick={() => setAsking(true)}>
               {m.common.delete}
             </Button>

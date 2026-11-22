@@ -9,10 +9,11 @@
  * `parseServerMsg` before any of it is used, and the first that cannot be used ends the session.
  */
 import { withoutComments } from "@/core/comments";
+import { withoutReview } from "@/core/review";
 import type { Design } from "@/core/types";
-import { applyOps, diffDesign, isCommentOp, type Op } from "./ops";
+import { applyOps, diffDesign, isCommentOp, isReviewOp, type Op } from "./ops";
 import type { PresenceHeard } from "./presence";
-import { checkSets, COMMENTS, parseServerMsg, type ClientMsg, type DeniedReason, type Feature, type Role, type ServerMsg } from "./protocol";
+import { checkSets, COMMENTS, parseServerMsg, REVIEW, type ClientMsg, type DeniedReason, type Feature, type Role, type ServerMsg } from "./protocol";
 
 export type SessionStatus = "offline" | "joining" | "live" | "ended";
 
@@ -78,6 +79,8 @@ export class Session {
    * (the operations are taken out of every batch) and none that the server holds is shown (docs/COLLABORATION.md, "Comments").
    */
   sharesComments = false;
+  /** The same for reviews (docs/REVIEW.md): until the welcome says so, and with a server from before reviews, none is sent or shown. */
+  sharesReview = false;
   /** The design as the server has it, as far as this browser has heard. */
   server: Design | null = null;
   private queue: Batch[] = [];
@@ -156,9 +159,18 @@ export class Session {
     this.opts.send(features.length ? { t: "join", client: this.opts.client, ...credential, features } : { t: "join", client: this.opts.client, ...credential });
   }
 
-  /** What of a batch goes to this server: without the comment operations when it does not share comments. */
+  /**
+   * What of a batch goes to this server: without the comment operations when it does not share comments, without the review when
+   * it does not share reviews, and only those two kinds from a seat that may only comment (the server would refuse the batch).
+   */
   private forServer(ops: Op[]): Op[] {
-    return this.sharesComments ? ops : ops.filter((op) => !isCommentOp(op));
+    const commenting = this.role === "comment";
+    return ops.filter((op) => this.shared(op) && (!commenting || isCommentOp(op) || isReviewOp(op)));
+  }
+
+  /** Whether an operation is of something shared with this server: everything but comments and a review that it does not share. */
+  private shared(op: Op): boolean {
+    return isCommentOp(op) ? this.sharesComments : isReviewOp(op) ? this.sharesReview : true;
   }
 
   /** The connection is gone; whatever was not confirmed is kept and sent again when there is another. */
@@ -210,8 +222,8 @@ export class Session {
       case "ops": {
         if (msg.rev <= this.rev) return NOTHING; // heard already
         if (msg.rev !== this.rev + 1) return this.resync(); // one was missed
-        // (comments that this browser did not agree to share with this server are not taken from it either)
-        const ops = this.forServer(msg.ops);
+        // (comments and a review that this browser did not agree to share with this server are not taken from it either)
+        const ops = msg.ops.filter((op) => this.shared(op));
         const next = applyOps(this.server, ops);
         // each operation has the form it should (parseServerMsg); what they leave of the elements they changed is asked here,
         // as the server asks it of a batch: a server that sends `x: "a"` for a shape is not a Craftly server
@@ -228,11 +240,14 @@ export class Session {
     this.role = msg.role;
     this.peer = msg.peer ?? null;
     this.name = msg.name ?? null;
-    this.sharesComments = (this.opts.features ?? []).includes(COMMENTS) && (msg.features ?? []).includes(COMMENTS);
+    const shares = (feature: Feature) => (this.opts.features ?? []).includes(feature) && (msg.features ?? []).includes(feature);
+    this.sharesComments = shares(COMMENTS);
+    this.sharesReview = shares(REVIEW);
     // A server that does not share comments may still hold some, from the design that made its room: they are frozen there, and
-    // are not shown. What this browser made of comments while it waited stays on its own copy, and is not sent.
-    this.server = this.sharesComments ? msg.design : withoutComments(msg.design);
-    if (!this.sharesComments) this.queue = this.queue.map((b) => ({ seq: b.seq, ops: this.forServer(b.ops) })).filter((b) => b.ops.length > 0);
+    // are not shown. What this browser made of comments while it waited stays on its own copy, and is not sent. The same for a review.
+    const design = this.sharesComments ? msg.design : withoutComments(msg.design);
+    this.server = this.sharesReview ? design : withoutReview(design);
+    this.queue = this.queue.map((b) => ({ seq: b.seq, ops: this.forServer(b.ops) })).filter((b) => b.ops.length > 0);
     this.rev = msg.rev;
     this.status = "live";
     // What the server has already applied is in the design it sent; the rest goes again, in order. The server counts this client
@@ -285,9 +300,9 @@ export class Session {
 /**
  * The shared parts of `shared` laid over a design of this person's own library: the same design when they are the same already.
  * `comments`: whether the comments are shared with this server (`Session.sharesComments`); when they are not, this person's own
- * comments stay as they are.
+ * comments stay as they are. `review` the same for the review (`Session.sharesReview`).
  */
-export function withShared(local: Design, shared: Design, comments = false): Design {
+export function withShared(local: Design, shared: Design, comments = false, review = false): Design {
   if (
     local.pages === shared.pages &&
     local.title === shared.title &&
@@ -296,11 +311,13 @@ export function withShared(local: Design, shared: Design, comments = false): Des
     local.unit === shared.unit &&
     local.typeId === shared.typeId &&
     local.guides === shared.guides &&
-    (!comments || local.comments === shared.comments)
+    (!comments || local.comments === shared.comments) &&
+    (!review || local.review === shared.review)
   )
     return local;
-  const { guides: _guides, comments: own, ...rest } = local;
+  const { guides: _guides, comments: own, review: ownReview, ...rest } = local;
   const kept = comments ? shared.comments : own;
+  const decided = review ? shared.review : ownReview;
   return {
     ...rest,
     title: shared.title,
@@ -311,5 +328,6 @@ export function withShared(local: Design, shared: Design, comments = false): Des
     pages: shared.pages,
     ...(shared.guides ? { guides: shared.guides } : {}),
     ...(kept ? { comments: kept } : {}),
+    ...(decided ? { review: decided } : {}),
   };
 }

@@ -286,14 +286,15 @@ export function completeDesign(): Complete<Design> {
         id: "c_complete",
         pageId: "p_1",
         anchor: { x: 120, y: 80, elementId: "t1", dx: 12, dy: -4 },
-        author: { name: "Ann", colorIndex: 3 },
+        author: { name: "Ann", colorIndex: 3, id: "u_complete_author_1" },
         createdAt: 1_700_000_100_000,
         editedAt: 1_700_000_200_000,
         text: "Make the heading bigger",
         resolved: true,
-        replies: [{ id: "r_complete", author: { name: "Bob", colorIndex: 7 }, createdAt: 1_700_000_300_000, editedAt: 1_700_000_400_000, text: "Done" }],
+        replies: [{ id: "r_complete", author: { name: "Bob", colorIndex: 7, id: "u_complete_author_2" }, createdAt: 1_700_000_300_000, editedAt: 1_700_000_400_000, text: "Done" }],
       },
     ],
+    review: { v: 1, state: "approved", revision: "r1-0000000000000000000000", by: { name: "Bob", colorIndex: 7, id: "u_complete_author_2" }, at: 1_700_000_500_000 },
     version: 1,
   };
 }
@@ -389,6 +390,7 @@ export function minimalDesign(): Design {
     folderId: null,
     starred: false,
     trashedAt: null,
+    review: { v: 1, state: "approved", revision: "r1-0000000000000000000000", by: { name: "Bob", colorIndex: 7, id: "u_complete_author_2" }, at: 1_700_000_500_000 },
     version: 1,
   };
 }

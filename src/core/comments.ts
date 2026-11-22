@@ -31,6 +31,8 @@ export const COMMENT_COORD_MAX = 1_000_000;
 const REF_MAX = 200;
 /** The id of a comment or a reply, which the editor makes (`uid`): letters, digits, `_` and `-`. */
 const COMMENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** The id of an account that an author may carry (docs/REVIEW.md): a user id as the account server makes them (`SERVER_ID`). */
+const ACCOUNT_ID = /^[A-Za-z0-9_-]{16,64}$/;
 
 /** What a change of a comment may change (a `comment.set`), and of a reply (`reply.set`). */
 export type CommentPatch = Partial<Pick<DesignComment, "text" | "editedAt" | "resolved" | "anchor">>;
@@ -39,7 +41,7 @@ export type ReplyPatch = Partial<Pick<CommentReply, "text" | "editedAt">>;
 const COMMENT_KEYS = ["id", "pageId", "anchor", "author", "createdAt", "editedAt", "text", "resolved", "replies"];
 const REPLY_KEYS = ["id", "author", "createdAt", "editedAt", "text"];
 const ANCHOR_KEYS = ["x", "y", "elementId", "dx", "dy"];
-const AUTHOR_KEYS = ["name", "colorIndex"];
+const AUTHOR_KEYS = ["name", "colorIndex", "id"];
 const COMMENT_PATCH_KEYS = ["text", "editedAt", "resolved", "anchor"];
 const REPLY_PATCH_KEYS = ["text", "editedAt"];
 
@@ -71,7 +73,8 @@ function textProblem(value: unknown, what: string, max: number, name = false): s
   return null;
 }
 
-function readAuthor(value: unknown): CommentAuthor | string {
+/** An author (of a comment, a reply or a review), as a fresh object, if it has the form it should; otherwise what is wrong with it. */
+export function readAuthor(value: unknown): CommentAuthor | string {
   if (!isObject(value)) return "an author is an object";
   const extra = unknownKey(value, AUTHOR_KEYS);
   if (extra !== undefined) return `a field that an author does not have (${extra.slice(0, 40)})`;
@@ -79,7 +82,9 @@ function readAuthor(value: unknown): CommentAuthor | string {
   if (wrong) return wrong;
   const index = value.colorIndex;
   if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0 || index >= COMMENT_COLORS) return "the colour of an author is a place in the list of colours";
-  return { name: value.name as string, colorIndex: index };
+  if (value.id === undefined) return { name: value.name as string, colorIndex: index };
+  if (typeof value.id !== "string" || !ACCOUNT_ID.test(value.id)) return "the id of an author is the id of an account";
+  return { name: value.name as string, colorIndex: index, id: value.id };
 }
 
 function readAnchor(value: unknown): CommentAnchor | string {
@@ -286,13 +291,21 @@ export function settleComments(base: Design, next: Design): Design {
  * those of a page that the restored design brings back. The restored design itself when neither has any.
  */
 export function carryComments(current: Design, restored: Design): Design {
-  if (!current.comments?.length && !restored.comments?.length) return restored;
-  const pages = new Set(restored.pages.map((p) => p.id));
+  // (nor is the review, docs/REVIEW.md: it stays as it is now, and an undo that brings back the content it is about makes it current)
+  const base = current.review === restored.review ? restored : withReviewOf(current, restored);
+  if (!current.comments?.length && !base.comments?.length) return base;
+  const pages = new Set(base.pages.map((p) => p.id));
   const had = new Set(current.pages.map((p) => p.id));
   const now = (current.comments ?? []).filter((c) => pages.has(c.pageId));
   const ids = new Set(now.map((c) => c.id));
-  const back = (restored.comments ?? []).filter((c) => pages.has(c.pageId) && !had.has(c.pageId) && !ids.has(c.id));
-  return settleComments(current, { ...restored, comments: [...now, ...back] });
+  const back = (base.comments ?? []).filter((c) => pages.has(c.pageId) && !had.has(c.pageId) && !ids.has(c.id));
+  return settleComments(current, { ...base, comments: [...now, ...back] });
+}
+
+/** `restored` with the review of `current`, or with none when `current` has none. */
+function withReviewOf(current: Design, restored: Design): Design {
+  const { review: _review, ...rest } = restored;
+  return current.review ? { ...rest, review: current.review } : rest;
 }
 
 /**

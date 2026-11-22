@@ -2,7 +2,7 @@
  * A design of a team, open live with the team without any link (docs/ACCOUNTS.md, "Team designs live"): "Edit live with your
  * team" asks the account server for the room bound to the design (`POST /api/spaces/:s/designs/:id/live`), and the editor joins it
  * with the member's session in place of a key (connection.ts). The member's role in the team decides: an owner or editor edits,
- * a viewer looks (the read-only mode of a view link). When the server sends the member away (a role lowered, a removal) or the
+ * a commenter comments and reviews (docs/REVIEW.md), a viewer looks (the read-only mode of a view link). When the server sends the member away (a role lowered, a removal) or the
  * room went away before the join, the room is asked for again, a few times.
  *
  * While the design is open in the editor, sync leaves it alone (the editor holds its lock); the room writes the design back to the
@@ -14,6 +14,7 @@ import type { DeniedReason } from "@/collab/protocol";
 import { getSummary } from "@/core/library";
 import type { Design, LiveLink } from "@/core/types";
 import { useEditor } from "@/core/store";
+import type { CommentAccount } from "../comments/commentsStore";
 import { connectLive } from "./connection";
 
 export interface TeamLiveState {
@@ -22,6 +23,8 @@ export interface TeamLiveState {
   link: LiveLink | null;
   /** the session it joins with */
   session: string | null;
+  /** who joins: the account's id (what this person writes is signed with it) and whether they are an owner of the team */
+  account: CommentAccount | null;
   joining: boolean;
   error: string | null;
   /**
@@ -36,7 +39,7 @@ export interface TeamLiveState {
   kept: string | null;
 }
 
-const NONE = { link: null, session: null, joining: false, error: null, notice: null, kept: null };
+const NONE = { link: null, session: null, account: null, joining: false, error: null, notice: null, kept: null };
 
 export const useTeamLive = create<TeamLiveState>(() => ({ designId: null, ...NONE }));
 
@@ -47,7 +50,7 @@ let asks = 0;
 class Unsent extends Error {}
 
 /** The team (space) of a design and the member's role in it; null for a design that is not a team's, or nobody signed in. */
-export async function teamOf(designId: string): Promise<{ space: string; role: "owner" | "editor" | "viewer" } | null> {
+export async function teamOf(designId: string): Promise<{ space: string; role: "owner" | "editor" | "commenter" | "viewer" } | null> {
   const { useCloud, roleIn } = await import("@/cloud/state");
   const session = useCloud.getState().session;
   const summary = await getSummary(designId);
@@ -67,7 +70,7 @@ export async function startTeamLive(designId: string, again = false): Promise<vo
   try {
     // what was edited here and not sent yet goes to the server first: the room is made from the server's design, so the room is not
     // joined over edits that did not get there (a conflict, a full space, a save that did not finish): they would be lost
-    if (!again && team.role !== "viewer") {
+    if (!again && (team.role === "owner" || team.role === "editor")) {
       const [{ settleSaves }, sync] = await Promise.all([import("@/settleSaves"), import("@/cloud/sync")]);
       const saved = await settleSaves(3000);
       if (saved !== "saved") throw new Unsent(m.cloud.live.unsent);
@@ -83,7 +86,14 @@ export async function startTeamLive(designId: string, again = false): Promise<vo
       } else if (sent !== "in-step") throw new Unsent(m.cloud.live.unsent);
     }
     const room = await api.openLive({ server: session.server, token: session.token }, team.space, designId);
-    useTeamLive.setState({ designId, link: { server: session.server, room: room.room, key: "", role: room.role }, session: session.token, joining: false, error: null });
+    useTeamLive.setState({
+      designId,
+      link: { server: session.server, room: room.room, key: "", role: room.role },
+      session: session.token,
+      account: { id: session.user.id, owner: team.role === "owner" },
+      joining: false,
+      error: null,
+    });
   } catch (error) {
     if (error instanceof api.CloudError && error.code === "not-live") {
       // a viewer, and nobody who may edit has it open live (or the last one left): the space's copy, read-only, and why
@@ -113,7 +123,8 @@ export function connectTeamLive(designId: string, link: LiveLink, session: strin
     }, 300);
   };
   let end: { reachedLive: boolean; unsent: number; room: Design | null } | null = null;
-  const stop = connectLive(link, { session, onDenied, onStop: (e) => (end = e) });
+  const account = useTeamLive.getState().account ?? undefined;
+  const stop = connectLive(link, { session, account, onDenied, onStop: (e) => (end = e) });
   return () => {
     stop();
     // leaving a room ends the read-only mode it set: a viewer of the team keeps it all the same
@@ -132,8 +143,8 @@ export function connectTeamLive(designId: string, link: LiveLink, session: strin
   };
 }
 
-/** A viewer of a team opens its designs read-only, as with a view link. */
+/** A viewer or a commenter of a team opens its designs read-only, as with a view link (a commenter comments once live). */
 export async function applyTeamRole(designId: string): Promise<void> {
   const team = await teamOf(designId).catch(() => null);
-  if (team?.role === "viewer" && useEditor.getState().design?.id === designId) useEditor.getState().actions.setMode("view");
+  if ((team?.role === "viewer" || team?.role === "commenter") && useEditor.getState().design?.id === designId) useEditor.getState().actions.setMode("view");
 }

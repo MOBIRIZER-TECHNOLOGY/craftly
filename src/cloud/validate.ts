@@ -46,8 +46,8 @@ const MAX_NAME = 200;
 /** An upload's base64 is at most this long (the server takes 9 MiB of bytes). */
 const MAX_UPLOAD_BASE64 = 12 * 1024 * 1024;
 const PICTURE = /^image\/(png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
-export type Role = "owner" | "editor" | "viewer";
-const ROLES: readonly Role[] = ["owner", "editor", "viewer"];
+export type Role = "owner" | "editor" | "commenter" | "viewer";
+const ROLES: readonly Role[] = ["owner", "editor", "commenter", "viewer"];
 
 type Obj = Record<string, unknown>;
 
@@ -285,11 +285,11 @@ export function readMissing(value: unknown, asked: readonly string[]): string[] 
 }
 
 /** `POST /api/spaces/:s/designs/:id/live`: the room, the socket's path on that server, and what the session may do there. */
-export function readLive(value: unknown): { room: string; ws: string; role: "edit" | "view" } {
+export function readLive(value: unknown): { room: string; ws: string; role: "edit" | "comment" | "view" } {
   const v = obj(value, "the answer");
   const room = matching(v.room, /^[A-Za-z0-9_-]{16,64}$/, "a room");
   if (v.ws !== `/ws?room=${room}`) throw new BadAnswer("the address of the room");
-  if (v.role !== "edit" && v.role !== "view") throw new BadAnswer("a role in the room");
+  if (v.role !== "edit" && v.role !== "comment" && v.role !== "view") throw new BadAnswer("a role in the room");
   return { room, ws: v.ws, role: v.role };
 }
 

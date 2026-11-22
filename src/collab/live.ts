@@ -96,6 +96,11 @@ export class Live {
     return this.session.sharesComments;
   }
 
+  /** Whether reviews are shared with this server (`Session.sharesReview`): false until the welcome says so. */
+  get sharesReview(): boolean {
+    return this.session.sharesReview;
+  }
+
   /** The design to show: what the server has confirmed with this person's unconfirmed changes on top. */
   get design(): Design | null {
     return this.session.design;

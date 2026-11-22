@@ -48,3 +48,16 @@ describe("comments in a backup", () => {
     expect(parseStoredDesign(stored).comments!.map((c) => c.id)).toEqual(["a"]);
   });
 });
+
+describe("the review in a project file (docs/REVIEW.md)", () => {
+  const review = { v: 1 as const, state: "approved" as const, revision: "r1-abc", by: { name: "Ann", colorIndex: 1, id: "u_0123456789abcdef" }, at: 4 };
+
+  it("comes back as it was, with the account of its author", () => {
+    expect(throughFile({ ...design(), review }).review).toEqual(review);
+  });
+
+  it("is left out when it is not one, and is no field in a design that has none", () => {
+    expect("review" in throughFile({ ...design(), review: { ...review, v: 2 } } as unknown as Design)).toBe(false);
+    expect("review" in throughFile(design())).toBe(false);
+  });
+});

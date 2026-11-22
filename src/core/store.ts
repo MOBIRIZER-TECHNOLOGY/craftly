@@ -25,10 +25,13 @@ import { boundsOfElements } from "./geometry";
 import { uid } from "./ids";
 import * as ops from "./ops";
 import { carryComments, cleanCommentText, COMMENT_COORD_MAX, MAX_COMMENTS, MAX_REPLIES, settleComments } from "./comments";
+import { contentRevision, REVIEW_VERSION } from "./review";
 import type {
   Anchor,
   CommentAnchor,
   CommentAuthor,
+  DesignReview,
+  ReviewState,
   Design,
   DesignComment,
   DesignElement,
@@ -118,6 +121,11 @@ export interface EditorState {
   lastSavedAt: number;
   /** increments on every document change; renderers key off it */
   docVersion: number;
+  /**
+   * Moves on after every change that the people who share the design have been told of or have sent (after the connection has it,
+   * where `docVersion` moves before): what the review's "about this version" is worked out again on (`contentRevisionNow`).
+   */
+  sharedVersion: number;
 
   snapGuides: SnapGuide[];
   clipboard: { elements: DesignElement[]; pasted: number } | null;
@@ -141,6 +149,19 @@ export interface LiveBridge {
    * not say, what others did never replaces this person's own comments (docs/COLLABORATION.md, "Comments").
    */
   sharesComments?(): boolean;
+  /** The same for the review (docs/REVIEW.md). */
+  sharesReview?(): boolean;
+  /**
+   * The design as the server has it with this person's unconfirmed changes on top (`Session.design`): what the server hashes when
+   * it checks a review (src/collab/seats.ts). Not the design here, whose text sizes and attached lines are worked out on this
+   * device (with its fonts) and never sent.
+   */
+  shared?(): Design | null;
+  /**
+   * Whether this person comments in a design they may not edit (a team's commenter, docs/REVIEW.md): comments and the review are
+   * then changed in the read-only mode, and nothing else.
+   */
+  commentsOnly?(): boolean;
 }
 
 /** What a new comment is made of; the id, the time and the state are the store's. */
@@ -288,6 +309,16 @@ export interface EditorActions {
   setCommentResolved(commentId: ID, resolved: boolean): void;
   /** Deletes a comment with its thread, or one of its replies. */
   deleteComment(commentId: ID, replyId?: ID): void;
+  /**
+   * Sets where the design stands in a review (docs/REVIEW.md), about its content as it is now (`contentRevision`): like a comment,
+   * no step of undo. False when nothing was set (no design, or a mode that takes no change).
+   */
+  setReview(state: ReviewState, by: CommentAuthor): boolean;
+  /**
+   * The revision of the content that a review set now would be about (`contentRevision`): of the shared design while the design is
+   * shared, of the design here otherwise. "" without a design.
+   */
+  contentRevisionNow(): string;
 
   /* crop */
   startCrop(id: ID): void;
@@ -491,10 +522,13 @@ export const useEditor = create<EditorState>()((set, get) => {
     return fitZoomFor(design, viewport.w, viewport.h, mode, stripHeight());
   }
 
-  /** the single door for document changes; `history: false` is a change that is no step of undo (comments) */
-  function commit(recipe: (d: Draft<Design>) => void, opts: UpdateOptions & { history?: false } = {}): boolean {
+  /**
+   * the single door for document changes; `history: false` is a change that is no step of undo (comments), `comments` one of the
+   * comments or the review, which a commenter makes in the read-only mode
+   */
+  function commit(recipe: (d: Draft<Design>) => void, opts: UpdateOptions & { history?: false; comments?: true } = {}): boolean {
     const s = get();
-    if (!s.design || s.mode === "view") return false;
+    if (!s.design || (s.mode === "view" && !(opts.comments && bridge?.commentsOnly?.()))) return false;
     const base = s.design;
     const produced = produce(base, (d) => {
       recipe(d);
@@ -550,7 +584,9 @@ export const useEditor = create<EditorState>()((set, get) => {
       canRedo = future.length > 0;
     }
     set({ design: next, past, future, canUndo, canRedo, docVersion: s.docVersion + 1, saveState: "unsaved" });
-    if (told) bridge?.change(base, next);
+    if (!told) return;
+    bridge?.change(base, next);
+    set({ sharedVersion: get().sharedVersion + 1 });
   }
 
   /** This person's own step in a shared design: one with the others of a gesture or of edits that are coalesced. */
@@ -608,7 +644,7 @@ export const useEditor = create<EditorState>()((set, get) => {
    * comments alone (`carryComments`), and in a shared design undo is made of this person's steps as operations, of which a comment
    * is none: taking back a comment would take the answers of others with it, and bringing one back would bring an old copy of them.
    */
-  const commitComments = (recipe: (d: Draft<Design>) => void): boolean => commit(recipe, { history: false });
+  const commitComments = (recipe: (d: Draft<Design>) => void): boolean => commit(recipe, { history: false, comments: true });
 
   const withActivePage = (fn: (page: Draft<Page>, d: Draft<Design>) => void, opts?: UpdateOptions) => {
     const id = get().activePageId;
@@ -677,7 +713,9 @@ export const useEditor = create<EditorState>()((set, get) => {
     applyShared(shared) {
       const s = get();
       if (!bridge || !s.design) return;
-      const merged = withShared(s.design, shared, bridge.sharesComments?.() ?? false);
+      const merged = withShared(s.design, shared, bridge.sharesComments?.() ?? false, bridge.sharesReview?.() ?? false);
+      // (the shared design moved on even when what it shows here did not: a size that this device works out the same way)
+      set({ sharedVersion: s.sharedVersion + 1 });
       if (merged === s.design) return;
       // what is derived is worked out here and not sent: the sizes of texts and the lines that follow shapes
       const design = reflowLines(normalizeTexts(merged, s.design), null);
@@ -1256,6 +1294,19 @@ export const useEditor = create<EditorState>()((set, get) => {
       });
     },
 
+    contentRevisionNow() {
+      const design = get().design;
+      if (!design) return "";
+      return contentRevision(bridge?.shared?.() ?? design);
+    },
+    setReview(state, by) {
+      if (!get().design) return false;
+      const review: DesignReview = { v: REVIEW_VERSION, state, revision: actions.contentRevisionNow(), by: { ...by }, at: Date.now() };
+      return commitComments((d) => {
+        d.review = review as Draft<DesignReview>;
+      });
+    },
+
     /* ---------------- history ---------------- */
     undo() {
       const s = get();
@@ -1440,6 +1491,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     saveState: "saved",
     lastSavedAt: 0,
     docVersion: 0,
+    sharedVersion: 0,
     snapGuides: [],
     clipboard: null,
     styleClipboard: null,

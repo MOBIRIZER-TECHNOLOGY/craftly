@@ -39,7 +39,7 @@ import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { checkDesign, joinCredential, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type JoinMsg, type Role, type ServerMsg } from "@/collab/protocol";
 import { cleanName } from "@/collab/presence";
-import { DesignTooLarge, Room, type Peer } from "@/collab/room";
+import { DesignTooLarge, Room, type Peer, type SeatAccount } from "@/collab/room";
 import type { Design } from "@/core/types";
 import { ACCOUNT_CORS, createAccounts, type Accounts, type AccountsOptions, type LiveHooks } from "./accounts";
 import { refuse } from "./accounts/context";
@@ -240,10 +240,19 @@ interface Seat {
   userId: string;
   tokenHash: string;
   role: Role;
+  /** whether the browser understands reviews (and so may comment as a commenter): its role is worked out with it again */
+  review: boolean;
+  /** whether the person joined as an owner of the space, who deletes anybody's comment (src/collab/seats.ts) */
+  owner: boolean;
 }
 
-/** What a role in a team allows in a room: owners and editors edit, viewers look. */
-const roomRole = (role: TeamRole): Role => (role === "viewer" ? "view" : "edit");
+/**
+ * What a role in a team allows in a room: owners and editors edit, commenters comment (docs/REVIEW.md), viewers look. A browser that
+ * does not understand reviews (`review`) looks where it would comment: it would refuse a role it does not know.
+ */
+const roomRole = (role: TeamRole, review: boolean): Role => (role === "owner" || role === "editor" ? "edit" : role === "commenter" && review ? "comment" : "view");
+/** How much a role in a room allows, to tell a role that went down (the seat is sent away) from one that did not. */
+const RANK: Record<Role, number> = { view: 0, comment: 1, edit: 2 };
 /** The id of the room bound to a design of a space: the same every time, so that the design always finds its room (also after a restart). */
 const boundRoomId = (space: string, designId: string) => createHash("sha256").update(`craftly bound room\n${space}\n${designId}`).digest("base64url");
 const boundKey = (space: string, designId: string) => `${space}\n${designId}`;
@@ -703,7 +712,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   /**
    * Who may be in bound rooms may have changed (accounts: a role, a removal, a session ended, a person disabled). Every socket
    * that came in with a session and is in scope is looked up again; one whose session no longer lets its person into the space,
-   * or lets them only look where they edited, is sent away with `no-access` and close 4003. (A browser then asks again, and one
+   * or lets them do less than they joined to (only look where they edited, only comment, or no longer delete others' comments as an
+   * owner), is sent away with `no-access` and close 4003. (A browser then asks again, and one
    * that may still look comes back as a viewer: the room cannot change the role of somebody who is in it.) One that now may do
    * more is left as it is. A lookup that fails sends the socket away too: when in doubt, nobody stays.
    */
@@ -728,7 +738,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         if (scope.userId !== undefined && seat.userId !== scope.userId) continue;
         bound.roleInSpace(seat.tokenHash, space, false).then(
           (found) => {
-            if (!found || found.userId !== seat.userId || (seat.role === "edit" && roomRole(found.role) !== "edit")) revoke(l, ws);
+            if (!found || found.userId !== seat.userId) return revoke(l, ws);
+            // (an owner lowered to editor keeps the role `edit` in the room, but not the deleting of others' comments: sent away too)
+            if (RANK[roomRole(found.role, seat.review)] < RANK[seat.role] || (seat.owner && found.role !== "owner")) revoke(l, ws);
           },
           (error: unknown) => {
             console.error(`Craftly could not look up a person in the room ${l.id} again, and sends them away`, error);
@@ -1188,7 +1200,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     const bound = l.record.bound;
     if (!token || !bound || !accounts) return null;
     const found = await accounts.bound.roleInSpace(sha256Hex(token), bound.space);
-    return found ? roomRole(found.role) : null;
+    return found ? roomRole(found.role, true) : null;
   };
 
   const connection = async (ws: WebSocket, roomId: string) => {
@@ -1268,7 +1280,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     let pending: { msg: ClientMsg; bytes: number }[] | null = null;
 
     /** Lets the connection in with a role (its key or session was good): its place in the room, and the design. False when it was turned away. */
-    const admit = (msg: JoinMsg, role: Role, name?: string): boolean => {
+    const admit = (msg: JoinMsg, role: Role, name?: string, account?: SeatAccount): boolean => {
       if (typeof msg.client !== "string" || !CLIENT_NAME.test(msg.client)) {
         deny(ws, "bad-request");
         return false;
@@ -1284,7 +1296,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         if (now() - l.usedAt >= noteUseEvery) noteUse(l);
       }
       // what the browser understands beyond what every version does (a join from before features names none)
-      for (const old of l.room.join(peer, msg.client, role, joinFeatures(msg), name)) {
+      for (const old of l.room.join(peer, msg.client, role, joinFeatures(msg), name, account)) {
         const other = peerSockets.get(old);
         if (other && other !== ws) other.close(4000, "replaced");
       }
@@ -1319,11 +1331,14 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           metrics.count("session_joins_refused_total");
           return void deny(ws, "no-access");
         }
-        const role = roomRole(found.role);
-        // the others hear this person under their account's name, made into one presence may say; never what the browser claims
-        if (!admit(msg, role, cleanName(found.name))) return;
+        const { review } = joinFeatures(msg);
+        const role = roomRole(found.role, review);
+        // the others hear this person under their account's name, made into one presence may say; never what the browser claims;
+        // and what they write is checked against their account (src/collab/seats.ts), an owner of the space deleting anybody's
+        const owner = found.role === "owner";
+        if (!admit(msg, role, cleanName(found.name), { id: found.userId, owner })) return;
         metrics.count("session_joins_total");
-        l.seats.set(ws, { userId: found.userId, tokenHash, role });
+        l.seats.set(ws, { userId: found.userId, tokenHash, role, review, owner });
         // a viewer does not keep the room in memory (`held`): with nobody else in it, it leaves as an empty room does
         if (role === "view") unloadLater(l);
         for (let i = 0; i < waiting.length; i++) {

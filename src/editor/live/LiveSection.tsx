@@ -38,8 +38,8 @@ const savedServer = (): string => {
 };
 
 /** How the connection is, in words. */
-export function liveStatusText(status: ReturnType<typeof useLiveStatus.getState>["status"], role: "edit" | "view" | null, stopped = false): string {
-  if (status === "live") return role === "view" ? m.editor.live.status.liveView : m.editor.live.status.live;
+export function liveStatusText(status: ReturnType<typeof useLiveStatus.getState>["status"], role: "edit" | "comment" | "view" | null, stopped = false): string {
+  if (status === "live") return role === "view" ? m.editor.live.status.liveView : role === "comment" ? m.editor.live.status.liveComment : m.editor.live.status.live;
   if (status === "connecting") return m.editor.live.status.connecting;
   if (status === "reconnecting") return m.editor.live.status.reconnecting;
   if (status === "denied") return stopped ? m.editor.live.status.stopped : m.editor.live.status.denied;

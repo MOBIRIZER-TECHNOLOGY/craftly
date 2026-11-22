@@ -390,6 +390,8 @@ describe("the state of the connection in the top bar", () => {
 
   it("has words for every state", () => {
     expect(liveStatusText("connecting", null)).toBe("Connecting...");
+    expect(liveStatusText("live", "comment")).toBe("Live, commenting");
+    expect(liveStatusText("live", "view")).toBe("Live, view only");
     expect(liveStatusText("reconnecting", "edit")).toBe("Reconnecting...");
     expect(liveStatusText("denied", null)).toBe("Not allowed in");
     expect(liveStatusText("denied", "edit", true)).toBe("Sharing stopped");

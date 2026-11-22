@@ -139,7 +139,7 @@ describe("placing a pin", () => {
     const pin = screen.getByRole("button", { name: /^Comment 1 by You/ });
     expect(document.activeElement).toBe(pin);
     expect(useComments.getState().draft).toBeNull();
-    expect(isMine(comments()[0].id, { ...useEditor.getState().design!, live: { server: "s", room: "r", key: "k", role: "edit" } })).toBe(true);
+    expect(isMine(comments()[0], { ...useEditor.getState().design!, live: { server: "s", room: "r", key: "k", role: "edit" } })).toBe(true);
   });
 
   it("posts with the Post button too, and posts nothing that is empty", async () => {

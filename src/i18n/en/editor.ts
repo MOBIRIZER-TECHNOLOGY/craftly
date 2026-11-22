@@ -408,6 +408,28 @@ export const editor = {
     manyNew: (n: number) => `${num(n)} new comments and replies.`,
   },
 
+  /** src/editor/comments/ReviewSection.tsx: review and approval of a team's design (docs/REVIEW.md) */
+  review: {
+    title: "Review",
+    none: "No review has been asked for.",
+    /** where the design stands, by whom and when */
+    states: {
+      requested: (name: string, at: string) => `${name} asked for a review on ${at}.`,
+      approved: (name: string, at: string) => `Approved by ${name} on ${at}.`,
+      changes: (name: string, at: string) => `${name} asked for changes on ${at}.`,
+    },
+    current: "This is about the design as it is now.",
+    stale: "This is about an earlier version: the design has been edited since.",
+    request: "Request review",
+    approve: "Approve",
+    requestChanges: "Request changes",
+    /** a team's commenter, who comments in the read-only mode */
+    commenterHint: "You comment on this design and can approve it or ask for changes; you cannot change it. Press Add a comment, then click the page.",
+    addComment: "Add a comment",
+    /** the server refused a review: somebody's edit got there first */
+    refused: "The design changed just before that reached the server. Look at it again, then approve or ask for changes.",
+  },
+
   /** src/editor/live: working together on a shared design */
   live: {
     /** why the server did not let this link in */
@@ -478,6 +500,7 @@ export const editor = {
     status: {
       live: "Live",
       liveView: "Live, view only",
+      liveComment: "Live, commenting",
       connecting: "Connecting...",
       reconnecting: "Reconnecting...",
       denied: "Not allowed in",

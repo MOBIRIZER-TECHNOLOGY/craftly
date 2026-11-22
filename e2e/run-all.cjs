@@ -67,6 +67,10 @@ if (!process.env.OFFLINE) {
     "accounts, sync and teams against the real server with accounts on: nothing new without an account, sign up and move designs in, a second device, a conflict, a team, an invite, roles, editing live without a link, removal, signing out, the server stopped, Hindi (dev server only)",
   ]);
   journeys.push([
+    "review.cjs",
+    "review and approval of a team's design: a commenter who reviews live with nobody else in the room, read-only, a review asked for, a pin placed and an approval, Delete but no Edit for the owner on the commenter's comment, a commenter's move that changes nothing, an approval out of date after an edit, written back to the space (dev server only)",
+  ]);
+  journeys.push([
     "language.cjs",
     "the interface in English and Hindi: the browser's language, Language in the account menu and under File, an unsaved edit kept through the switch, no English left in the Hindi bars, the Hindi untitled name, English search on a Hindi page, hi-IN dates and numbers, labels that fit at 1280 and 375 px, back to English (dev server only)",
   ]);

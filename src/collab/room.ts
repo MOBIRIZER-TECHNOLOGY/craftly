@@ -25,10 +25,12 @@
  * that is in the room is never forgotten, so its numbers always mean what they meant when it was welcomed.
  */
 import { withoutComments } from "@/core/comments";
-import type { Design } from "@/core/types";
-import { applyOps, isCommentOp, type Op } from "./ops";
+import { withoutReview } from "@/core/review";
+import type { Design, DesignComment } from "@/core/types";
+import { applyOps, isCommentOp, isReviewOp, jsonEqual, type Op } from "./ops";
 import { checkPresence, PRESENCE_STALE_MS, type PresenceState } from "./presence";
-import { canEdit, checkOps, checkSets, COMMENTS, type ClientMsg, type Role, type ServerMsg } from "./protocol";
+import { canEdit, checkOps, checkSets, COMMENTS, REVIEW, type ClientMsg, type Feature, type Role, type ServerMsg } from "./protocol";
+import { seatProblem, type Restorable } from "./seats";
 
 /** How long a client that is not in the room is remembered after it was last seen. */
 export const CLIENTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
@@ -48,6 +50,8 @@ export interface RoomOptions extends ClientMemory {
   now?: () => number;
   keepMs?: number;
   keepMost?: number;
+  /** How many comments that left the room it remembers (`GONE_KEPT`). */
+  goneKept?: number;
 }
 
 /** Whatever receives what the room says to one connection. */
@@ -65,6 +69,10 @@ interface Member {
   heard: number;
   /** Whether this browser said in its join that it understands comments: one that did not is sent nothing of them. */
   comments: boolean;
+  /** The same for reviews (docs/REVIEW.md): one that did not is sent no review, and is never given the role `comment`. */
+  review: boolean;
+  /** The account of a seat of a bound room joined with a session, which `seatProblem` checks what it writes against. */
+  account?: SeatAccount;
   /**
    * The name the others hear for this person whatever their browser says: their account's, for a seat of a bound room joined with
    * a session (the server knows who it is). Undefined for a join with a key, whose person names themselves.
@@ -75,6 +83,13 @@ interface Member {
 /** What a browser said in its join that it understands (`joinFeatures` in protocol.ts reads it). */
 export interface JoinFeatures {
   comments?: boolean;
+  review?: boolean;
+}
+
+/** Who a seat of a bound room is: the account's id, and whether it is an owner of the room's space (who may delete any comment). */
+export interface SeatAccount {
+  id: string;
+  owner: boolean;
 }
 
 export class Room {
@@ -85,6 +100,13 @@ export class Room {
   /** Saves what a batch made of the room, before the batch is acknowledged: the design, and what the room remembers of its clients. */
   commit?: (design: Design, rev: number, seqs: Record<string, number>, memory: Required<ClientMemory>) => Promise<void>;
   private members = new Map<Peer, Member>();
+  /**
+   * The comments that left this room (a page deleted with them, or deleted alone), by id, whole, as they left: a comment that comes
+   * back with its page in a team's room keeps its authors only when it is exactly one of these, its text, pin, times, state and
+   * every reply included (src/collab/seats.ts). In memory only, and at most `GONE_KEPT`: an undo after the room was let go brings the
+   * page back and refuses its comments.
+   */
+  private gone = new Map<string, DesignComment>();
   private lastSeq = new Map<string, number>();
   private seen = new Map<string, number>();
   private floor: number;
@@ -92,6 +114,7 @@ export class Room {
   private now: () => number;
   private keepMs: number;
   private keepMost: number;
+  private goneKept: number;
 
   constructor(design: Design, rev = 0, lastSeq: Record<string, number> = {}, options: RoomOptions = {}) {
     this.design = design;
@@ -99,6 +122,7 @@ export class Room {
     this.now = options.now ?? Date.now;
     this.keepMs = options.keepMs ?? CLIENTS_KEPT_MS;
     this.keepMost = options.keepMost ?? CLIENTS_KEPT;
+    this.goneKept = options.goneKept ?? GONE_KEPT;
     this.floor = Number.isSafeInteger(options.floor) && (options.floor as number) > 0 ? (options.floor as number) : 0;
     const opened = this.now();
     for (const [client, seq] of Object.entries(lastSeq)) {
@@ -159,9 +183,10 @@ export class Room {
    * Lets a connection in: it is sent the design, the revision, and the last batch of its own that was applied. A client that comes
    * back on another connection replaces the old one, which is no longer told anything; the peers that were replaced are returned so
    * that the host can close them. `name`, when given, is the name the others hear for this person, over the one their browser says
-   * (an account's, `Member.name`).
+   * (an account's, `Member.name`), and `account` who the seat is (`Member.account`). A browser that does not understand reviews is
+   * let in to look where it would comment: it would refuse a role it does not know.
    */
-  join(peer: Peer, client: string, role: Role, features?: JoinFeatures, name?: string): Peer[] {
+  join(peer: Peer, client: string, role: Role, features?: JoinFeatures, name?: string, account?: SeatAccount): Peer[] {
     const replaced: Peer[] = [];
     for (const [other, member] of this.members) {
       if (member.client === client && other !== peer) {
@@ -172,25 +197,34 @@ export class Room {
     // a connection that asks for the design again keeps its number, what it said about where it is, and what it understands
     const had = this.members.get(peer);
     const comments = features ? features.comments === true : (had?.comments ?? false);
+    const review = features ? features.review === true : (had?.review ?? false);
     const fixed = name ?? had?.name;
-    const member: Member = { client, role, peer: had?.peer ?? ++this.numbered, presence: had?.presence ?? null, heard: had?.heard ?? 0, comments };
+    const seated = role === "comment" && !review ? "view" : role;
+    const member: Member = { client, role: seated, peer: had?.peer ?? ++this.numbered, presence: had?.presence ?? null, heard: had?.heard ?? 0, comments, review };
     if (fixed !== undefined) member.name = fixed;
+    const who = account ?? had?.account;
+    if (who) member.account = who;
     this.members.set(peer, member);
     if (this.lastSeq.has(client)) this.seen.set(client, this.now());
     // A browser that understands comments is told that they are shared here, and is sent them with the design. One that did not
     // say so is from before comments: it is sent the design without them (it would keep a copy it can never bring up to date)
     // and no comment operation later (`batch`), and is told of no feature, as a server from before features would tell it none.
+    // (the same for reviews: one that did not name them is sent the design without its review, and no review operation later)
+    const shown = comments ? this.design : withoutComments(this.design);
+    const named: Feature[] = [];
+    if (comments) named.push(COMMENTS);
+    if (review) named.push(REVIEW);
     const welcome: ServerMsg = {
       t: "welcome",
-      role,
+      role: seated,
       rev: this.rev,
       lastSeq: this.lastOf(client),
-      design: comments ? this.design : withoutComments(this.design),
+      design: review ? shown : withoutReview(shown),
       peer: member.peer,
       // the name the others hear for this person is the one it is shown under itself (an account's: `present`)
       ...(member.name ? { name: member.name } : {}),
     };
-    peer.send(comments ? { ...welcome, features: [COMMENTS] } : welcome);
+    peer.send(named.length ? { ...welcome, features: named } : welcome);
     // where the others are, as each last said it: without this a newcomer would see nobody until they move
     const at = this.now();
     for (const other of this.members.values()) {
@@ -293,7 +327,7 @@ export class Room {
         either(() => peer.send({ t: "rejected", seq: Number(seq) || 0, reason: "a batch needs a number" }));
         continue;
       }
-      if (!canEdit(member.role)) {
+      if (member.role === "view") {
         refuse("this link is read-only");
         continue;
       }
@@ -314,11 +348,14 @@ export class Room {
       }
       const next = applyOps(design, ops);
       // what the operations look like is fine; what they leave of the elements they changed is asked now that it is known
-      const spoiled = checkSets(design, next, ops);
+      // and whether this seat may do what they do: comment only, in its own name, change only its own words (src/collab/seats.ts)
+      const account = member.account ? { ...member.account, name: member.name ?? "" } : undefined;
+      const spoiled = checkSets(design, next, ops) ?? seatProblem(design, next, ops, { role: member.role, ...(account ? { account } : {}) }, this.restorable);
       if (spoiled) {
         refuse(spoiled);
         continue;
       }
+      this.noteGone(design, next);
       design = next;
       kept = this.remember(member.client, seq, kept);
       applied.push({ peer, ops });
@@ -340,6 +377,24 @@ export class Room {
       },
     );
   }
+
+  /** Notes the comments that a batch takes away (`gone`); the oldest are forgotten past `GONE_KEPT`. */
+  private noteGone(before: Design, after: Design): void {
+    if (!before.comments?.length || before.comments === after.comments) return;
+    const left = new Set((after.comments ?? []).map((c) => c.id));
+    for (const c of before.comments) {
+      if (left.has(c.id)) continue;
+      this.gone.delete(c.id);
+      this.gone.set(c.id, c);
+    }
+    while (this.gone.size > this.goneKept) this.gone.delete(this.gone.keys().next().value as string);
+  }
+
+  /** Whether a comment is exactly one that left this room (`gone`): the same in every field, as JSON compares them. */
+  private restorable: Restorable = (comment) => {
+    const was = this.gone.get(comment.id);
+    return was !== undefined && jsonEqual(was, comment);
+  };
 
   /** The batches of a group that was too large to save at once, each applied and saved alone, in order (see `receiveOps`). */
   private async oneByOne(items: readonly { peer: Peer; msg: Extract<ClientMsg, { t: "ops" }> }[]): Promise<void> {
@@ -377,14 +432,21 @@ export class Room {
     peer.send({ t: "ack", seq, rev });
     // A browser from before comments takes a kind of operation it does not know for a server that cannot be trusted, and ends its
     // session: it is sent the batch without them. It is still sent the batch, empty if need be, so that its revision moves on.
-    let withoutTheirs: Op[] | null = null;
+    // The same for one from before reviews.
+    const cut = new Map<string, Op[]>();
     for (const [other, them] of this.members) {
       if (other === peer) continue;
-      other.send({ t: "ops", rev, ops: them.comments ? ops : (withoutTheirs ??= ops.filter((op) => !isCommentOp(op))) });
+      const kind = `${them.comments}/${them.review}`;
+      let theirs = cut.get(kind);
+      if (!theirs) cut.set(kind, (theirs = ops.filter((op) => (them.comments || !isCommentOp(op)) && (them.review || !isReviewOp(op)))));
+      other.send({ t: "ops", rev, ops: theirs });
     }
     this.onChange?.(this);
   }
 }
+
+/** The most comments that left a room that it remembers, to let them come back with their page (`Room.gone`). */
+export const GONE_KEPT = 5000;
 
 /** What a browser is told of a batch that was to be applied when the write that should have kept it failed. */
 export const SAVE_FAILED = "The server could not save this edit.";

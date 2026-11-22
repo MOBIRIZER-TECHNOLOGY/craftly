@@ -5,10 +5,10 @@
  * somebody else comments. None of it belongs to the design.
  */
 import { COMMENT_COLORS } from "@/core/comments";
-import type { CommentAnchor, CommentAuthor, Design, DesignComment, ID } from "@/core/types";
-import { m } from "@/i18n";
+import type { CommentAnchor, CommentAuthor, CommentReply, Design, DesignComment, ID } from "@/core/types";
+import { date, m } from "@/i18n";
 import { create } from "zustand";
-import { shownName, usePresence } from "../live/presence";
+import { myName, shownName, usePresence } from "../live/presence";
 
 export type CommentFilter = "open" | "resolved" | "all";
 
@@ -17,6 +17,12 @@ export type CommentFilter = "open" | "resolved" | "all";
  * said it shares them, `unsupported` with a server from before comments (they stay on this person's copy, and the panel says so).
  */
 export type CommentSharing = "local" | "shared" | "unsupported";
+
+/** Who this person is in a team's room (docs/REVIEW.md): their account's id, and whether they are an owner of the team. */
+export interface CommentAccount {
+  id: string;
+  owner: boolean;
+}
 
 export interface CommentDraft {
   pageId: ID;
@@ -37,6 +43,12 @@ interface CommentsState {
   /** a pin that takes the keyboard, once (the one just posted) */
   focusPin: ID | null;
   sharing: CommentSharing;
+  /** whether the review is shared with the others (a server that said so in its welcome, docs/REVIEW.md) */
+  reviews: boolean;
+  /** whether this person comments in a design they may not edit (a team's commenter): the Comment tool works in the read-only mode */
+  commenting: boolean;
+  /** this person's account in a team's room, which what they write is signed with; null anywhere else */
+  account: CommentAccount | null;
   /** the last sentence for a screen reader, with a number that changes with each, so that the same words are said again */
   announcement: { text: string; n: number };
 }
@@ -50,6 +62,9 @@ export const useComments = create<CommentsState>(() => ({
   focusThread: null,
   focusPin: null,
   sharing: "local",
+  reviews: false,
+  commenting: false,
+  account: null,
   announcement: { text: "", n: 0 },
 }));
 
@@ -72,14 +87,30 @@ function nameIndex(name: string): number {
 /**
  * This person as the author of a comment: the name they gave for working together (the Share panel), "You" when they gave none
  * outside a shared design and "Guest" with their number inside one; the colour of their presence in a shared design, and one
- * chosen by the name otherwise. Only the place of the colour in the list is kept, never a colour.
+ * chosen by the name otherwise. Only the place of the colour in the list is kept, never a colour. In a team's room the name is the
+ * account's (the server's, from the welcome) and the account's id goes with it: the server takes nothing else (docs/REVIEW.md).
  */
 export function myAuthor(): CommentAuthor {
-  const { name, me } = usePresence.getState();
-  if (me !== null) return { name: shownName(name, me), colorIndex: Math.abs(Math.trunc(me)) % COMMENT_COLORS };
+  const presence = usePresence.getState();
+  const { me } = presence;
+  const account = useComments.getState().account;
+  if (me !== null) {
+    const author: CommentAuthor = { name: shownName(myName(presence), me), colorIndex: Math.abs(Math.trunc(me)) % COMMENT_COLORS };
+    return account ? { ...author, id: account.id } : author;
+  }
+  const { name } = presence;
   const shown = name || m.editor.comments.you;
   return { name: shown, colorIndex: nameIndex(shown) };
 }
+
+/** When something was written, in words of this language. */
+export const when = (ms: number): string => {
+  try {
+    return date(ms, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return new Date(ms).toISOString();
+  }
+};
 
 /* ---------------- which comments are this person's ---------------- */
 
@@ -114,8 +145,19 @@ export function rememberMine(id: ID): void {
   }
 }
 
-/** Whether this person may edit and delete a comment or reply: their own, and every one in a design that is not shared. */
-export const isMine = (id: ID, design: Design | null): boolean => !design?.live || loadMine().has(id);
+/**
+ * Whether this person may edit and delete a comment or reply: their own, and every one in a design that is not shared. In a team's
+ * room their own is what carries their account's id, as the server checks it (one without an id is nobody's there).
+ */
+export function isMine(item: Pick<DesignComment | CommentReply, "id" | "author">, design: Design | null): boolean {
+  const account = useComments.getState().account;
+  if (account) return item.author.id === account.id;
+  return !design?.live || loadMine().has(item.id);
+}
+
+/** Whether this person may delete a comment or reply: their own, and anybody's for an owner of the team in its room (moderation). */
+export const mayDelete = (item: Pick<DesignComment | CommentReply, "id" | "author">, design: Design | null): boolean =>
+  useComments.getState().account?.owner === true || isMine(item, design);
 
 /** Forgets what was read from the storage (the tests start afresh). */
 export function resetMine(): void {
@@ -150,10 +192,12 @@ export function announceArrivals(before: Design | null, after: Design | null): v
     for (const r of c.replies) known.add(`${c.id}/${r.id}`);
   }
   const said: string[] = [];
-  const own = loadMine();
+  const kept = loadMine();
+  const me = useComments.getState().account?.id;
+  const own = (item: DesignComment | CommentReply) => kept.has(item.id) || (me !== undefined && item.author.id === me);
   for (const c of after?.comments ?? []) {
-    if (!known.has(c.id) && !own.has(c.id)) said.push(m.editor.comments.newFrom(c.author.name, firstWords(c.text)));
-    for (const r of c.replies) if (!known.has(`${c.id}/${r.id}`) && !own.has(r.id) && known.has(c.id)) said.push(m.editor.comments.newReplyFrom(r.author.name, firstWords(r.text)));
+    if (!known.has(c.id) && !own(c)) said.push(m.editor.comments.newFrom(c.author.name, firstWords(c.text)));
+    for (const r of c.replies) if (!known.has(`${c.id}/${r.id}`) && !own(r) && known.has(c.id)) said.push(m.editor.comments.newReplyFrom(r.author.name, firstWords(r.text)));
   }
   if (!said.length) return;
   announce(said.length > 3 ? m.editor.comments.manyNew(said.length) : said.join(" "));
