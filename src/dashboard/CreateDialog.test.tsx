@@ -279,6 +279,27 @@ describe("<CreateDialog>", () => {
       expect((await listDesigns())[0]).toMatchObject({ width: 1200, height: 628 });
     });
 
+    it("shows a side in the preview as soon as what is typed is a size, before the field is left", async () => {
+      const user = userEvent.setup();
+      mountDialog({ tab: "custom" });
+      const dims = () => panel().querySelector(".cf-custom__dims")?.textContent;
+      await setNumber(user, "Width", "1200");
+      await user.clear(field("Height"));
+      await user.type(field("Height"), "9");
+      // "9" may still become "900": the preview keeps the size it had
+      expect(dims()).toBe("1200 × 1080 px");
+      await user.type(field("Height"), "00");
+      expect(document.activeElement).toBe(field("Height"));
+      expect(dims()).toBe("1200 × 900 px");
+      // with the ratio locked, the other side follows in the preview as it will on Enter
+      await user.click(within(panel()).getByRole("button", { name: "Lock aspect ratio" }));
+      await user.clear(field("Width"));
+      await user.type(field("Width"), "2400");
+      expect(dims()).toBe("2400 × 1800 px");
+      await user.keyboard("{Enter}");
+      expect(field("Height").value).toBe("1800");
+    });
+
     it.each([
       ["20", "1080", "Width must be between 40 - 8000 px."],
       ["1080", "9000", "Height must be between 40 - 8000 px."],

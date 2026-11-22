@@ -158,6 +158,25 @@ describe("<ResizeDialog>: the custom size", () => {
     expect(field("Width").value).toBe("1280");
   });
 
+  it("shows a typed side under New as soon as it is a size, before the field is left", async () => {
+    await mount();
+    const user = userEvent.setup({ delay: null });
+    await user.clear(field("Width"));
+    await nextFrame();
+    await user.type(field("Width"), "6");
+    // "6" may still become "640": New keeps the size it had
+    expect(fact("New")).toBe("1280 × 720 px");
+    await user.type(field("Width"), "40");
+    expect(document.activeElement).toBe(field("Width"));
+    // the proportions are locked: the height follows as it will on Enter
+    expect(fact("New")).toBe("640 × 360 px");
+    await user.click(screen.getByRole("button", { name: "Unlock aspect ratio" }));
+    await user.clear(field("Height"));
+    await nextFrame();
+    await user.type(field("Height"), "500");
+    expect(fact("New")).toBe("640 × 500 px");
+  });
+
   it("clamps the other side too when the proportions would take it outside the limits", async () => {
     await mount();
     await type(userEvent.setup({ delay: null }), "Width", "8000");

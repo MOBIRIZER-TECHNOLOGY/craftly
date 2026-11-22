@@ -69,6 +69,14 @@ function HelpMenu() {
   );
 }
 
+/** Puts the keyboard at the end of the notes of the page, to go on writing them. */
+function focusNotes() {
+  const notes = document.querySelector<HTMLTextAreaElement>(".cf-notes__text");
+  if (!notes) return;
+  notes.focus();
+  notes.setSelectionRange(notes.value.length, notes.value.length);
+}
+
 export function BottomBar() {
   const zoom = useEditor((s) => s.zoom);
   const gridView = useEditor((s) => s.gridView);
@@ -89,7 +97,12 @@ export function BottomBar() {
               icon={<IconNotes aria-hidden="true" />}
               aria-label={m.editorChrome.bottomBar.notes}
               aria-pressed={notesOpen}
-              onClick={() => actions.toggle("notesOpen")}
+              onClick={() => {
+                actions.toggle("notesOpen");
+                // opened from here, the notes are what comes next: put the keyboard in them, so typing goes there and not to the
+                // button (whose plain keys the editor holds back from the canvas). React has drawn the panel once the click is over.
+                if (!notesOpen) window.setTimeout(focusNotes);
+              }}
             >
               <span className="cf-bottombar__lbl">{m.editorChrome.bottomBar.notes}</span>
             </Button>

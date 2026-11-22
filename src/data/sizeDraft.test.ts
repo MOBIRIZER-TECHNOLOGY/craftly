@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkSizeDraft } from "./sizeDraft";
+import { checkSizeDraft, sizeDraftPx } from "./sizeDraft";
 
 const px = (text: string) => checkSizeDraft(text, "px", 40, 8000);
 
@@ -38,5 +38,21 @@ describe("checkSizeDraft", () => {
     expect(checkSizeDraft("10", "in", 40, 8000)).toBe("ok");
     expect(checkSizeDraft("90", "in", 40, 8000)).toBe("invalid");
     expect(checkSizeDraft("10,5", "cm", 40, 8000)).toBe("ok");
+  });
+});
+
+describe("sizeDraftPx", () => {
+  it("gives the size in px of a side that already is a size", () => {
+    expect(sizeDraftPx("900", "px", 40, 8000)).toBe(900);
+    expect(sizeDraftPx(" 1200 ", "px", 40, 8000)).toBe(1200);
+    expect(sizeDraftPx("10", "in", 40, 8000)).toBe(960);
+    expect(sizeDraftPx("2,5", "in", 40, 8000)).toBe(240);
+  });
+
+  it("gives nothing while the side is not a size yet, or cannot become one", () => {
+    expect(sizeDraftPx("", "px", 40, 8000)).toBeNull();
+    expect(sizeDraftPx("20", "px", 40, 8000)).toBeNull();
+    expect(sizeDraftPx("9000", "px", 40, 8000)).toBeNull();
+    expect(sizeDraftPx("abc", "px", 40, 8000)).toBeNull();
   });
 });

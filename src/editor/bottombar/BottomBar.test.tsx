@@ -1,10 +1,11 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useEditor } from "@/core/store";
 import { chromeDesign, renderChrome } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor, stubLayout } from "@/test/helpers";
 import { BottomBar } from "./BottomBar";
+import { NotesPanel } from "./NotesPanel";
 
 const actions = () => useEditor.getState().actions;
 const state = () => useEditor.getState();
@@ -62,6 +63,31 @@ describe("<BottomBar>: the controls", () => {
     expect(button("Notes").getAttribute("aria-pressed")).toBe("true");
     await user.click(button("Notes"));
     expect(state().notesOpen).toBe(false);
+  });
+
+  it("puts the keyboard in the notes it opens, so typing goes there, and leaves it alone when closing them", async () => {
+    // the bar with the notes under it, as the editor lays them out
+    function WithNotes() {
+      const open = useEditor((s) => s.notesOpen);
+      return (
+        <>
+          <BottomBar />
+          {open ? <NotesPanel /> : null}
+        </>
+      );
+    }
+    await renderChrome(<WithNotes />, chromeDesign("Notes focus"));
+    const user = userEvent.setup({ delay: null });
+    await user.click(button("Notes"));
+    const notes = screen.getByRole("textbox", { name: "Notes for page 1" });
+    await waitFor(() => expect(document.activeElement).toBe(notes));
+    // at the end of the notes the page already has
+    await user.keyboard(" Hello");
+    expect((notes as HTMLTextAreaElement).value).toBe("Welcome everyone Hello");
+    await user.click(button("Notes"));
+    await act(() => new Promise((resolve) => setTimeout(resolve)));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.activeElement).toBe(button("Notes"));
   });
 
   it("shows and hides the page thumbnails", async () => {
