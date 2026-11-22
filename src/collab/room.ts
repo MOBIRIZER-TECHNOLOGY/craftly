@@ -26,8 +26,8 @@
  */
 import { withoutComments } from "@/core/comments";
 import { withoutReview } from "@/core/review";
-import type { CommentAuthor, Design } from "@/core/types";
-import { applyOps, isCommentOp, isReviewOp, type Op } from "./ops";
+import type { Design, DesignComment } from "@/core/types";
+import { applyOps, isCommentOp, isReviewOp, jsonEqual, type Op } from "./ops";
 import { checkPresence, PRESENCE_STALE_MS, type PresenceState } from "./presence";
 import { canEdit, checkOps, checkSets, COMMENTS, REVIEW, type ClientMsg, type Feature, type Role, type ServerMsg } from "./protocol";
 import { seatProblem, type Restorable } from "./seats";
@@ -101,11 +101,12 @@ export class Room {
   commit?: (design: Design, rev: number, seqs: Record<string, number>, memory: Required<ClientMemory>) => Promise<void>;
   private members = new Map<Peer, Member>();
   /**
-   * The comments that left this room (a page deleted with them, or deleted alone), by id, with who wrote them and their replies:
-   * a comment that comes back with its page in a team's room keeps its authors only when it is one of these (src/collab/seats.ts).
-   * In memory only, and at most `GONE_KEPT`: an undo after the room was let go brings the page back and refuses its comments.
+   * The comments that left this room (a page deleted with them, or deleted alone), by id, whole, as they left: a comment that comes
+   * back with its page in a team's room keeps its authors only when it is exactly one of these, its text, pin, times, state and
+   * every reply included (src/collab/seats.ts). In memory only, and at most `GONE_KEPT`: an undo after the room was let go brings the
+   * page back and refuses its comments.
    */
-  private gone = new Map<string, { author: CommentAuthor; replies: Map<string, CommentAuthor> }>();
+  private gone = new Map<string, DesignComment>();
   private lastSeq = new Map<string, number>();
   private seen = new Map<string, number>();
   private floor: number;
@@ -384,15 +385,15 @@ export class Room {
     for (const c of before.comments) {
       if (left.has(c.id)) continue;
       this.gone.delete(c.id);
-      this.gone.set(c.id, { author: c.author, replies: new Map(c.replies.map((r) => [r.id, r.author])) });
+      this.gone.set(c.id, c);
     }
     while (this.gone.size > this.goneKept) this.gone.delete(this.gone.keys().next().value as string);
   }
 
-  /** Whether a comment is one that left this room, with the same authors (`gone`). */
+  /** Whether a comment is exactly one that left this room (`gone`): the same in every field, as JSON compares them. */
   private restorable: Restorable = (comment) => {
     const was = this.gone.get(comment.id);
-    return !!was && sameAuthor(was.author, comment.author) && comment.replies.every((r) => sameAuthor(was.replies.get(r.id), r.author));
+    return was !== undefined && jsonEqual(was, comment);
   };
 
   /** The batches of a group that was too large to save at once, each applied and saved alone, in order (see `receiveOps`). */
@@ -443,9 +444,6 @@ export class Room {
     this.onChange?.(this);
   }
 }
-
-/** Whether two authors are the same person as a comment names them: the same name, colour and account. */
-const sameAuthor = (a: CommentAuthor | undefined, b: CommentAuthor): boolean => !!a && a.name === b.name && a.colorIndex === b.colorIndex && a.id === b.id;
 
 /** The most comments that left a room that it remembers, to let them come back with their page (`Room.gone`). */
 export const GONE_KEPT = 5000;

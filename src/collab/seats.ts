@@ -7,7 +7,7 @@
  *   comment's or reply's words and pin are changed by their author only, and deleted by their author or an owner of the team.
  *   Resolving and reopening is anybody's who may comment. A comment that comes back with its page (an undo of a page's deletion
  *   brings back the comments that were on it) keeps whoever wrote it, for a seat that may edit, but only when the room had that
- *   very comment, with those authors, and it went (`restorable`: the room remembers what left it); anything else is a new comment,
+ *   very comment, exactly as it was (its text, pin, times, state and replies), and it went (`restorable`: the room remembers what left it); anything else is a new comment,
  *   in the seat's own name.
  * - In a room of a link there is no account to check: nothing changes there, except that nobody may write as an account.
  * - A review is asked for by a seat that may edit, and approved or sent back by one that may comment; it is about the content as
@@ -26,7 +26,7 @@ export interface Seat {
   account?: { id: string; name: string; owner: boolean };
 }
 
-/** Whether a comment is one the room had and that left it, with the same authors (of it and of each reply it brings back). */
+/** Whether a comment is exactly one the room had and that left it: the same in every field, every reply included. */
 export type Restorable = (comment: DesignComment) => boolean;
 
 /**

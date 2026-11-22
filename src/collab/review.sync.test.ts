@@ -270,6 +270,37 @@ describe("comments that come back with their page, in a team's room", () => {
     expect(room.design.comments).toEqual([was]);
   });
 
+  it("are refused when they come back changed in anything, though their authors are the same", () => {
+    const answer = { id: "r", author: bob, createdAt: 2, text: "yes" };
+    const was = onQ("c", bob, [answer]);
+    const room = new Room({ ...two(), comments: [was] });
+    const ann = seat(room, "ann", ANN, "Ann");
+    const page = room.design.pages[1];
+    void room.receive(ann, { t: "ops", seq: 1, ops: [{ k: "page.del", id: "q" }] });
+    let seq = 1;
+    const back = (c: DesignComment) =>
+      void room.receive(ann, {
+        t: "ops",
+        seq: ++seq,
+        ops: [
+          { k: "page.add", page, index: 1 },
+          { k: "comment.add", comment: c, index: 0 },
+        ],
+      });
+    back({ ...was, text: "Bob never wrote this" });
+    back({ ...was, replies: [{ ...answer, text: "nor this" }] });
+    back({ ...was, anchor: { x: 400, y: 300 } });
+    back({ ...was, resolved: true });
+    back({ ...was, createdAt: 99 });
+    back({ ...was, replies: [] });
+    expect(answers(ann).map((m) => (m.t === "rejected" ? m.reason : m.t))).toEqual(["ack", ...Array(6).fill("comment.add: a comment is written in your own name")]);
+    expect(room.design.comments ?? []).toEqual([]);
+    // exactly as it left, it comes back (its keys in another order are the same comment)
+    back(Object.fromEntries(Object.entries(was).reverse()) as unknown as DesignComment);
+    expect(answers(ann).at(-1)).toMatchObject({ t: "ack" });
+    expect(room.design.comments).toHaveLength(1);
+  });
+
   it("are refused when the room never had them, or they come back under another author or with a reply it never had", () => {
     const room = new Room({ ...two(), comments: [onQ("c", bob)] }, 0, {}, { goneKept: 1 });
     const ann = seat(room, "ann", ANN, "Ann");

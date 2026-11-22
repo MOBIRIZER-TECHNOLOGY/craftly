@@ -50,8 +50,8 @@ Delete for the ids it remembered on this device. In a team's room the server kno
   - A comment or reply **without an id** (written before this slice, or in a room of a link, then shared with the team) can be
     deleted by an owner and edited by nobody in a team's room: its author can no longer prove they wrote it. The CHANGELOG says so.
   - A comment **that comes back with its page** (an undo of a page's deletion brings back the comments that were on it) keeps
-    its authors only when the room had that very comment, with the same author and the same authors of the replies it brings, and
-    it left the room (`Room.gone`, in memory, the last 5,000). Anything else in the same batch as a `page.add` is a new comment, in
+    its authors only when the room had that very comment, exactly as it is brought back (its text, pin, times, resolved state and
+    every reply, each field compared), and it left the room (`Room.gone`, in memory, the last 5,000). Anything else in the same batch as a `page.add` is a new comment, in
     the seat's own name, so a page cannot carry a comment made up in somebody else's name. After the room left memory such an undo
     is refused as a whole, and kept as a recovery copy like every refused batch.
 - **In a room of a link** nothing changes (there is no identity to check), except that an author **with** an id is refused there:
