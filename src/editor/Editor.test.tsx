@@ -473,6 +473,43 @@ describe("keyboard isolation of the editor chrome", () => {
     expect(state().showRulers).toBe(false);
   });
 
+  it("lets the shortcut letters through from a button of the top bar, where a closed dialog hands the keyboard back", async () => {
+    const { container } = await chromeWithSelection();
+    const resize = within(container.querySelector(".cf-topbar") as HTMLElement).getByRole("button", { name: "Resize" });
+    resize.focus();
+    const before = state().design!.pages[0].elements.length;
+    fireEvent.keyDown(resize, { key: "r" });
+    expect(state().design?.pages[0].elements).toHaveLength(before + 1);
+    fireEvent.keyDown(resize, { key: "m" });
+    expect(state().tool).toBe("comment");
+    // the other plain keys still belong to the button
+    fireEvent.keyDown(resize, { key: "Delete" });
+    fireEvent.keyDown(resize, { key: "ArrowRight" });
+    expect(state().design?.pages[0].elements).toHaveLength(before + 1);
+  });
+
+  it("lets the letters through from a button of a floating toolbar too", async () => {
+    const { host } = await chromeWithSelection();
+    const bar = host.appendChild(document.createElement("div"));
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("data-cf-ui", "");
+    const control = bar.appendChild(document.createElement("button"));
+    const before = state().design!.pages[0].elements.length;
+    fireEvent.keyDown(control, { key: "C" });
+    expect(state().design?.pages[0].elements).toHaveLength(before + 1);
+  });
+
+  it("keeps the letters on a control of the bars that jumps to an item by its first letter", async () => {
+    const { container } = await chromeWithSelection();
+    const picker = (container.querySelector(".cf-topbar") as HTMLElement).appendChild(document.createElement("button"));
+    picker.setAttribute("aria-haspopup", "listbox");
+    const before = JSON.stringify(state().design?.pages[0].elements);
+    fireEvent.keyDown(picker, { key: "r" });
+    fireEvent.keyDown(picker, { key: "t" });
+    expect(JSON.stringify(state().design?.pages[0].elements)).toBe(before);
+    expect(state().editingTextId).toBeNull();
+  });
+
   it("lets Escape through from a control: it clears the selection", async () => {
     const { tab } = await chromeWithSelection();
     fireEvent.keyDown(tab, { key: "Escape" });

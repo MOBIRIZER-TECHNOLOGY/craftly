@@ -25,7 +25,7 @@ import {
 import type { SizeUnit } from "@/core/types";
 import { isAcceptedImage } from "@/core/assets";
 import { englishName } from "@/data/names";
-import { checkSizeDraft } from "@/data/sizeDraft";
+import { checkSizeDraft, sizeDraftPx } from "@/data/sizeDraft";
 import { m, num } from "@/i18n";
 import { DESIGN_CATEGORY_LABELS, DESIGN_TYPES, POPULAR_DESIGN_TYPES, describeSize, fromPx, toPx, type DesignCategory, type DesignType } from "@/data/designTypes";
 import { MAX_SIZE_PX, MIN_SIZE_PX, createBlankAndOpen, createCustomAndOpen, createFromImageFile, IMAGE_ACCEPT } from "./actions";
@@ -296,8 +296,15 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
   const widthOk = widthCheck !== "invalid";
   const heightOk = heightCheck !== "invalid";
   const ready = widthCheck === "ok" && heightCheck === "ok";
-  // the preview shows the size last committed
-  const committed = valid(widthPx) && valid(heightPx);
+  // the preview shows what is typed as soon as it is a size (the fields only commit on Enter or blur), with the ratio lock
+  // carrying a typed side over to the other one as the commit will; otherwise the size last committed
+  const typedWidth = widthDraft !== null ? sizeDraftPx(widthDraft, unit, MIN_SIZE_PX, MAX_SIZE_PX) : null;
+  const typedHeight = heightDraft !== null ? sizeDraftPx(heightDraft, unit, MIN_SIZE_PX, MAX_SIZE_PX) : null;
+  let previewWidth = typedWidth ?? widthPx;
+  let previewHeight = typedHeight ?? heightPx;
+  if (locked && typedWidth !== null && widthPx > 0) previewHeight = typedWidth * (heightPx / widthPx);
+  else if (locked && typedHeight !== null && heightPx > 0) previewWidth = typedHeight * (widthPx / heightPx);
+  const committed = valid(previewWidth) && valid(previewHeight);
 
   const changeWidth = (value: number) => {
     const px = toPx(value, unit);
@@ -379,7 +386,7 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
             <p className="cf-custom__hint">
               {unit === "px"
                 ? m.dashboard.create.perSide(rangeText)
-                : m.dashboard.create.pxAndPerSide(m.dashboard.shared.pxSize(Math.round(widthPx), Math.round(heightPx)), rangeText)}
+                : m.dashboard.create.pxAndPerSide(m.dashboard.shared.pxSize(Math.round(previewWidth), Math.round(previewHeight)), rangeText)}
             </p>
           )}
 
@@ -389,8 +396,8 @@ function CustomSizePanel({ folderId }: { folderId: string | null }) {
         </div>
 
         <div className="cf-custom__preview" aria-hidden="true">
-          <DesignMock spec={{ width: committed ? widthPx : 1, height: committed ? heightPx : 1, color: "var(--c-primary)", icon: IconCustomSize }} height={190} />
-          <p className="cf-custom__dims">{describeSize(widthPx, heightPx, unit)}</p>
+          <DesignMock spec={{ width: committed ? previewWidth : 1, height: committed ? previewHeight : 1, color: "var(--c-primary)", icon: IconCustomSize }} height={190} />
+          <p className="cf-custom__dims">{describeSize(previewWidth, previewHeight, unit)}</p>
         </div>
       </div>
     </div>
