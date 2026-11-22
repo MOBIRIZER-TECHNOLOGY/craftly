@@ -296,6 +296,8 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     textRefused: (_id, holder) => void toast.info(m.editor.live.textTaken(holder)),
     sharesComments: () => live.sharesComments,
     sharesReview: () => live.sharesReview,
+    // (the server's copy with this person's unconfirmed changes: what the server hashes when it checks a review)
+    shared: () => live.design,
     commentsOnly: () => live.session.role === "comment",
   });
   useComments.setState({ account: env.account ?? null });

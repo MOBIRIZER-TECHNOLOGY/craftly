@@ -6,7 +6,9 @@
  * - In a team's room the server knows each seat's account: what a seat writes is in its own name (the account's id and name), a
  *   comment's or reply's words and pin are changed by their author only, and deleted by their author or an owner of the team.
  *   Resolving and reopening is anybody's who may comment. A comment that comes back with its page (an undo of a page's deletion
- *   brings back the comments that were on it) keeps whoever wrote it, for a seat that may edit.
+ *   brings back the comments that were on it) keeps whoever wrote it, for a seat that may edit, but only when the room had that
+ *   very comment, with those authors, and it went (`restorable`: the room remembers what left it); anything else is a new comment,
+ *   in the seat's own name.
  * - In a room of a link there is no account to check: nothing changes there, except that nobody may write as an account.
  * - A review is asked for by a seat that may edit, and approved or sent back by one that may comment; it is about the content as
  *   the batch leaves it (`contentRevision`), never about one this seat has not seen.
@@ -14,7 +16,7 @@
  * Pure code, no DOM and no Node API: the server bundles this, and the tests run it as it is.
  */
 import { contentRevision } from "@/core/review";
-import type { CommentAuthor, Design } from "@/core/types";
+import type { CommentAuthor, Design, DesignComment } from "@/core/types";
 import { isCommentOp, isReviewOp, type Op } from "./ops";
 import { canEdit, type Role } from "./protocol";
 
@@ -24,8 +26,14 @@ export interface Seat {
   account?: { id: string; name: string; owner: boolean };
 }
 
-/** What is wrong with a batch for the seat that sends it, if anything. `before` and `after` are the design without and with it. */
-export function seatProblem(before: Design, after: Design, ops: readonly Op[], seat: Seat): string | null {
+/** Whether a comment is one the room had and that left it, with the same authors (of it and of each reply it brings back). */
+export type Restorable = (comment: DesignComment) => boolean;
+
+/**
+ * What is wrong with a batch for the seat that sends it, if anything. `before` and `after` are the design without and with it;
+ * `restorable` says which comments may come back with their page (none, when it is not given).
+ */
+export function seatProblem(before: Design, after: Design, ops: readonly Op[], seat: Seat, restorable: Restorable = () => false): string | null {
   if (seat.role === "comment" && ops.some((op) => !isCommentOp(op) && !isReviewOp(op))) return "this seat may only comment";
   if (!ops.some((op) => isCommentOp(op) || isReviewOp(op))) return null;
   const { account } = seat;
@@ -47,7 +55,7 @@ export function seatProblem(before: Design, after: Design, ops: readonly Op[], s
     switch (op.k) {
       case "comment.add": {
         const { comment } = op;
-        const restored = canEdit(seat.role) && pagesAdded.has(comment.pageId);
+        const restored = canEdit(seat.role) && pagesAdded.has(comment.pageId) && restorable(comment);
         if (!restored && (!own(comment.author) || comment.replies.some((r) => !own(r.author)))) return "comment.add: a comment is written in your own name";
         authors.set(comment.id, comment.author);
         for (const r of comment.replies) authors.set(`${comment.id}/${r.id}`, r.author);

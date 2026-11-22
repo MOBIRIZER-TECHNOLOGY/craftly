@@ -183,6 +183,26 @@ describe("an approval in a team's room", () => {
 });
 
 describe("a role that goes down", () => {
+  it("sends away an owner lowered to editor, who comes back without deleting anybody's comment", async () => {
+    const b = await boot();
+    const { owner, teamId, members } = await teamWith(b, ["editor", "commenter"]);
+    const [eddie, cora] = members;
+    const { room } = (await openLive(b, owner.token, teamId)).body;
+    const [o, c] = [await member(b, room, owner.token, "o"), await member(b, room, cora.token, "c")];
+    expect((await send(c, [{ k: "comment.add", comment: comment("c1", as(cora)), index: 0 }])).t).toBe("ack");
+    // a team keeps an owner: Eddie is made one first, and lowers the first owner to editor
+    const setRole = (by: string, who: { user: { id: string } }, role: string) => call(b, "PUT", `/api/teams/${teamId}/members/${who.user.id}`, { token: by, body: { role } });
+    expect((await setRole(owner.token, eddie, "owner")).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(o.closed()).toBeNull();
+    expect((await setRole(eddie.token, owner, "editor")).status).toBe(200);
+    await until("the lowered owner to be sent away", () => o.closed() === 4003);
+    const back = await member(b, room, owner.token, "o");
+    expect(back.welcome()).toMatchObject({ role: "edit" });
+    expect(await send(back, [{ k: "comment.del", id: "c1" }])).toMatchObject({ reason: "comment.del: only its author or an owner deletes a comment" });
+    expect(c.closed()).toBeNull();
+  });
+
   it("sends the seat away: editor to commenter and commenter to viewer; a raise sends nobody away", async () => {
     const b = await boot();
     const { owner, teamId, members } = await teamWith(b, ["editor", "commenter"]);

@@ -121,6 +121,11 @@ export interface EditorState {
   lastSavedAt: number;
   /** increments on every document change; renderers key off it */
   docVersion: number;
+  /**
+   * Moves on after every change that the people who share the design have been told of or have sent (after the connection has it,
+   * where `docVersion` moves before): what the review's "about this version" is worked out again on (`contentRevisionNow`).
+   */
+  sharedVersion: number;
 
   snapGuides: SnapGuide[];
   clipboard: { elements: DesignElement[]; pasted: number } | null;
@@ -146,6 +151,12 @@ export interface LiveBridge {
   sharesComments?(): boolean;
   /** The same for the review (docs/REVIEW.md). */
   sharesReview?(): boolean;
+  /**
+   * The design as the server has it with this person's unconfirmed changes on top (`Session.design`): what the server hashes when
+   * it checks a review (src/collab/seats.ts). Not the design here, whose text sizes and attached lines are worked out on this
+   * device (with its fonts) and never sent.
+   */
+  shared?(): Design | null;
   /**
    * Whether this person comments in a design they may not edit (a team's commenter, docs/REVIEW.md): comments and the review are
    * then changed in the read-only mode, and nothing else.
@@ -303,6 +314,11 @@ export interface EditorActions {
    * no step of undo. False when nothing was set (no design, or a mode that takes no change).
    */
   setReview(state: ReviewState, by: CommentAuthor): boolean;
+  /**
+   * The revision of the content that a review set now would be about (`contentRevision`): of the shared design while the design is
+   * shared, of the design here otherwise. "" without a design.
+   */
+  contentRevisionNow(): string;
 
   /* crop */
   startCrop(id: ID): void;
@@ -568,7 +584,9 @@ export const useEditor = create<EditorState>()((set, get) => {
       canRedo = future.length > 0;
     }
     set({ design: next, past, future, canUndo, canRedo, docVersion: s.docVersion + 1, saveState: "unsaved" });
-    if (told) bridge?.change(base, next);
+    if (!told) return;
+    bridge?.change(base, next);
+    set({ sharedVersion: get().sharedVersion + 1 });
   }
 
   /** This person's own step in a shared design: one with the others of a gesture or of edits that are coalesced. */
@@ -696,6 +714,8 @@ export const useEditor = create<EditorState>()((set, get) => {
       const s = get();
       if (!bridge || !s.design) return;
       const merged = withShared(s.design, shared, bridge.sharesComments?.() ?? false, bridge.sharesReview?.() ?? false);
+      // (the shared design moved on even when what it shows here did not: a size that this device works out the same way)
+      set({ sharedVersion: s.sharedVersion + 1 });
       if (merged === s.design) return;
       // what is derived is worked out here and not sent: the sizes of texts and the lines that follow shapes
       const design = reflowLines(normalizeTexts(merged, s.design), null);
@@ -1274,10 +1294,14 @@ export const useEditor = create<EditorState>()((set, get) => {
       });
     },
 
-    setReview(state, by) {
+    contentRevisionNow() {
       const design = get().design;
-      if (!design) return false;
-      const review: DesignReview = { v: REVIEW_VERSION, state, revision: contentRevision(design), by: { ...by }, at: Date.now() };
+      if (!design) return "";
+      return contentRevision(bridge?.shared?.() ?? design);
+    },
+    setReview(state, by) {
+      if (!get().design) return false;
+      const review: DesignReview = { v: REVIEW_VERSION, state, revision: actions.contentRevisionNow(), by: { ...by }, at: Date.now() };
       return commitComments((d) => {
         d.review = review as Draft<DesignReview>;
       });
@@ -1467,6 +1491,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     saveState: "saved",
     lastSavedAt: 0,
     docVersion: 0,
+    sharedVersion: 0,
     snapGuides: [],
     clipboard: null,
     styleClipboard: null,

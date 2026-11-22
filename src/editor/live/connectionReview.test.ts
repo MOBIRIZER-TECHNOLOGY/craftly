@@ -94,7 +94,27 @@ describe("a seat that may only comment", () => {
     Room.prototype.join = function (peer, client, _role, features, name, account) {
       return join.call(this, peer, client, "comment", features, name, account);
     };
-    stops.push(connectLive({ ...link, role: "edit" }, env));
+    // what this browser hears can be held back, so that it approves before it hears of somebody else's edit
+    let holding = false;
+    const held: Array<() => void> = [];
+    const holdingEnv = {
+      createSocket: (url: string) => {
+        const ws = new WebSocket(url) as unknown as SocketLike;
+        return new Proxy(ws, {
+          get: (target, key) => {
+            const value = Reflect.get(target, key) as unknown;
+            return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+          },
+          set: (target, key, value) => {
+            if (key !== "onmessage" || typeof value !== "function") return Reflect.set(target, key, value);
+            const hear = value as (e: { data: unknown }) => void;
+            target.onmessage = (e) => (holding ? held.push(() => hear(e)) : hear(e));
+            return true;
+          },
+        });
+      },
+    };
+    stops.push(connectLive({ ...link, role: "edit" }, holdingEnv));
     await until("this browser to be in", () => useLiveStatus.getState().status === "live");
     expect(useLiveStatus.getState().role).toBe("comment");
     expect(useEditor.getState().mode).toBe("view");
@@ -106,12 +126,13 @@ describe("a seat that may only comment", () => {
     // Bo moves the shape; this browser approves before it hears of it
     const base = bo.design!;
     const el = base.pages[0].elements[0];
-    const stale = useEditor.getState().design!;
+    holding = true;
     bo.edit(base, { ...base, pages: [{ ...base.pages[0], elements: [{ ...el, x: el.x + 40 }] }] });
     await until("Bo's edit to be confirmed", () => bo.session.pending === 0);
     Room.prototype.join = join;
-    useEditor.setState({ design: stale });
     a().setReview("approved", myAuthor());
+    holding = false;
+    for (const hear of held.splice(0)) hear();
     await until("the refusal to be said", () => error.mock.calls.length > 0);
     expect(error.mock.calls[0][0]).toMatch(/^The design changed just before that reached the server/);
     expect(bo.design?.review).toBeUndefined();

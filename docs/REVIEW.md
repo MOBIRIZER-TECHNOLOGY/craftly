@@ -30,7 +30,9 @@ Status: the four parts below are built in this slice, with the limits named in [
   copy is the team's; the editor opens the design in its read-only mode, with the Comment tool, the Comments panel and the review
   buttons still working.
 - **Lowering a role** sends the person's sockets away (`denied no-access`, 4003) whenever their room role goes down (edit to
-  comment, comment to view), as editor to viewer did; they join again with the role they now have. A raise sends nobody away.
+  comment, comment to view), as editor to viewer did, and when an owner is lowered to editor (the room role stays `edit`, but the
+  seat no longer deletes others' comments); they join again with the role they now have. A raise sends nobody away (an editor
+  made owner deletes others' comments once they join again).
 
 ## 2. Comments: the author edits and deletes, an owner moderates
 
@@ -46,7 +48,12 @@ Delete for the ids it remembered on this device. In a team's room the server kno
     changes somebody else's words.
   - Resolving and reopening (`resolved`) is anybody's who may comment: it is the state of the thread, not somebody's words.
   - A comment or reply **without an id** (written before this slice, or in a room of a link, then shared with the team) can be
-    deleted by an owner and edited by nobody in a team's room.
+    deleted by an owner and edited by nobody in a team's room: its author can no longer prove they wrote it. The CHANGELOG says so.
+  - A comment **that comes back with its page** (an undo of a page's deletion brings back the comments that were on it) keeps
+    its authors only when the room had that very comment, with the same author and the same authors of the replies it brings, and
+    it left the room (`Room.gone`, in memory, the last 5,000). Anything else in the same batch as a `page.add` is a new comment, in
+    the seat's own name, so a page cannot carry a comment made up in somebody else's name. After the room left memory such an undo
+    is refused as a whole, and kept as a recovery copy like every refused batch.
 - **In a room of a link** nothing changes (there is no identity to check), except that an author **with** an id is refused there:
   nobody can pass as an account where accounts are not checked.
 - **The editor offers the same rule**: Edit for one's own, Delete for one's own and, for an owner of the team, for everybody's. A
@@ -73,6 +80,10 @@ interface DesignReview {
   comment, is reset when the room is made again from the space, and the space's revision moves when a room only wrote comments back.
   The content's hash is the same on every copy (all copies apply the same operations, `designsEqual` already relies on it), in the
   space, after a reload and on another device.
+- **Worked out on the shared copy.** The browser hashes the design as the server has it with this person's unconfirmed edits on
+  top (`Session.design`, the store's `contentRevisionNow` through the connection), never the copy in the editor: the editor works
+  out the sizes of texts and the lines attached to shapes itself, with the fonts of this device, and never sends them, so two
+  devices with different fonts would hash their own copies differently while the server's is one.
 - **Out of date.** An approval (or a request, or changes requested) whose `revision` is not the content's revision now is shown as
   being about an earlier version: "Approved an earlier version, edited since". An undo that brings back exactly the approved content
   makes it current again: it is the same content.

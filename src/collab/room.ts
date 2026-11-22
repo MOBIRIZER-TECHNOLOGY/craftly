@@ -26,11 +26,11 @@
  */
 import { withoutComments } from "@/core/comments";
 import { withoutReview } from "@/core/review";
-import type { Design } from "@/core/types";
+import type { CommentAuthor, Design } from "@/core/types";
 import { applyOps, isCommentOp, isReviewOp, type Op } from "./ops";
 import { checkPresence, PRESENCE_STALE_MS, type PresenceState } from "./presence";
 import { canEdit, checkOps, checkSets, COMMENTS, REVIEW, type ClientMsg, type Feature, type Role, type ServerMsg } from "./protocol";
-import { seatProblem } from "./seats";
+import { seatProblem, type Restorable } from "./seats";
 
 /** How long a client that is not in the room is remembered after it was last seen. */
 export const CLIENTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
@@ -50,6 +50,8 @@ export interface RoomOptions extends ClientMemory {
   now?: () => number;
   keepMs?: number;
   keepMost?: number;
+  /** How many comments that left the room it remembers (`GONE_KEPT`). */
+  goneKept?: number;
 }
 
 /** Whatever receives what the room says to one connection. */
@@ -98,6 +100,12 @@ export class Room {
   /** Saves what a batch made of the room, before the batch is acknowledged: the design, and what the room remembers of its clients. */
   commit?: (design: Design, rev: number, seqs: Record<string, number>, memory: Required<ClientMemory>) => Promise<void>;
   private members = new Map<Peer, Member>();
+  /**
+   * The comments that left this room (a page deleted with them, or deleted alone), by id, with who wrote them and their replies:
+   * a comment that comes back with its page in a team's room keeps its authors only when it is one of these (src/collab/seats.ts).
+   * In memory only, and at most `GONE_KEPT`: an undo after the room was let go brings the page back and refuses its comments.
+   */
+  private gone = new Map<string, { author: CommentAuthor; replies: Map<string, CommentAuthor> }>();
   private lastSeq = new Map<string, number>();
   private seen = new Map<string, number>();
   private floor: number;
@@ -105,6 +113,7 @@ export class Room {
   private now: () => number;
   private keepMs: number;
   private keepMost: number;
+  private goneKept: number;
 
   constructor(design: Design, rev = 0, lastSeq: Record<string, number> = {}, options: RoomOptions = {}) {
     this.design = design;
@@ -112,6 +121,7 @@ export class Room {
     this.now = options.now ?? Date.now;
     this.keepMs = options.keepMs ?? CLIENTS_KEPT_MS;
     this.keepMost = options.keepMost ?? CLIENTS_KEPT;
+    this.goneKept = options.goneKept ?? GONE_KEPT;
     this.floor = Number.isSafeInteger(options.floor) && (options.floor as number) > 0 ? (options.floor as number) : 0;
     const opened = this.now();
     for (const [client, seq] of Object.entries(lastSeq)) {
@@ -339,11 +349,12 @@ export class Room {
       // what the operations look like is fine; what they leave of the elements they changed is asked now that it is known
       // and whether this seat may do what they do: comment only, in its own name, change only its own words (src/collab/seats.ts)
       const account = member.account ? { ...member.account, name: member.name ?? "" } : undefined;
-      const spoiled = checkSets(design, next, ops) ?? seatProblem(design, next, ops, { role: member.role, ...(account ? { account } : {}) });
+      const spoiled = checkSets(design, next, ops) ?? seatProblem(design, next, ops, { role: member.role, ...(account ? { account } : {}) }, this.restorable);
       if (spoiled) {
         refuse(spoiled);
         continue;
       }
+      this.noteGone(design, next);
       design = next;
       kept = this.remember(member.client, seq, kept);
       applied.push({ peer, ops });
@@ -365,6 +376,24 @@ export class Room {
       },
     );
   }
+
+  /** Notes the comments that a batch takes away (`gone`); the oldest are forgotten past `GONE_KEPT`. */
+  private noteGone(before: Design, after: Design): void {
+    if (!before.comments?.length || before.comments === after.comments) return;
+    const left = new Set((after.comments ?? []).map((c) => c.id));
+    for (const c of before.comments) {
+      if (left.has(c.id)) continue;
+      this.gone.delete(c.id);
+      this.gone.set(c.id, { author: c.author, replies: new Map(c.replies.map((r) => [r.id, r.author])) });
+    }
+    while (this.gone.size > this.goneKept) this.gone.delete(this.gone.keys().next().value as string);
+  }
+
+  /** Whether a comment is one that left this room, with the same authors (`gone`). */
+  private restorable: Restorable = (comment) => {
+    const was = this.gone.get(comment.id);
+    return !!was && sameAuthor(was.author, comment.author) && comment.replies.every((r) => sameAuthor(was.replies.get(r.id), r.author));
+  };
 
   /** The batches of a group that was too large to save at once, each applied and saved alone, in order (see `receiveOps`). */
   private async oneByOne(items: readonly { peer: Peer; msg: Extract<ClientMsg, { t: "ops" }> }[]): Promise<void> {
@@ -414,6 +443,12 @@ export class Room {
     this.onChange?.(this);
   }
 }
+
+/** Whether two authors are the same person as a comment names them: the same name, colour and account. */
+const sameAuthor = (a: CommentAuthor | undefined, b: CommentAuthor): boolean => !!a && a.name === b.name && a.colorIndex === b.colorIndex && a.id === b.id;
+
+/** The most comments that left a room that it remembers, to let them come back with their page (`Room.gone`). */
+export const GONE_KEPT = 5000;
 
 /** What a browser is told of a batch that was to be applied when the write that should have kept it failed. */
 export const SAVE_FAILED = "The server could not save this edit.";

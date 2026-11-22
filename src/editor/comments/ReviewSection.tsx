@@ -5,7 +5,6 @@
  * is shared with the others (a server that said so in its welcome).
  */
 import { useId } from "react";
-import { reviewOf } from "@/core/review";
 import { useEditor } from "@/core/store";
 import type { ReviewState } from "@/core/types";
 import { m } from "@/i18n";
@@ -14,9 +13,11 @@ import { myAuthor, when } from "./commentsStore";
 
 /** `mayRequest`: this person may edit (and so ask for a review); `mayDecide`: they may comment (and so approve or ask for changes). */
 export function ReviewSection({ mayRequest, mayDecide }: { mayRequest: boolean; mayDecide: boolean }) {
-  const design = useEditor((s) => s.design);
+  const review = useEditor((s) => s.design?.review);
+  // (worked out again whenever the design here or the shared one moves on: the revision is of the shared one while it is shared)
+  useEditor((s) => s.docVersion + s.sharedVersion);
   const headingId = useId();
-  const found = reviewOf(design);
+  const found = review ? { review, current: review.revision === useEditor.getState().actions.contentRevisionNow() } : null;
   const set = (state: ReviewState) => useEditor.getState().actions.setReview(state, myAuthor());
   // a button is offered unless its state is the one the design is in already, about the design as it is now
   const offer = (state: ReviewState) => !(found?.current && found.review.state === state);

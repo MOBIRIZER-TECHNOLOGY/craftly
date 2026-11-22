@@ -59,16 +59,20 @@ describe("comments in a team's room", () => {
     expect(ask(start([comment("c", by(BOB))]), [{ k: "reply.add", comment: "c", reply: reply("r", by(ANN)), index: 0 }], editor())).toBeNull();
   });
 
-  it("come back with their page, whoever wrote them, for a seat that may edit", () => {
+  it("come back with their page, whoever wrote them, for a seat that may edit, when the room had them", () => {
     const d = start();
     const page = createPage({ id: "q" });
     const back: Op[] = [
       { k: "page.add", page, index: 1 },
       { k: "comment.add", comment: { ...comment("c", by(BOB), [reply("r", by(OWEN))]), pageId: "q" }, index: 0 },
     ];
-    expect(ask(d, back, editor())).toBeNull();
+    const had = () => true;
+    expect(seatProblem(d, applyOps(d, back), back, editor(), had)).toBeNull();
+    // a comment the room never had is a new one, in the seat's own name: nobody makes one for somebody else with a page
+    expect(ask(d, back, editor())).toBe("comment.add: a comment is written in your own name");
     // (not on a page that is already there, and not for a seat that may only comment, which cannot add a page anyway)
-    expect(ask(d, [back[1]], editor())).toBe("comment.add: a comment is written in your own name");
+    expect(seatProblem(d, applyOps(d, [back[1]]), [back[1]], editor(), had)).toBe("comment.add: a comment is written in your own name");
+    expect(seatProblem(d, applyOps(d, back), back, commenter(), had)).toBe("this seat may only comment");
   });
 
   it("have their words and pin changed by their author only; resolving is anybody's", () => {

@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDesign, createPage, createShape } from "@/core/factory";
 import { contentRevision } from "@/core/review";
 import { useEditor, type LiveBridge } from "@/core/store";
-import type { CommentAuthor, DesignComment, DesignReview } from "@/core/types";
+import type { CommentAuthor, Design, DesignComment, DesignReview } from "@/core/types";
 import { canvasDesign, mountWorkspace } from "@/test/canvasUtils";
 import { resetEditor } from "@/test/helpers";
 import { useLiveStatus } from "../live/connection";
@@ -40,13 +40,14 @@ const open = (extra: { comments?: DesignComment[]; review?: DesignReview } = {})
   a().openDesign({ ...made, ...extra });
 };
 /** The design shared live as this role, as the connection leaves it (src/editor/live/connection.ts). */
-const live = (role: "edit" | "comment" | "view", account: typeof CORA | null = null) => {
+const live = (role: "edit" | "comment" | "view", account: typeof CORA | null = null, shared?: () => Design | null) => {
   const sent: unknown[] = [];
   const bridge: LiveBridge = {
     change: (before, after) => sent.push([before, after]),
     sharesComments: () => true,
     sharesReview: () => true,
     commentsOnly: () => role === "comment",
+    ...(shared ? { shared } : {}),
   };
   a().startLive(bridge);
   if (role !== "edit") a().setMode("view");
@@ -159,6 +160,36 @@ describe("the store's review", () => {
     useEditor.setState({ selection: ["box"] });
     a().nudge(5, 0);
     expect(design().pages).toBe(before);
+  });
+});
+
+describe("the revision a review is about, in a shared design", () => {
+  it("is that of the shared copy, not of the one here, whose text sizes this device works out with its own fonts", async () => {
+    open();
+    // the server's copy, and the one here with the size of a text worked out again (a font this device does not have)
+    const server: Design = { ...design(), pages: [{ ...design().pages[0], elements: [{ ...design().pages[0].elements[0], width: 120 }] }] };
+    act(() => useEditor.setState({ design: { ...server, pages: [{ ...server.pages[0], elements: [{ ...server.pages[0].elements[0], width: 133 }] }] } }));
+    let shared: Design = server;
+    live("comment", CORA, () => shared);
+    expect(contentRevision(design())).not.toBe(contentRevision(server));
+    expect(a().contentRevisionNow()).toBe(contentRevision(server));
+    render(<CommentsPanel />);
+    const section = screen.getByRole("region", { name: "Review" });
+    await userEvent.click(within(section).getByRole("button", { name: "Approve" }));
+    expect(design().review?.revision).toBe(contentRevision(server));
+    // about the design as it is now, although the copy here hashes otherwise
+    expect(within(section).getByText("This is about the design as it is now.")).toBeTruthy();
+    // and out of date once the shared copy moves on (an edit of somebody else, which the store hears of)
+    shared = { ...server, width: 801, review: design().review };
+    act(() => a().applyShared(shared));
+    expect(within(section).getByText("This is about an earlier version: the design has been edited since.")).toBeTruthy();
+  });
+
+  it("is that of the design here while it is not shared, and none without a design", () => {
+    open();
+    expect(a().contentRevisionNow()).toBe(contentRevision(design()));
+    a().closeDesign();
+    expect(a().contentRevisionNow()).toBe("");
   });
 });
 

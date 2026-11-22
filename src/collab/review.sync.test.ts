@@ -239,3 +239,59 @@ describe("a newer browser with an older server", () => {
     expect(withShared(b.shown, b.session.design!, true, false).review?.state).toBe("requested");
   });
 });
+
+describe("comments that come back with their page, in a team's room", () => {
+  const ANN: SeatAccount = { id: "u_ann_0123456789ab", owner: false };
+  const annAuthor: CommentAuthor = { name: "Ann", colorIndex: 1, id: ANN.id };
+  const two = (): Design => ({ ...start(), pages: [...start().pages, createPage({ id: "q" })] });
+  const onQ = (id: string, author: CommentAuthor, replies: DesignComment["replies"] = []): DesignComment => ({ ...comment(id, author), pageId: "q", replies });
+  const seat = (room: Room, client: string, account: SeatAccount, name: string) => {
+    const peer: Peer & { heard: ServerMsg[] } = { heard: [], send: (m) => peer.heard.push(m) };
+    room.join(peer, client, "edit", { comments: true, review: true }, name, account);
+    return peer;
+  };
+  const answers = (peer: { heard: ServerMsg[] }) => peer.heard.filter((m) => m.t === "ack" || m.t === "rejected");
+
+  it("keep their authors when the room had them and they went with the page (an undo)", () => {
+    const room = new Room({ ...two(), comments: [onQ("c", bob, [{ id: "r", author: bob, createdAt: 2, text: "yes" }])] });
+    const ann = seat(room, "ann", ANN, "Ann");
+    const page = room.design.pages[1];
+    const was = room.design.comments![0];
+    void room.receive(ann, { t: "ops", seq: 1, ops: [{ k: "page.del", id: "q" }] });
+    void room.receive(ann, {
+      t: "ops",
+      seq: 2,
+      ops: [
+        { k: "page.add", page, index: 1 },
+        { k: "comment.add", comment: was, index: 0 },
+      ],
+    });
+    expect(answers(ann).map((m) => m.t)).toEqual(["ack", "ack"]);
+    expect(room.design.comments).toEqual([was]);
+  });
+
+  it("are refused when the room never had them, or they come back under another author or with a reply it never had", () => {
+    const room = new Room({ ...two(), comments: [onQ("c", bob)] }, 0, {}, { goneKept: 1 });
+    const ann = seat(room, "ann", ANN, "Ann");
+    const page = room.design.pages[1];
+    void room.receive(ann, { t: "ops", seq: 1, ops: [{ k: "page.del", id: "q" }] });
+    const forged = (c: DesignComment, seq: number) =>
+      void room.receive(ann, {
+        t: "ops",
+        seq,
+        ops: [
+          { k: "page.add", page, index: 1 },
+          { k: "comment.add", comment: c, index: 0 },
+        ],
+      });
+    forged(onQ("never", bob), 2);
+    forged(onQ("c", { ...bob, name: "Bobby" }), 3);
+    forged(onQ("c", bob, [{ id: "r", author: bob, createdAt: 2, text: "invented" }]), 4);
+    expect(answers(ann).map((m) => (m.t === "rejected" ? m.reason : m.t))).toEqual(["ack", ...Array(3).fill("comment.add: a comment is written in your own name")]);
+    // the room remembers only so many that left (here one): an older one may no longer come back in somebody else's name
+    void room.receive(ann, { t: "ops", seq: 5, ops: [{ k: "comment.add", comment: comment("mine", annAuthor), index: 0 }] });
+    void room.receive(ann, { t: "ops", seq: 6, ops: [{ k: "comment.del", id: "mine" }] });
+    forged(onQ("c", bob), 7);
+    expect(answers(ann).at(-1)).toMatchObject({ t: "rejected" });
+  });
+});

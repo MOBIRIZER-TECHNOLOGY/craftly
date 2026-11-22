@@ -242,6 +242,8 @@ interface Seat {
   role: Role;
   /** whether the browser understands reviews (and so may comment as a commenter): its role is worked out with it again */
   review: boolean;
+  /** whether the person joined as an owner of the space, who deletes anybody's comment (src/collab/seats.ts) */
+  owner: boolean;
 }
 
 /**
@@ -710,7 +712,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   /**
    * Who may be in bound rooms may have changed (accounts: a role, a removal, a session ended, a person disabled). Every socket
    * that came in with a session and is in scope is looked up again; one whose session no longer lets its person into the space,
-   * or lets them only look where they edited, is sent away with `no-access` and close 4003. (A browser then asks again, and one
+   * or lets them do less than they joined to (only look where they edited, only comment, or no longer delete others' comments as an
+   * owner), is sent away with `no-access` and close 4003. (A browser then asks again, and one
    * that may still look comes back as a viewer: the room cannot change the role of somebody who is in it.) One that now may do
    * more is left as it is. A lookup that fails sends the socket away too: when in doubt, nobody stays.
    */
@@ -735,7 +738,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         if (scope.userId !== undefined && seat.userId !== scope.userId) continue;
         bound.roleInSpace(seat.tokenHash, space, false).then(
           (found) => {
-            if (!found || found.userId !== seat.userId || RANK[roomRole(found.role, seat.review)] < RANK[seat.role]) revoke(l, ws);
+            if (!found || found.userId !== seat.userId) return revoke(l, ws);
+            // (an owner lowered to editor keeps the role `edit` in the room, but not the deleting of others' comments: sent away too)
+            if (RANK[roomRole(found.role, seat.review)] < RANK[seat.role] || (seat.owner && found.role !== "owner")) revoke(l, ws);
           },
           (error: unknown) => {
             console.error(`Craftly could not look up a person in the room ${l.id} again, and sends them away`, error);
@@ -1330,9 +1335,10 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         const role = roomRole(found.role, review);
         // the others hear this person under their account's name, made into one presence may say; never what the browser claims;
         // and what they write is checked against their account (src/collab/seats.ts), an owner of the space deleting anybody's
-        if (!admit(msg, role, cleanName(found.name), { id: found.userId, owner: found.role === "owner" })) return;
+        const owner = found.role === "owner";
+        if (!admit(msg, role, cleanName(found.name), { id: found.userId, owner })) return;
         metrics.count("session_joins_total");
-        l.seats.set(ws, { userId: found.userId, tokenHash, role, review });
+        l.seats.set(ws, { userId: found.userId, tokenHash, role, review, owner });
         // a viewer does not keep the room in memory (`held`): with nobody else in it, it leaves as an empty room does
         if (role === "view") unloadLater(l);
         for (let i = 0; i < waiting.length; i++) {
