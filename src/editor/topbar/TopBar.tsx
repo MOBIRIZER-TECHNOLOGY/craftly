@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { useEditor, type EditorState } from "@/core/store";
 import { useGesture } from "@/editor/canvas/gestureStore";
 import { penHistory } from "@/editor/canvas/penTool";
@@ -34,6 +34,7 @@ import { CommentsButton } from "../comments/CommentsButton";
 import { LiveBadge } from "../live/LiveSection";
 import { SharePopover } from "./SharePopover";
 import { requestSave } from "./designActions";
+import { watchTopBar } from "./fitTopBar";
 import "./topbar.css";
 
 const SAVE_LABEL: Record<EditorState["saveState"], string> = {
@@ -270,6 +271,10 @@ export function TopBar() {
   const designTitle = useEditor((s) => s.design?.title);
   const titleRef = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const barRef = useRef<HTMLElement>(null);
+
+  // words that do not fit fold into icons before they are cut short (fitTopBar.ts); before paint, so no cut word is ever drawn
+  useLayoutEffect(() => watchTopBar(barRef.current as HTMLElement), []);
 
   const onFiles = (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -285,7 +290,7 @@ export function TopBar() {
   const actions = useEditor.getState().actions;
 
   return (
-    <header className="cf-topbar" aria-label={m.editorChrome.topBar.toolbar}>
+    <header ref={barRef} className="cf-topbar" aria-label={m.editorChrome.topBar.toolbar}>
       {/* the page's one top-level heading, for people who move by headings: it names the design. First in the page, and inside a landmark */}
       <h1 className="cf-sr-only">{designTitle || m.editorChrome.topBar.untitled}</h1>
       <div className="cf-topbar__group">

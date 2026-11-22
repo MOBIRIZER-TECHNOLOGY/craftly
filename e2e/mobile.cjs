@@ -125,10 +125,13 @@ const EN = { file: "File", addTextBox: "Add a text box", shareDownload: "Downloa
     throw new Error(`the ${id} tab could not be brought into view`);
   };
   /** the top bar: every control on the screen, in the bar, at least 24 x 24 px */
-  const topBarFits = async () => {
+  /** every control of the editor's top bar on the screen and big enough to tap; with `words`, no word cut short to an ellipsis */
+  const topBarFits = async (words = false) => {
     const r = await page.evaluate(() => {
       const bar = document.querySelector(".cf-topbar");
-      const out = { overflow: bar.scrollWidth - bar.clientWidth, bad: [], n: 0 };
+      const out = { overflow: bar.scrollWidth - bar.clientWidth, bad: [], n: 0, cut: [] };
+      for (const label of bar.querySelectorAll(".cf-btn__label"))
+        if (label.clientWidth > 0 && label.scrollWidth > label.clientWidth + 1) out.cut.push(`${label.textContent.trim()} ${label.clientWidth}/${label.scrollWidth} px`);
       for (const b of bar.querySelectorAll("button, a[href], input")) {
         const s = getComputedStyle(b);
         const box = b.getBoundingClientRect();
@@ -143,6 +146,7 @@ const EN = { file: "File", addTextBox: "Add a text box", shareDownload: "Downloa
     });
     if (r.overflow > 1) throw new Error(`the top bar's controls are ${r.overflow} px wider than the bar`);
     if (r.bad.length) throw new Error(r.bad.join("; "));
+    if (words && r.cut.length) throw new Error("cut short: " + r.cut.join(", "));
     return r.n;
   };
 
@@ -523,9 +527,27 @@ const EN = { file: "File", addTextBox: "Add a text box", shareDownload: "Downloa
       if (hidden.length) throw new Error("out of view or cut off: " + hidden.join(", "));
       const chevrons = await page.evaluate(() => Array.from(document.querySelectorAll(".cf-leftrail__more")).filter((e) => getComputedStyle(e).opacity !== "0").length);
       if (chevrons) throw new Error(chevrons + " chevrons shown");
-      const n = await topBarFits();
+      const n = await topBarFits(true);
       await shot(lang + "-tablet");
       return `8 tabs, ${n} top-bar controls`;
+    });
+    // between a phone and a laptop the words of File, Resize, Present and Share fold into icons when the font draws them too
+    // wide (fitTopBar.ts): no width may cut one short to "फ़ा…" (it did from 600 to 680 px in Hindi)
+    await step(`[${lang}] the editor's top bar from 520 to 899 px wide: every control on the screen and no word cut short`, async () => {
+      const folds = [];
+      for (const width of [520, 560, 599, 600, 620, 640, 660, 680, 700, 740, 800, 860, 899]) {
+        await page.setViewportSize({ width, height: TABLET.height });
+        await wait(200);
+        try {
+          await topBarFits(true);
+        } catch (e) {
+          await shot(`${lang}-topbar-${width}`);
+          throw new Error(`at ${width} px: ${e.message}`, { cause: e });
+        }
+        folds.push(`${width}:${await page.evaluate(() => document.querySelector(".cf-topbar").dataset.fold || "0")}`);
+      }
+      await page.setViewportSize(TABLET);
+      return "width:fold " + folds.join(" ");
     });
     await ctx.close();
   }
