@@ -653,3 +653,74 @@ describe("<PresentMode>: the pointer", () => {
     expect(dialog().classList.contains("is-pointing")).toBe(false);
   });
 });
+
+describe("<PresentMode>: the presenter window", () => {
+  /** A popup the browser opened and the channel the presenter talks to it on, both standing in for the real ones. */
+  function stubPresenterWindow() {
+    const popup = { closed: false, focus: vi.fn(), close: vi.fn(), document: { write: vi.fn(), close: vi.fn() } };
+    const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+    const channel = { onmessage: null as null | ((event: { data: string }) => void), postMessage: vi.fn(), close: vi.fn() };
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class {
+        constructor() {
+          return channel;
+        }
+      },
+    );
+    /** what the presenter last told the window, leaving out the picture of the next page */
+    const last = () => {
+      const { nextImage: _image, ...state } = channel.postMessage.mock.calls.at(-1)![0];
+      return state;
+    };
+    const command = (data: "next" | "previous") => act(() => channel.onmessage!({ data }));
+    return { popup, open, channel, last, command };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("turns the pages when the window asks for the next or the previous one, and tells it about each page", async () => {
+    const win = stubPresenterWindow();
+    await present();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "Open presenter window" }));
+    expect(win.open).toHaveBeenCalledTimes(1);
+    expect(win.popup.document.write).toHaveBeenCalled();
+
+    win.command("next");
+    await waitFor(() => expect(counter()).toBe("2/3"));
+    // the middle page has neither notes nor a name; the page after it is called Wrap up
+    await waitFor(() => expect(win.last()).toEqual({ index: 1, count: 3, notes: "No notes for this page.", nextName: "Wrap up" }));
+
+    win.command("previous");
+    await waitFor(() => expect(counter()).toBe("1/3"));
+    // the next page has no name of its own, so it is called by its number
+    await waitFor(() => expect(win.last()).toEqual({ index: 0, count: 3, notes: "Welcome everyone", nextName: "Page 2 of 3" }));
+  });
+
+  it("tells the window when the show is on its last page", async () => {
+    const win = stubPresenterWindow();
+    await present(chromeDesign(), 1);
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "Open presenter window" }));
+    win.command("next");
+    await waitFor(() => expect(counter()).toBe("3/3"));
+    await waitFor(() => expect(win.last()).toEqual({ index: 2, count: 3, notes: "Thank you", nextName: "End of the presentation" }));
+  });
+
+  it("brings the open window to the front instead of opening a second one, and closes it when the show ends", async () => {
+    const win = stubPresenterWindow();
+    const view = await present();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "Open presenter window" }));
+    await user.click(screen.getByRole("button", { name: "Open presenter window" }));
+    expect(win.open).toHaveBeenCalledTimes(1);
+    expect(win.popup.focus).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(win.channel.close).toHaveBeenCalled();
+    expect(win.popup.close).toHaveBeenCalled();
+  });
+});

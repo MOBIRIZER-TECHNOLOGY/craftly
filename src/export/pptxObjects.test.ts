@@ -89,4 +89,84 @@ describe("native PowerPoint objects", () => {
     expect(rels).toContain('Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"');
     expect(pptxObjectLinks([object])).toEqual([{ id: "rId100", url: "https://example.com" }]);
   });
+
+  it("rasterizes a shape whose outline is dashed but keeps one with a solid outline or none", () => {
+    const dashed = createShape("rect", { id: "dashed", stroke: { color: "#000000", width: 2, style: "dashed" } });
+    const outlined = createShape("ellipse", { id: "outlined", stroke: { color: "#000000", width: 2, style: "solid" } });
+    const unfilled = createShape("rect", { id: "unfilled", fill: null, stroke: null });
+    expect(pptxObjects(createPage({ elements: [dashed, outlined, unfilled] })).map((el) => el.id)).toEqual(["outlined", "unfilled"]);
+  });
+
+  it("writes underline and strikethrough from a run or from the text box, and faded text with an alpha", () => {
+    const text = createText({
+      underline: true,
+      strike: true,
+      opacity: 0.5,
+      paragraphs: [{ runs: [{ text: "Both" }, { text: "Neither", underline: false, strike: false }] }],
+    });
+    const [both, neither] = pptxObjectXml(text, 10, EMU_PER_PX).split("</a:r>");
+    expect(both).toContain('u="sng"');
+    expect(both).toContain('strike="sngStrike"');
+    expect(both).toContain('<a:alpha val="50000"/>');
+    expect(neither).not.toContain("u=");
+    expect(neither).not.toContain("strike=");
+    // a fully opaque run has no alpha at all
+    expect(pptxObjectXml(createText({ text: "Solid" }), 10, EMU_PER_PX)).not.toContain("<a:alpha");
+  });
+
+  it("writes a colour it cannot read as black rather than leaving the run without one", () => {
+    const text = createText({ paragraphs: [{ runs: [{ text: "Odd", color: "not a colour" }] }] });
+    expect(pptxObjectXml(text, 10, EMU_PER_PX)).toContain('<a:solidFill><a:srgbClr val="000000"></a:srgbClr></a:solidFill>');
+  });
+
+  it("aligns each paragraph on its own, falling back to the text box, and marks an empty paragraph", () => {
+    const text = createText({
+      align: "justify",
+      paragraphs: [
+        { runs: [{ text: "Middle" }], align: "center" },
+        { runs: [{ text: "End" }], align: "right" },
+        { runs: [{ text: "Start" }], align: "left" },
+        { runs: [{ text: "Even" }] },
+        { runs: [] },
+      ],
+    });
+    const xml = pptxObjectXml(text, 10, EMU_PER_PX);
+    expect([...xml.matchAll(/<a:pPr algn="(\w+)"\/>/g)].map((hit) => hit[1])).toEqual(["ctr", "r", "l", "just", "just"]);
+    expect(xml).toContain('<a:p><a:pPr algn="just"/><a:endParaRPr lang="en-US"/></a:p>');
+  });
+
+  it("writes names and alternative text of text boxes and shapes escaped, with a numbered name when there is none", () => {
+    const text = createText({ name: "Title & more", alt: 'Says "hi"', text: "Hi" });
+    expect(pptxObjectXml(text, 10, EMU_PER_PX)).toContain('<p:cNvPr id="10" name="Title &amp; more" descr="Says &quot;hi&quot;">');
+    const shape = createShape("ellipse", { name: "", alt: "A <dot>" });
+    expect(pptxObjectXml(shape, 11, EMU_PER_PX)).toContain('<p:cNvPr id="11" name="Shape 11" descr="A &lt;dot&gt;">');
+    expect(pptxObjectXml(createText({ name: "", text: "Hi" }), 12, EMU_PER_PX)).toContain('<p:cNvPr id="12" name="Text 12">');
+  });
+
+  it("writes a shape without fill as unfilled and leaves out an outline with no width", () => {
+    const xml = pptxObjectXml(createShape("rect", { fill: null, stroke: { color: "#000000", width: 0, style: "solid" } }), 10, EMU_PER_PX);
+    expect(xml).toContain("<a:noFill/>");
+    expect(xml).not.toContain("<a:ln");
+  });
+
+  it("falls back to a rectangle for a shape PowerPoint has no preset for", () => {
+    expect(pptxObjectXml(createShape("path", { path: "M0 0L10 10Z" }), 10, EMU_PER_PX)).toContain('<a:prstGeom prst="rect"><a:avLst></a:avLst>');
+  });
+
+  it("writes the inner size of a star as its adjustment, and none when the star has no inner size", () => {
+    expect(pptxObjectXml(createShape("star", { params: { inner: 0.4 } }), 10, EMU_PER_PX)).toContain(
+      '<a:prstGeom prst="star5"><a:avLst><a:gd name="adj" fmla="val 40000"/></a:avLst>',
+    );
+    expect(pptxObjectXml(createShape("star-6", {}), 10, EMU_PER_PX)).toContain('<a:prstGeom prst="star6"><a:avLst></a:avLst>');
+  });
+
+  it("links only objects whose link is safe, and only when the slide gives them a relationship", () => {
+    const unsafe = createShape("rect", { link: "javascript:alert(1)" });
+    const safe = createShape("rect", { link: "https://example.com" });
+    expect(pptxObjectXml(unsafe, 10, EMU_PER_PX, "rId100")).not.toContain("hlinkClick");
+    expect(pptxObjectXml(safe, 11, EMU_PER_PX)).not.toContain("hlinkClick");
+    expect(pptxObjectXml(safe, 11, EMU_PER_PX, "rId101")).toContain('<a:hlinkClick r:id="rId101"/>');
+    // the id of a link follows the place of its object on the slide, so it matches the id the slide gives that object
+    expect(pptxObjectLinks([unsafe, safe])).toEqual([{ id: "rId101", url: "https://example.com" }]);
+  });
 });

@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { extractSvgColors } from "@/core/svg";
 import { useEditor } from "@/core/store";
 import type { GraphicElement } from "@/core/types";
@@ -8,7 +8,23 @@ import { resetEditor } from "@/test/helpers";
 import { lastElement, mountPanels, pageElements } from "@/test/tabsHarness";
 import { useAppsNav } from "./appKit";
 
+/**
+ * The picture of the code is made asynchronously. Most tests use the real rasterizer; with `hold` set, each request waits
+ * in `pending` until the test settles it, so a test can decide which of two requests answers first.
+ */
+const raster = vi.hoisted(() => ({ hold: false, pending: [] as Array<{ resolve(url: string): void; reject(error: Error): void }> }));
+vi.mock("./qrLogo", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./qrLogo")>();
+  return {
+    ...real,
+    rasterizeQrWithLogo: (...args: Parameters<typeof real.rasterizeQrWithLogo>) =>
+      raster.hold ? new Promise<string>((resolve, reject) => raster.pending.push({ resolve, reject })) : real.rasterizeQrWithLogo(...args),
+  };
+});
+
 beforeEach(() => {
+  raster.hold = false;
+  raster.pending.length = 0;
   resetEditor();
   useAppsNav.setState({ app: "qr", query: "" });
 });
@@ -278,5 +294,56 @@ describe("QR code app", () => {
     await user.click(select);
     const options = within(await screen.findByRole("listbox")).getAllByRole("option");
     expect(options.map((o) => o.textContent)).toEqual(["Low - 7% can be damaged", "Medium - 15%", "Quartile - 25%", "High - 30%"]);
+  });
+});
+
+describe("making the picture of the code", () => {
+  const field = () => screen.getByRole("textbox", { name: "Web address" });
+  const settle = (index: number, outcome: string | Error) =>
+    act(async () => {
+      const request = raster.pending[index];
+      if (outcome instanceof Error) request.reject(outcome);
+      else request.resolve(outcome);
+    });
+
+  it("shows the picture for what was typed last, even when the picture for an older address arrives later", async () => {
+    raster.hold = true;
+    await openQr();
+    expect(raster.pending).toHaveLength(1);
+    fireEvent.change(field(), { target: { value: "https://example.com/newer" } });
+    expect(raster.pending).toHaveLength(2);
+    await settle(1, "data:image/png;base64,newer");
+    await settle(0, "data:image/png;base64,older");
+    expect(code()?.getAttribute("src")).toBe("data:image/png;base64,newer");
+    expect(add().hasAttribute("disabled")).toBe(false);
+  });
+
+  it("keeps the newer picture when the request for an older address fails afterwards", async () => {
+    raster.hold = true;
+    await openQr();
+    fireEvent.change(field(), { target: { value: "https://example.com/newer" } });
+    await settle(1, "data:image/png;base64,newer");
+    await settle(0, new Error("could not draw"));
+    expect(code()?.getAttribute("src")).toBe("data:image/png;base64,newer");
+  });
+
+  it("offers nothing to add when the picture of the current code cannot be made", async () => {
+    raster.hold = true;
+    await openQr();
+    await settle(0, new Error("could not draw"));
+    expect(code()?.getAttribute("src")).toBeNull();
+    expect(add().hasAttribute("disabled")).toBe(true);
+    const before = pageElements().length;
+    fireEvent.click(add());
+    expect(pageElements()).toHaveLength(before);
+  });
+
+  it("ignores a file chooser that was closed without picking a file", async () => {
+    const user = await openQr();
+    fireEvent.change(screen.getByLabelText("Logo (optional)"), { target: { files: [] } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove logo" })).toBeNull();
+    await user.click(add());
+    expect(lastElement().type).toBe("graphic");
   });
 });

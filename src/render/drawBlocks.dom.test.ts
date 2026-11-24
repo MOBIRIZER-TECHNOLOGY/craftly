@@ -829,6 +829,99 @@ describe("scatter, combined and stacked-area charts", () => {
     expect(spy.to("fillText").some((call) => call.args[0] === "30")).toBe(true);
   });
 
+  describe("scatter charts", () => {
+    // a 640 x 400 chart writes at 16 px; the plot starts 4 font sizes in, 1.5 down, and is 560 x 328 px
+    const LEFT = 64;
+    const WIDTH = 560;
+    const BOTTOM = 24 + 328;
+    const scatter = (init: Partial<ChartElement> = {}) => chart(createChart({ chart: "scatter", ...init }));
+    const points = (spy: ReturnType<typeof chart>) => spy.to("arc").map((call) => ({ x: numbers(call)[0], y: numbers(call)[1] }));
+
+    it("places each point along the axis by the number of its label, and up by its value", () => {
+      const spy = scatter({ labels: ["1", "3", "5"], series: [{ name: "A", values: [10, 20, 50] }] });
+      const at = points(spy);
+      expectNumbers(
+        at.map((p) => p.x),
+        [LEFT, LEFT + WIDTH / 2, LEFT + WIDTH],
+      );
+      // the axis ends at 50, so 10 is a fifth of the way up and 50 at the top
+      expectNumbers(
+        at.map((p) => p.y),
+        [BOTTOM - 328 / 5, BOTTOM - (328 * 2) / 5, 24],
+      );
+    });
+
+    it("spaces the points evenly, in order, when the labels are not numbers", () => {
+      const spy = scatter({ labels: ["North", "South", "East"], series: [{ name: "A", values: [1, 2, 3] }] });
+      expectNumbers(
+        points(spy).map((p) => p.x),
+        [LEFT, LEFT + WIDTH / 2, LEFT + WIDTH],
+      );
+      expect(
+        spy
+          .to("fillText")
+          .slice(-3)
+          .map((call) => call.args[0]),
+      ).toEqual(["North", "South", "East"]);
+    });
+
+    it("puts every point at the start of the axis when all of them share one place", () => {
+      const single = scatter({ labels: ["7"], series: [{ name: "A", values: [4] }] });
+      expect(points(single)[0].x).toBeCloseTo(LEFT);
+      const same = scatter({ labels: ["2", "2"], series: [{ name: "A", values: [4, 8] }] });
+      expect(points(same).map((p) => p.x)).toEqual([LEFT, LEFT]);
+    });
+
+    it("still draws its scale for a scatter chart without labels or values", () => {
+      const spy = scatter({ labels: [], series: [] });
+      expect(spy.to("arc")).toHaveLength(0);
+      expect(
+        spy
+          .to("fillText")
+          .slice(0, 5)
+          .map((call) => call.args[0]),
+      ).toEqual(["0", "0.25", "0.5", "0.75", "1"]);
+    });
+
+    it("draws the grid lines and the values only when they are wanted", () => {
+      const full = scatter({ labels: ["1", "2"], series: [{ name: "A", values: [10, 30] }] });
+      expect(full.to("stroke")).toHaveLength(5);
+      expect(full.to("fillText").map((call) => call.args[0])).toEqual(expect.arrayContaining(["10", "30"]));
+      const bare = scatter({ labels: ["1", "2"], series: [{ name: "A", values: [10, 30] }], showGrid: false, showValues: false });
+      expect(bare.to("stroke")).toHaveLength(0);
+      expect(bare.to("arc")).toHaveLength(2);
+      // only the five numbers of the scale and the two category labels are written
+      expect(bare.to("fillText").map((call) => call.args[0])).toEqual(["0", "12.5", "25", "37.5", "50", "1", "2"]);
+    });
+
+    it("names only every few categories when there are too many to name them all", () => {
+      // forty one-letter names, 14 px apart: too close to write every one
+      const labels = Array.from({ length: 40 }, (_, i) => String.fromCharCode(i < 26 ? 65 + i : 97 + i - 26));
+      const spy = scatter({ labels, series: [{ name: "A", values: labels.map(() => 5) }], showValues: false });
+      const written = spy.to("fillText").slice(5);
+      expect(written.length).toBeGreaterThan(1);
+      expect(written.length).toBeLessThan(40);
+      // the first name is written, then every step-th one, each under its own point
+      const step = labels.indexOf(written[1].args[0] as string);
+      expect(written.map((call) => call.args[0])).toEqual(labels.filter((_, i) => i % step === 0));
+      const arcs = points(spy);
+      written.forEach((call, k) => expect(call.args[1] as number).toBeCloseTo(arcs[k * step].x));
+    });
+  });
+
+  it("leaves the values off the bars of a combined chart when they are not wanted", () => {
+    const series = [
+      { name: "Bars", values: [10, 20] },
+      { name: "Line", values: [15, 25] },
+    ];
+    const withValues = chart(createChart({ chart: "combo", labels: ["a", "b"], series }));
+    expect(withValues.to("fillText").map((call) => call.args[0])).toEqual(expect.arrayContaining(["10", "20", "15", "25"]));
+    const without = chart(createChart({ chart: "combo", labels: ["a", "b"], series, showValues: false }));
+    expect(without.to("fillRect")).toHaveLength(2);
+    // the scale runs to 50, the next round number above 25, and only it and the category names are written
+    expect(without.to("fillText").map((call) => call.args[0])).toEqual(["0", "12.5", "25", "37.5", "50", "a", "b"]);
+  });
+
   it("draws the first series of a combined chart as bars and the rest as lines", () => {
     const spy = chart(
       createChart({

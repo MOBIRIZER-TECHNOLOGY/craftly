@@ -78,3 +78,106 @@ describe("merged cells and styles", () => {
     expect(tableLayout(t).find((cell) => cell.row === 1 && cell.col === 1)).toMatchObject({ width: 400, height: 160 });
   });
 });
+
+describe("tables in unusual shapes", () => {
+  it("falls back to the size of the table when its columns and rows add up to nothing, so no cell ends up at a broken position", () => {
+    const t = createTable({
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 120,
+      colWidths: [0, 0],
+      rowHeights: [0, 0],
+      cells: [
+        ["", ""],
+        ["", ""],
+      ],
+    });
+    const boxes = tableLayout(t);
+    expect(boxes).toHaveLength(4);
+    for (const box of boxes) expect([box.x, box.y, box.width, box.height].every(Number.isFinite)).toBe(true);
+    // every cell has no size, so a point inside the table finds no cell to land on
+    expect(tableCellAt(t, { x: 150, y: 60 })).toBeNull();
+  });
+
+  it("keeps the layout finite for a table with no width or height of its own and empty columns", () => {
+    const t = createTable({ width: 0, height: 0, colWidths: [0], rowHeights: [0], cells: [[""]] });
+    expect(tableLayout(t)).toEqual([{ row: 0, col: 0, rowSpan: 1, colSpan: 1, x: 0, y: 0, width: 0, height: 0 }]);
+  });
+
+  it("ignores a stored merge that starts outside the table", () => {
+    const t = createTable({
+      merges: [
+        { row: -1, col: 0, rowSpan: 2, colSpan: 2 },
+        { row: 0, col: -1, rowSpan: 2, colSpan: 2 },
+        { row: 3, col: 0, rowSpan: 2, colSpan: 2 },
+        { row: 0, col: 3, rowSpan: 2, colSpan: 2 },
+      ],
+    });
+    expect(tableLayout(t)).toHaveLength(9);
+    expect(tableLayout(t).every((cell) => cell.rowSpan === 1 && cell.colSpan === 1)).toBe(true);
+  });
+});
+
+describe("the colours of cells without a style of their own", () => {
+  it("stripes every other body row below the heading and leaves the rows between white", () => {
+    const t = createTable({ rowHeights: [80, 80, 80, 80], cells: [["a"], ["b"], ["c"], ["d"]], colWidths: [600] });
+    expect(tableCellStyle(t, { row: 1, col: 0 }).fill).toBe("#ffffff");
+    expect(tableCellStyle(t, { row: 2, col: 0 }).fill).toBe("#f3f0ff");
+    expect(tableCellStyle(t, { row: 3, col: 0 }).fill).toBe("#ffffff");
+  });
+
+  it("stripes the first row like any other when the table has no heading row", () => {
+    const t = createTable({ headerRow: false });
+    expect(tableCellStyle(t, { row: 0, col: 0 })).toEqual({ fill: "#f3f0ff", color: t.color, bold: false, align: "left" });
+  });
+
+  it("paints every body row white when the table has no stripe colour", () => {
+    const t = createTable({ stripeFill: null });
+    expect(tableCellStyle(t, { row: 2, col: 0 }).fill).toBe("#ffffff");
+  });
+});
+
+describe("merging and unmerging edge cases", () => {
+  it("does nothing when asked to merge from a cell outside the table", () => {
+    const t = createTable();
+    const before = structuredClone(t.cells);
+    mergeTableCells(t, { row: -1, col: 0 }, 2, 2);
+    mergeTableCells(t, { row: 0, col: -1 }, 2, 2);
+    mergeTableCells(t, { row: 3, col: 0 }, 2, 2);
+    mergeTableCells(t, { row: 0, col: 3 }, 2, 2);
+    expect(t.merges).toBeUndefined();
+    expect(t.cells).toEqual(before);
+  });
+
+  it("merging a single cell over an old merge only takes the old merge away and keeps the text", () => {
+    const t = createTable();
+    mergeTableCells(t, { row: 1, col: 0 }, 2, 2);
+    t.cells[1][0] = "kept";
+    mergeTableCells(t, { row: 1, col: 0 }, 1, 1);
+    expect(t.merges).toEqual([]);
+    expect(t.cells[1][0]).toBe("kept");
+    expect(tableLayout(t)).toHaveLength(9);
+  });
+
+  it("merges a single row across several columns", () => {
+    const t = createTable();
+    mergeTableCells(t, { row: 2, col: 0 }, 1, 3);
+    expect(t.merges).toEqual([{ row: 2, col: 0, rowSpan: 1, colSpan: 3 }]);
+    expect(tableLayout(t).find((cell) => cell.row === 2)).toMatchObject({ col: 0, width: 600, height: 80 });
+  });
+
+  it("unmerging a table without merges leaves it alone", () => {
+    const t = createTable();
+    unmergeTableCells(t, { row: 0, col: 0 });
+    expect(t.merges).toBeUndefined();
+  });
+
+  it("unmerging one of two merges keeps the other", () => {
+    const t = createTable();
+    mergeTableCells(t, { row: 0, col: 0 }, 1, 2);
+    mergeTableCells(t, { row: 2, col: 0 }, 1, 3);
+    unmergeTableCells(t, { row: 0, col: 0 });
+    expect(t.merges).toEqual([{ row: 2, col: 0, rowSpan: 1, colSpan: 3 }]);
+  });
+});

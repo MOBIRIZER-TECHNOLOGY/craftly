@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PageTransition } from "@/core/types";
 import { EMU_PER_PX, MAX_SLIDE_EMU, MIN_SLIDE_EMU, buildPptxParts, slideSize, xmlText, type PptxInput, type PptxSlide } from "./pptx";
 
 const jpeg = (byte: number): PptxSlide => ({ image: new Uint8Array([0xff, 0xd8, byte]), type: "image/jpeg" });
@@ -198,5 +199,26 @@ describe("buildPptxParts", () => {
     // a theme has three of every style, which is the fewest the format takes
     expect(get("ppt/theme/theme1.xml").match(/<a:effectStyle>/g)).toHaveLength(3);
     expect(get("ppt/theme/theme1.xml").match(/<a:ln /g)).toHaveLength(3);
+  });
+
+  it("writes the transition into a page as PowerPoint's own, with its speed and direction", () => {
+    const cases: Array<[PageTransition, string]> = [
+      [{ kind: "fade", duration: 0.6 }, '<p:transition spd="fast"><p:fade/></p:transition>'],
+      [{ kind: "fade-black", duration: 1 }, '<p:transition spd="med"><p:fade thruBlk="1"/></p:transition>'],
+      [{ kind: "slide", duration: 1.2, direction: "up" }, '<p:transition spd="med"><p:slide dir="u"/></p:transition>'],
+      [{ kind: "wipe", duration: 2, direction: "down" }, '<p:transition spd="slow"><p:wipe dir="d"/></p:transition>'],
+      [{ kind: "push", duration: 0.4, direction: "left" }, '<p:transition spd="fast"><p:push dir="l"/></p:transition>'],
+      [{ kind: "slide", duration: 0.4 }, '<p:transition spd="fast"><p:slide dir="l"/></p:transition>'],
+      [{ kind: "zoom", duration: 0.7 }, '<p:transition spd="med"><p:zoom/></p:transition>'],
+      // a transition PowerPoint has no equal for, such as a dissolve, becomes a fade
+      [{ kind: "dissolve", duration: 0.7 }, '<p:transition spd="med"><p:fade/></p:transition>'],
+    ];
+    const { get } = open({ slides: cases.map(([transition], i) => ({ ...jpeg(i), transition })) });
+    cases.forEach(([, expected], i) => {
+      const slide = get(`ppt/slides/slide${i + 1}.xml`);
+      // the format puts the transition after the shapes and before the colour mapping
+      expect(slide).toContain(`</p:cSld>${expected}<p:clrMapOvr>`);
+    });
+    expect(open().get("ppt/slides/slide1.xml")).not.toContain("<p:transition");
   });
 });

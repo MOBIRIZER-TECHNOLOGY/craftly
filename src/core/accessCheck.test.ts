@@ -129,6 +129,51 @@ describe("text that does not stand out", () => {
     expect(check(page([dim]))).toHaveLength(1);
   });
 
+  it("takes the worst colour whichever run comes first", () => {
+    const paleFirst = text({
+      paragraphs: [
+        {
+          runs: [
+            { text: "pale ", color: "#dddddd" },
+            { text: "Dark", color: "#111111" },
+          ],
+        },
+      ],
+    });
+    expect(check(page([paleFirst])).map((i) => i.color)).toEqual(["#dddddd"]);
+  });
+
+  it("skips a colour it cannot read, and judges nothing when no colour of the text can be read", () => {
+    const odd = text({
+      paragraphs: [
+        {
+          runs: [
+            { text: "Odd ", color: "not a colour" },
+            { text: "grey", color: "#999999" },
+          ],
+        },
+      ],
+    });
+    expect(check(page([odd])).map((i) => i.color)).toEqual(["#999999"]);
+    expect(check(page([text({ color: "not a colour" })]))).toEqual([]);
+  });
+
+  it("treats a text, a shape or a group without an opacity as fully opaque", () => {
+    const grey = text({ color: "#999999" });
+    delete (grey as { opacity?: number }).opacity;
+    expect(check(page([grey])).map((i) => i.color)).toEqual(["#999999"]);
+
+    const dark = box("#1f2937");
+    delete (dark as { opacity?: number }).opacity;
+    // a box without an opacity is opaque, so a text on it is judged against its colour
+    expect(check(page([dark, text({ color: "#ffffff" })]))).toEqual([]);
+    expect(check(page([dark, text({ color: "#374151" })])).map((i) => i.background)).toEqual(["#1f2937"]);
+
+    const group = createGroup([text({ color: "#999999", x: 0, y: 0 })], { x: 300, y: 300 });
+    delete (group as { opacity?: number }).opacity;
+    expect(check(page([group])).map((i) => i.color)).toEqual(["#999999"]);
+  });
+
   it("cuts a long text short in its label", () => {
     const [issue] = check(page([text({ color: "#eeeeee", text: `${"word ".repeat(40)}` })]));
     expect(issue.label).toHaveLength(60);

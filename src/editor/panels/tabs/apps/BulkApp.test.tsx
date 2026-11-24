@@ -1,10 +1,11 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addAssetFromFile } from "@/core/assets";
 import { MAX_CELL_CHARS, MAX_INPUT_CHARS } from "@/core/delimited";
 import { createDesign, createGroup, createImage, createPage, createTable, createText, paragraphsToText } from "@/core/factory";
 import { flatten } from "@/core/ops";
+import * as library from "@/core/library";
 import { getDesign, listDesigns } from "@/core/library";
 import { useEditor } from "@/core/store";
 import type { Design, Page, TableElement, TextElement } from "@/core/types";
@@ -206,6 +207,8 @@ describe("Bulk create app", () => {
     await user.click(screen.getByRole("radio", { name: "Designs" }));
     await waitFor(() => expect(createButton().textContent).toBe("Create 2 designs"));
     await user.click(createButton());
+    // the click starts the saving and does not wait for it: the message says when it is done
+    expect(await screen.findByText("Created 2 standalone designs.")).toBeTruthy();
 
     expect(pages()).toEqual(design.pages);
     const saved = await listDesigns();
@@ -216,7 +219,6 @@ describe("Bulk create app", () => {
     expect(textOf(adaDesign!.pages[0], "greeting")).toBe("Hello Ada");
     expect(textOf(adaDesign!.pages[0], "locked")).toBe("Ada, Engineer");
     expect(named(adaDesign!.pages[0], "locked").locked).toBe(true);
-    expect(await screen.findByText("Created 2 standalone designs.")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Open" }));
     expect(window.location.hash).toBe(`#/design/${ada?.id}`);
   });
@@ -229,6 +231,73 @@ describe("Bulk create app", () => {
     await user.click(createButton());
     expect(pages()).toHaveLength(2);
     expect(await screen.findByText("This design can only be looked at, so no pages were added.")).toBeTruthy();
+  });
+
+  it("makes no standalone design of a design that is only looked at, and says so", async () => {
+    const user = await openBulk(badgeDesign());
+    await importSheet(user);
+    await user.click(screen.getByRole("radio", { name: "Designs" }));
+    await waitFor(() => expect(createButton().textContent).toBe("Create 2 designs"));
+    act(() => useEditor.getState().actions.setMode("view"));
+    const before = (await listDesigns()).length;
+    await user.click(createButton());
+    expect(await screen.findByText("This design can only be looked at, so no pages were added.")).toBeTruthy();
+    expect(await listDesigns()).toHaveLength(before);
+  });
+
+  it("says that the designs could not be saved when the library refuses them, and can be tried again", async () => {
+    vi.spyOn(library, "saveDesign").mockRejectedValueOnce(new Error("The disk is full."));
+    const user = await openBulk(badgeDesign());
+    await importSheet(user);
+    await user.click(screen.getByRole("radio", { name: "Designs" }));
+    await waitFor(() => expect(createButton().disabled).toBe(false));
+    await user.click(createButton());
+    expect(await screen.findByText("The designs could not be saved. Check the available storage and try again.")).toBeTruthy();
+    expect(pages().map((p) => p.name)).toEqual(["Badge", "Back"]);
+    // the button is not left waiting for a save that failed
+    await waitFor(() => expect(createButton().disabled).toBe(false));
+  });
+
+  it("lets a picture take its upload from a column, which alone is enough to create pages", async () => {
+    const photo = createImage({ id: "photo", src: null, name: "Photo", naturalWidth: 1, naturalHeight: 1 });
+    const user = await openBulk(createDesign({ width: 1280, height: 720, pages: [createPage({ elements: [photo] })] }));
+    await importSheet(user, "Picture\tName\none\tAda");
+    const picker = await screen.findByRole("combobox", { name: "Spreadsheet column for Photo" });
+    expect(picker.textContent).toBe("No column");
+    expect(status()).toBe("No column is on this page yet.");
+    expect(createButton().disabled).toBe(true);
+
+    await user.click(picker);
+    await user.click(await screen.findByRole("option", { name: "Picture" }));
+    expect(useBulkData.getState().imageColumns).toEqual({ photo: "picture" });
+    expect(picker.textContent).toBe("Picture");
+    expect(status()).toBe("");
+    expect(createButton().textContent).toBe("Create 1 page");
+
+    // without the data the chosen column is kept, but there is nothing to create from
+    await user.click(screen.getByRole("button", { name: "Remove the data" }));
+    expect(useBulkData.getState().imageColumns).toEqual({ photo: "picture" });
+    expect(status()).toBe("Import your data to see its columns here.");
+    expect(createButton().textContent).toBe("Create pages");
+    expect(createButton().disabled).toBe(true);
+  });
+
+  it("names a picture without a name after its id in the list of image columns", async () => {
+    const photo = createImage({ id: "photo-7", src: null, name: "", naturalWidth: 1, naturalHeight: 1 });
+    const user = await openBulk(createDesign({ width: 1280, height: 720, pages: [createPage({ elements: [photo] })] }));
+    await importSheet(user, "Picture\none");
+    expect(await screen.findByRole("combobox", { name: "Spreadsheet column for photo-7" })).toBeTruthy();
+  });
+
+  it("finds no column on the page and adds no box while no design is open", async () => {
+    const user = await openBulk(badgeDesign());
+    await importSheet(user);
+    await waitFor(() => expect(createButton().textContent).toBe("Create 2 pages"));
+    act(() => useEditor.getState().actions.closeDesign());
+    expect(status()).toBe("No column is on this page yet.");
+    expect(createButton().disabled).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Add a text box with {{Name}}" }));
+    expect(useEditor.getState().design).toBeNull();
   });
 });
 
@@ -322,5 +391,132 @@ describe("bulk image columns", () => {
       made.map((design) => flatten(design.pages[0].elements).find((el) => el.type === "image")?.type === "image" && (flatten(design.pages[0].elements)[0] as typeof photo).src),
     ).toEqual([`asset:${asset.id}`, null]);
     expect((await listDesigns()).filter((item) => item.title.startsWith("Pictures — "))).toHaveLength(2);
+  });
+});
+
+describe("createBulkDesigns", () => {
+  const cardDesign = () => createDesign({ title: "Cards", width: 1280, height: 720, pages: [createPage({ name: "Card", elements: [createText({ text: "{{Role}}" })] })] });
+  const cardTitles = async () => (await listDesigns()).map((item) => item.title).filter((title) => title.startsWith("Cards — "));
+
+  it("makes nothing without data, without a design, or in a design that is only looked at", async () => {
+    expect(await createBulkDesigns()).toEqual([]);
+    readBulkData("Role\nEngineer");
+    expect(await createBulkDesigns()).toEqual([]);
+    act(() => useEditor.getState().actions.openDesign(cardDesign()));
+    act(() => useEditor.getState().actions.setMode("view"));
+    expect(await createBulkDesigns()).toEqual([]);
+    expect(await cardTitles()).toEqual([]);
+  });
+
+  it("names a design after the number of its row when the first column is empty, and keeps the guides, margin and grid", async () => {
+    readBulkData("Name\tRole\n\tEngineer");
+    const design = cardDesign();
+    design.guides = { vertical: [100], horizontal: [50, 60] };
+    design.margin = 24;
+    design.gridSize = 16;
+    act(() => useEditor.getState().actions.openDesign(design));
+    let made: Design[] = [];
+    await act(async () => {
+      made = await createBulkDesigns();
+    });
+    expect(made.map((d) => d.title)).toEqual(["Cards — Row 1"]);
+    expect(made[0].pages[0].name).toBe("Row 1");
+    expect(made[0].guides).toEqual({ vertical: [100], horizontal: [50, 60] });
+    // a copy: moving a guide in the new design leaves the open one alone
+    expect(made[0].guides).not.toBe(useEditor.getState().design?.guides);
+    expect(made[0]).toMatchObject({ margin: 24, gridSize: 16 });
+  });
+
+  it("leaves a design without guides without guides", async () => {
+    readBulkData("Role\nEngineer");
+    act(() => useEditor.getState().actions.openDesign(cardDesign()));
+    let made: Design[] = [];
+    await act(async () => {
+      made = await createBulkDesigns();
+    });
+    expect(made).toHaveLength(1);
+    expect(made[0].guides).toBeUndefined();
+  });
+
+  it("saves more than 50 designs in batches, one for every row", async () => {
+    readBulkData(`Role\n${Array.from({ length: 51 }, (_unused, i) => `Role ${i + 1}`).join("\n")}`);
+    act(() => useEditor.getState().actions.openDesign(cardDesign()));
+    let made: Design[] = [];
+    await act(async () => {
+      made = await createBulkDesigns();
+    });
+    expect(made).toHaveLength(51);
+    expect(made[50].title).toBe("Cards — Role 51");
+    expect((await cardTitles()).filter((title) => title.startsWith("Cards — Role "))).toHaveLength(51);
+  });
+});
+
+describe("rows and image columns that do not line up", () => {
+  /** A page with one picture filled from a column that is not in the sheet, and one that is filled from no column. */
+  function twoPictures(): Design {
+    const stale = createImage({ id: "stale", src: "asset:old", name: "Stale", naturalWidth: 400, naturalHeight: 200 });
+    const kept = createImage({ id: "kept", src: "asset:keep", name: "Kept", x: 500, naturalWidth: 400, naturalHeight: 200 });
+    return createDesign({ title: "Gallery", width: 1280, height: 720, pages: [createPage({ name: "Gallery", elements: [stale, kept] })] });
+  }
+  const pictures = (page: Page) => flatten(page.elements).filter((el) => el.type === "image");
+
+  beforeEach(() => {
+    readBulkData("Name\nAda");
+    // "photo" was a column of a sheet imported before this one
+    useBulkData.setState({ imageColumns: { stale: "photo" } });
+    act(() => useEditor.getState().actions.openDesign(twoPictures()));
+  });
+
+  it("makes an empty frame of a picture whose column is gone, and leaves a picture without a column as it is, on new pages", async () => {
+    await act(async () => {
+      expect(await createBulkPages()).toBe(1);
+    });
+    const [stale, kept] = pictures(pages()[1]);
+    expect(stale).toMatchObject({ src: null, naturalWidth: 1, naturalHeight: 1, crop: { x: 0, y: 0, w: 1, h: 1 } });
+    expect(kept).toMatchObject({ src: "asset:keep", naturalWidth: 400, naturalHeight: 200 });
+  });
+
+  it("does the same in standalone designs", async () => {
+    let made: Design[] = [];
+    await act(async () => {
+      made = await createBulkDesigns();
+    });
+    const [stale, kept] = pictures(made[0].pages[0]);
+    expect(stale).toMatchObject({ src: null, naturalWidth: 1, naturalHeight: 1 });
+    expect(kept).toMatchObject({ src: "asset:keep", naturalWidth: 400, naturalHeight: 200 });
+  });
+
+  it("copes with a row that is shorter than the names of the columns", async () => {
+    useBulkData.setState({
+      data: {
+        fields: [
+          { name: "Name", key: "name", col: 0 },
+          { name: "Photo", key: "photo", col: 1 },
+        ],
+        records: [[]],
+      },
+    });
+    await act(async () => {
+      expect(await createBulkPages()).toBe(1);
+    });
+    // nothing to name the page after: it keeps the name of the page it copies
+    expect(pages().map((p) => p.name)).toEqual(["Gallery", "Gallery"]);
+    expect(pictures(pages()[1])[0]).toMatchObject({ src: null });
+    let made: Design[] = [];
+    await act(async () => {
+      made = await createBulkDesigns();
+    });
+    expect(made.map((d) => d.title)).toEqual(["Gallery — Row 1"]);
+  });
+
+  it("adds no page when the design is closed while the uploads are being looked up", async () => {
+    let made = -1;
+    await act(async () => {
+      const pending = createBulkPages();
+      useEditor.getState().actions.closeDesign();
+      made = await pending;
+    });
+    expect(made).toBe(0);
+    expect(useEditor.getState().design).toBeNull();
   });
 });

@@ -97,6 +97,49 @@ describe("Font panel", () => {
     expect(screen.getAllByRole("button", { name: "Lora" }).some((b) => b.getAttribute("aria-current") === "true")).toBe(true);
   });
 
+  it("changes the font of a table on its own, asking for the regular upright face since there is no text to copy", async () => {
+    const user = userEvent.setup();
+    const table = createTable({ fontFamily: "Inter" });
+    openElements([table], { selected: [table] });
+    await openFont();
+    await user.click(within(section("Serif")).getByRole("button", { name: "Lora" }));
+    await waitFor(() => expect(live<TableElement>(table).fontFamily).toBe("Lora"));
+    expect(ensureFont).toHaveBeenCalledWith("Lora", 400, false);
+  });
+
+  it("asks for a row's face only once the row is actually in view, and then stops watching it", async () => {
+    // an observer that reports only when the test says so
+    const observers: Array<{ callback: IntersectionObserverCallback; targets: Element[]; disconnect: ReturnType<typeof vi.fn> }> = [];
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        readonly record = { callback: null as unknown as IntersectionObserverCallback, targets: [] as Element[], disconnect: vi.fn() };
+        constructor(callback: IntersectionObserverCallback) {
+          this.record.callback = callback;
+          observers.push(this.record);
+        }
+        observe(target: Element) {
+          this.record.targets.push(target);
+        }
+        disconnect() {
+          this.record.disconnect();
+        }
+      },
+    );
+    const t = text();
+    openElements([t], { selected: [t] });
+    await openFont();
+    const lora = observers.find((o) => o.targets.some((target) => target.getAttribute("aria-label") === "Lora"))!;
+    const report = (isIntersecting: boolean) =>
+      act(() => lora.callback([{ isIntersecting, target: lora.targets[0] } as IntersectionObserverEntry], lora as unknown as IntersectionObserver));
+    report(false);
+    expect(ensureFont).not.toHaveBeenCalledWith("Lora", 400);
+    expect(lora.disconnect).not.toHaveBeenCalled();
+    report(true);
+    expect(ensureFont).toHaveBeenCalledWith("Lora", 400);
+    expect(lora.disconnect).toHaveBeenCalled();
+  });
+
   it("lists the fonts the document already uses, most used first", async () => {
     const [a, b, c] = [text({ fontFamily: "Pacifico" }), text({ fontFamily: "Lora" }), text({ fontFamily: "Lora" })];
     openElements([a, b, c], { selected: [a] });
@@ -276,6 +319,23 @@ describe("Font panel: the weight of a family", () => {
     await waitFor(() => expect(applyInline).toHaveBeenCalledWith({ weight: 300 }));
     expect(live<TextElement>(t).fontWeight).toBe(400);
     expect(ensureFont).toHaveBeenCalledWith("Inter", 300, false);
+  });
+
+  it("takes the family and the slant of the text box when the selected characters do not carry their own", async () => {
+    const t = text({ fontFamily: "Inter", fontWeight: 400, italic: true });
+    const applyInline = vi.fn(() => true);
+    registerTextEditor({ applyInline, hasSelection: () => true, focus: vi.fn() });
+    // only the weight of the range is known: its family and slant are those of the box
+    useTextSelectionStyle.setState({ active: true, collapsed: false, style: { weight: 300 } });
+    openElements([t], { selected: [t] });
+    await openFont();
+    expect(weight().textContent).toContain("Light (300)");
+    const user = userEvent.setup();
+    await user.click(weight());
+    await user.click(screen.getByRole("option", { name: "Bold (700)" }));
+    await waitFor(() => expect(applyInline).toHaveBeenCalledWith({ weight: 700 }));
+    expect(ensureFont).toHaveBeenCalledWith("Inter", 700, true);
+    expect(live<TextElement>(t).fontWeight).toBe(400);
   });
 
   it("says Several weights when the boxes differ", async () => {
