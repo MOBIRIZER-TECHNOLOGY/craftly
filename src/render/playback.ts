@@ -6,7 +6,7 @@
 import { pageDuration } from "@/core/animation";
 import { frameAt, getTransitionPreset, transitionFrame, type Timeline, type TransitionLayer } from "@/core/transition";
 import type { AnimDirection, Design, Page } from "@/core/types";
-import { renderPage } from "./renderPage";
+import { renderPage, type RenderOptions } from "./renderPage";
 
 type Ctx = CanvasRenderingContext2D;
 type Source = HTMLCanvasElement | OffscreenCanvas;
@@ -63,7 +63,7 @@ export class PlaybackRenderer {
    */
   constructor(
     private readonly design: Pick<Design, "width" | "height" | "pages">,
-    private readonly videos?: { sound?: boolean },
+    private readonly videos?: RenderOptions["playVideos"],
   ) {}
 
   private pair(w: number, h: number): [HTMLCanvasElement, HTMLCanvasElement] {

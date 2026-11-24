@@ -1,13 +1,14 @@
 /*
  * The video element, as a person uses it in Chrome, each step read back from the design or from the pixels:
  *
- *   a clip           a real WebM recorded in the page: red for its first 1.2 seconds, blue after (2.4 s, the length unknown to
- *                    the file, as a browser's own recordings are)
+ *   a clip           a real WebM recorded in the page: red with a 440 Hz tone for its first 1.2 seconds, blue with 880 Hz after
+ *                    (2.4 s, the length unknown to the file, as a browser's own recordings are)
  *   upload           Uploads takes it: a card with a <video> and its length, a click puts a video element on the page
  *   at rest          the page shows its first frame (red); trimming the start past 1.2 s makes it blue
  *   toolbar          Speed, Sound and Trim change the element
  *   playing          Play on the toolbar plays it on the page (red, then blue); Present plays it (both colours seen)
- *   recording        a WebM download of the page holds the clip playing: red near its start, blue later
+ *   download         a video download of the page (an MP4 made frame by frame in Chrome) holds the clip playing, with its sound:
+ *                    red and 440 Hz near its start, blue and 880 Hz later
  *   reload           the clip is still there after a reload, its first frame drawn again
  */
 const fs = require("fs");
@@ -101,7 +102,7 @@ let shotN = 0;
   });
 
   let clipBytes = null;
-  await step("a clip: a WebM recorded in the page, red and then blue", async () => {
+  await step("a clip: a WebM recorded in the page, red with a low tone and then blue with a high one", async () => {
     const b64 = await page.evaluate(async () => {
       const c = document.createElement("canvas");
       c.width = 320;
@@ -109,7 +110,18 @@ let shotN = 0;
       const g = c.getContext("2d");
       g.fillStyle = "#e11d48";
       g.fillRect(0, 0, 320, 180);
-      const rec = new MediaRecorder(c.captureStream(30), { mimeType: "video/webm" });
+      // the sound: a sine at 440 Hz under the red part and 880 Hz under the blue one
+      const audio = new AudioContext();
+      await audio.resume();
+      const osc = audio.createOscillator();
+      osc.frequency.value = 440;
+      const gain = audio.createGain();
+      gain.gain.value = 0.5;
+      const out = audio.createMediaStreamDestination();
+      osc.connect(gain).connect(out);
+      osc.start();
+      const stream = new MediaStream([...c.captureStream(30).getVideoTracks(), ...out.stream.getAudioTracks()]);
+      const rec = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp8,opus" });
       const chunks = [];
       rec.ondataavailable = (e) => chunks.push(e.data);
       const start = performance.now();
@@ -119,6 +131,7 @@ let shotN = 0;
           const t = (performance.now() - start) / 1000;
           g.fillStyle = t < 1.2 ? "#e11d48" : "#2563eb";
           g.fillRect(0, 0, 320, 180);
+          osc.frequency.value = t < 1.2 ? 440 : 880;
           if (t < 2.4) requestAnimationFrame(tick);
           else done();
         };
@@ -128,6 +141,8 @@ let shotN = 0;
         rec.onstop = r;
         rec.stop();
       });
+      osc.stop();
+      await audio.close();
       const bytes = new Uint8Array(await new Blob(chunks, { type: "video/webm" }).arrayBuffer());
       let s = "";
       for (const b of bytes) s += String.fromCharCode(b);
@@ -252,7 +267,7 @@ let shotN = 0;
     return seen.join(", ");
   });
 
-  await step("a WebM download records the clip playing: red near its start, blue later", async () => {
+  await step("a video download holds the clip playing with its sound: red and 440 Hz near its start, blue and 880 Hz later", async () => {
     const dl = page.locator(".cf-dl");
     await page.getByRole("button", { name: "Share", exact: true }).first().click();
     await page.getByRole("button", { name: "Download", exact: true }).first().click();
@@ -267,34 +282,53 @@ let shotN = 0;
     const [file] = await Promise.all([page.waitForEvent("download", { timeout: 90000 }), dl.getByRole("button", { name: "Download", exact: true }).click()]);
     const buf = fs.readFileSync(await file.path());
     await page.keyboard.press("Escape");
-    const seen = await page.evaluate(async (b64) => {
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const video = document.createElement("video");
-      video.muted = true;
-      video.preload = "auto";
-      video.src = URL.createObjectURL(new Blob([bytes], { type: "video/webm" }));
-      await new Promise((ok, no) => {
-        video.onloadeddata = ok;
-        video.onerror = () => no(new Error("the download would not load"));
-      });
-      const c = document.createElement("canvas");
-      c.width = video.videoWidth;
-      c.height = video.videoHeight;
-      const g = c.getContext("2d", { willReadFrequently: true });
-      const at = async (t) => {
-        video.currentTime = t;
-        await new Promise((ok) => (video.onseeked = ok));
-        await new Promise((ok) => setTimeout(ok, 150));
-        g.drawImage(video, 0, 0);
-        const [r, , b] = g.getImageData(c.width / 2, c.height / 2, 1, 1).data;
-        return r > 150 && r - b > 60 ? "red" : b > 150 && b - r > 60 ? "blue" : `other(${r},${b})`;
-      };
-      return [await at(0.3), await at(1.9)];
-    }, buf.toString("base64"));
-    if (seen[0] !== "red" || seen[1] !== "blue") throw new Error("at 0.3 s and 1.9 s: " + seen.join(", "));
-    return `${file.suggestedFilename()}: ${seen.join(" then ")}`;
+    const name = file.suggestedFilename();
+    // Chrome has WebCodecs: the video is made frame by frame, an MP4 with H.264 and AAC
+    if (!name.endsWith(".mp4") || buf.subarray(4, 8).toString("latin1") !== "ftyp") throw new Error("not an MP4: " + name);
+    const seen = await page.evaluate(
+      async ([b64, type]) => {
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const video = document.createElement("video");
+        video.muted = true;
+        video.preload = "auto";
+        video.src = URL.createObjectURL(new Blob([bytes], { type }));
+        await new Promise((ok, no) => {
+          video.onloadeddata = ok;
+          video.onerror = () => no(new Error("the download would not load"));
+        });
+        // the pitch of the sound around `t`, from how often it crosses zero
+        const sound = await new AudioContext().decodeAudioData(bytes.buffer.slice(0));
+        const pcm = sound.getChannelData(0);
+        const pitch = (t) => {
+          let crossings = 0;
+          const from = Math.floor((t - 0.1) * sound.sampleRate);
+          const to = Math.floor((t + 0.1) * sound.sampleRate);
+          for (let i = from + 1; i < to; i++) if (pcm[i - 1] < 0 !== pcm[i] < 0) crossings++;
+          return Math.round(crossings / 2 / 0.2);
+        };
+        const c = document.createElement("canvas");
+        c.width = video.videoWidth;
+        c.height = video.videoHeight;
+        const g = c.getContext("2d", { willReadFrequently: true });
+        const at = async (t) => {
+          video.currentTime = t;
+          await new Promise((ok) => (video.onseeked = ok));
+          await new Promise((ok) => setTimeout(ok, 150));
+          g.drawImage(video, 0, 0);
+          const [r, , b] = g.getImageData(c.width / 2, c.height / 2, 1, 1).data;
+          return r > 150 && r - b > 60 ? "red" : b > 150 && b - r > 60 ? "blue" : `other(${r},${b})`;
+        };
+        return { colours: [await at(0.3), await at(1.9)], pitches: [pitch(0.3), pitch(1.9)] };
+      },
+      [buf.toString("base64"), "video/mp4"],
+    );
+    if (seen.colours[0] !== "red" || seen.colours[1] !== "blue") throw new Error("at 0.3 s and 1.9 s: " + seen.colours.join(", "));
+    // a tone recorded through MediaRecorder wanders a little: within 5 %
+    const near = (hz, want) => Math.abs(hz - want) < want * 0.05;
+    if (!near(seen.pitches[0], 440) || !near(seen.pitches[1], 880)) throw new Error("the sound at 0.3 s and 1.9 s: " + seen.pitches.join(" Hz, ") + " Hz");
+    return `${name}: ${seen.colours.join(" then ")}, ${seen.pitches.join(" Hz then ")} Hz`;
   });
 
   await step("after a reload the clip is still there, its first frame drawn", async () => {

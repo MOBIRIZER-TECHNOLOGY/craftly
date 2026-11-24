@@ -8,7 +8,7 @@
  */
 import { animationWindow, pageDuration, pageHasAnimation } from "@/core/animation";
 import { buildTimeline, type Timeline } from "@/core/transition";
-import type { Design, DesignElement, ElementAnimations, Page } from "@/core/types";
+import type { Design, DesignElement, ElementAnimations, Page, VideoElement } from "@/core/types";
 import { m } from "@/i18n";
 import type { PageWeight } from "../options";
 
@@ -479,7 +479,23 @@ const VIDEO_TRANSITION_SHARE = 0.9;
  * Predicts the size of the WebM from its bitrate target: each page and transition keeps the recorder at some share
  * of the target for as long as it lasts.
  */
-export function estimateWebmBytes(plan: AnimationPlan, weights: readonly PageWeight[], motions: readonly PageMotion[]): number {
+/** The clips of `elements` (groups looked into) that make a sound in a video: shown, stored here and not muted. */
+export function soundingClips(elements: readonly DesignElement[]): VideoElement[] {
+  const out: VideoElement[] = [];
+  const visit = (el: DesignElement) => {
+    if (el.hidden) return;
+    if (el.type === "video") {
+      if (!el.muted && /^asset:[\w-]+$/.test(el.src)) out.push(el);
+    } else if (el.type === "group") el.children.forEach(visit);
+  };
+  elements.forEach(visit);
+  return out;
+}
+
+/** Bits per second of a video's sound track (encode.ts writes it at this rate, for the whole video). */
+export const VIDEO_SOUND_BITRATE = 128_000;
+
+export function estimateWebmBytes(plan: AnimationPlan, weights: readonly PageWeight[], motions: readonly PageMotion[], withSound = false): number {
   if (!plan.frames) return 0;
   let seconds = 0; // seconds of recording at the full target rate
   plan.timeline.segments.forEach((seg, i) => {
@@ -496,5 +512,7 @@ export function estimateWebmBytes(plan: AnimationPlan, weights: readonly PageWei
     if (motion.activeSeconds > 0) share += VIDEO_MOTION_BURST + VIDEO_MOTION_PER_ACTIVE * Math.min(1, motion.activeSeconds / Math.max(0.001, length));
     seconds += length * Math.min(1, share) + seg.transition * VIDEO_TRANSITION_SHARE;
   });
-  return Math.round((videoBitrate(plan.width, plan.height) / 8) * seconds);
+  // a sound track runs the whole length of the video once any clip makes a sound
+  const sound = withSound ? (VIDEO_SOUND_BITRATE / 8) * plan.total : 0;
+  return Math.round((videoBitrate(plan.width, plan.height) / 8) * seconds + sound);
 }

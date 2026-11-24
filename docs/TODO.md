@@ -49,8 +49,8 @@ Nothing in this section needs a new package, a model file, an outside service or
 
 - [ ] **PPTX export, the rest** (M). Text boxes, common shapes, links and transitions are native editable objects. Irregular/custom shapes and lines still use the background picture; the files still need opening in PowerPoint, Keynote and Google Slides (section 3).
 - [ ] **Mockups** (M). A design drawn into a scene (a screen, a poster on a wall, a card) with a perspective transform. The scenes have to be drawn procedurally, as the "stock photos" are, because there is no licensed photography.
-- [ ] **Video, after the first step** (L). Sound in the recorded video (it needs the audio element's mixing), a timeline with several clips, splitting a clip, filters on a clip, clips in sync and in shared designs (the servers keep pictures only, up to 12 MB), and an offline MP4 export that does not record in real time: the largest item on this page (the report's video section estimates 12 to 14 weeks for an MVP). The first step is done (below).
-- [ ] **An audio element** (M). Upload, trim, volume, fades, and the sound mixed into the recorded video. Needs the same format change as video. A music library is in section 2.
+- [ ] **Video, after the first step** (L). A timeline with several clips, splitting a clip, volume and fades, a start time for a clip on its page, filters on a clip, clips in sync and in shared designs (the servers keep pictures only, up to 12 MB): the largest item on this page (the report's video section estimates 12 to 14 weeks for an MVP). The first step is done (below), and so is the video download with sound, made frame by frame (2026-11-24).
+- [ ] **An audio element** (M). Upload, trim, volume, fades, and the sound mixed into the video download (`src/export/animated/clipSound.ts` mixes the clips' sound already). Needs the same format change as video. A music library is in section 2.
 - [ ] **Camera, microphone and screen recording** (S to M, after the video element). The browser's own `getUserMedia`, `getDisplayMedia` and `MediaRecorder`. `public/_headers` sets `Permissions-Policy: camera=(), microphone=()`, which has to change, and that is a decision about what the site may ask for. Chrome's fake devices make it testable in a journey; a real camera needs a person.
 - [ ] **Captions by hand** (S to M, after the video element). Typed captions, `.srt` import, styles. Automatic captions are in section 2.
 - [ ] **Right-to-left and mixed-direction text** (L). The Unicode bidirectional algorithm and line breaking in `src/render/textLayout.ts`, the caret and selection in the text editor, and the text layer of the PDF. Fonts for other scripts are in section 2.
@@ -63,7 +63,7 @@ Nothing in this section needs a new package, a model file, an outside service or
 
 - [ ] Brand: more than one kit, brand templates (M). Approvals and locked controls need the account server (M).
 - [ ] PDF: pages as vector drawings with embedded fonts, tags, and alternative text (L).
-- [ ] MP4 export of the animations in every browser, not recorded as it plays: an MP4 writer of our own on the browser's `VideoEncoder` (M).
+- [x] MP4 export of the animations, made frame by frame and not recorded as it plays, with the clips' sound (2026-11-24): Mediabunny over the browser's `VideoEncoder` and `AudioEncoder`, H.264 and AAC first. A browser without WebCodecs still records a silent WebM. `src/export/animated/encode.ts`.
 - [ ] Working together: a commenter role, mentions, merging text that two people type at once (M; planned in [`COLLABORATION.md`](COLLABORATION.md)).
 - [ ] Accessibility of a design: the contrast of a text over a picture or a gradient, read from the painted pixels (M); a reading order that can be set, and tags in the PDF that carry it (L). The check of plain colours and of alternative text is done.
 

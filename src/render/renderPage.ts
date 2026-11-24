@@ -36,9 +36,11 @@ export interface RenderOptions {
    * Play the clips of video elements at `animation.time` (src/render/videos.ts), with their sound when `sound` is set: for what
    * plays in real time (Present, the animation preview, a video recorded as it plays). Without it a clip is its first frame, which
    * is what every still download and a GIF (painted faster or slower than real time) hold. `time` plays them that many seconds into the
-   * page without animating anything else (Present with reduced motion); without it they play at `animation.time`.
+   * page without animating anything else (Present with reduced motion); without it they play at `animation.time`. `frame` hands
+   * over the picture of a clip `time` seconds into the page instead of the clip's own <video> (a video download made frame by frame,
+   * which decodes the clips itself); null draws its first frame.
    */
-  playVideos?: { sound?: boolean; time?: number };
+  playVideos?: { sound?: boolean; time?: number; frame?: ClipFrameSource };
   /**
    * Design pixels to paint beyond every edge of the page (a print export with bleed). The canvas then starts `bleed`
    * above and left of the page, and `clip` is measured from that corner; the background is stretched over the larger
@@ -63,7 +65,11 @@ interface Env {
   /** clips play, this many seconds into the page (RenderOptions.playVideos) */
   videoTime?: number;
   videoSound?: boolean;
+  videoFrame?: ClipFrameSource;
 }
+
+/** The picture of clip `el` when its page has been shown for `time` seconds, or null for its first frame. */
+export type ClipFrameSource = (el: VideoElement, time: number) => CanvasImageSource | null;
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
@@ -381,7 +387,7 @@ function drawVideoElement(ctx: Ctx, el: VideoElement, env: Env): void {
   const w = el.width;
   const h = el.height;
   const clip = getPath2D(el.mask || "rect", w, h, { radius: el.radius, path: el.maskPath });
-  const playing = env.videoTime === undefined ? null : playingFrame(el, env.videoTime, env.videoSound);
+  const playing = env.videoTime === undefined ? null : env.videoFrame ? env.videoFrame(el, env.videoTime) : playingFrame(el, env.videoTime, env.videoSound);
   const frame: CanvasImageSource | null = playing ?? (getImage(videoPosterKey(el)) as CanvasImageSource | null);
   if (el.shadow) {
     shadowOnly(ctx, el, env, () => {
@@ -653,6 +659,7 @@ export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, p
   if (opts.playVideos && videoTime !== undefined) {
     env.videoTime = videoTime;
     env.videoSound = !!opts.playVideos.sound;
+    env.videoFrame = opts.playVideos.frame;
   }
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);

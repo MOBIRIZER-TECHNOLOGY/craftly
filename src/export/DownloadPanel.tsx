@@ -125,13 +125,14 @@ const FILE_OPTIONS: SelectOption<FileKey>[] = [
 ];
 
 /**
- * The list as this browser can use it: a video the browser cannot record stays visible but disabled, with the reason, and one
- * that it records as MP4 (Safari) is called so.
+ * The list as this browser can use it: a video the browser cannot make stays visible but disabled, with the reason; one made frame
+ * by frame is an MP4 with sound, and one recorded as MP4 (Safari without WebCodecs) is called so.
  */
 const optionsFor = (video: VideoSupport): SelectOption<FileKey>[] =>
   FILE_OPTIONS.map((o) => {
     if (o.value !== "webm") return o;
     if (!video.ok) return { ...o, disabled: true, label: <Option name={TYPES.video} hint={TYPES.videoUnsupported} /> };
+    if (video.offline) return { ...o, textValue: TYPES.videoMp4, label: <Option name={TYPES.videoMp4} hint={TYPES.videoSoundHint} /> };
     if (videoContainer(video.mimeType) === "mp4") return { ...o, textValue: TYPES.videoMp4, label: <Option name={TYPES.videoMp4} hint={TYPES.videoHint} /> };
     return o;
   });
@@ -281,7 +282,8 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
   );
   const video = getVideoSupport();
   const fileOptions = useMemo(() => optionsFor(video), [video]);
-  const tabHidden = useTabHidden(progress !== null && !bundle && settings.format === "webm");
+  // only a recording stops in a background tab; a video made frame by frame goes on
+  const tabHidden = useTabHidden(progress !== null && !bundle && settings.format === "webm" && !video.offline);
 
   if (!design) return <div className="cf-dl cf-dl--empty">{words.empty}</div>;
 
@@ -358,11 +360,11 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
       ? says.finishing
       : several
         ? says.picture(progress.done + 1, progress.total)
-        : format === "webm"
+        : format === "webm" && !video.offline
           ? tabHidden
             ? says.recordingHidden
             : says.recording(Math.floor(progress.done / VIDEO_FPS), Math.round(progress.total / VIDEO_FPS))
-          : format === "gif"
+          : format === "gif" || format === "webm"
             ? progress.done === 0
               ? says.preparing
               : says.frame(progress.done + 1, progress.total)
@@ -537,7 +539,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
             </Field>
           ) : (
             <Field label={words.frameRate} aside={<span className="cf-dl__count">{words.fps(VIDEO_FPS)}</span>}>
-              <p className="cf-dl__hint">{words.videoHint}</p>
+              <p className="cf-dl__hint">{video.offline ? words.videoHintFrames : words.videoHint}</p>
             </Field>
           )}
           {/* one note at a time, the most useful first: what stops the download, then why it looks static, then a size warning */}

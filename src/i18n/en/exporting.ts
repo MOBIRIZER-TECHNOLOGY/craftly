@@ -31,6 +31,8 @@ export const exporting = {
       /** the same choice in a browser that records MP4 and no WebM (Safari) */
       videoMp4: "Video (MP4)",
       videoHint: "Smooth, small files",
+      /** a video made frame by frame (WebCodecs), with the clips' sound */
+      videoSoundHint: "Smooth, with the clips' sound",
       videoUnsupported: "Not supported in this browser",
       sizes: "Several sizes",
       sizesHint: "One ZIP, a file per size",
@@ -94,6 +96,8 @@ export const exporting = {
     frameRate: "Frame rate",
     fps: (fps: number) => `${plain(fps)} fps`,
     videoHint: "Recorded as it plays, so it takes as long as the animation. Keep this tab open and in front while it records.",
+    /** a video made frame by frame (WebCodecs) */
+    videoHintFrames: "Made frame by frame, with the clips' sound. You can use other tabs while it works.",
     notAnimated: "Nothing is animated yet - use Animate on the toolbar",
     bigGif: "Many sites accept GIFs of about 15 MB at most. A lower resolution or frame rate makes this one smaller.",
     sizes: "Sizes",
@@ -187,6 +191,8 @@ export const exporting = {
     noRecorder: "Your browser cannot record video. Try Chrome, Edge or Firefox, or download an animated GIF instead.",
     noWebm: "This browser cannot record video as WebM or MP4. Try Chrome, Edge, Firefox or Safari, or download an animated GIF instead.",
     recordFailed: "The video could not be recorded. Please try again.",
+    encodeFailed: "The video could not be made. Please try again.",
+    noSound: "This browser cannot add sound to a video, so the video is silent. Chrome, Edge and Safari can.",
     cannotStart: "Your browser could not start recording video. Download an animated GIF instead.",
   },
 

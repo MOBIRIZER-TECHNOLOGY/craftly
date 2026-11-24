@@ -37,7 +37,8 @@ function engine() {
 
 /** Launches the browser; set HEADED=1 to watch it. */
 async function launch() {
-  return engine().launch({ ...(isChromium ? { executablePath: findChrome() } : {}), headless: !process.env.HEADED });
+  // a page may make sound before anybody clicks (video.cjs records a clip with a tone): Chrome would otherwise keep its audio suspended
+  return engine().launch({ ...(isChromium ? { executablePath: findChrome(), args: ["--autoplay-policy=no-user-gesture-required"] } : {}), headless: !process.env.HEADED });
 }
 
 /** Launches the browser with a profile folder that survives between runs (used when something big is worth keeping, like a downloaded model). */

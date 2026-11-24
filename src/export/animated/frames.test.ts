@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultAnimation } from "@/core/animation";
-import { createDesign, createImage, createPage, createShape, createText, solid } from "@/core/factory";
+import { createDesign, createGroup, createImage, createPage, createShape, createText, createVideo, solid } from "@/core/factory";
 import type { Design, DesignElement, ElementAnimations, Fill, Page } from "@/core/types";
 import { buildTimeline } from "@/core/transition";
 import type { ExportOptions } from "../exporters";
@@ -12,6 +12,7 @@ import {
   MAX_OUTPUT_SIDE,
   VIDEO_FPS,
   VIDEO_MAX_SECONDS,
+  VIDEO_SOUND_BITRATE,
   animationProblem,
   estimateGifBytes,
   estimateWebmBytes,
@@ -23,6 +24,7 @@ import {
   normalizeResolution,
   outputSize,
   pageMotion,
+  soundingClips,
   paletteSampleFrames,
   planAnimation,
   planFrames,
@@ -752,5 +754,29 @@ describe("estimates scale with the picture", () => {
   it("a video follows its bitrate target, which follows the pixel count up to 10 Mbit/s", () => {
     expect(at("webm", 1080)).toBeGreaterThan(at("webm", 720) * 1.8);
     expect(at("webm", 720)).toBeGreaterThan(at("webm", 480) * 1.5);
+  });
+});
+
+describe("the sound of a video", () => {
+  const clip = (over: Parameters<typeof createVideo>[0] = { src: "asset:clip" }) => createVideo({ duration: 4, naturalWidth: 640, naturalHeight: 360, ...over });
+
+  it("comes from the clips that are shown, stored here and not muted, groups looked into", () => {
+    const loud = clip();
+    const muted = clip({ src: "asset:quiet", muted: true });
+    const hidden = clip({ src: "asset:hidden", hidden: true });
+    const web = clip({ src: "https://example.com/clip.mp4" });
+    const inGroup = clip({ src: "asset:grouped" });
+    const shape = createShape("rect");
+    expect(soundingClips([loud, muted, hidden, web, shape, createGroup([inGroup, clip({ src: "asset:x", muted: true })])])).toEqual([loud, inGroup]);
+    // a hidden group hides its clips
+    expect(soundingClips([createGroup([clip()], { hidden: true })])).toEqual([]);
+  });
+
+  it("adds a sound track to the estimate of a video, for its whole length", () => {
+    const design = createDesign({ width: 1920, height: 1080, pages: [createPage({ duration: 4, elements: [clip()] })] });
+    const options = { format: "webm", pages: [0], scale: 1, quality: 0.9, transparent: false, pdfMode: "standard", embedFonts: false, resolution: 720 } as ExportOptions;
+    const withSound = estimateExportBytes(design, options);
+    const silent = estimateExportBytes({ ...design, pages: [{ ...design.pages[0], elements: [clip({ src: "asset:clip", muted: true })] }] }, options);
+    expect(withSound - silent).toBe((VIDEO_SOUND_BITRATE / 8) * 4);
   });
 });

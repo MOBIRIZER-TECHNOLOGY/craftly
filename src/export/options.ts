@@ -6,7 +6,7 @@
 import { parseColor } from "@/core/color";
 import type { Design, DesignElement, Page } from "@/core/types";
 import { m } from "@/i18n";
-import { estimateGifBytes, estimateWebmBytes, isAnimatedFormat, pageMotion, planAnimation, type AnimationPlan } from "./animated/frames";
+import { estimateGifBytes, estimateWebmBytes, isAnimatedFormat, pageMotion, planAnimation, soundingClips, type AnimationPlan } from "./animated/frames";
 import type { ExportFormat, ExportOptions } from "./exporters";
 
 /** Longest side, in pixels, of any exported raster (and of PDF page images). */
@@ -376,5 +376,7 @@ export function estimateExportBytes(design: Pick<Design, "width" | "height" | "p
 function estimateAnimatedBytes(design: Pick<Design, "width" | "height" | "pages">, plan: AnimationPlan): number {
   const weights = plan.pages.map((i) => weighPage(design, design.pages[i]));
   const motions = plan.pages.map((i) => pageMotion(design, design.pages[i]));
-  return plan.format === "webm" ? estimateWebmBytes(plan, weights, motions) : estimateGifBytes(plan, weights, motions);
+  if (plan.format !== "webm") return estimateGifBytes(plan, weights, motions);
+  const withSound = plan.pages.some((i) => soundingClips(design.pages[i].elements).length > 0);
+  return estimateWebmBytes(plan, weights, motions, withSound);
 }
