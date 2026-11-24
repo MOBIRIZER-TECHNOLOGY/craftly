@@ -321,6 +321,14 @@ describe("the service worker", () => {
       expect(worker.network.calls).toHaveLength(before);
     });
 
+    it("answers the icon and the manifest that a page asks for from the stored shell, so that nothing fails to load offline", async () => {
+      const worker = await running("b1");
+      worker.network.online = false;
+      expect(await text(await worker.request("/favicon.svg"))).toBe("<svg/>");
+      expect(await text(await worker.request("/icon-192.png"))).toBe("png192");
+      expect((await worker.request("/manifest.webmanifest"))?.ok).toBe(true);
+    });
+
     it("still finds the files of an older build in its cache, for a tab that is running them", async () => {
       const first = await running("b1");
       const second = await running("b2", { network: serveBuild(first.network, "b2"), caches: first.caches });

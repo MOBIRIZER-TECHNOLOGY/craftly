@@ -40,8 +40,11 @@ const isPrivateRequest = (req, url) =>
   url.pathname.startsWith("/api/") ||
   url.pathname === "/metrics" ||
   PRIVATE_HEADERS.some((name) => req.headers.has(name));
-// Only files of the application build belong in its caches. APIs and anything carrying a credential always go to the network.
-const isStaticAsset = (url) => url.pathname.startsWith(`${HOME}assets/`);
+// Only files of the application build belong in its caches: what the build put in assets/, and the app shell stored at install
+// (the icon and the manifest a page asks for are answered from it offline). APIs and anything carrying a credential always go to
+// the network.
+const SHELL_PATHS = new Set(SHELL.map((path) => new URL(path, self.location.href).pathname));
+const isStaticAsset = (url) => url.pathname.startsWith(`${HOME}assets/`) || SHELL_PATHS.has(url.pathname);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
