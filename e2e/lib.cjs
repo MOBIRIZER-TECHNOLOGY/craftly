@@ -75,4 +75,18 @@ async function joinIfAsked(page, ms = 10000) {
   return false;
 }
 
-module.exports = { launch, launchPersistent, outDir, joinIfAsked, BASE, ENGINE, isChromium };
+/**
+ * Whether the server of `page` serves the app's sources (the dev server does; a production build answers every path with its
+ * page). Asked with fetch, which says nothing in the console: an `import()` that fails logs "Failed to load module script" as a
+ * console error even when the journey catches it, and the journeys fail on console errors.
+ */
+function servesSource(page) {
+  return page
+    .evaluate(async () => {
+      const res = await fetch("/src/i18n/en/index.ts", { cache: "no-store" });
+      return res.ok && /javascript/.test(res.headers.get("content-type") || "");
+    })
+    .catch(() => false);
+}
+
+module.exports = { launch, launchPersistent, outDir, joinIfAsked, servesSource, BASE, ENGINE, isChromium };

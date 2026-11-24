@@ -61,8 +61,12 @@ describe("uploaded fonts on the Brand page", () => {
     mountBrand();
     await waitFor(() => card("Brand fonts"));
     await user.click(screen.getByRole("button", { name: "Add font" }));
-    const options = within(screen.getByRole("listbox", { name: "Fonts" })).getAllByRole("option");
-    expect(options[0].textContent).toContain("Acme Sans");
+    // the page reads the uploaded fonts from the library after it first shows, so the list may open before they are in
+    const options = await waitFor(() => {
+      const found = within(screen.getByRole("listbox", { name: "Fonts" })).getAllByRole("option");
+      expect(found[0].textContent).toContain("Acme Sans");
+      return found;
+    });
     expect(options[0].textContent).toContain("Uploaded font");
     await user.click(options[0]);
     await waitFor(async () => expect((await getBrandKit()).fonts).toContain("Acme Sans"));
@@ -82,7 +86,10 @@ describe("uploaded fonts on the Brand page", () => {
     await waitFor(() => card("Brand fonts"));
     await user.click(screen.getByRole("button", { name: "Add font" }));
     await user.type(screen.getByRole("searchbox", { name: "Search fonts" }), "acme uploaded");
-    const options = within(screen.getByRole("listbox", { name: "Fonts" })).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual([expect.stringContaining("Acme Sans")]);
+    // (the uploaded fonts arrive from the library a moment after the page shows: wait for them rather than read the list once)
+    await waitFor(() => {
+      const options = within(screen.getByRole("listbox", { name: "Fonts" })).getAllByRole("option");
+      expect(options.map((o) => o.textContent)).toEqual([expect.stringContaining("Acme Sans")]);
+    });
   });
 });

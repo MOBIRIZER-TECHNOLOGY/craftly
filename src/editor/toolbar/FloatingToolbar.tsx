@@ -37,6 +37,7 @@ import { DataBar, GroupBar, LockedBar, MultiBar, PageBar } from "./bars/MiscBars
 import { LineBar, ShapeBar } from "./bars/ShapeBar";
 import { TextBar } from "./bars/TextBar";
 import { sameIds } from "./selection";
+import { isBarLetter } from "../barLetters";
 import "./FloatingToolbar.css";
 
 function allOfType<T extends ElementType>(els: DesignElement[], type: T): els is ElementOf<T>[] {
@@ -88,10 +89,11 @@ function resolveBar(page: Page, targets: DesignElement[], selection: string[], c
  * The canvas hotkeys listen on `window` and only skip text fields: arrows would nudge the selection while a slider
  * thumb or menu has focus, Enter / Space would be swallowed instead of pressing the focused button, and letters
  * would add elements. Keys pressed inside the toolbars, popovers, menus and dialogs therefore stop at `document`
- * (Escape and anything with Ctrl / Cmd / Alt - undo, copy, lock ... - still pass).
+ * (Escape and anything with Ctrl / Cmd / Alt - undo, copy, lock ... - still pass, and so does a letter on a button of a
+ * toolbar, where a closed popover hands the keyboard back: src/editor/barLetters.ts).
  */
 function isolateOverlayKeys(e: KeyboardEvent): void {
-  if (e.key === "Escape" || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "Escape" || e.ctrlKey || e.metaKey || e.altKey || isBarLetter(e)) return;
   if (e.target instanceof Element && e.target.closest("[data-cf-ui], [data-cf-layer]")) e.stopPropagation();
 }
 

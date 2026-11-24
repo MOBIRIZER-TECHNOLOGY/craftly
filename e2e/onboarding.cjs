@@ -9,7 +9,7 @@
  * Every context starts from empty storage, as the other journeys do; the words are read from the app's own catalogs (dev server)
  * or, for a production build, from the English text below.
  */
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, servesSource, BASE } = require("./lib.cjs");
 
 const OUT = outDir("onboarding");
 const results = [];
@@ -63,8 +63,8 @@ const EN = {
   };
 
   /** the words of the welcome and of the note in `lang`, from the catalog the dev server serves; English as written above otherwise */
-  const words = (lang) =>
-    process.env.OFFLINE
+  const words = async (lang) =>
+    !(await servesSource(page))
       ? lang === "en"
         ? EN
         : null
@@ -78,7 +78,7 @@ const EN = {
           .catch(() => (lang === "en" ? EN : null));
 
   /** whether this build has an account server built in (read from the module on the dev server; a production build has none in the journeys) */
-  const accountServer = () => (process.env.OFFLINE ? "" : page.evaluate(async () => (await import("/src/cloud/state.ts")).CONFIGURED_SERVER).catch(() => ""));
+  const accountServer = async () => ((await servesSource(page)) ? page.evaluate(async () => (await import("/src/cloud/state.ts")).CONFIGURED_SERVER).catch(() => "") : "");
 
   const home = async () => {
     await page.goto(BASE + "/#/", { waitUntil: "load" });

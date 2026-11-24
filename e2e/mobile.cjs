@@ -8,7 +8,7 @@
  * a control that is off the screen fails instead of being brought in for us.
  */
 const fs = require("node:fs");
-const { launch, outDir, BASE, ENGINE } = require("./lib.cjs");
+const { launch, outDir, servesSource, BASE, ENGINE } = require("./lib.cjs");
 
 const OUT = outDir("mobile");
 const results = [];
@@ -18,10 +18,8 @@ let shotN = 0;
 const PHONE = { width: 375, height: 812 };
 const TABLET = { width: 768, height: 1024 };
 const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्ते" };
-const CATALOGS = {
-  en: { file: "File", addTextBox: "Add a text box", shareDownload: "Download", download: "Download" },
-  hi: { file: "फ़ाइल", addTextBox: "टेक्स्ट बॉक्स जोड़ें", shareDownload: "डाउनलोड करें", download: "डाउनलोड करें" },
-};
+/** the English words the journey taps, for a production build, which does not serve the catalogs in src/ */
+const EN = { file: "File", addTextBox: "Add a text box", shareDownload: "Download", download: "Download" };
 
 (async () => {
   const browser = await launch();
@@ -57,20 +55,20 @@ const CATALOGS = {
     return ctx;
   };
 
-  /** the catalog of `lang`, as the dev server serves it; the small fallback keeps the production journey off the source tree */
-  const catalog = (lang) =>
-    process.env.OFFLINE
-      ? CATALOGS[lang]
-      : page.evaluate(async (l) => {
-          const mod = await import(`/src/i18n/${l}/index.ts`);
-          const c = mod[l];
-          return {
-            file: c.editorChrome.fileMenu.file,
-            addTextBox: c.panelsTabs.text.addTextBox,
-            shareDownload: c.editorChrome.share.download,
-            download: c.exporting.panel.download,
-          };
-        }, lang);
+  /** the catalog of `lang`, as the dev server serves it; on a production build English as written above, and nothing for Hindi */
+  const catalog = async (lang) => {
+    if (!(await servesSource(page))) return lang === "en" ? EN : null;
+    return page.evaluate(async (l) => {
+      const mod = await import(`/src/i18n/${l}/index.ts`);
+      const c = mod[l];
+      return {
+        file: c.editorChrome.fileMenu.file,
+        addTextBox: c.panelsTabs.text.addTextBox,
+        shareDownload: c.editorChrome.share.download,
+        download: c.exporting.panel.download,
+      };
+    }, lang);
+  };
 
   /** throws when the page scrolls sideways */
   const noSidewaysScroll = async (where) => {
@@ -127,10 +125,13 @@ const CATALOGS = {
     throw new Error(`the ${id} tab could not be brought into view`);
   };
   /** the top bar: every control on the screen, in the bar, at least 24 x 24 px */
-  const topBarFits = async () => {
+  /** every control of the editor's top bar on the screen and big enough to tap; with `words`, no word cut short to an ellipsis */
+  const topBarFits = async (words = false) => {
     const r = await page.evaluate(() => {
       const bar = document.querySelector(".cf-topbar");
-      const out = { overflow: bar.scrollWidth - bar.clientWidth, bad: [], n: 0 };
+      const out = { overflow: bar.scrollWidth - bar.clientWidth, bad: [], n: 0, cut: [] };
+      for (const label of bar.querySelectorAll(".cf-btn__label"))
+        if (label.clientWidth > 0 && label.scrollWidth > label.clientWidth + 1) out.cut.push(`${label.textContent.trim()} ${label.clientWidth}/${label.scrollWidth} px`);
       for (const b of bar.querySelectorAll("button, a[href], input")) {
         const s = getComputedStyle(b);
         const box = b.getBoundingClientRect();
@@ -145,6 +146,7 @@ const CATALOGS = {
     });
     if (r.overflow > 1) throw new Error(`the top bar's controls are ${r.overflow} px wider than the bar`);
     if (r.bad.length) throw new Error(r.bad.join("; "));
+    if (words && r.cut.length) throw new Error("cut short: " + r.cut.join(", "));
     return r.n;
   };
 
@@ -155,6 +157,12 @@ const CATALOGS = {
       await page.locator(".cf-dash").waitFor({ timeout: 40000 });
       return catalog(lang);
     })();
+    if (!words) {
+      // the dev server runs this pass in Hindi too (CI's first run); the words are never typed from memory
+      results.push(`SKIP [${lang}] phone 375 x 812  (the catalog is read from src/, which only the dev server serves)`);
+      await ctx.close();
+      continue;
+    }
 
     /* ---------------- the dashboard ---------------- */
     await step(`[${lang}] dashboard: Home, Templates, Projects, Brand and Trash do not scroll sideways on a phone`, async () => {
@@ -519,9 +527,27 @@ const CATALOGS = {
       if (hidden.length) throw new Error("out of view or cut off: " + hidden.join(", "));
       const chevrons = await page.evaluate(() => Array.from(document.querySelectorAll(".cf-leftrail__more")).filter((e) => getComputedStyle(e).opacity !== "0").length);
       if (chevrons) throw new Error(chevrons + " chevrons shown");
-      const n = await topBarFits();
+      const n = await topBarFits(true);
       await shot(lang + "-tablet");
       return `8 tabs, ${n} top-bar controls`;
+    });
+    // between a phone and a laptop the words of File, Resize, Present and Share fold into icons when the font draws them too
+    // wide (fitTopBar.ts): no width may cut one short to "फ़ा…" (it did from 600 to 680 px in Hindi)
+    await step(`[${lang}] the editor's top bar from 520 to 899 px wide: every control on the screen and no word cut short`, async () => {
+      const folds = [];
+      for (const width of [520, 560, 599, 600, 620, 640, 660, 680, 700, 740, 800, 860, 899]) {
+        await page.setViewportSize({ width, height: TABLET.height });
+        await wait(200);
+        try {
+          await topBarFits(true);
+        } catch (e) {
+          await shot(`${lang}-topbar-${width}`);
+          throw new Error(`at ${width} px: ${e.message}`, { cause: e });
+        }
+        folds.push(`${width}:${await page.evaluate(() => document.querySelector(".cf-topbar").dataset.fold || "0")}`);
+      }
+      await page.setViewportSize(TABLET);
+      return "width:fold " + folds.join(" ");
     });
     await ctx.close();
   }

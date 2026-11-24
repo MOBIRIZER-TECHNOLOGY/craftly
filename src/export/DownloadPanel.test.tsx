@@ -213,6 +213,7 @@ describe("<DownloadPanel> choices", () => {
     radio("Bleed", "3 mm").focus();
     await user.keyboard("{ArrowRight}");
     expect(radio("Bleed", "0.125 in").getAttribute("aria-checked")).toBe("true");
+    // the group moves the focus in the next animation frame, which a busy machine can run after the next key: wait for it
     await waitFor(() => expect(document.activeElement).toBe(radio("Bleed", "0.125 in")));
     expect(stored().bleed).toBe("eighth");
     expect(screen.getByText(/extended 3\.175 mm beyond every edge/)).toBeTruthy();

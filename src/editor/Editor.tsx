@@ -17,6 +17,7 @@ import { EmptyCanvasHint } from "./canvas/EmptyCanvasHint";
 import { Workspace } from "./canvas/Workspace";
 import { DialogHost } from "./dialogs/DialogHost";
 import { installHotkeys } from "./hotkeys";
+import { isBarLetter } from "./barLetters";
 import { restoreKeptView } from "./keptView";
 import { connectLive } from "./live/connection";
 import { applyTeamRole, connectTeamLive, stopTeamLive, useTeamLive } from "./live/teamLive";
@@ -43,7 +44,6 @@ function EditorState({ children }: { children: ReactNode }) {
 
 /** How long the editor waits for the design's lock before it loads the design all the same. */
 const LOCK_WAIT_MS = 2000;
-
 /** The whole editor for one design: loads it from the library, installs the global services and lays out the chrome. */
 export function Editor({ designId }: { designId: string }) {
   const [status, setStatus] = useState<Status>("loading");
@@ -63,7 +63,7 @@ export function Editor({ designId }: { designId: string }) {
    * The canvas hotkeys listen on window and only skip text fields, so Tab / Enter / Space / arrows / letters pressed on a
    * button, tab or list of the editor chrome would select, nudge or add elements instead of acting on that control
    * (and Enter / Space would never press it). Plain keys pressed outside the canvas stop at the document.
-   * Escape, "?" and anything with Ctrl / Cmd / Alt (undo, find, save ...) still pass.
+   * Escape, "?" and anything with Ctrl / Cmd / Alt (undo, find, save ...) still pass, and so do letters on a button of the bars.
    */
   useEffect(() => {
     const isolate = (e: KeyboardEvent) => {
@@ -95,6 +95,8 @@ export function Editor({ designId }: { designId: string }) {
       // mean nothing to the item itself. Text fields keep them (the shortcuts skip anything being typed into), and so does
       // a control that uses them and says so with preventDefault (a brand colour). Context panels are left out.
       if ((e.key === "Delete" || e.key === "Backspace") && target.closest("#cf-sidepanel .cf-sidepanel__body[role='tabpanel']")) return;
+      // a letter on a button of the bars still reaches the shortcuts: a closed dialog hands the keyboard back there (barLetters.ts)
+      if (isBarLetter(e)) return;
       if (target.closest(".cf-editor, [data-cf-layer]")) e.stopPropagation();
     };
     document.addEventListener("keydown", isolate);

@@ -4,7 +4,7 @@ import { resizeDesign as applyResize } from "@/core/ops";
 import { useEditor } from "@/core/store";
 import type { SizeUnit } from "@/core/types";
 import { DESIGN_CATEGORY_LABELS, DESIGN_TYPES, describeSize, fromPx, toPx, type DesignCategory, type DesignType } from "@/data/designTypes";
-import { checkSizeDraft } from "@/data/sizeDraft";
+import { checkSizeDraft, sizeDraftPx } from "@/data/sizeDraft";
 import { m } from "@/i18n";
 import { renderPageToCanvas } from "@/render/renderPage";
 import { designPath, navigate } from "@/router";
@@ -65,6 +65,21 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
   const widthCheck = widthDraft === null ? "ok" : checkSizeDraft(widthDraft, unit, MIN_PX, MAX_PX);
   const heightCheck = heightDraft === null ? "ok" : checkSizeDraft(heightDraft, unit, MIN_PX, MAX_PX);
   const typing = widthCheck !== "ok" || heightCheck !== "ok";
+  // "New" shows a side as soon as what is typed is a size (the fields only commit on Enter or blur), with the ratio lock
+  // carrying it over to the other side as the commit will
+  const typedWidth = widthDraft !== null ? sizeDraftPx(widthDraft, unit, MIN_PX, MAX_PX) : null;
+  const typedHeight = heightDraft !== null ? sizeDraftPx(heightDraft, unit, MIN_PX, MAX_PX) : null;
+  let shownW = size.w;
+  let shownH = size.h;
+  if (typedWidth !== null) {
+    shownW = typedWidth;
+    if (lock) shownH = clampPx(typedWidth / ratio);
+  } else if (typedHeight !== null) {
+    shownH = typedHeight;
+    if (lock) shownW = clampPx(typedHeight * ratio);
+  }
+  const sw = Math.round(shownW);
+  const sh = Math.round(shownH);
   const outOfRange =
     widthCheck === "invalid" && heightCheck === "invalid"
       ? m.editorChrome.resize.bothRange(MIN_PX, MAX_PX)
@@ -228,12 +243,12 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
             </div>
             <div>
               <dt>{m.editorChrome.resize.next}</dt>
-              <dd>{describeSize(nw, nh, unit)}</dd>
+              <dd>{describeSize(sw, sh, unit)}</dd>
             </div>
             {unit !== "px" ? (
               <div>
                 <dt>{m.editorChrome.resize.inPixels}</dt>
-                <dd>{m.editorChrome.resize.pixelSize(nw, nh)}</dd>
+                <dd>{m.editorChrome.resize.pixelSize(sw, sh)}</dd>
               </div>
             ) : null}
           </dl>

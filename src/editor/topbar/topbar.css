@@ -38,7 +38,11 @@
 
 .cf-topbar__group {
   display: flex;
-  flex: none;
+  /* the groups keep their width while the title has room to give. Once it has folded away, the bar folds words into icons
+     (data-fold below, measured by fitTopBar.ts, since no breakpoint knows how wide the font draws Hindi); only if the words
+     are still too long after the last fold do the groups give way, and a word ends in an ellipsis instead of pushing the bar
+     wider than the screen. The icon buttons never shrink. */
+  flex: 0 1 auto;
   align-items: center;
   gap: 2px;
   min-width: 0;
@@ -319,6 +323,17 @@
   .cf-topbar__mode .cf-topbar__lbl {
     display: none;
   }
+  /* Present is its play icon from here down (its name stays on the button): on a tablet the words of File, Resize and Share,
+     longer in Hindi, need the room */
+  .cf-topbar__split-main .cf-topbar__lbl--share {
+    display: none;
+  }
+  .cf-topbar__split-main .cf-btn__icon {
+    display: inline-flex;
+  }
+  .cf-topbar__split-main.cf-btn {
+    padding: 0 10px;
+  }
   .cf-topbar__mode.cf-btn {
     padding: 0 6px 0 8px;
   }
@@ -331,12 +346,8 @@
   .cf-topbar__lbl--share {
     display: none;
   }
-  .cf-topbar__split-main .cf-btn__icon,
   .cf-topbar__share .cf-btn__icon {
     display: inline-flex;
-  }
-  .cf-topbar__split-main.cf-btn {
-    padding: 0 10px;
   }
   .cf-btn.cf-topbar__share {
     width: 40px;
@@ -422,4 +433,45 @@
   .cf-topbar__mode {
     display: none;
   }
+}
+
+/* ---- Folds: set by fitTopBar.ts when the words do not fit, whatever the width of the screen ---- */
+
+/* fold 1: Editing, Present and Share become their icons and the separators go, as on a phone below 600 px */
+.cf-topbar[data-fold] .cf-topbar__mode .cf-topbar__lbl,
+.cf-topbar[data-fold] .cf-topbar__lbl--share,
+.cf-topbar[data-fold] .cf-topbar__sep--hide-sm {
+  display: none;
+}
+.cf-topbar[data-fold] .cf-topbar__split-main .cf-btn__icon,
+.cf-topbar[data-fold] .cf-topbar__share .cf-btn__icon {
+  display: inline-flex;
+}
+/* the sizes of the icon buttons as from 600 px; below, the phone's own (tighter) sizes above already apply */
+@media (min-width: 600px) {
+  .cf-topbar[data-fold] .cf-topbar__split-main.cf-btn {
+    padding: 0 10px;
+  }
+  .cf-topbar[data-fold] .cf-btn.cf-topbar__share {
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+  }
+}
+
+/* fold 2: Resize becomes its icon too, as on a phone below 520 px; File keeps its word, it has no icon */
+.cf-topbar:is([data-fold="2"], [data-fold="3"]) .cf-topbar__lbl--keep {
+  display: none;
+}
+.cf-topbar:is([data-fold="2"], [data-fold="3"]) .cf-topbar__resize .cf-btn__icon {
+  display: inline-flex;
+}
+
+/* fold 3: the title folds away (the File menu renames in a dialog) and Redo goes, as on a phone below 520 px */
+.cf-topbar[data-fold="3"] .cf-topbar__title-wrap,
+.cf-topbar[data-fold="3"] .cf-topbar__redo {
+  display: none;
+}
+.cf-topbar[data-fold="3"] .cf-topbar__group--end {
+  margin-left: auto;
 }

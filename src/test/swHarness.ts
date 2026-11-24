@@ -110,7 +110,7 @@ export interface Worker {
   /** fire "message"; `port` plays the MessageChannel port a page sends along */
   message(data: unknown, port?: { postMessage: (value: unknown) => void }): void;
   /** fire "fetch": the response the worker chose, or undefined when it let the browser handle the request */
-  request(url: string, init?: { method?: string; mode?: string; headers?: Record<string, string> }): Promise<Response | undefined>;
+  request(url: string, init?: { method?: string; mode?: string; headers?: Record<string, string>; cache?: RequestCache }): Promise<Response | undefined>;
   /** the listeners it registered */
   listening(): string[];
 }
@@ -150,7 +150,7 @@ export function loadWorker(options: WorkerOptions = {}): Worker {
       for (const listener of listeners.get("message") ?? []) listener({ data, ports: port ? [port] : [] });
     },
     async request(url, init = {}) {
-      const request = new Request(new URL(url, `${ORIGIN}/`).href, { method: init.method ?? "GET", headers: init.headers });
+      const request = new Request(new URL(url, `${ORIGIN}/`).href, { method: init.method ?? "GET", headers: init.headers, cache: init.cache });
       // a Request made here has the mode "cors": navigations need it said
       const shaped = init.mode ? Object.defineProperty(request, "mode", { value: init.mode }) : request;
       let answer: Promise<Response> | undefined;

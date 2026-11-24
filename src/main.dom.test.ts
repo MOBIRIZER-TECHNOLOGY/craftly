@@ -1,6 +1,25 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
+import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearProblems, listProblems } from "@/core/problems";
+
+/**
+ * The React roots main.tsx makes. Testing Library's cleanup only unmounts what `render` mounted, so without this every app
+ * booted here would stay alive: it would follow the next test's address and set the tab's title over it, and its work
+ * would still be running when jsdom is torn down ("window is not defined" from React's scheduler).
+ */
+const roots = vi.hoisted(() => [] as Root[]);
+vi.mock("react-dom/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-dom/client")>();
+  return {
+    ...actual,
+    createRoot: (...args: Parameters<typeof actual.createRoot>) => {
+      const root = actual.createRoot(...args);
+      roots.push(root);
+      return root;
+    },
+  };
+});
 
 type EditorHook = { getState: () => unknown };
 const exposedStore = () => (window as unknown as { __editor?: EditorHook }).__editor;
@@ -35,7 +54,11 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // unmount the apps of this test and let React finish, while the window is still there
+  await act(async () => {
+    for (const root of roots.splice(0)) root.unmount();
+  });
   for (const listener of loadListeners) window.removeEventListener("load", listener);
   for (const [type, listener] of problemListeners) window.removeEventListener(type, listener);
   vi.unstubAllEnvs();

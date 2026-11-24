@@ -30,3 +30,10 @@ export function checkSizeDraft(text: string, unit: SizeUnit, minPx: number, maxP
   if (decimals === null) return "pending";
   return toPx(value + 10 ** -decimals, unit) > minPx ? "pending" : "invalid";
 }
+
+/** The size in px that a side being typed already is (its check is `ok`), or null while it is not one: what a preview can show. */
+export function sizeDraftPx(text: string, unit: SizeUnit, minPx: number, maxPx: number): number | null {
+  if (checkSizeDraft(text, unit, minPx, maxPx) !== "ok") return null;
+  // the check found a number at the start ("1200", "12.", ".5", "1,5"), which is what parseFloat reads
+  return toPx(Number.parseFloat(text.trim().replace(",", ".")), unit);
+}
