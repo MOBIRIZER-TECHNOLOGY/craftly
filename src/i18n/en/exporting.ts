@@ -36,6 +36,8 @@ export const exporting = {
       sizesHint: "One ZIP, a file per size",
       html: "Web page (HTML)",
       htmlHint: "A slideshow in any browser",
+      pptx: "PowerPoint (PPTX)",
+      pptxHint: "Slides for PowerPoint, Keynote or Google Slides",
     },
     pagesToDownload: "Pages to download",
     page: (n: number) => `Page ${plain(n)}`,
@@ -109,6 +111,10 @@ export const exporting = {
     htmlHint:
       "One .html file that shows the pages as a slideshow in any browser, for people who do not have Craftly: next and back with the buttons, the arrow keys, a click or a swipe, and a full screen button. Nothing is loaded from the internet.",
     htmlPictures: "Every page is a picture. Animations, transitions and links are not carried over; pages change with a short fade.",
+    pptxHint: "One .pptx file with a slide for every page, for PowerPoint, Keynote, Google Slides and other programs that open such files.",
+    pptxPictures:
+      "Complex content stays in a background picture so it keeps its appearance. Plain text and common solid-colour shapes become editable PowerPoint objects. Animations are not carried over; page transitions and links are.",
+    pptxNotesShown: "The notes are written as the speaker notes of each slide. Everyone who gets the file can read them.",
     includeNotes: "Include speaker notes",
     notesShown: "The notes are shown under each page. Everyone who gets the file can read them.",
     notesPrivate: "Notes are private and stay out of the file.",

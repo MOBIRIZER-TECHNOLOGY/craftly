@@ -163,6 +163,25 @@ describe("tables", () => {
     expect(spy.to("strokeRect")).toHaveLength(0);
   });
 
+  it("paints merged cells with their own style and no hidden cells", () => {
+    const spy = table(
+      plain({
+        cells: [
+          ["Wide", "hidden", "C"],
+          ["A", "B", "D"],
+          ["E", "F", "G"],
+        ],
+        merges: [{ row: 0, col: 0, rowSpan: 2, colSpan: 2 }],
+        cellStyles: { "0:0": { fill: "#112233", color: "#fefefe", bold: true, align: "center" } },
+      }),
+    );
+    expect(spy.to("fillRect")).toHaveLength(6);
+    expect(numbers(spy.to("fillRect")[0])).toEqual([0, 0, 400, 160]);
+    expect(spy.to("fillText")[0].state.fillStyle).toBe("#fefefe");
+    expect(spy.to("fillText")[0].state.textAlign).toBe("center");
+    expect(spy.to("fillText").map((call) => call.args[0])).not.toContain("hidden");
+  });
+
   it("falls back to the element's own size for a grid without columns", () => {
     const spy = table(plain({ cells: [], colWidths: [], rowHeights: [], borderWidth: 2 }));
     expect(spy.to("fillRect")).toHaveLength(0);
@@ -616,5 +635,330 @@ describe("charts", () => {
     // axis labels are 0.9 of the chart text size
     expect(chart(base({ width: 200, height: 100 })).to("fillText")[0].state.font).toMatch(/^400 9\.9\d*px/);
     expect(chart(base({ width: 1000, height: 1000 })).to("fillText")[0].state.font).toMatch(/^400 36px/);
+  });
+});
+
+describe("stacked charts and axis titles", () => {
+  const FS = 16;
+  const PX = 48;
+  const PY = 12.8;
+  const PW = 584;
+  const PH = 352;
+  /** the room of a title: 1.6 font sizes */
+  const ROOM = FS * 1.6;
+  const SERIES = [
+    { name: "A", values: [10, 20, 30, 40], color: "#ff0000" },
+    { name: "B", values: [15, 25, 35, 45] },
+  ];
+  const base = (init: Partial<ChartElement> = {}) => createChart({ width: 640, height: 400, series: SERIES, ...init });
+
+  it("puts the series of a column chart on top of each other, one column for each category", () => {
+    const spy = chart(base({ stacked: true }));
+    const bars = spy.to("roundRect");
+    expect(bars).toHaveLength(8);
+    const groupW = PW / 4;
+    const [x0, y0, w0, h0, radii0] = bars[0].args as [number, number, number, number, number[]];
+    const [x1, y1, w1, h1, radii1] = bars[1].args as [number, number, number, number, number[]];
+    // the tallest stack is 85, so the axis ends at 100
+    expect(
+      spy
+        .to("fillText")
+        .slice(0, 5)
+        .map((c) => c.args[0]),
+    ).toEqual(["0", "25", "50", "75", "100"]);
+    expect(x0).toBeCloseTo(PX + groupW * 0.14);
+    expect(w0).toBeCloseTo(groupW * 0.72);
+    expect(h0).toBeCloseTo((PH * 10) / 100);
+    expect(y0).toBeCloseTo(PY + PH - h0);
+    expect(radii0).toEqual([0, 0, 0, 0]);
+    expect(bars[0].state.fillStyle).toBe("#ff0000");
+    // the second series of the same category stands on the first, in the same column, and its top is rounded
+    expect(x1).toBeCloseTo(x0);
+    expect(w1).toBeCloseTo(w0);
+    expect(h1).toBeCloseTo((PH * 15) / 100);
+    expect(y1).toBeCloseTo(y0 - h1);
+    expect(radii1).toEqual([6.4, 6.4, 0, 0]);
+    expect(bars[1].state.fillStyle).toBe("#14b8a6");
+    // the next category begins a new column
+    expect(bars[2].args[0]).toBeCloseTo(PX + groupW * 1.14);
+  });
+
+  it("writes the sum above each stack, and nothing when values are not wanted", () => {
+    const spy = chart(base({ stacked: true }));
+    const sums = spy.to("fillText").filter((c) => ["25", "45", "65", "85"].includes(String(c.args[0])) && c.state.font.startsWith("600"));
+    expect(sums.map((c) => c.args[0])).toEqual(["25", "45", "65", "85"]);
+    expect(sums[0].state.textAlign).toBe("center");
+    expect(sums[0].args[1]).toBeCloseTo(PX + (PW / 4) * 0.5);
+    expect(sums[0].args[2]).toBeCloseTo(PY + PH - (PH * 25) / 100 - FS * 0.7);
+    // the values of the pieces are not written
+    expect(spy.to("fillText").some((c) => c.args[0] === "10" || c.args[0] === "15")).toBe(false);
+    expect(
+      chart(base({ stacked: true, showValues: false }))
+        .to("fillText")
+        .filter((c) => c.state.font.startsWith("600")),
+    ).toHaveLength(0);
+  });
+
+  it("lays the pieces of a stacked bar chart end to end, and writes the sum past the end", () => {
+    const spy = chart(base({ chart: "bar", stacked: true }));
+    const bars = spy.to("roundRect");
+    expect(bars).toHaveLength(8);
+    const [x0, y0, w0, h0, radii0] = bars[0].args as [number, number, number, number, number[]];
+    const [x1, y1, w1, , radii1] = bars[1].args as [number, number, number, number, number[]];
+    expect(x0).toBe(PX);
+    expect(w0).toBeCloseTo((PW * 10) / 100);
+    expect(h0).toBeCloseTo((PH / 4) * 0.72);
+    expect(y0).toBeCloseTo(PY + (PH / 4) * 0.14);
+    expect(radii0).toEqual([0, 0, 0, 0]);
+    expect(x1).toBeCloseTo(PX + w0);
+    expect(y1).toBeCloseTo(y0);
+    expect(w1).toBeCloseTo((PW * 15) / 100);
+    expect(radii1).toEqual([0, 6.4, 6.4, 0]);
+    const sum = spy.to("fillText").find((c) => c.args[0] === "25" && c.state.font.startsWith("600"))!;
+    expect(sum.state.textAlign).toBe("left");
+    expect(sum.args[1]).toBeCloseTo(PX + (PW * 25) / 100 + FS * 0.4);
+  });
+
+  it("leaves out a piece of no size, rounds the piece that ends the stack, and writes no sum of nothing", () => {
+    const spy = chart(
+      base({
+        stacked: true,
+        labels: ["a", "b", "c"],
+        series: [
+          { name: "A", values: [10, 5, 0] },
+          { name: "B", values: [0, -3, 0] },
+        ],
+      }),
+    );
+    const bars = spy.to("roundRect");
+    expect(bars).toHaveLength(2);
+    expect(bars.map((b) => (b.args[4] as number[])[0] > 0)).toEqual([true, true]);
+    expect(
+      spy
+        .to("fillText")
+        .filter((c) => c.state.font.startsWith("600"))
+        .map((c) => c.args[0]),
+    ).toEqual(["10", "5"]);
+  });
+
+  it("rounds a thin last piece no more than it is long", () => {
+    const spy = chart(base({ stacked: true, series: [{ name: "A", values: [99] }, { name: "B", values: [1] }], labels: ["a"] })); // prettier-ignore
+    const top = spy.to("roundRect")[1].args as [number, number, number, number, number[]];
+    expect(top[3]).toBeCloseTo(PH / 100);
+    expect(top[4][0]).toBeCloseTo(PH / 100);
+  });
+
+  it("squares the pieces on a canvas that has no roundRect", () => {
+    expect(chart(base({ stacked: true }), { omit: ["roundRect"] }).to("rect")).toHaveLength(8);
+    const lying = chart(base({ chart: "bar", stacked: true }), { omit: ["roundRect"] }).to("rect");
+    expect(lying).toHaveLength(8);
+    expect(lying[1].args[0]).toBeCloseTo(PX + (PW * 10) / 100);
+  });
+
+  it("stacks nothing for one series or for a line chart", () => {
+    const one = chart(base({ stacked: true, series: [SERIES[0]] })).to("roundRect");
+    expect(one).toHaveLength(4);
+    expect(one[0].args[4]).toEqual([6.4, 6.4, 0, 0]);
+    const line = chart(base({ chart: "line", stacked: true }));
+    expect(line.to("roundRect")).toHaveLength(0);
+    // a line chart keeps the scale of its values: 45 is under 50
+    expect(line.to("fillText")[4].args[0]).toBe("50");
+  });
+
+  it("writes the title of the categories under the plot and the title of the values up its left side, and makes room for both", () => {
+    const spy = chart(base({ series: [SERIES[0]], valueAxisTitle: "Units sold", categoryAxisTitle: "Quarter" }));
+    const pw = PW - ROOM;
+    const ph = PH - ROOM;
+    const bar = spy.to("roundRect")[0].args as [number, number, number, number];
+    expect(bar[0]).toBeCloseTo(PX + ROOM + (pw / 4) * 0.14);
+    expect(bar[3]).toBeCloseTo((ph * 10) / 50);
+    const under = spy.to("fillText").find((c) => c.args[0] === "Quarter")!;
+    expect(under.state.textAlign).toBe("center");
+    expect(under.state.font).toMatch(/^600 14\.4px/);
+    expect(under.args[1]).toBeCloseTo(PX + ROOM + pw / 2);
+    expect(under.args[2]).toBeCloseTo(PY + ph + FS * 2.2 + ROOM * 0.45);
+    // the other title is written at the origin of a canvas that was moved to its place and turned a quarter to the left
+    const beside = spy.to("fillText").find((c) => c.args[0] === "Units sold")!;
+    expectNumbers(beside.args.slice(1), [0, 0]);
+    expectNumbers(spy.to("translate")[0].args, [ROOM * 0.5, PY + ph / 2]);
+    expectNumbers(spy.to("rotate")[0].args, [-Math.PI / 2]);
+    // the numbers of the axis still end where they did, beside the plot
+    expect(spy.to("fillText")[0].args[1]).toBeCloseTo(PX + ROOM - FS * 0.5);
+  });
+
+  it("swaps the two titles for a bar chart, whose values run along the bottom", () => {
+    const spy = chart(base({ chart: "bar", series: [SERIES[0]], valueAxisTitle: "Units sold", categoryAxisTitle: "Quarter" }));
+    expectNumbers(
+      spy
+        .to("fillText")
+        .find((c) => c.args[0] === "Quarter")!
+        .args.slice(1),
+      [0, 0],
+    );
+    expect(spy.to("fillText").find((c) => c.args[0] === "Units sold")!.state.textAlign).toBe("center");
+  });
+
+  it("makes room for one title only when there is only one, and for none without", () => {
+    const under = chart(base({ series: [SERIES[0]], categoryAxisTitle: "Quarter" }));
+    expect(under.to("rotate")).toHaveLength(0);
+    expect((under.to("roundRect")[0].args as number[])[0]).toBeCloseTo(PX + (PW / 4) * 0.14);
+    expect((under.to("roundRect")[0].args as number[])[3]).toBeCloseTo(((PH - ROOM) * 10) / 50);
+    const beside = chart(base({ series: [SERIES[0]], valueAxisTitle: "Units" }));
+    expect(beside.to("rotate")).toHaveLength(1);
+    expect((beside.to("roundRect")[0].args as number[])[3]).toBeCloseTo((PH * 10) / 50);
+    const none = chart(base({ series: [SERIES[0]], valueAxisTitle: "  ", categoryAxisTitle: "" }));
+    expect(none.to("rotate")).toHaveLength(0);
+    expect((none.to("roundRect")[0].args as number[])[0]).toBeCloseTo(PX + (PW / 4) * 0.14);
+  });
+
+  it("cuts a title that is longer than its axis, and writes none on a pie", () => {
+    const long = "A title that goes on and on for much longer than the plot of this chart is wide or high, whichever way it is written";
+    const spy = chart(base({ series: [SERIES[0]], valueAxisTitle: long, categoryAxisTitle: long }));
+    const cut = spy.to("fillText").filter((c) => String(c.args[0]).startsWith("A title") && String(c.args[0]).endsWith("…"));
+    expect(cut).toHaveLength(2);
+    expect(measureWidth(cut[0].state.font, String(cut[0].args[0]))).toBeLessThanOrEqual(PW - ROOM);
+    const pie = chart(base({ chart: "pie", valueAxisTitle: "Units", categoryAxisTitle: "Quarter" }));
+    expect(pie.to("fillText").some((c) => c.args[0] === "Units" || c.args[0] === "Quarter")).toBe(false);
+  });
+});
+
+describe("scatter, combined and stacked-area charts", () => {
+  it("draws scatter points for every value", () => {
+    const spy = chart(createChart({ chart: "scatter", labels: ["1", "2", "4"], series: [{ name: "A", values: [10, 30, 20] }] }));
+    expect(spy.to("arc").length).toBe(3);
+    expect(spy.to("fillText").some((call) => call.args[0] === "30")).toBe(true);
+  });
+
+  describe("scatter charts", () => {
+    // a 640 x 400 chart writes at 16 px; the plot starts 4 font sizes in, 1.5 down, and is 560 x 328 px
+    const LEFT = 64;
+    const WIDTH = 560;
+    const BOTTOM = 24 + 328;
+    const scatter = (init: Partial<ChartElement> = {}) => chart(createChart({ chart: "scatter", ...init }));
+    const points = (spy: ReturnType<typeof chart>) => spy.to("arc").map((call) => ({ x: numbers(call)[0], y: numbers(call)[1] }));
+
+    it("places each point along the axis by the number of its label, and up by its value", () => {
+      const spy = scatter({ labels: ["1", "3", "5"], series: [{ name: "A", values: [10, 20, 50] }] });
+      const at = points(spy);
+      expectNumbers(
+        at.map((p) => p.x),
+        [LEFT, LEFT + WIDTH / 2, LEFT + WIDTH],
+      );
+      // the axis ends at 50, so 10 is a fifth of the way up and 50 at the top
+      expectNumbers(
+        at.map((p) => p.y),
+        [BOTTOM - 328 / 5, BOTTOM - (328 * 2) / 5, 24],
+      );
+    });
+
+    it("spaces the points evenly, in order, when the labels are not numbers", () => {
+      const spy = scatter({ labels: ["North", "South", "East"], series: [{ name: "A", values: [1, 2, 3] }] });
+      expectNumbers(
+        points(spy).map((p) => p.x),
+        [LEFT, LEFT + WIDTH / 2, LEFT + WIDTH],
+      );
+      expect(
+        spy
+          .to("fillText")
+          .slice(-3)
+          .map((call) => call.args[0]),
+      ).toEqual(["North", "South", "East"]);
+    });
+
+    it("puts every point at the start of the axis when all of them share one place", () => {
+      const single = scatter({ labels: ["7"], series: [{ name: "A", values: [4] }] });
+      expect(points(single)[0].x).toBeCloseTo(LEFT);
+      const same = scatter({ labels: ["2", "2"], series: [{ name: "A", values: [4, 8] }] });
+      expect(points(same).map((p) => p.x)).toEqual([LEFT, LEFT]);
+    });
+
+    it("still draws its scale for a scatter chart without labels or values", () => {
+      const spy = scatter({ labels: [], series: [] });
+      expect(spy.to("arc")).toHaveLength(0);
+      expect(
+        spy
+          .to("fillText")
+          .slice(0, 5)
+          .map((call) => call.args[0]),
+      ).toEqual(["0", "0.25", "0.5", "0.75", "1"]);
+    });
+
+    it("draws the grid lines and the values only when they are wanted", () => {
+      const full = scatter({ labels: ["1", "2"], series: [{ name: "A", values: [10, 30] }] });
+      expect(full.to("stroke")).toHaveLength(5);
+      expect(full.to("fillText").map((call) => call.args[0])).toEqual(expect.arrayContaining(["10", "30"]));
+      const bare = scatter({ labels: ["1", "2"], series: [{ name: "A", values: [10, 30] }], showGrid: false, showValues: false });
+      expect(bare.to("stroke")).toHaveLength(0);
+      expect(bare.to("arc")).toHaveLength(2);
+      // only the five numbers of the scale and the two category labels are written
+      expect(bare.to("fillText").map((call) => call.args[0])).toEqual(["0", "12.5", "25", "37.5", "50", "1", "2"]);
+    });
+
+    it("names only every few categories when there are too many to name them all", () => {
+      // forty one-letter names, 14 px apart: too close to write every one
+      const labels = Array.from({ length: 40 }, (_, i) => String.fromCharCode(i < 26 ? 65 + i : 97 + i - 26));
+      const spy = scatter({ labels, series: [{ name: "A", values: labels.map(() => 5) }], showValues: false });
+      const written = spy.to("fillText").slice(5);
+      expect(written.length).toBeGreaterThan(1);
+      expect(written.length).toBeLessThan(40);
+      // the first name is written, then every step-th one, each under its own point
+      const step = labels.indexOf(written[1].args[0] as string);
+      expect(written.map((call) => call.args[0])).toEqual(labels.filter((_, i) => i % step === 0));
+      const arcs = points(spy);
+      written.forEach((call, k) => expect(call.args[1] as number).toBeCloseTo(arcs[k * step].x));
+    });
+  });
+
+  it("leaves the values off the bars of a combined chart when they are not wanted", () => {
+    const series = [
+      { name: "Bars", values: [10, 20] },
+      { name: "Line", values: [15, 25] },
+    ];
+    const withValues = chart(createChart({ chart: "combo", labels: ["a", "b"], series }));
+    expect(withValues.to("fillText").map((call) => call.args[0])).toEqual(expect.arrayContaining(["10", "20", "15", "25"]));
+    const without = chart(createChart({ chart: "combo", labels: ["a", "b"], series, showValues: false }));
+    expect(without.to("fillRect")).toHaveLength(2);
+    // the scale runs to 50, the next round number above 25, and only it and the category names are written
+    expect(without.to("fillText").map((call) => call.args[0])).toEqual(["0", "12.5", "25", "37.5", "50", "a", "b"]);
+  });
+
+  it("draws the first series of a combined chart as bars and the rest as lines", () => {
+    const spy = chart(
+      createChart({
+        chart: "combo",
+        series: [
+          { name: "Bars", values: [10, 20, 30, 40] },
+          { name: "Line", values: [15, 25, 35, 45] },
+        ],
+      }),
+    );
+    expect(spy.to("fillRect").length).toBe(4);
+    expect(spy.to("arc").length).toBe(4);
+  });
+
+  it("stacks areas cumulatively and normalizes 100% charts", () => {
+    const stacked = chart(
+      createChart({
+        chart: "area",
+        stacked: true,
+        series: [
+          { name: "A", values: [10, 20, 30, 40] },
+          { name: "B", values: [15, 25, 35, 45] },
+        ],
+      }),
+    );
+    expect(stacked.to("fill").length).toBeGreaterThanOrEqual(2);
+    const percent = chart(
+      createChart({
+        chart: "area",
+        stacked: true,
+        percent: true,
+        series: [
+          { name: "A", values: [10, 20] },
+          { name: "B", values: [30, 20] },
+        ],
+      }),
+    );
+    expect(percent.to("fillText").some((call) => call.args[0] === "25")).toBe(true);
   });
 });

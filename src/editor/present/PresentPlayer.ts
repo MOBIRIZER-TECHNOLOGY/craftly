@@ -19,6 +19,7 @@ import { onFontsChange } from "@/render/fonts";
 import { onImagesChange } from "@/render/images";
 import { drawTransition, PlaybackRenderer } from "@/render/playback";
 import { preparePage, renderPage, renderPageToCanvas } from "@/render/renderPage";
+import { pauseVideos } from "@/render/videos";
 import { autoplayAt, isAnimating, pageProgress, planAutoplay, planTransition, stripExits, type AutoplayPlan, type PlannedTransition } from "./playbackPlan";
 
 const MAX_CANVAS_PX = 3840;
@@ -168,7 +169,7 @@ export class PresentPlayer {
     const designChanged = view.design !== this.design || view.docVersion !== this.docVersion;
     const reducedChanged = view.reducedMotion !== this.reduced;
     const before = this.size;
-    if (view.design !== this.design) this.renderer = view.design ? new PlaybackRenderer(view.design) : null;
+    if (view.design !== this.design) this.renderer = view.design ? new PlaybackRenderer(view.design, { sound: true }) : null;
     this.design = view.design;
     this.docVersion = view.docVersion;
     this.reduced = view.reducedMotion;
@@ -225,6 +226,7 @@ export class PresentPlayer {
     this.token++;
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
+    pauseVideos(); // the show is over: its clips (and their sound) stop at once
     this.quiet();
     this.cancelWarm();
     this.unsubscribe.splice(0).forEach((off) => off());

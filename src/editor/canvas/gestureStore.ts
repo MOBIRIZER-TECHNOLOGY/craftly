@@ -31,6 +31,8 @@ interface GestureStore {
   hud: { x: number; y: number; text: string } | null;
   /** freehand stroke preview in design px */
   drawPath: Point[] | null;
+  /** connector being dragged from a shape's anchor */
+  connector: { start: Point; end: Point } | null;
   /** the path being placed with the Pen tool; unlike the rest it outlives a single pointer gesture */
   pen: PenDraft | null;
   /** the keyboard's point of the Pen tool; null until an arrow key asks for it */
@@ -44,6 +46,7 @@ export const useGesture = create<GestureStore>()((set) => ({
   marquee: null,
   hud: null,
   drawPath: null,
+  connector: null,
   pen: null,
   penCursor: null,
   active: false,

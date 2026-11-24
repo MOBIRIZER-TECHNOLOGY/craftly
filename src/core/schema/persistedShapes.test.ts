@@ -46,12 +46,24 @@ const LINE_ATTACHMENTS = [
   "$.pages[].elements[].children[].start.anchor: string",
   "$.pages[].elements[].children[].start.elementId: string",
   "$.pages[].elements[].children[].start: object",
+  "$.pages[].elements[].children[].label: string",
+  "$.pages[].elements[].children[].routing: string",
+  "$.pages[].elements[].children[].route: array",
+  "$.pages[].elements[].children[].route[].x: number",
+  "$.pages[].elements[].children[].route[].y: number",
+  "$.pages[].elements[].children[].route[]: object",
   "$.pages[].elements[].end.anchor: string",
   "$.pages[].elements[].end.elementId: string",
   "$.pages[].elements[].end: object",
   "$.pages[].elements[].start.anchor: string",
   "$.pages[].elements[].start.elementId: string",
   "$.pages[].elements[].start: object",
+  "$.pages[].elements[].label: string",
+  "$.pages[].elements[].routing: string",
+  "$.pages[].elements[].route: array",
+  "$.pages[].elements[].route[]: object",
+  "$.pages[].elements[].route[].x: number",
+  "$.pages[].elements[].route[].y: number",
 ];
 /** An element's `blend` (2026-11-10, src/core/blend.ts): how it mixes with what is under it. Optional for good: an element with none is Normal. */
 const BLEND = ["$.pages[].elements[].blend: string", "$.pages[].elements[].children[].blend: string"];
@@ -108,8 +120,63 @@ const REVISION = ["$.revision: string"];
  * server that it belongs to. Optional for good: a record without one is on this device only, which every record before accounts is.
  */
 const SPACE = ["$.space: string"];
+/**
+ * A chart's `stacked`, `valueAxisTitle` and `categoryAxisTitle` (2026-11-23, src/render/chartText.ts): series on top of each other,
+ * and the words along the two axes. Optional for good: a chart without them is drawn side by side and without titles, as before.
+ */
+const CHART_EXTRAS = [
+  "$.pages[].elements[].categoryAxisTitle: string",
+  "$.pages[].elements[].percent: boolean",
+  "$.pages[].elements[].stacked: boolean",
+  "$.pages[].elements[].valueAxisTitle: string",
+];
+const TABLE_EXTRAS = [
+  "$.pages[].elements[].cellStyles: object",
+  "$.pages[].elements[].cellStyles.0:0: object",
+  "$.pages[].elements[].cellStyles.0:0.align: string",
+  "$.pages[].elements[].cellStyles.0:0.bold: boolean",
+  "$.pages[].elements[].cellStyles.0:0.color: string",
+  "$.pages[].elements[].cellStyles.0:0.fill: string",
+  "$.pages[].elements[].merges: array",
+  "$.pages[].elements[].merges[]: object",
+  "$.pages[].elements[].merges[].col: number",
+  "$.pages[].elements[].merges[].colSpan: number",
+  "$.pages[].elements[].merges[].row: number",
+  "$.pages[].elements[].merges[].rowSpan: number",
+];
+const FILTER_EXTRAS = ["curves", "highlights", "levels", "shadows", "sharpen", "tint"].map((key) => `$.pages[].elements[].filter.${key}: number`);
+/** A run's numeric `weight` is optional: without it the run keeps using `bold` or the containing text box's weight. */
+const RUN_WEIGHT = ["$.pages[].elements[].paragraphs[].runs[].weight: number", "$.pages[].elements[].children[].paragraphs[].runs[].weight: number"];
+/**
+ * The optional fields that were added to designs of version 1, each named above. The frozen designs of version 2 have them all
+ * (version 2 came with the video element), so they are no longer a difference from the current frozen design; the test of version
+ * 2 below checks that it is version 1 with these and the video element, and nothing else.
+ */
+const ADDED_TO_V1 = [
+  ...COMMENTS,
+  ...LIVE_LINK,
+  ...BLEND,
+  ...LINE_ATTACHMENTS,
+  ...CHART_EXTRAS,
+  ...TABLE_EXTRAS,
+  ...FILTER_EXTRAS,
+  ...RUN_WEIGHT,
+  "$.margin: number",
+  "$.gridSize: number",
+  "$.pages[].elements[].maskPath: string",
+  "$.pages[].elements[].crop.rotation: number",
+].sort();
+/** What a video element (version 2, src/core/types.ts) has that no element of version 1 had. */
+const VIDEO = [
+  "$.pages[].elements[].duration: number",
+  "$.pages[].elements[].muted: boolean",
+  "$.pages[].elements[].speed: number",
+  "$.pages[].elements[].trimEnd: number",
+  "$.pages[].elements[].trimStart: number",
+];
 const ADDED: Record<string, string[]> = {
-  design: [...COMMENTS, ...LIVE_LINK, ...BLEND, ...LINE_ATTACHMENTS],
+  // in the order the shapes are listed: by path
+  design: [],
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],
@@ -139,9 +206,16 @@ describe("the shape of a design", () => {
     expect(difference(shapeOf(frozen), written), `a design is no longer written with something the frozen design has:${WHAT_NEXT}`).toEqual(DROPPED.design);
   });
 
+  it("is at version 2 version 1 with the fields added to it and the video element, and nothing else", () => {
+    const v1 = fixtures["../../test/fixtures/schema/design-v1-full.json"];
+    const v2 = fixtures["../../test/fixtures/schema/design-v2-full.json"];
+    expect(difference(shapeOf(v2), shapeOf(v1)).sort()).toEqual([...ADDED_TO_V1, ...VIDEO].sort());
+    expect(difference(shapeOf(v1), shapeOf(v2))).toEqual([]);
+  });
+
   it("covers every kind of element, of page background and of fill", () => {
     const text = JSON.stringify(completeDesign());
-    for (const type of ["text", "shape", "line", "image", "graphic", "group", "table", "chart"]) expect(text).toContain(`"type":"${type}"`);
+    for (const type of ["text", "shape", "line", "image", "graphic", "group", "table", "chart", "video"]) expect(text).toContain(`"type":"${type}"`);
     for (const type of ["solid", "linear", "radial", "pattern", "image"]) expect(text).toContain(`"type":"${type}"`);
   });
 });

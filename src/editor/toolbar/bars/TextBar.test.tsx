@@ -182,6 +182,28 @@ describe("Text toolbar: character styles", () => {
     expect(pressed(btn("Bold"))).toBe("true");
   });
 
+  it("reads the weight of characters that have one of their own: heavy is bold, light is not, and both together are mixed", async () => {
+    const user = userEvent.setup();
+    const heavy = word({ paragraphs: [{ runs: [{ text: "Hello world", weight: 800 }] }] });
+    mount([heavy]);
+    expect(pressed(btn("Bold"))).toBe("true");
+    // the click takes the bold away from the whole box, the weight of the characters with it
+    await user.click(btn("Bold"));
+    expect(live<TextElement>(heavy).fontWeight).toBe(400);
+    expect(live<TextElement>(heavy).paragraphs[0].runs.every((run) => run.weight === undefined)).toBe(true);
+    expect(pressed(btn("Bold"))).toBe("false");
+  });
+
+  it("does not call light characters in a bold box bold", () => {
+    mount([word({ fontWeight: 700, paragraphs: [{ runs: [{ text: "Hello world", weight: 300 }] }] })]);
+    expect(pressed(btn("Bold"))).toBe("false");
+  });
+
+  it("reads heavy characters beside regular ones as mixed", () => {
+    mount([word({ paragraphs: [{ runs: [{ text: "Hello ", weight: 900 }, { text: "world" }] }] })]);
+    expect(pressed(btn("Bold"))).toBe("mixed");
+  });
+
   it("answers Ctrl+B, Ctrl+I and Ctrl+U on a selected text, but not while typing in a field", () => {
     const t = word();
     mount([t]);

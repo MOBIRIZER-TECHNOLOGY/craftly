@@ -1,0 +1,329 @@
+/*
+ * The video element, as a person uses it in Chrome, each step read back from the design or from the pixels:
+ *
+ *   a clip           a real WebM recorded in the page: red for its first 1.2 seconds, blue after (2.4 s, the length unknown to
+ *                    the file, as a browser's own recordings are)
+ *   upload           Uploads takes it: a card with a <video> and its length, a click puts a video element on the page
+ *   at rest          the page shows its first frame (red); trimming the start past 1.2 s makes it blue
+ *   toolbar          Speed, Sound and Trim change the element
+ *   playing          Play on the toolbar plays it on the page (red, then blue); Present plays it (both colours seen)
+ *   recording        a WebM download of the page holds the clip playing: red near its start, blue later
+ *   reload           the clip is still there after a reload, its first frame drawn again
+ */
+const fs = require("fs");
+const { launch, outDir, BASE } = require("./lib.cjs");
+
+const OUT = outDir("video");
+const results = [];
+const logs = [];
+let shotN = 0;
+
+(async () => {
+  const browser = await launch();
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  const page = await ctx.newPage();
+  page.on("console", (m) => {
+    if (m.type() === "error") logs.push("console.error: " + m.text().slice(0, 240));
+  });
+  page.on("pageerror", (e) => logs.push("PAGEERROR " + e.message.slice(0, 240)));
+  const shot = (name) => page.screenshot({ path: OUT + String(++shotN).padStart(2, "0") + "-" + name + ".png" });
+  const step = async (name, fn) => {
+    try {
+      const r = await fn();
+      results.push("PASS " + name + (r ? "  " + r : ""));
+    } catch (e) {
+      results.push("FAIL " + name + "  -> " + String(e.message).split("\n")[0].slice(0, 260));
+      await shot("FAIL-" + name.replace(/\W+/g, "_").slice(0, 30)).catch(() => undefined);
+      await page.keyboard.press("Escape").catch(() => undefined);
+    }
+  };
+  const wait = (ms) => page.waitForTimeout(ms);
+  const design = (fn) => page.evaluate(`(${fn})(window.__editor.getState())`);
+  const clip = () => design(`(s) => s.design.pages[0].elements.find((e) => e.type === "video") ?? null`);
+  const toolbar = page.locator(".cf-tb").first();
+
+  /** "red", "blue" or something else, for a few pixels at the middle of a box on the screen. */
+  const colourAt = async (box) => {
+    const png = await page.screenshot({ clip: { x: box.x - 6, y: box.y - 6, width: 12, height: 12 } });
+    return page.evaluate(async (bytes) => {
+      const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
+      const c = document.createElement("canvas");
+      c.width = bitmap.width;
+      c.height = bitmap.height;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      g.drawImage(bitmap, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let r = 0;
+      let b = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        r += d[i];
+        b += d[i + 2];
+      }
+      const n = d.length / 4;
+      r /= n;
+      b /= n;
+      return r > 150 && r - b > 60 ? "red" : b > 150 && b - r > 60 ? "blue" : `other(${Math.round(r)},${Math.round(b)})`;
+    }, Array.from(png));
+  };
+  /** The middle of the selected element on the screen. */
+  const middleOfSelection = async () => {
+    const r = await page.locator(".cf-sel").first().boundingBox();
+    if (!r) throw new Error("nothing is selected");
+    return { x: r.x + r.width / 2, y: r.y + r.height * 0.7 };
+  };
+  /** Colours seen at `box` over `ms`, every 100 ms. */
+  const coloursOver = async (box, ms) => {
+    const seen = new Set();
+    for (let t = 0; t < ms; t += 120) {
+      seen.add(await colourAt(box));
+      await wait(100);
+    }
+    return [...seen];
+  };
+
+  await step("setup: a new presentation", async () => {
+    await page.goto(BASE + "/#/", { waitUntil: "load" });
+    await page.getByText("What will you design today?").waitFor({ timeout: 20000 });
+    await page
+      .getByRole("button", { name: /^Presentation/ })
+      .first()
+      .click();
+    await page.waitForURL(/#\/design\//, { timeout: 15000 });
+    await page.locator(".cf-workspace").waitFor({ timeout: 20000 });
+    await wait(900);
+    // the template's own elements are taken off, so the clip is all there is
+    await page.evaluate(() => {
+      const a = window.__editor.getState().actions;
+      a.selectAll();
+      a.deleteElements();
+    });
+    return "open";
+  });
+
+  let clipBytes = null;
+  await step("a clip: a WebM recorded in the page, red and then blue", async () => {
+    const b64 = await page.evaluate(async () => {
+      const c = document.createElement("canvas");
+      c.width = 320;
+      c.height = 180;
+      const g = c.getContext("2d");
+      g.fillStyle = "#e11d48";
+      g.fillRect(0, 0, 320, 180);
+      const rec = new MediaRecorder(c.captureStream(30), { mimeType: "video/webm" });
+      const chunks = [];
+      rec.ondataavailable = (e) => chunks.push(e.data);
+      const start = performance.now();
+      rec.start(100);
+      await new Promise((done) => {
+        const tick = () => {
+          const t = (performance.now() - start) / 1000;
+          g.fillStyle = t < 1.2 ? "#e11d48" : "#2563eb";
+          g.fillRect(0, 0, 320, 180);
+          if (t < 2.4) requestAnimationFrame(tick);
+          else done();
+        };
+        tick();
+      });
+      await new Promise((r) => {
+        rec.onstop = r;
+        rec.stop();
+      });
+      const bytes = new Uint8Array(await new Blob(chunks, { type: "video/webm" }).arrayBuffer());
+      let s = "";
+      for (const b of bytes) s += String.fromCharCode(b);
+      return btoa(s);
+    });
+    clipBytes = Buffer.from(b64, "base64");
+    if (clipBytes.length < 1000) throw new Error("only " + clipBytes.length + " bytes");
+    return clipBytes.length + " bytes";
+  });
+
+  await step("Uploads takes the clip: a card with the video and its length", async () => {
+    await page.getByRole("tab", { name: "Uploads", exact: true }).click();
+    await page.locator(".cf-sidepanel input[type=file]").first().setInputFiles({ name: "clip.webm", mimeType: "video/webm", buffer: clipBytes });
+    const card = page.locator(".cf-uploads__card", { has: page.locator("video") }).first();
+    await card.waitFor({ timeout: 15000 });
+    const badge = card.locator(".cf-uploads__badge");
+    await page.waitForFunction(() => /^\d+:\d\d$/.test(document.querySelector(".cf-uploads__badge")?.textContent ?? ""), null, { timeout: 10000 });
+    const text = await badge.innerText();
+    return "card " + text;
+  });
+
+  await step("a click on the card puts a video element on the page, as long as the clip", async () => {
+    await page.getByRole("button", { name: "Add clip to the page" }).first().click();
+    await page.waitForFunction(() => window.__editor.getState().design.pages[0].elements.some((e) => e.type === "video"), null, { timeout: 15000 });
+    const el = await clip();
+    if (!el.src.startsWith("asset:")) throw new Error("src " + el.src);
+    if (el.naturalWidth !== 320 || el.naturalHeight !== 180) throw new Error(`size ${el.naturalWidth} x ${el.naturalHeight}`);
+    if (!(el.duration > 2 && el.duration < 3)) throw new Error("length " + el.duration);
+    if (el.trimStart !== 0 || el.trimEnd !== el.duration || el.speed !== 1) throw new Error(JSON.stringify({ s: el.trimStart, e: el.trimEnd, v: el.speed }));
+    const selected = await design(`(s) => s.selection`);
+    if (selected[0] !== el.id) throw new Error("the clip is not selected");
+    return `${el.width} x ${el.height}, ${el.duration.toFixed(2)} s`;
+  });
+
+  await step("at rest the page shows the clip's first frame", async () => {
+    await page.waitForFunction(() => document.querySelector(".cf-sel"), null, { timeout: 5000 });
+    let colour = "";
+    for (let i = 0; i < 30 && colour !== "red"; i++) {
+      colour = await colourAt(await middleOfSelection());
+      if (colour !== "red") await wait(200);
+    }
+    await shot("first-frame");
+    if (colour !== "red") throw new Error("the middle of the clip is " + colour);
+    return colour;
+  });
+
+  await step("the toolbar of a clip: Play, Trim, Speed, Sound and Frame shape", async () => {
+    for (const name of ["Play", "Trim", "Speed", "Sound", "Frame shape"]) await toolbar.getByRole("button", { name, exact: true }).waitFor({ timeout: 5000 });
+    return "five controls";
+  });
+
+  await step("Speed sets how fast it plays", async () => {
+    await toolbar.getByRole("button", { name: "Speed", exact: true }).click();
+    await page.getByRole("menuitemcheckbox", { name: "2×", exact: true }).click();
+    const el = await clip();
+    if (el.speed !== 2) throw new Error("speed " + el.speed);
+    await toolbar.getByRole("button", { name: "Speed", exact: true }).click();
+    await page.getByRole("menuitemcheckbox", { name: "1×", exact: true }).click();
+    return "2×, then 1× again";
+  });
+
+  await step("Sound mutes the clip and turns its sound back on", async () => {
+    const sound = toolbar.getByRole("button", { name: "Sound", exact: true });
+    if ((await sound.getAttribute("aria-pressed")) !== "true") throw new Error("a new clip is not playing its sound");
+    await sound.click();
+    if ((await clip()).muted !== true) throw new Error("not muted");
+    if ((await sound.getAttribute("aria-pressed")) !== "false") throw new Error("the button does not say it is off");
+    await sound.click();
+    if ((await clip()).muted) throw new Error("still muted");
+    return "muted, then not";
+  });
+
+  await step("Trim: a start past 1.2 s makes the first frame blue, and Play the whole clip takes it back", async () => {
+    await toolbar.getByRole("button", { name: "Trim", exact: true }).click();
+    const start = page.getByRole("spinbutton", { name: "Start (seconds) value" });
+    await start.fill("1.6");
+    await start.press("Enter");
+    await page
+      .getByRole("status")
+      .filter({ hasText: /^Plays / })
+      .waitFor({ timeout: 5000 });
+    const el = await clip();
+    if (Math.abs(el.trimStart - 1.6) > 0.01) throw new Error("start " + el.trimStart);
+    await page.keyboard.press("Escape");
+    let colour = "";
+    for (let i = 0; i < 30 && colour !== "blue"; i++) {
+      colour = await colourAt(await middleOfSelection());
+      if (colour !== "blue") await wait(200);
+    }
+    await shot("trimmed");
+    if (colour !== "blue") throw new Error("after trimming the first frame is " + colour);
+    await toolbar.getByRole("button", { name: "Trim", exact: true }).click();
+    await page.getByRole("button", { name: "Play the whole clip" }).click();
+    await page.keyboard.press("Escape");
+    const back = await clip();
+    if (back.trimStart !== 0 || back.trimEnd !== back.duration) throw new Error(JSON.stringify([back.trimStart, back.trimEnd]));
+    return `start 1.6 s: ${colour}; whole again`;
+  });
+
+  await step("Play plays the clip on the page: red, then blue", async () => {
+    const box = await middleOfSelection();
+    await toolbar.getByRole("button", { name: "Play", exact: true }).click();
+    const seen = await coloursOver(box, 2600);
+    if (!seen.includes("red") || !seen.includes("blue")) throw new Error("seen " + seen.join(", "));
+    return seen.join(" then ");
+  });
+
+  await step("Present plays it, over and over", async () => {
+    await page
+      .getByRole("button", { name: /^Present$/ })
+      .first()
+      .click();
+    await page.locator(".cf-present").waitFor({ timeout: 8000 });
+    await wait(500);
+    const c = await page.locator("canvas.cf-present__page").boundingBox();
+    const box = { x: c.x + c.width / 2, y: c.y + c.height / 2 };
+    const seen = await coloursOver(box, 4000);
+    await shot("present");
+    await page.keyboard.press("Escape");
+    await page.locator(".cf-present").waitFor({ state: "detached", timeout: 5000 });
+    if (!seen.includes("red") || !seen.includes("blue")) throw new Error("seen " + seen.join(", "));
+    return seen.join(", ");
+  });
+
+  await step("a WebM download records the clip playing: red near its start, blue later", async () => {
+    const dl = page.locator(".cf-dl");
+    await page.getByRole("button", { name: "Share", exact: true }).first().click();
+    await page.getByRole("button", { name: "Download", exact: true }).first().click();
+    await dl.waitFor({ timeout: 5000 });
+    await wait(300);
+    await page.getByLabel("File type").click();
+    await page
+      .getByRole("option", { name: /^Video/ })
+      .first()
+      .click();
+    await wait(300);
+    const [file] = await Promise.all([page.waitForEvent("download", { timeout: 90000 }), dl.getByRole("button", { name: "Download", exact: true }).click()]);
+    const buf = fs.readFileSync(await file.path());
+    await page.keyboard.press("Escape");
+    const seen = await page.evaluate(async (b64) => {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const video = document.createElement("video");
+      video.muted = true;
+      video.preload = "auto";
+      video.src = URL.createObjectURL(new Blob([bytes], { type: "video/webm" }));
+      await new Promise((ok, no) => {
+        video.onloadeddata = ok;
+        video.onerror = () => no(new Error("the download would not load"));
+      });
+      const c = document.createElement("canvas");
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      const at = async (t) => {
+        video.currentTime = t;
+        await new Promise((ok) => (video.onseeked = ok));
+        await new Promise((ok) => setTimeout(ok, 150));
+        g.drawImage(video, 0, 0);
+        const [r, , b] = g.getImageData(c.width / 2, c.height / 2, 1, 1).data;
+        return r > 150 && r - b > 60 ? "red" : b > 150 && b - r > 60 ? "blue" : `other(${r},${b})`;
+      };
+      return [await at(0.3), await at(1.9)];
+    }, buf.toString("base64"));
+    if (seen[0] !== "red" || seen[1] !== "blue") throw new Error("at 0.3 s and 1.9 s: " + seen.join(", "));
+    return `${file.suggestedFilename()}: ${seen.join(" then ")}`;
+  });
+
+  await step("after a reload the clip is still there, its first frame drawn", async () => {
+    await wait(1500); // the autosave
+    await page.reload({ waitUntil: "load" });
+    await page.locator(".cf-workspace").waitFor({ timeout: 20000 });
+    const el = await clip();
+    if (!el) throw new Error("the clip is gone");
+    await page.evaluate((id) => window.__editor.getState().actions.select([id]), el.id);
+    await page.waitForFunction(() => document.querySelector(".cf-sel"), null, { timeout: 5000 });
+    let colour = "";
+    for (let i = 0; i < 30 && colour !== "red"; i++) {
+      colour = await colourAt(await middleOfSelection());
+      if (colour !== "red") await wait(200);
+    }
+    if (colour !== "red") throw new Error("after a reload the clip shows " + colour);
+    return colour;
+  });
+
+  await step("no errors reached the console", async () => {
+    if (logs.length) throw new Error(logs.slice(0, 4).join(" | "));
+    return "clean";
+  });
+
+  console.log(results.join("\n"));
+  if (results.some((r) => r.startsWith("FAIL"))) process.exitCode = 1;
+  console.log("CONSOLE:", JSON.stringify(logs.slice(0, 8)));
+  await browser.close();
+})().catch((e) => {
+  console.log("CRASH", e.message.split("\n")[0]);
+  process.exit(1);
+});

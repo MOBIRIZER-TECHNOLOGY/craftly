@@ -13,8 +13,13 @@ import { registerTextEditor, useTextSelectionStyle, type InlineFormat } from "./
 /* model <-> DOM                                                       */
 /* ------------------------------------------------------------------ */
 
+/** The background that marks the selected characters while a weight is set on them (see `applyInline`): no text has one. */
+const WEIGHT_MARK = "#010203";
+const WEIGHT_MARK_RGB = "rgb(1, 2, 3)";
+
 function applyRunStyle(style: CSSStyleDeclaration, run: TextRun, zoom: number): void {
-  if (run.bold !== undefined) style.fontWeight = run.bold ? "700" : "400";
+  if (run.weight !== undefined) style.fontWeight = String(run.weight);
+  else if (run.bold !== undefined) style.fontWeight = run.bold ? "700" : "400";
   if (run.italic !== undefined) style.fontStyle = run.italic ? "italic" : "normal";
   const deco: string[] = [];
   if (run.underline) deco.push("underline");
@@ -72,8 +77,12 @@ function styleAt(node: Node | null, root: HTMLElement, base: TextElement, zoom: 
   if (!el || !root.contains(el)) return {};
   const cs = getComputedStyle(el);
   const run: Partial<TextRun> = {};
-  const bold = (parseInt(cs.fontWeight, 10) || 400) >= 600;
-  if (bold !== base.fontWeight >= 600) run.bold = bold;
+  const weight = parseInt(cs.fontWeight, 10) || 400;
+  if (weight !== base.fontWeight) {
+    if (weight === 700 && base.fontWeight < 600) run.bold = true;
+    else if (weight === 400 && base.fontWeight >= 600) run.bold = false;
+    else run.weight = weight;
+  }
   const italic = cs.fontStyle === "italic" || cs.fontStyle === "oblique";
   if (italic !== base.italic) run.italic = italic;
   let underline = false;
@@ -176,6 +185,7 @@ export function TextEditorOverlay() {
 function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number; width: number; height: number; rotation: number } }) {
   const ref = useRef<HTMLDivElement>(null);
   const zoom = useEditor((s) => s.zoom);
+  const spellCheck = useEditor((s) => s.spellCheck);
   const elRef = useRef(el);
   elRef.current = el;
   const zoomRef = useRef(zoom);
@@ -284,7 +294,8 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
         active: true,
         collapsed: sel.isCollapsed,
         style: {
-          bold: s.bold ?? base.fontWeight >= 600,
+          bold: s.bold ?? (s.weight ?? base.fontWeight) >= 600,
+          weight: s.weight ?? base.fontWeight,
           italic: s.italic ?? base.italic,
           underline: s.underline ?? base.underline,
           strike: s.strike ?? base.strike,
@@ -324,6 +335,17 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
         toggle("strikeThrough", f.strike);
         if (f.color) cmd("foreColor", f.color);
         if (f.font) cmd("fontName", cssFontFamily(f.font));
+        // select the styled text again: replacing or restyling nodes can collapse the selection
+        const reselect = (made: HTMLElement[]) => {
+          if (!made.length) return;
+          const range = document.createRange();
+          range.setStartBefore(made[0]);
+          range.setEndAfter(made[made.length - 1]);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+          lastRange.current = range.cloneRange();
+        };
         if (f.size) {
           cmd("fontSize", "7");
           const made: HTMLElement[] = [];
@@ -335,16 +357,27 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
             n.replaceWith(span);
             made.push(span);
           });
-          // replacing the nodes collapses the selection: select the resized text again
-          if (made.length) {
-            const range = document.createRange();
-            range.setStartBefore(made[0]);
-            range.setEndAfter(made[made.length - 1]);
-            const sel = window.getSelection();
-            sel?.removeAllRanges();
-            sel?.addRange(range);
-            lastRange.current = range.cloneRange();
-          }
+          reselect(made);
+        }
+        if (f.weight) {
+          // There is no command for a weight, and borrowing the one for the size would take the sizes of the characters away. A
+          // background no text has (text has none at all) marks what is selected instead: the browser splits the spans at the ends
+          // of the selection, and every element that carries the mark gets the weight in its place.
+          cmd("hiliteColor", WEIGHT_MARK);
+          const made: HTMLElement[] = [];
+          root.querySelectorAll<HTMLElement>("[style*='background-color']").forEach((n) => {
+            if (n.style.backgroundColor !== WEIGHT_MARK_RGB) return;
+            n.style.backgroundColor = "";
+            n.style.fontWeight = String(f.weight);
+            // a bold or a weight further in would still win over the one set here
+            n.querySelectorAll<HTMLElement>("*").forEach((inner) => {
+              if (inner.style.backgroundColor === WEIGHT_MARK_RGB) return;
+              if (inner.tagName === "B" || inner.tagName === "STRONG") inner.style.fontWeight = "inherit";
+              else if (inner.style.fontWeight) inner.style.fontWeight = "";
+            });
+            made.push(n);
+          });
+          reselect(made);
         }
         commit();
         return true;
@@ -398,11 +431,15 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
       data-list={el.list ?? undefined}
       contentEditable
       suppressContentEditableWarning
-      spellCheck={false}
+      spellCheck={spellCheck}
       style={style}
       onInput={commit}
       onKeyDown={(e) => {
-        e.stopPropagation();
+        // the keys stay with the text, but for Save and Print: the editor's own shortcuts (src/editor/hotkeys.ts, Editor.tsx)
+        // would never see them, and the browser would take them ("Save page as", a print of the editor around the page)
+        const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
+        const key = e.key.toLowerCase();
+        if (!(mod && (key === "s" || (key === "p" && !e.shiftKey)))) e.stopPropagation();
         if (e.key === "Escape") {
           e.preventDefault();
           commit();

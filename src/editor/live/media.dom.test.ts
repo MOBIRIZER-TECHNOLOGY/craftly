@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PermanentSendError } from "@/collab/live";
 import * as assets from "@/core/assets";
-import { createDesign, createImage, createPage } from "@/core/factory";
+import { createDesign, createImage, createPage, createVideo } from "@/core/factory";
 import type { Asset, Design, LiveLink } from "@/core/types";
 import { wipeDatabase } from "@/test/logicDb";
 import { sharedMedia } from "./media";
@@ -108,5 +108,37 @@ describe("an image that somebody else added", () => {
     const scripted = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20"><script>alert(document.domain)</script></svg>`;
     await sharedMedia(link, serving("image/svg+xml", scripted)).download(design());
     expect(await assets.listAssets()).toMatchObject([{ id: "pic", kind: "image", mime: "image/png", width: 1024, height: 683 }]);
+  });
+});
+
+describe("a shared design with a clip in it", () => {
+  const withClip = (): Design =>
+    createDesign({
+      title: "Picture and clip",
+      width: 800,
+      height: 600,
+      pages: [createPage({ elements: [createVideo({ id: "v", src: "asset:clip" }), createImage({ id: "i", src: "asset:pic" })] })],
+    });
+  const urlOf = (request: ReturnType<typeof vi.fn>, call = 0) => (request.mock.calls[call] as unknown as [string])[0];
+
+  it("sends the picture to the room and never the clip", async () => {
+    const request = answering(201);
+    await sharedMedia(link, request).upload(withClip());
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(urlOf(request)).toBe("https://live.example.test/api/rooms/TW-FaxWt8edjpnT-bGQyjA/assets/pic");
+    expect(getAsset.mock.calls.map(([id]) => id)).toEqual(["pic"]);
+  });
+
+  it("fetches the picture from the room and never asks for the clip", async () => {
+    getAsset.mockResolvedValue(null);
+    await wipeDatabase();
+    const request = vi.fn(
+      async () =>
+        ({ ok: true, status: 200, json: async () => ({ mime: "image/svg+xml", base64: btoa(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20"/>`) }) }) as Response,
+    );
+    await sharedMedia(link, request).download(withClip());
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(urlOf(request)).toBe("https://live.example.test/api/rooms/TW-FaxWt8edjpnT-bGQyjA/assets/pic");
+    expect((await assets.listAssets()).map((a) => a.id)).toEqual(["pic"]);
   });
 });

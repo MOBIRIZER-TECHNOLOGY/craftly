@@ -7,6 +7,7 @@ import { m } from "@/i18n";
 import { blobToDataUrl } from "./encoding";
 import { ExportError, cancelledError, isCancelled, throwIfAborted } from "./errors";
 import { exportDesign, type ExportFile, type ExportOptions, type ExportProgress } from "./exporters";
+import { collectPageLinks } from "./links";
 import { exportFileName, normalizePages } from "./options";
 import { MAX_WEB_PAGE_BYTES, buildWebPage, pageAltText, webPageTooLarge, type WebPageSlide } from "./webPage";
 import { nextMacrotask } from "./yield";
@@ -56,7 +57,7 @@ export async function exportWebPage(design: Design, request: WebPageRequest, onP
       bytes += src.length;
       // the rest need not be painted to know the answer
       if (bytes > MAX_WEB_PAGE_BYTES) throw webPageTooLarge();
-      slides.push({ src, alt: pageAltText(page), name: page.name, notes: page.notes });
+      slides.push({ src, alt: pageAltText(page), name: page.name, notes: page.notes, links: collectPageLinks(page) });
       onProgress?.(slides.length, pages.length);
       await nextMacrotask();
     }

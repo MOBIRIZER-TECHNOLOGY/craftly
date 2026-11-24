@@ -43,6 +43,7 @@ describe("<DialogHost>", () => {
     ["settings", "Settings"],
     ["rename", "Rename design"],
     ["models", "On-device models"],
+    ["accessibility", "Check accessibility"],
   ] as const)("opens the %s dialog", async (name, title) => {
     await mount();
     open(name);

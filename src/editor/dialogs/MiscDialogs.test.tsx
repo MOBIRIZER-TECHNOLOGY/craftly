@@ -31,6 +31,23 @@ describe("<SettingsDialog>", () => {
     expect([rulers.checked, snap.checked, strip.checked]).toEqual([true, false, false]);
   });
 
+  it("shows margins and saves a custom size", async () => {
+    await renderChrome(<SettingsDialog open onClose={vi.fn()} />, chromeDesign("Margins"));
+    const user = userEvent.setup({ delay: null });
+    const margins = screen.getByRole("switch", { name: "Show margins" }) as HTMLInputElement;
+    expect(margins.checked).toBe(false);
+    await user.click(margins);
+    const field = screen.getByRole("spinbutton", { name: "Margin size" }) as HTMLInputElement;
+    expect(field.value).toBe("36");
+    await user.clear(field);
+    await user.type(field, "75{Enter}");
+    expect(useEditor.getState().showMargins).toBe(true);
+    expect(storeDesign().margin).toBe(75);
+    await user.clear(field);
+    await user.type(field, "10000{Enter}");
+    expect(storeDesign().margin).toBe(360);
+  });
+
   it("closes with Done", async () => {
     const onClose = vi.fn();
     await renderChrome(<SettingsDialog open onClose={onClose} />, chromeDesign("Settings done"));

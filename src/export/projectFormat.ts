@@ -66,8 +66,8 @@ function fillSrc(fill: Fill | null | undefined): string | null {
   return fill && fill.type === "image" ? fill.src : null;
 }
 
-/** Calls `visit` for every image source of an element tree: image elements, shape image fills, groups. */
-function forEachElementSource(elements: DesignElement[], visit: (src: string) => void): void {
+/** Calls `visit` for every image source of an element tree: image elements, shape image fills, clips of video elements, groups. */
+function forEachElementSource(elements: DesignElement[], visit: (src: string) => void, clips = true): void {
   for (const el of elements) {
     if (el.type === "image" && el.src) {
       visit(el.src);
@@ -75,19 +75,21 @@ function forEachElementSource(elements: DesignElement[], visit: (src: string) =>
     } else if (el.type === "shape") {
       const s = fillSrc(el.fill);
       if (s) visit(s);
-    } else if (el.type === "group") forEachElementSource(el.children, visit);
+    } else if (el.type === "video") {
+      if (clips) visit(el.src);
+    } else if (el.type === "group") forEachElementSource(el.children, visit, clips);
   }
 }
 
-/** Unique ids of the uploaded images a design uses (page backgrounds, image elements, image fills), in first-use order. */
-export function collectAssetIds(design: Pick<Design, "pages">): string[] {
+/** Unique ids of the uploads a design uses (page backgrounds, image elements, image fills, clips), in first-use order. */
+export function collectAssetIds(design: Pick<Design, "pages">, options: { clips?: boolean } = {}): string[] {
   const ids = new Set<string>();
   const add = (src: string | null | undefined) => {
     if (isAssetSrc(src)) ids.add(assetIdOf(src));
   };
   for (const page of design.pages) {
     add(fillSrc(page.background));
-    forEachElementSource(page.elements, add);
+    forEachElementSource(page.elements, add, options.clips ?? true);
   }
   return [...ids];
 }
@@ -105,6 +107,7 @@ export function remapAssetSources<T extends Pick<Design, "pages">>(design: T, id
       return { ...el, src: rewrite(el.src), ...(el.originalSrc ? { originalSrc: rewrite(el.originalSrc) } : {}) };
     }
     if (el.type === "shape") return el.fill?.type === "image" ? { ...el, fill: { ...el.fill, src: rewrite(el.fill.src) } } : el;
+    if (el.type === "video") return { ...el, src: rewrite(el.src) };
     if (el.type === "group") return { ...el, children: el.children.map(mapElement) };
     return el;
   };
@@ -370,6 +373,9 @@ const EXTENSIONS: Record<string, string> = {
   "image/svg+xml": "svg",
   "image/avif": "avif",
   "image/bmp": "bmp",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+  "video/ogg": "ogv",
 };
 
 /** File extension for an image mime type (used when re-creating an uploaded file). */

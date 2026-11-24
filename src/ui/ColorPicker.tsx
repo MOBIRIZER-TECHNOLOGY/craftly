@@ -1,5 +1,6 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { hsvToRgb, parseColor, rgbToHsv, toHex, type RGBA } from "@/core/color";
+import { COLOR_PALETTES } from "@/data/palettes";
 import { m } from "@/i18n";
 import "./ColorPicker.css";
 import { ColorSwatch } from "./ColorSwatch";
@@ -345,6 +346,27 @@ export function ColorPicker({ value, onChange, onChangeEnd, showAlpha = false, c
             width={96}
           />
         ) : null}
+      </div>
+      <div className="cf-cp__palettes">
+        <h4 className="cf-cp__palettes-title">{m.ui.colorPicker.palettes}</h4>
+        {COLOR_PALETTES.map((palette) => (
+          <div key={palette.id} className="cf-cp__palette" role="group" aria-label={palette.name}>
+            {palette.colors.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className="cf-cp__palette-color"
+                style={{ background: color }}
+                aria-label={`${palette.name}: ${color}`}
+                title={`${palette.name}: ${color}`}
+                onClick={() => {
+                  onChange(color);
+                  onChangeEnd?.(color);
+                }}
+              />
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );

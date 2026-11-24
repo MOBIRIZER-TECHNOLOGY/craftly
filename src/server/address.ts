@@ -91,3 +91,41 @@ export function hourlyLimit(perHour: number, now: () => number): HourlyLimit {
     size: () => taken.size,
   };
 }
+
+export interface KnownAddresses {
+  /** Notes that this name (a person) was just seen at this address. */
+  note(name: string, address: string): void;
+  /** Whether this name was seen at this address within the time it is kept. */
+  has(name: string, address: string): boolean;
+  /** How many names are remembered now. */
+  size(): number;
+}
+
+/**
+ * The addresses each name was seen at lately: at most `perName` for each (the oldest goes first), kept for `keepMs` since it was
+ * last seen there, for at most `names` names (the one seen longest ago goes first). In memory only: a restart forgets them all.
+ */
+export function knownAddresses(now: () => number, options: { perName?: number; names?: number; keepMs?: number } = {}): KnownAddresses {
+  const perName = options.perName ?? 8;
+  const names = options.names ?? 10_000;
+  const keepMs = options.keepMs ?? 30 * 24 * HOUR;
+  // a Map keeps the order things were put in: deleting before setting again moves a name, or an address, to the end
+  const seen = new Map<string, Map<string, number>>();
+  return {
+    note(name, address) {
+      const at = now();
+      const addresses = seen.get(name) ?? new Map<string, number>();
+      seen.delete(name);
+      addresses.delete(address);
+      addresses.set(address, at);
+      while (addresses.size > perName) addresses.delete(addresses.keys().next().value as string);
+      seen.set(name, addresses);
+      while (seen.size > names) seen.delete(seen.keys().next().value as string);
+    },
+    has(name, address) {
+      const at = seen.get(name)?.get(address);
+      return at !== undefined && now() - at < keepMs;
+    },
+    size: () => seen.size,
+  };
+}

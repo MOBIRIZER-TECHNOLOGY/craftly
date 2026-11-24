@@ -7,7 +7,7 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { cleanName } from "@/collab/presence";
-import { clientAddress, hourlyLimit, type HourlyLimit } from "../address";
+import { clientAddress, hourlyLimit, knownAddresses, type HourlyLimit } from "../address";
 import { readBody, sha256Hex } from "../http";
 import { createHasher, DEFAULT_COST, HASH_CONCURRENCY, type Cost, type Hasher } from "./passwords";
 import { SERVER_ID, type AccountStorage, type SessionRecord, type TeamRecord, type UserRecord } from "./storage";
@@ -43,7 +43,10 @@ export interface Limits {
   signinPerAddress: number;
   /** failed sign-ins for one account from one address */
   signinPerAccountAddress: number;
-  /** failed sign-ins for one account from everywhere: so high that one address cannot lock a person out */
+  /**
+   * failed sign-ins for one account from everywhere: so high that one address cannot lock a person out, and it does not hold back
+   * an address the person used lately (`known` in createContext), so that many addresses cannot either
+   */
   signinPerAccount: number;
   /** sign-ups from one address, every attempt */
   signupPerAddress: number;
@@ -236,6 +239,13 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
     signup: hourlyLimit(limits.signupPerAddress, now),
     codes: hourlyLimit(limits.codesPerAddress, now),
   };
+  /**
+   * The addresses each person used their account from lately (a sign-in, a sign-up, a request with a session). The limit of failed
+   * sign-ins for an account from everywhere does not hold these back (`signin`): it is there for guesses spread over many
+   * addresses, and without this anybody with a few of them (a block of IPv6 networks costs nothing) could keep a person out of
+   * their own account. An address of these still has its own limits.
+   */
+  const known = knownAddresses(now);
 
   const addressOf = (req: IncomingMessage) => clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], server.trustProxy);
 
@@ -252,6 +262,7 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1];
     const authed = token ? await sessionOf(sha256Hex(token)) : null;
     if (!authed) throw refuse(401, "session", "sign in again");
+    known.note(authed.user.id, addressOf(req));
     return authed;
   };
 
@@ -347,7 +358,26 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
   /** What a person may see of themselves and of other members. */
   const publicUser = (user: UserRecord) => ({ id: user.id, email: user.email, name: user.name, createdAt: user.createdAt });
 
-  return { storage, now, o, hasher, limiters, serial, addressOf, waitOf, authenticate, sessionOf, roleInSpace, recheck, startSession, endSessions, teamsOf, publicUser, server };
+  return {
+    storage,
+    now,
+    o,
+    hasher,
+    limiters,
+    known,
+    serial,
+    addressOf,
+    waitOf,
+    authenticate,
+    sessionOf,
+    roleInSpace,
+    recheck,
+    startSession,
+    endSessions,
+    teamsOf,
+    publicUser,
+    server,
+  };
 }
 
 /** Turns what a route threw into an answer: a refusal as itself, a body too long as 413, a busy hasher as 503; anything else is not answered here. */

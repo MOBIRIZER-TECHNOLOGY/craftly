@@ -26,6 +26,7 @@ import type {
   TextElement,
   TextEffect,
   TextParagraph,
+  VideoElement,
 } from "./types";
 
 export const DEFAULT_FONT = "Plus Jakarta Sans";
@@ -43,6 +44,12 @@ export const defaultFilter = (): ImageFilter => ({
   vignette: 0,
   blur: 0,
   hue: 0,
+  highlights: 0,
+  shadows: 0,
+  sharpen: 0,
+  tint: 0,
+  curves: 0,
+  levels: 0,
   duotone: null,
 });
 
@@ -257,6 +264,47 @@ export function createChart(init: Init<ChartElement> = {}): ChartElement {
     showGrid: true,
     ...init,
   } as ChartElement;
+}
+
+/** The slowest and the fastest a clip plays. */
+export const VIDEO_SPEED_MIN = 0.25;
+export const VIDEO_SPEED_MAX = 4;
+
+/**
+ * A clip at its own proportions (`width` given: that wide), playing whole at its own speed. The box is covered by the clip, as a
+ * picture's is, when both `width` and `height` are given.
+ */
+export function createVideo(init: Init<VideoElement> & { src: string; naturalWidth?: number; naturalHeight?: number; duration?: number }): VideoElement {
+  const nw = init.naturalWidth || 1280;
+  const nh = init.naturalHeight || 720;
+  const duration = init.duration !== undefined && Number.isFinite(init.duration) && init.duration > 0 ? init.duration : 1;
+  const width = init.width ?? nw;
+  const height = init.height ?? (init.width ? (init.width * nh) / nw : nh);
+  let crop = init.crop ?? { x: 0, y: 0, w: 1, h: 1 };
+  if (!init.crop && init.width && init.height) {
+    const s = Math.max(init.width / nw, init.height / nh);
+    const iw = (nw * s) / init.width;
+    const ih = (nh * s) / init.height;
+    crop = { x: (1 - iw) / 2, y: (1 - ih) / 2, w: iw, h: ih };
+  }
+  return {
+    ...base("video", {}),
+    id: uid("v"),
+    type: "video",
+    width,
+    height,
+    trimStart: 0,
+    trimEnd: duration,
+    speed: 1,
+    mask: "rect",
+    radius: 0,
+    stroke: null,
+    ...init,
+    naturalWidth: nw,
+    naturalHeight: nh,
+    duration,
+    crop,
+  } as VideoElement;
 }
 
 /* ---------------- pages and designs ---------------- */

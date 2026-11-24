@@ -16,6 +16,7 @@ import { m } from "@/i18n";
 import { fontsEpoch } from "@/render/fonts";
 import { imagesEpoch } from "@/render/images";
 import { PlaybackRenderer } from "@/render/playback";
+import { pauseVideos, prepareClips } from "@/render/videos";
 import { ExportError, throwIfAborted } from "../errors";
 import type { ExportFile, ExportProgress } from "../exporters";
 import { exportFileName, type ResolvedExport } from "../options";
@@ -61,7 +62,10 @@ class FrameSource {
     if (!ctx || this.canvas.width !== plan.width || this.canvas.height !== plan.height) throw new ExportError("too-large", TOO_BIG_TO_DRAW);
     this.ctx = ctx;
     // the timeline indexes the chosen pages, so the renderer gets exactly those, in playing order
-    this.renderer = new PlaybackRenderer({ width: design.width, height: design.height, pages: plan.pages.map((i) => design.pages[i]) });
+    // a video is recorded as it plays, so its clips play (without their sound, which is not recorded yet); a GIF is painted frame by
+    // frame (`readback`), faster or slower than they would play, and holds each clip's first frame
+    const pages = plan.pages.map((i) => design.pages[i]);
+    this.renderer = new PlaybackRenderer({ width: design.width, height: design.height, pages }, readback ? undefined : { sound: false });
   }
 
   /** Paints the moment `t` seconds into the playback; false when an image or font was not ready. */
@@ -199,6 +203,7 @@ async function exportWebm(design: Design, plan: AnimationPlan, onProgress: Expor
   await loadPlanResources(design, plan, signal);
 
   const source = new FrameSource(design, plan, false);
+  await prepareClips(plan.pages.flatMap((i) => design.pages[i].elements));
   try {
     const result = await recordCanvas({
       canvas: source.canvas,
@@ -215,6 +220,7 @@ async function exportWebm(design: Design, plan: AnimationPlan, onProgress: Expor
     return { name: exportFileName(design.title, videoContainer(support.mimeType)), blob: result.blob, note: result.stalled ? STALLED_NOTE : undefined };
   } finally {
     source.dispose();
+    pauseVideos();
   }
 }
 

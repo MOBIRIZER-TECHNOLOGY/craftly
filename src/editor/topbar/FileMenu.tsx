@@ -35,6 +35,7 @@ import {
   type MenuEntry,
 } from "@/ui";
 import { keepView } from "../keptView";
+import { IconAccessibility } from "../toolbar/icons";
 import { makeCopy, moveToTrash, printDesign, saveNow, startNewDesign } from "./designActions";
 import "./fileMenu.css";
 
@@ -83,6 +84,9 @@ export function FileMenu({ onRename, onUpload }: FileMenuProps) {
       gridView: s.gridView,
       showRulers: s.showRulers,
       snapEnabled: s.snapEnabled,
+      snapToGrid: s.snapToGrid,
+      showMargins: s.showMargins,
+      spellCheck: s.spellCheck,
       guides: (s.design?.guides?.vertical.length ?? 0) + (s.design?.guides?.horizontal.length ?? 0),
     })),
   );
@@ -141,6 +145,8 @@ export function FileMenu({ onRename, onUpload }: FileMenuProps) {
       submenu: [
         { id: "rulers", label: m.editorChrome.settings.showRulers, checked: view.showRulers, onSelect: () => actions.toggle("showRulers") },
         { id: "snap", label: m.editorChrome.settings.snapToGuides, checked: view.snapEnabled, onSelect: () => actions.toggle("snapEnabled") },
+        { id: "snap-grid", label: m.editorChrome.settings.snapToGrid, checked: view.snapToGrid, onSelect: () => actions.toggle("snapToGrid") },
+        { id: "margins", label: m.editorChrome.settings.showMargins, checked: view.showMargins, onSelect: () => actions.toggle("showMargins") },
         { type: "divider" },
         {
           id: "clear-guides",
@@ -153,6 +159,16 @@ export function FileMenu({ onRename, onUpload }: FileMenuProps) {
           },
         },
       ],
+    },
+    {
+      id: "spellcheck",
+      label: m.editorChrome.settings.checkSpelling,
+      checked: view.spellCheck,
+      onSelect: () => {
+        actions.toggle("spellCheck");
+        // said once, when it is switched on: who does the checking
+        if (!view.spellCheck) toast.info(m.editorChrome.settings.checkSpellingOn);
+      },
     },
     { type: "divider" },
     { id: "save", label: m.editorChrome.fileMenu.save, icon: <IconSave aria-hidden="true" />, hint: SAVE_HINT[view.saveState], onSelect: () => void saveNow() },
@@ -195,6 +211,7 @@ export function FileMenu({ onRename, onUpload }: FileMenuProps) {
     // the Settings dialog (rulers, snapping and page thumbnails in one place), not a second copy of the Rulers and guides toggles
     { id: "settings", label: m.editorChrome.settings.title, icon: <IconSettings aria-hidden="true" />, onSelect: () => actions.openDialog("settings") },
     { id: "find", label: m.editorChrome.fileMenu.find, icon: <IconSearch aria-hidden="true" />, shortcut: "Ctrl+F", onSelect: () => actions.openDialog("findReplace") },
+    { id: "accessibility", label: m.editorChrome.access.title, icon: <IconAccessibility aria-hidden="true" />, onSelect: () => actions.openDialog("accessibility") },
     { id: "models", label: m.editorChrome.fileMenu.models, icon: <IconLaptop aria-hidden="true" />, onSelect: () => actions.openDialog("models") },
     // the page, the selection and the zoom come back after the reload into the other language (B12)
     languageMenuEntry({ beforeSwitch: keepView }),

@@ -24,12 +24,15 @@ import type {
   ShapeElement,
   TableElement,
   TextElement,
+  VideoElement,
 } from "@/core/types";
 import { useGesture } from "@/editor/canvas/gestureStore";
 import { usePathEdit } from "@/editor/canvas/pathEditStore";
 import { m } from "@/i18n";
 import { AltTextDialog } from "./AltTextDialog";
+import { LinkDialog } from "./LinkDialog";
 import { CropBar, FrameBar, ImageBar } from "./bars/ImageBar";
+import { VideoBar } from "./bars/VideoBar";
 import { PathBar } from "./bars/PathBar";
 import { GraphicBar } from "./bars/GraphicBar";
 import { DataBar, GroupBar, LockedBar, MultiBar, PageBar } from "./bars/MiscBars";
@@ -77,6 +80,7 @@ function resolveBar(page: Page, targets: DesignElement[], selection: string[], c
     if (images.length === 1 && images[0].isFrame && !images[0].src) return { ...common, kind: "frame", content: <FrameBar el={images[0]} /> };
     if (images.every((i) => i.src)) return { ...common, kind: "image", content: <ImageBar els={images} ids={ids} copyEnabled={copyEnabled} /> };
   }
+  if (allOfType(editable, "video")) return { ...common, kind: "video", content: <VideoBar els={editable as VideoElement[]} ids={ids} copyEnabled={copyEnabled} /> };
   if (editable.length === 1 && editable[0].type === "group") return { ...common, kind: "group", content: <GroupBar els={editable as GroupElement[]} ids={ids} /> };
   if (editable.length === 1 && (editable[0].type === "table" || editable[0].type === "chart")) {
     return { ...common, kind: "data", content: <DataBar els={editable as Array<TableElement | ChartElement>} ids={ids} /> };
@@ -129,6 +133,7 @@ export function FloatingToolbar() {
         </ToolbarFrame>
       )}
       <AltTextDialog />
+      <LinkDialog />
     </>
   );
 }

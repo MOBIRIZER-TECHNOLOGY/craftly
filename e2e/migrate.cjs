@@ -22,6 +22,8 @@ const minimal = require("../src/test/fixtures/schema/design-v1-minimal.json");
 const full = require("../src/test/fixtures/schema/design-v1-full.json");
 const BACKUP_PATH = OUT + "backup.zip";
 const FUTURE_VERSION = 99;
+/** The version of the designs this build writes, read from the code (src/core/schema/design.ts). */
+const CURRENT = Number(/CURRENT_DESIGN_VERSION = (\d+)/.exec(fs.readFileSync(require("node:path").join(__dirname, "../src/core/schema/design.ts"), "utf8"))[1]);
 const REPLACED = "Craftly was updated in another tab. Reload this tab to keep working.";
 
 /** The same document with every object's keys in one order, so two copies compare equal whatever order they were written in. */
@@ -195,7 +197,7 @@ function readZip(file) {
   };
 
   /* ================= a design that release 1 stored ================= */
-  await step("a design of the first release opens whole, with every field, and opening it writes nothing", async () => {
+  await step("a design of the first release opens whole, with every field, brought up to date in memory, and opening it writes nothing", async () => {
     await home(page);
     await seed(page, [
       ["designs", full],
@@ -208,7 +210,7 @@ function readZip(file) {
     if (title !== full.title) throw new Error("the title is " + title);
     const open = await page.evaluate(() => ({ pages: window.__editor.getState().design.pages.length, version: window.__editor.getState().design.version }));
     if (open.pages !== full.pages.length) throw new Error(open.pages + " pages");
-    if (open.version !== 1) throw new Error("the open design is at version " + open.version);
+    if (open.version !== CURRENT) throw new Error("the open design is at version " + open.version + ", not " + CURRENT);
     await wait(page, 2500);
     if (canon(await readFrom(page, "designs", full.id)) !== canon(full)) throw new Error("the stored design is not what was stored");
     const summary = await readFrom(page, "summaries", full.id);
@@ -216,7 +218,7 @@ function readZip(file) {
     await shot(page, "old-design");
     await openEditor(page, minimal.id);
     if ((await page.getByRole("textbox", { name: "Design title" }).inputValue()) !== minimal.title) throw new Error("the design with only the required fields did not open");
-    return `${full.pages.length} pages, ${open.version === 1 ? "version 1" : ""}, nothing written`;
+    return `${full.pages.length} pages, version 1 opened as ${open.version}, nothing written`;
   });
 
   /* ================= a design that a newer release stored ================= */

@@ -138,6 +138,7 @@ describe("buildContextMenuItems", () => {
       "Lock",
       "Hide",
       "Alternative text",
+      "Link",
       "-",
       "Delete",
     ]);

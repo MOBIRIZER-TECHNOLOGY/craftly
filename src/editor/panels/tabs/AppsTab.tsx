@@ -1,11 +1,12 @@
 import { useMemo, type CSSProperties, type ReactNode } from "react";
 import { m } from "@/i18n";
-import { Badge, IconEmoji, IconImage, IconPalette, IconQrCode, IconSearch, IconSparkle, IconText } from "@/ui";
+import { Badge, IconEmoji, IconImage, IconPalette, IconQrCode, IconSearch, IconSheet, IconSparkle, IconText } from "@/ui";
 import { DraggableItem } from "../shared/DraggableItem";
 import { EmptyHint } from "../shared/EmptyHint";
 import { useDebounced } from "../shared/hooks";
 import { Panel, PanelScroll, PanelSection, PanelTop } from "../shared/PanelLayout";
 import { PanelSearch } from "../shared/PanelSearch";
+import { BulkApp } from "./apps/BulkApp";
 import { EmojiApp } from "./apps/EmojiApp";
 import { LoremApp } from "./apps/LoremApp";
 import { PaletteApp } from "./apps/PaletteApp";
@@ -70,6 +71,15 @@ const APPS: AppDef[] = [
     from: "#f9a8d4",
     to: "#be185d",
   },
+  {
+    id: "bulk",
+    name: m.panelsTabs.apps.list.bulk.name,
+    description: m.panelsTabs.apps.list.bulk.description,
+    keywords: "bulk create csv data rows merge autofill names certificates badges",
+    icon: <IconSheet />,
+    from: "#86efac",
+    to: "#15803d",
+  },
 ];
 
 /**
@@ -88,6 +98,8 @@ export default function AppsTab() {
       return <PlaceholderApp />;
     case "palette":
       return <PaletteApp />;
+    case "bulk":
+      return <BulkApp />;
     default:
       return <AppList />;
   }

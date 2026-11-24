@@ -196,11 +196,43 @@ describe("the marquee, the freehand preview and the size label", () => {
     expect(rig.container.querySelector(".cf-drawpreview polyline")?.getAttribute("points")).toBe("5,5 15,25");
   });
 
+  it("draws the connector being dragged out of an anchor as a straight line at the zoom of the view", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    expect(rig.container.querySelector("[data-cf-connector-preview]")).toBeNull();
+    act(() => getActions().setZoom(2));
+    act(() => useGesture.getState().set({ connector: { start: { x: 10, y: 20 }, end: { x: 110, y: 70 } } }));
+    const line = rig.container.querySelector("[data-cf-connector-preview] line")!;
+    expect(["x1", "y1", "x2", "y2"].map((name) => line.getAttribute(name))).toEqual(["20", "40", "220", "140"]);
+  });
+
   it("shows the label that follows the pointer", async () => {
     const rig = await mountWorkspace(canvasDesign());
     expect(rig.container.querySelector(".cf-hud")).toBeNull();
     act(() => useGesture.getState().set({ hud: { x: 120, y: 80, text: "300 × 200" } }));
     const hud = rig.container.querySelector<HTMLElement>(".cf-hud")!;
     expect([hud.textContent, hud.style.left, hud.style.top]).toEqual(["300 × 200", "120px", "80px"]);
+  });
+});
+
+describe("the link mark", () => {
+  const mark = (rig: CanvasRig) => rig.container.querySelector<HTMLElement>("[data-cf-linkmark]");
+
+  it("marks the top left corner of a selected element that links somewhere, naming the address", async () => {
+    const rig = await mountWorkspace(canvasDesign([box("a", { link: "https://example.test/more" })]));
+    expect(mark(rig)).toBeNull();
+    selectIds("a");
+    expect(mark(rig)?.getAttribute("aria-label")).toBe("https://example.test/more");
+    expect(mark(rig)?.title).toBe("https://example.test/more");
+    // the mark is 22 px wide and centred on the corner of the box
+    const zoom = useEditor.getState().zoom;
+    expect([mark(rig)?.style.left, mark(rig)?.style.top]).toEqual([`${100 * zoom - 11}px`, `${100 * zoom - 11}px`]);
+  });
+
+  it("shows no mark for a link of only spaces, nor while several elements are selected", async () => {
+    const rig = await mountWorkspace(canvasDesign([box("a", { link: "   " }), box("b", { x: 400, link: "https://example.test" })]));
+    selectIds("a");
+    expect(mark(rig)).toBeNull();
+    selectIds("a", "b");
+    expect(mark(rig)).toBeNull();
   });
 });

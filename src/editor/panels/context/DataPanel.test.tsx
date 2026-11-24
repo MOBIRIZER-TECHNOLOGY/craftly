@@ -1,7 +1,8 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createChart, createShape, createTable } from "@/core/factory";
+import { useEditor } from "@/core/store";
 import type { ChartElement, TableElement } from "@/core/types";
 import { live, openElements, showPanel } from "@/test/ctxUtils";
 import { resetEditor } from "@/test/helpers";
@@ -168,6 +169,36 @@ describe("Data panel: table", () => {
     await user.clear(width);
     await user.type(width, "6{Enter}");
     expect(live<TableElement>(t).borderWidth).toBe(6);
+  });
+});
+
+describe("Data panel: one cell", () => {
+  it("styles and merges the selected cell, then unmerges it", async () => {
+    const user = userEvent.setup();
+    const t = createTable({
+      cells: [
+        ["A", "B"],
+        ["C", "D"],
+        ["E", "F"],
+      ],
+      colWidths: [100, 100],
+      rowHeights: [40, 40, 40],
+    });
+    openElements([t], { selected: [t] });
+    openData();
+    await user.click(cell("Row 2, column 1"));
+    await user.click(toggle("Bold cell text"));
+    expect(live<TableElement>(t).cellStyles?.["1:0"]?.bold).toBe(true);
+    const rows = screen.getByRole("spinbutton", { name: "Rows spanned" });
+    await user.clear(rows);
+    await user.type(rows, "2{Enter}");
+    const cols = screen.getByRole("spinbutton", { name: "Columns spanned" });
+    await user.clear(cols);
+    await user.type(cols, "2{Enter}");
+    await user.click(button("Merge area"));
+    expect(live<TableElement>(t).merges).toEqual([{ row: 1, col: 0, rowSpan: 2, colSpan: 2 }]);
+    await user.click(button("Unmerge cell"));
+    expect(live<TableElement>(t).merges).toBeUndefined();
   });
 });
 
@@ -338,5 +369,45 @@ describe("Data panel: chart", () => {
     expect(live<ChartElement>(c).showValues).toBe(false);
     await user.click(toggle("Grid lines"));
     expect(live<ChartElement>(c).showGrid).toBe(false);
+  });
+
+  it("stacks the series of a bar or column chart, and offers that for no other chart", async () => {
+    const user = userEvent.setup();
+    const c = chart();
+    openElements([c], { selected: [c] });
+    openData();
+    expect(toggle("Stack the series").checked).toBe(false);
+    await user.click(toggle("Stack the series"));
+    expect(live<ChartElement>(c).stacked).toBe(true);
+    await user.click(toggle("Stack the series"));
+    expect(live<ChartElement>(c).stacked).toBe(false);
+    await user.click(screen.getByRole("radio", { name: "Line chart" }));
+    expect(toggle("Stack the series (bar, column and area charts)").disabled).toBe(true);
+    await user.click(screen.getByRole("radio", { name: "Bar chart" }));
+    expect(toggle("Stack the series").disabled).toBe(false);
+  });
+
+  it("gives the two axes a title, cut at 120 characters, and has no titles for a pie", async () => {
+    const user = userEvent.setup();
+    const c = chart();
+    openElements([c], { selected: [c] });
+    openData();
+    expect(screen.getByRole("heading", { name: "Axis titles" })).toBeTruthy();
+    const values = screen.getByRole("textbox", { name: "Title of the value axis" }) as HTMLInputElement;
+    const categories = screen.getByRole("textbox", { name: "Title of the category axis" }) as HTMLInputElement;
+    expect([values.value, categories.value, values.placeholder]).toEqual(["", "", "None"]);
+    await user.type(values, "Units sold");
+    await user.type(categories, "Quarter");
+    expect(live<ChartElement>(c)).toMatchObject({ valueAxisTitle: "Units sold", categoryAxisTitle: "Quarter" });
+    // typing a title is one step of undo
+    act(() => useEditor.getState().actions.undo());
+    expect(live<ChartElement>(c).categoryAxisTitle ?? "").toBe("");
+    expect(live<ChartElement>(c).valueAxisTitle).toBe("Units sold");
+    await user.clear(values);
+    await user.click(values);
+    await user.paste("x".repeat(200));
+    expect(live<ChartElement>(c).valueAxisTitle).toHaveLength(120);
+    await user.click(screen.getByRole("radio", { name: "Pie chart" }));
+    expect(screen.queryByRole("heading", { name: "Axis titles" })).toBeNull();
   });
 });

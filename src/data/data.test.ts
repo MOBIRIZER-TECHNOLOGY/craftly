@@ -188,7 +188,7 @@ describe("backgrounds", () => {
 });
 
 describe("filters", () => {
-  const NUMERIC = ["brightness", "contrast", "saturation", "warmth", "fade", "vignette", "blur", "hue"] as const;
+  const NUMERIC = ["brightness", "contrast", "saturation", "warmth", "fade", "vignette", "blur", "hue", "highlights", "shadows", "sharpen", "tint", "curves", "levels"] as const;
   const ALLOWED = new Set<string>([...NUMERIC, "duotone"]);
 
   it("starts with `none` and has at least 14 unique presets", () => {

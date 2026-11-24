@@ -48,6 +48,15 @@ describe("effectiveFilter", () => {
     effectiveFilter(f);
     expect(f.brightness).toBe(0);
   });
+
+  it("counts a slider missing from a filter of an older design as zero when a preset is added on top", () => {
+    const legacy = filter({ preset: "fresco", intensity: 100 });
+    for (const key of ["highlights", "shadows", "sharpen", "tint", "curves", "levels"] as const) delete legacy[key];
+    const e = effectiveFilter(legacy);
+    // fresco moves none of the newer sliders, so they come out as plain zeros rather than NaN
+    for (const key of ["highlights", "shadows", "sharpen", "tint", "curves", "levels"] as const) expect(e[key], key).toBe(0);
+    expect(e.warmth).toBe(FILTER_PRESETS.find((p) => p.id === "fresco")!.patch.warmth);
+  });
 });
 
 describe("isNeutral", () => {
@@ -57,9 +66,30 @@ describe("isNeutral", () => {
   });
 
   it("is false as soon as one slider moves", () => {
-    for (const key of ["brightness", "contrast", "saturation", "warmth", "fade", "vignette", "blur", "hue"] as const) {
+    for (const key of [
+      "brightness",
+      "contrast",
+      "saturation",
+      "warmth",
+      "fade",
+      "vignette",
+      "blur",
+      "hue",
+      "highlights",
+      "shadows",
+      "sharpen",
+      "tint",
+      "curves",
+      "levels",
+    ] as const) {
       expect(isNeutral(filter({ [key]: 5 })), key).toBe(false);
     }
+  });
+
+  it("treats every new field as zero in a filter from an older design", () => {
+    const legacy = filter();
+    for (const key of ["highlights", "shadows", "sharpen", "tint", "curves", "levels"] as const) delete legacy[key];
+    expect(isNeutral(legacy)).toBe(true);
   });
 
   it("is false for a duotone and for a preset that has any effect", () => {
@@ -239,5 +269,99 @@ describe("renderFiltered", () => {
     const first = renderFiltered(d);
     for (let i = 0; i < 45; i++) renderFiltered(draw());
     expect(renderFiltered(d)).not.toBe(first);
+  });
+
+  describe("pixel adjustments", () => {
+    const OPAQUE = 255;
+    /**
+     * Render a picture of the given grey levels (one row, or `rows` rows) through the filter, with the copy's
+     * `getImageData` handing out those pixels. The painter changes the same pixel array in place and puts it back.
+     */
+    function adjust(f: ImageFilter, greys: number[], rows = 1) {
+      const width = greys.length / rows;
+      const data = new Uint8ClampedArray(greys.flatMap((g) => [g, g, g, OPAQUE]));
+      const image = { width, height: rows, data, colorSpace: "srgb" };
+      const spies = captureContexts({ returns: { getImageData: image } });
+      renderFiltered(draw({ boxW: width, boxH: rows, dw: width, dh: rows, filter: f }));
+      const spy = spies[0];
+      /** the red channel of every pixel: the grey level for an untinted adjustment */
+      const reds = () => Array.from({ length: greys.length }, (_, i) => data[i * 4]);
+      return { spy, data, image, reds };
+    }
+
+    it("does not read the pixels back when no pixel slider has moved", () => {
+      const { spy } = adjust(filter({ warmth: 40 }), [10, 20]);
+      expect(spy.to("getImageData")).toHaveLength(0);
+      expect(spy.to("putImageData")).toHaveLength(0);
+    });
+
+    it("reads the whole copy, adjusts it and puts it back at the corner, before the overlays", () => {
+      const { spy, image } = adjust(filter({ shadows: 50, warmth: 40 }), [0, 0, 0, 0]);
+      expect(spy.to("getImageData")[0].args).toEqual([0, 0, 4, 1]);
+      expect(spy.to("putImageData")[0].args).toEqual([image, 0, 0]);
+      const names = spy.names();
+      expect(names.indexOf("drawImage")).toBeLessThan(names.indexOf("getImageData"));
+      expect(names.indexOf("putImageData")).toBeLessThan(names.indexOf("fillRect"));
+    });
+
+    it("lifts the shadows and leaves white as it is", () => {
+      expect(adjust(filter({ shadows: 100 }), [0, 255]).reds()).toEqual([166, 255]);
+    });
+
+    it("pulls the highlights down and leaves black as it is", () => {
+      expect(adjust(filter({ highlights: -100 }), [0, 255]).reds()).toEqual([0, 89]);
+    });
+
+    it("spreads the tones apart with levels, or squeezes them towards grey for negative levels", () => {
+      expect(adjust(filter({ levels: 100 }), [0, 64, 191, 255]).reds()).toEqual([0, 26, 229, 255]);
+      expect(adjust(filter({ levels: -100 }), [0, 64, 191, 255]).reds()).toEqual([76, 102, 153, 178]);
+    });
+
+    it("bends the middle tones with curves while black and white stay put", () => {
+      expect(adjust(filter({ curves: 100 }), [0, 64, 191, 255]).reds()).toEqual([0, 32, 223, 255]);
+      expect(adjust(filter({ curves: -100 }), [0, 64, 191, 255]).reds()).toEqual([0, 96, 159, 255]);
+    });
+
+    it("tints towards green, or towards magenta for a negative tint, and keeps the alpha", () => {
+      const green = adjust(filter({ tint: 100 }), [128]).data;
+      expect(Array.from(green)).toEqual([110, 156, 110, OPAQUE]);
+      const magenta = adjust(filter({ tint: -50 }), [128]).data;
+      expect(Array.from(magenta)).toEqual([137, 114, 137, OPAQUE]);
+    });
+
+    it("sharpens a pixel against its four neighbours and leaves the border pixels alone", () => {
+      // a 3 x 3 grey picture with a lighter middle: 100 + 0.7 x (4 x 100 - 4 x 50)
+      const { reds } = adjust(filter({ sharpen: 100 }), [50, 50, 50, 50, 100, 50, 50, 50, 50], 3);
+      expect(reds()).toEqual([50, 50, 50, 50, 240, 50, 50, 50, 50]);
+    });
+
+    it("does not sharpen a copy only one or two pixels wide or high, as it has no inner pixels", () => {
+      const narrow = adjust(filter({ sharpen: 100 }), [50, 100, 50, 50, 100, 50], 3);
+      expect(narrow.reds()).toEqual([50, 100, 50, 50, 100, 50]);
+      expect(narrow.spy.to("putImageData")).toHaveLength(1);
+      const low = adjust(filter({ sharpen: 100 }), [50, 100, 50, 50, 100, 50], 2);
+      expect(low.reds()).toEqual([50, 100, 50, 50, 100, 50]);
+    });
+
+    it("adjusts a filter from an older design that only knows some of the newer sliders", () => {
+      const legacy = filter({ levels: 100 });
+      for (const key of ["highlights", "shadows", "sharpen", "tint", "curves"] as const) delete legacy[key];
+      const { data } = adjust(legacy, [64, 191]);
+      // the same as levels alone in a filter that has every slider
+      expect(Array.from(data)).toEqual([26, 26, 26, OPAQUE, 229, 229, 229, OPAQUE]);
+      const older = filter({ highlights: -100 });
+      for (const key of ["shadows", "sharpen", "tint", "curves", "levels"] as const) delete older[key];
+      expect(adjust(older, [0, 255]).reds()).toEqual([0, 89]);
+    });
+
+    it("keeps the plain picture and still draws the overlays when the browser refuses to hand out the pixels", () => {
+      const spies = captureContexts({ failOn: { getImageData: new DOMException("The canvas has been tainted", "SecurityError") } });
+      const canvas = renderFiltered(draw({ filter: filter({ curves: 40, fade: 50 }) }));
+      const spy = spies[0];
+      expect(canvas.width).toBe(200);
+      expect(spy.to("drawImage")).toHaveLength(1);
+      expect(spy.to("putImageData")).toHaveLength(0);
+      expect(spy.to("fillRect")[0].state.fillStyle).toBe("#ffffff");
+    });
   });
 });

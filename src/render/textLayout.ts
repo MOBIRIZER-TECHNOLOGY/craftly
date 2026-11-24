@@ -73,9 +73,11 @@ function applyCase(text: string, mode: TextCase): string {
 }
 
 export function resolveRunStyle(el: TextElement, run: TextRun | null): RunStyle {
-  let weight = el.fontWeight;
-  if (run?.bold === true) weight = Math.max(700, weight);
-  else if (run?.bold === false) weight = Math.min(400, weight);
+  let weight = run?.weight ?? el.fontWeight;
+  if (run?.weight === undefined) {
+    if (run?.bold === true) weight = Math.max(700, weight);
+    else if (run?.bold === false) weight = Math.min(400, weight);
+  }
   const size = run?.size ?? el.fontSize;
   return {
     family: run?.font ?? el.fontFamily,

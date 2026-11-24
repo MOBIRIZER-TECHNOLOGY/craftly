@@ -8,6 +8,7 @@ export const ui = {
     opacity: "Opacity",
     current: "Current colour",
     hex: "Hex colour",
+    palettes: "Named palettes",
   },
   confirm: {
     /** the question of a confirm without a title, when the browser's own dialog is used */

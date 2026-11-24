@@ -22,7 +22,7 @@ Current reliability behavior: editor writes compare a local revision in the same
 Captured with REA (`capture_web_screenshot`, `inspect_web_page` passive accessibility/DOM
 capture) from a signed-in Canva session, plus driven UI states. Use these as the UI spec.
 This section records the reference product (Canva) as it was observed: Craftly builds most of it, not all of it (for
-example its right-click menu has no "Change to frame", "Comment", "Link" or "Show element timing"). What Craftly
+example its right-click menu has no "Change to frame", "Comment" or "Show element timing"; "Link" was added on 2026-11-23). What Craftly
 actually has is listed in the README and in `reports/Craftly versus Canva feature gaps.md`.
 
 ### Dashboard (Home)

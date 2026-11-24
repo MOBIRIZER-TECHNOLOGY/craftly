@@ -88,7 +88,7 @@ export interface Shadow {
 /* Elements                                                           */
 /* ------------------------------------------------------------------ */
 
-export type ElementType = "text" | "shape" | "line" | "image" | "graphic" | "group" | "table" | "chart";
+export type ElementType = "text" | "shape" | "line" | "image" | "graphic" | "group" | "table" | "chart" | "video";
 
 /** How an element mixes its colours with what is under it (src/core/blend.ts). The names are those of a canvas's `globalCompositeOperation` and of a style sheet's `mix-blend-mode`. */
 export type BlendMode =
@@ -183,6 +183,8 @@ export interface TextRun {
   /** may contain "\n" for a soft line break */
   text: string;
   bold?: boolean;
+  /** numeric font weight when it is more specific than bold, 100..900 */
+  weight?: number;
   italic?: boolean;
   underline?: boolean;
   strike?: boolean;
@@ -282,10 +284,17 @@ export interface LineBinding {
   anchor: Anchor;
 }
 
+export type LineRouting = "straight" | "elbow" | "curved";
+
 export interface LineElement extends ElementBase {
   type: "line";
-  /** `width` is the line length; `height` is always 0. The line runs from (x, y) to (x+width, y) before rotation. */
+  /** a straight line runs from (x, y) to (x+width, y); a route is expressed in the same local box */
   stroke: Stroke;
+  routing?: LineRouting;
+  /** elbow points, or four cubic Bezier points when routing is curved */
+  route?: Point[];
+  /** optional text drawn at the middle of the route */
+  label?: string;
   startArrow: ArrowKind;
   endArrow: ArrowKind;
   /**
@@ -314,6 +323,12 @@ export interface ImageFilter {
   blur: number;
   /** -100..100 hue rotation (maps to -180..180deg) */
   hue: number;
+  highlights?: number;
+  shadows?: number;
+  sharpen?: number;
+  tint?: number;
+  curves?: number;
+  levels?: number;
   /** optional duotone */
   duotone?: { dark: Color; light: Color } | null;
 }
@@ -329,6 +344,8 @@ export interface ImageCrop {
   y: number;
   w: number;
   h: number;
+  /** straighten angle in degrees inside the frame */
+  rotation?: number;
 }
 
 export interface ImageElement extends ElementBase {
@@ -351,6 +368,8 @@ export interface ImageElement extends ElementBase {
   crop: ImageCrop;
   /** mask shape id from the shape catalogue ("rect" = no mask) */
   mask: ShapeKind;
+  /** custom normalized path when mask is "path" */
+  maskPath?: string;
   /** corner radius in px when mask is rect-like */
   radius: number;
   filter: ImageFilter;
@@ -384,9 +403,29 @@ export interface GroupElement extends ElementBase {
 
 /* ---- table ---- */
 
+export interface TableCell {
+  row: number;
+  col: number;
+}
+
+export interface TableMerge extends TableCell {
+  rowSpan: number;
+  colSpan: number;
+}
+
+export interface TableCellStyle {
+  fill?: Color;
+  color?: Color;
+  bold?: boolean;
+  align?: TextAlign;
+}
+
 export interface TableElement extends ElementBase {
   type: "table";
   cells: string[][];
+  merges?: TableMerge[];
+  /** optional overrides keyed "row:column" */
+  cellStyles?: Record<string, TableCellStyle>;
   colWidths: number[];
   rowHeights: number[];
   headerRow: boolean;
@@ -403,7 +442,7 @@ export interface TableElement extends ElementBase {
 
 /* ---- chart ---- */
 
-export type ChartKind = "bar" | "column" | "line" | "area" | "pie" | "donut";
+export type ChartKind = "bar" | "column" | "line" | "area" | "combo" | "scatter" | "pie" | "donut";
 
 export interface ChartSeries {
   name: string;
@@ -422,9 +461,47 @@ export interface ChartElement extends ElementBase {
   showLegend: boolean;
   showValues: boolean;
   showGrid: boolean;
+  /** bar, column and area charts with several series: the series of a category on top of each other, not side by side (absent: side by side) */
+  stacked?: boolean;
+  /** stacked values as a share of each category's total */
+  percent?: boolean;
+  /** the words along the axis of the values; none when absent or empty (a pie or donut has no axis) */
+  valueAxisTitle?: string;
+  /** the words along the axis of the categories; none when absent or empty */
+  categoryAxisTitle?: string;
 }
 
-export type DesignElement = TextElement | ShapeElement | LineElement | ImageElement | GraphicElement | GroupElement | TableElement | ChartElement;
+/* ---- video ---- */
+
+/**
+ * An uploaded clip on the page (src/render/videos.ts). It is drawn like a picture (crop, frame shape, corners, outline): at rest
+ * as the frame at `trimStart`, and in Present, an animation preview and a recorded video as the clip playing from `trimStart`
+ * to `trimEnd` at `speed`, over and over. Still downloads (PNG, PDF, SVG, PowerPoint) hold that first frame.
+ */
+export interface VideoElement extends ElementBase {
+  type: "video";
+  /** "asset:<id>": a clip stored in this browser's uploads (no other scheme: a design never plays a clip from the web) */
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  /** seconds: the length of the whole clip */
+  duration: number;
+  /** seconds into the clip where it starts and stops playing (0 <= trimStart < trimEnd <= duration) */
+  trimStart: number;
+  trimEnd: number;
+  /** how fast it plays, 0.25 to 4 (1 = as recorded) */
+  speed: number;
+  /** without its sound in Present (a clip is always silent while editing) */
+  muted?: boolean;
+  crop: ImageCrop;
+  /** frame shape from the shape catalogue ("rect" = none) */
+  mask: ShapeKind;
+  maskPath?: string;
+  radius: number;
+  stroke?: Stroke | null;
+}
+
+export type DesignElement = TextElement | ShapeElement | LineElement | ImageElement | GraphicElement | GroupElement | TableElement | ChartElement | VideoElement;
 
 export type ElementOf<T extends ElementType> = Extract<DesignElement, { type: T }>;
 
@@ -529,6 +606,10 @@ export interface Design {
   trashedAt: number | null;
   /** ruler guides in design px */
   guides?: { vertical: number[]; horizontal: number[] };
+  /** margin in design px; absent means the default 5% of the shorter page side */
+  margin?: number;
+  /** grid spacing in design px; absent means 20 */
+  gridSize?: number;
   /** present while the design is shared with other people; see `LiveLink` */
   live?: LiveLink;
   /** notes pinned to places of the pages; none is the same as an empty list (an older design has none) */
@@ -605,7 +686,7 @@ export interface SyncRecord {
 export interface Asset {
   id: ID;
   name: string;
-  kind: "image" | "svg";
+  kind: "image" | "svg" | "video";
   mime: string;
   size: number;
   width: number;

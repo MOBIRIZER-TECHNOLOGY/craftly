@@ -23,14 +23,15 @@ export function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
   useEffect(() => {
     let current = window.location.hash;
-    let canLeave = false;
     let pending = 0;
     const on = async () => {
       const next = window.location.hash;
       const request = ++pending;
       if (next === current) return;
-      if (!canLeave && current.startsWith("#/design/") && (await settleSaves(6000, true)) !== "saved") {
+      if (current.startsWith("#/design/") && (await settleSaves(6000, true)) !== "saved") {
         if (request !== pending) return;
+        // the address bar shows the design again while the person is asked; the entry the browser went to (a new one for a link,
+        // the one before for Back) keeps its place in the history
         window.history.replaceState(null, "", current);
         const { confirm } = await import("@/ui");
         const discard = await confirm({
@@ -41,12 +42,11 @@ export function useRoute(): Route {
           danger: true,
         });
         if (request !== pending || !discard) return;
-        canLeave = true;
-        window.location.hash = next;
-        return;
+        // that entry gets its own address back, in place: setting the hash would push a new entry after it, so that Back from
+        // there would open the design again, and Forward from before it would be lost
+        window.history.replaceState(null, "", next);
       }
       if (request !== pending) return;
-      canLeave = false;
       current = next;
       setRoute(parseRoute(next));
     };

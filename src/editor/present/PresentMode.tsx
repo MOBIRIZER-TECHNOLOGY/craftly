@@ -4,21 +4,26 @@ import { useEditor } from "@/core/store";
 import type { DesignElement, Point } from "@/core/types";
 import { m } from "@/i18n";
 import {
+  cx,
   IconButton,
   IconChevronLeft,
   IconChevronRight,
   IconClose,
+  IconExternalLink,
   IconExitFullscreen,
   IconFullscreen,
   IconNotes,
   IconPause,
   IconPlay,
-  cx,
+  IconPointerClick,
+  Tooltip,
   useLatest,
   useMedia,
   useResizeObserver,
 } from "@/ui";
+import { renderPageToCanvas } from "@/render/renderPage";
 import { PresentPlayer } from "./PresentPlayer";
+import { PresenterWindow } from "./presenterWindow";
 import "./present.css";
 
 const IDLE_MS = 2000;
@@ -50,9 +55,18 @@ function safeUrl(link: string): string | null {
   return `https://${text}`;
 }
 
+/** The time a show has run, as a clock: minutes and seconds, with hours in front once there are some. */
+export function showClock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const two = (n: number) => String(n).padStart(2, "0");
+  const hours = Math.floor(s / 3600);
+  return `${hours ? `${hours}:` : ""}${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`;
+}
+
 /**
  * Full-screen presenter: one page at a time, fitted to the screen on a dark background.
- * Right / Space / PageDown / click = next, Left / PageUp = previous, Home / End, P = auto-play, N = notes, F = full screen, Esc = exit.
+ * Right / Space / PageDown / click = next, Left / PageUp = previous, Home / End, P = auto-play, N = notes, L = pointer, F = full screen, Esc = exit.
+ * The controls show how long the show has run; a click on the clock starts it again.
  *
  * Animations, transitions and auto-play are played by a `PresentPlayer` that owns the canvas; this component keeps
  * the page number, the controls and the keyboard, and mirrors what the player reports.
@@ -75,6 +89,12 @@ export function PresentMode() {
     return Math.max(0, s.design?.pages.findIndex((p) => p.id === s.activePageId) ?? 0);
   });
   const [notesOn, setNotesOn] = useState(false);
+  /** a red dot follows the mouse, to point at something on the page: where it is, or null while it is off or outside */
+  const [pointerOn, setPointerOn] = useState(false);
+  const [dot, setDot] = useState<{ x: number; y: number } | null>(null);
+  /** when the show (or its clock) began, and the seconds since, counted once a second */
+  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [elapsed, setElapsed] = useState(0);
   const [idle, setIdle] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [overLink, setOverLink] = useState(false);
@@ -117,6 +137,12 @@ export function PresentMode() {
     else go(indexRef.current - 1);
   }, [go, indexRef]);
   const toggleAutoplay = useCallback(() => playerRef.current?.toggleAutoplay(), []);
+  const presenterWindow = useRef<PresenterWindow | null>(null);
+  const openPresenterWindow = useCallback(() => {
+    presenterWindow.current ??= new PresenterWindow();
+    presenterWindow.current.open((command) => (command === "next" ? next() : prev()));
+  }, [next, prev]);
+  useEffect(() => () => presenterWindow.current?.close(), []);
 
   const exit = useCallback(() => {
     const s = useEditor.getState();
@@ -177,6 +203,14 @@ export function PresentMode() {
     return () => window.clearTimeout(idleTimer.current);
   }, [wake]);
 
+  /* ---- the clock of the show ---- */
+  useEffect(() => {
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+
   /* ---- keyboard ---- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -217,6 +251,10 @@ export function PresentMode() {
         case "n":
         case "N":
           setNotesOn((v) => !v);
+          break;
+        case "l":
+        case "L":
+          setPointerOn((v) => !v);
           break;
         case "f":
         case "F":
@@ -265,6 +303,30 @@ export function PresentMode() {
     playerRef.current?.configure({ design: design ?? null, docVersion, stageW: stage.w, stageH: stage.h, reducedMotion: reduceMotion });
   }, [ready, design, docVersion, stage.w, stage.h, reduceMotion]);
 
+  useEffect(() => {
+    let alive = true;
+    const nextPage = design?.pages[current + 1];
+    const publish = (nextImage?: string) => {
+      if (!alive) return;
+      presenterWindow.current?.post({
+        index: current,
+        count,
+        notes: page?.notes?.trim() || m.editorChrome.present.noNotes,
+        nextName: nextPage ? nextPage.name?.trim() || m.editorChrome.pages.pageOf(current + 2, count) : m.editorChrome.present.endOfShow,
+        nextImage,
+      });
+    };
+    publish();
+    if (design && nextPage) {
+      void renderPageToCanvas(design, nextPage, { width: 480 })
+        .then((canvas) => publish(canvas.toDataURL("image/jpeg", 0.82)))
+        .catch(() => publish());
+    }
+    return () => {
+      alive = false;
+    };
+  }, [design, docVersion, current, count, page?.notes, page?.name]);
+
   /* ---- pointer: click = next (or follow a link), swipe = previous / next ---- */
   const linkFromEvent = (e: { clientX: number; clientY: number }): string | undefined | null => {
     const canvas = canvasRef.current;
@@ -285,6 +347,11 @@ export function PresentMode() {
     const link = linkFromEvent(e);
     const hasLink = !!(link && safeUrl(link));
     if (hasLink !== overLink) setOverLink(hasLink);
+    if (pointerOn) {
+      // where the mouse is on the presenter, for the dot
+      const r = e.currentTarget.getBoundingClientRect();
+      setDot({ x: e.clientX - r.left, y: e.clientY - r.top });
+    }
   };
   const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
     const s = swipe.current;
@@ -321,7 +388,7 @@ export function PresentMode() {
   return (
     <div
       ref={rootRef}
-      className={cx("cf-present", idle && "is-idle", overLink && "is-link")}
+      className={cx("cf-present", idle && "is-idle", overLink && "is-link", pointerOn && "is-pointing")}
       role="dialog"
       aria-modal="true"
       aria-label={m.editorChrome.present.label}
@@ -346,6 +413,11 @@ export function PresentMode() {
           </span>
           <IconButton label={m.editorChrome.present.nextPage} shortcut="Right" icon={<IconChevronRight aria-hidden="true" />} disabled={current >= count - 1} onClick={next} />
           <span className="cf-present__sep" aria-hidden="true" />
+          <Tooltip content={m.editorChrome.present.resetClock}>
+            <button type="button" className="cf-present__clock" aria-label={m.editorChrome.present.clock(showClock(elapsed))} onClick={() => setStartedAt(Date.now())}>
+              {showClock(elapsed)}
+            </button>
+          </Tooltip>
           <IconButton
             label={m.editorChrome.present.autoplay}
             shortcut="P"
@@ -361,6 +433,15 @@ export function PresentMode() {
             onClick={() => setNotesOn((v) => !v)}
           />
           <IconButton
+            className="cf-present__pointer"
+            label={pointerOn ? m.editorChrome.present.hidePointer : m.editorChrome.present.showPointer}
+            shortcut="L"
+            icon={<IconPointerClick aria-hidden="true" />}
+            active={pointerOn}
+            onClick={() => setPointerOn((v) => !v)}
+          />
+          <IconButton className="cf-present__second" label={m.editorChrome.present.secondWindow} icon={<IconExternalLink aria-hidden="true" />} onClick={openPresenterWindow} />
+          <IconButton
             label={fullscreen ? m.editorChrome.present.exitFullScreen : m.editorChrome.present.enterFullScreen}
             shortcut="F"
             icon={fullscreen ? <IconExitFullscreen aria-hidden="true" /> : <IconFullscreen aria-hidden="true" />}
@@ -369,6 +450,8 @@ export function PresentMode() {
           <IconButton label={m.editorChrome.present.exit} shortcut="Esc" icon={<IconClose aria-hidden="true" />} onClick={exit} />
         </div>
       </div>
+
+      {pointerOn && dot ? <span className="cf-present__dot" data-cf-present-dot aria-hidden="true" style={{ left: dot.x, top: dot.y }} /> : null}
 
       {notesOn ? (
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- the notes scroll, so the keyboard has to reach them

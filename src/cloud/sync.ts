@@ -22,7 +22,7 @@ import { CloudError, type Conn } from "./api";
 import { designLock, heldLocks, SYNC_LOCK, tryLock } from "./locks";
 import { CURSORS_KEY, FOLDERS_KEY, roleIn, updateSession, useCloud, type CloudSession, type Role } from "./state";
 import { setSyncStatus, useSyncStatus } from "./syncStatus";
-import { isDirty, changedHere, metaOf, planSync, type LocalDesign, type SyncAction } from "./syncPlan";
+import { isDirty, changedHere, metaOf, planSync, withLaterChanges, type LocalDesign, type SyncAction } from "./syncPlan";
 import { BadAnswer, MAX_THUMBNAIL, NewerDesign, THUMBNAIL, checkDesign, migrateDesign, type Changes } from "./validate";
 
 /** At most this many "(edited on …)" copies in one run; past that sync stops and says so. */
@@ -98,9 +98,12 @@ export async function waitingDesigns(session = useCloud.getState().session): Pro
 
 /* ---------------- uploads ---------------- */
 
-/** Fetches the uploads a design uses that are not here, checked as any picture from outside is (`checkUpload`). */
+/**
+ * Fetches the uploads a design uses that are not here, checked as any picture from outside is (`checkUpload`). A clip of a video
+ * element is not among them: an account server keeps pictures only, so a clip stays on the device it was uploaded on.
+ */
 async function fetchAssets(conn: Conn, space: string, design: Design, report: SyncReport): Promise<void> {
-  for (const id of collectAssetIds(design)) {
+  for (const id of collectAssetIds(design, { clips: false })) {
     if (await getLocalAsset(id)) continue;
     try {
       const { mime, base64 } = await api.getAsset(conn, space, id);
@@ -117,9 +120,9 @@ async function fetchAssets(conn: Conn, space: string, design: Design, report: Sy
   }
 }
 
-/** Sends the uploads a design uses that the space does not have, before the design. */
+/** Sends the pictures a design uses that the space does not have, before the design (not its clips: see `fetchAssets`). */
 async function sendAssets(conn: Conn, space: string, design: Design): Promise<void> {
-  const ids = collectAssetIds(design);
+  const ids = collectAssetIds(design, { clips: false });
   if (!ids.length) return;
   const missing = await api.missingAssets(conn, space, ids.slice(0, 1000));
   for (const id of missing) {
@@ -372,7 +375,10 @@ async function push(run: SpaceRun, id: string, baseRev: number | null): Promise<
     const now = await wrap<DesignSummary | undefined>(tx.objectStore("summaries").get(id));
     // a new design sent its details with its content; one the server had keeps the details that were in step
     const syncedMeta = baseRev === null || !before?.syncedMeta ? metaOfSummary(summary) : before.syncedMeta;
-    sync.put({ id, space: run.space, serverRev: rev, syncedRevision: now ? sentRevision : null, syncedMeta } satisfies SyncRecord);
+    // deleted for good while it was being sent (deleteForever takes no lock of the design): the server has it now, so its deletion
+    // waits to be sent, as a tombstone; a record without one would have the next run take it back from the feed
+    const deleted = now ? {} : { tombstone: true };
+    sync.put({ id, space: run.space, serverRev: rev, syncedRevision: now ? sentRevision : null, syncedMeta, ...deleted } satisfies SyncRecord);
   });
   run.report.pushed++;
 }
@@ -498,7 +504,7 @@ async function metaPush(run: SpaceRun, id: string, patch: Partial<SyncedMeta>): 
 }
 
 /** Takes the server's details where they did not change here; the content stays in step when it was. */
-async function metaPull(run: SpaceRun, id: string, meta: SyncedMeta, remote: SyncedMeta): Promise<void> {
+async function metaPull(run: SpaceRun, id: string, planned: SyncedMeta, remote: SyncedMeta, local: SyncedMeta): Promise<void> {
   const done = await tryLock(designLock(id), () =>
     writeTransaction(["designs", "summaries", "sync"], async (tx) => {
       const designs = tx.objectStore("designs");
@@ -510,6 +516,8 @@ async function metaPull(run: SpaceRun, id: string, meta: SyncedMeta, remote: Syn
         wrap<SyncRecord | undefined>(sync.get(id)),
       ]);
       if (!design || !summary || !record) return true;
+      // a detail changed here while this run went on (a rename, a star: updateSummary takes no lock of the design) is kept
+      const meta = withLaterChanges(planned, local, metaOfSummary(summary));
       const revision = uid("revision");
       designs.put({ ...design, ...meta });
       summaries.put({ ...summary, ...meta, revision });
@@ -554,7 +562,7 @@ async function act(run: SpaceRun, action: SyncAction, local: Map<string, LocalDe
       if (mayWrite) await metaPush(run, action.id, action.patch);
       return;
     case "meta-pull":
-      return metaPull(run, action.id, action.meta, action.remote);
+      return metaPull(run, action.id, action.meta, action.remote, action.local);
     case "skip":
       run.report.skipped++;
       run.hold = true;

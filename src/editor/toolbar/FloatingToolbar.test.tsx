@@ -147,6 +147,41 @@ describe("shape toolbar", () => {
     expect(has("Border")).toBe(true);
   });
 
+  it("offers the numbers of a polygon or a star, sets them as one step of undo each, and offers none for a plain shape", async () => {
+    const user = userEvent.setup();
+    const polygon = createShape("polygon", { x: 100, y: 100, width: 200, height: 200 });
+    const star = createShape("star", { x: 400, y: 100, width: 200, height: 200 });
+    mount([polygon, star, box()], [polygon]);
+    expect(has("Shape options")).toBe(true);
+    await user.click(btn("Shape options"));
+    const sides = screen.getByRole("slider", { name: "Sides" });
+    expect(sides.getAttribute("aria-valuenow")).toBe("7");
+    expect([sides.getAttribute("aria-valuemin"), sides.getAttribute("aria-valuemax")]).toEqual(["3", "12"]);
+    sides.focus();
+    await user.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(live<ShapeElement>(polygon).params).toEqual({ sides: 5 });
+    // moving one slider is one step of undo
+    act(() => store().actions.undo());
+    expect(live<ShapeElement>(polygon).params).toBeUndefined();
+    await user.keyboard("{Escape}");
+
+    selectElements(star);
+    await user.click(btn("Shape options"));
+    expect(screen.getByRole("slider", { name: "Points" }).getAttribute("aria-valuenow")).toBe("5");
+    const inner = screen.getByRole("slider", { name: "Inner size (%)" });
+    expect(inner.getAttribute("aria-valuenow")).toBe("42");
+    inner.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(live<ShapeElement>(star).params).toEqual({ inner: 0.43 });
+    await user.keyboard("{Escape}");
+
+    // a polygon and a star together have no number in common, and a rectangle has none
+    selectElements(polygon, star);
+    expect(has("Shape options")).toBe(false);
+    selectElements(store().design!.pages[0].elements[2]);
+    expect(has("Shape options")).toBe(false);
+  });
+
   it("opens the colour panel from the fill swatch and shows the fill colour in it", async () => {
     const user = userEvent.setup();
     const s = box({ fill: { type: "solid", color: "#336699" } });
@@ -337,7 +372,20 @@ describe("shape toolbar", () => {
 describe("line toolbar", () => {
   it("lists the controls of a line", () => {
     mount([createLine({ x: 10, y: 10 })]);
-    expect(names()).toEqual(["Line color", "Line weight", "Line style", "Start arrowhead", "End arrowhead", "Transparency", "Animate", "Position", "Copy style", "More actions"]);
+    expect(names()).toEqual([
+      "Line color",
+      "Line weight",
+      "Line style",
+      "Connector route",
+      "Line label",
+      "Start arrowhead",
+      "End arrowhead",
+      "Transparency",
+      "Animate",
+      "Position",
+      "Copy style",
+      "More actions",
+    ]);
   });
 
   it("opens the colour panel for the stroke, sets the weight and the style", async () => {
@@ -403,7 +451,21 @@ describe("line toolbar", () => {
 describe("image toolbar", () => {
   it("lists the controls of a photo", () => {
     mount([photo()]);
-    expect(names()).toEqual(["Edit image", "Crop", "Flip", "Corner radius", "Border", "Transparency", "Effects", "Animate", "Position", "Replace", "Copy style", "More actions"]);
+    expect(names()).toEqual([
+      "Edit image",
+      "Crop",
+      "Frame shape",
+      "Flip",
+      "Corner radius",
+      "Border",
+      "Transparency",
+      "Effects",
+      "Animate",
+      "Position",
+      "Replace",
+      "Copy style",
+      "More actions",
+    ]);
   });
 
   it("rounds the corners of a photo that has no mask of its own", () => {
@@ -459,6 +521,65 @@ describe("image toolbar", () => {
     await user.click(btn("Done"));
     expect(store().croppingId).toBeNull();
     expect(kind()).toBe("image");
+  });
+
+  it("cuts a picture that is on the page to a frame shape and back, without moving or resizing it", async () => {
+    const user = userEvent.setup();
+    const p = photo();
+    mount([p]);
+    const before = live<ImageElement>(p);
+    await user.click(btn("Frame shape"));
+    const shapes = screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent);
+    expect(shapes[0]).toBe("No frame");
+    expect(shapes).toContain("Circle");
+    expect(shapes).toContain("Heart");
+    // the rounded square is the rectangle with a corner radius, which has its own control
+    expect(shapes).not.toContain("Rounded frame");
+    expect(shapes).not.toContain("Square frame");
+    expect(screen.getByRole("menuitemcheckbox", { name: "No frame" }).getAttribute("aria-checked")).toBe("true");
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "Circle" }));
+    const round = live<ImageElement>(p);
+    expect(round.mask).toBe("ellipse");
+    expect([round.x, round.y, round.width, round.height, round.src]).toEqual([before.x, before.y, before.width, before.height, before.src]);
+    // a picture that is cut to a shape has no corner radius to set
+    expect(has("Corner radius")).toBe(false);
+    act(() => store().actions.undo());
+    expect(live<ImageElement>(p).mask).toBe(before.mask);
+
+    await user.click(btn("Frame shape"));
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "Star" }));
+    await user.click(btn("Frame shape"));
+    expect(screen.getByRole("menuitemcheckbox", { name: "Star" }).getAttribute("aria-checked")).toBe("true");
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "No frame" }));
+    expect(live<ImageElement>(p).mask).toBe("rect");
+    expect(has("Corner radius")).toBe(true);
+  });
+
+  it("gives the frame a shape from the crop toolbar, and names the shape it has", async () => {
+    const user = userEvent.setup();
+    const p = photo();
+    mount([p]);
+    await user.click(btn("Crop"));
+    const before = live<ImageElement>(p);
+    const shape = () => btn("Shape of the crop");
+    const start = shape().textContent;
+    await user.click(shape());
+    const names = screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent);
+    expect(names).toEqual(["Original", "1:1", "4:3", "3:2", "16:9", "3:4", "2:3", "9:16"]);
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "1:1" }));
+    const square = live<ImageElement>(p);
+    expect(square.width).toBeCloseTo(square.height);
+    expect(square.width).toBeLessThanOrEqual(Math.max(before.width, before.height) + 0.001);
+    expect(shape().textContent).toBe("1:1");
+    expect(shape().textContent).not.toBe(start === "1:1" ? "" : start);
+    // the menu marks the shape the frame has
+    await user.click(shape());
+    expect(screen.getByRole("menuitemcheckbox", { name: "1:1" }).getAttribute("aria-checked")).toBe("true");
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "Original" }));
+    const whole = live<ImageElement>(p);
+    expect(whole.width / whole.height).toBeCloseTo(whole.naturalWidth / whole.naturalHeight);
+    // still cropping: choosing a shape does not leave crop mode
+    expect(store().croppingId).toBe(p.id);
   });
 
   it("only offers to upload into an empty frame", async () => {

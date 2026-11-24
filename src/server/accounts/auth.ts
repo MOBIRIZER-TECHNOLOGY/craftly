@@ -102,6 +102,7 @@ export async function signup(ctx: Ctx, req: IncomingMessage, res: ServerResponse
   };
   const made = code ? await ctx.serial(`code:${sha256Hex(code)}`, make) : await make();
   const token = await ctx.startSession(made.user.id, "");
+  ctx.known.note(made.user.id, address);
   reply(res, 201, { token, user: ctx.publicUser(made.user), recoveryCode, ...(made.team ? { team: made.team } : {}) });
 }
 
@@ -118,9 +119,12 @@ export async function signin(ctx: Ctx, req: IncomingMessage, res: ServerResponse
     [ctx.limiters.signinAccountAddress, `${email}\n${address}`],
     [ctx.limiters.signinAccount, email],
   ];
-  const wait = ctx.waitOf(names);
-  if (wait) throw tooMany(wait, "too many failed sign-ins; try again later");
   const userId = await ctx.storage.emailOwner(email);
+  // the limit for the account from everywhere holds back new addresses only: one the person used lately has its own two limits,
+  // so that guesses from many addresses cannot keep the person out of their account (`known` in context.ts)
+  const known = userId !== null && ctx.known.has(userId, address);
+  const wait = ctx.waitOf(known ? names.filter(([limit]) => limit !== ctx.limiters.signinAccount) : names);
+  if (wait) throw tooMany(wait, "too many failed sign-ins; try again later");
   const user = userId ? await ctx.storage.loadUser(userId) : null;
   // nobody, or a disabled person, is checked against nothing at the cost of a real check, and fails the same way
   const right = await ctx.hasher.verify(password, user && !user.disabled ? user.pw : null);
@@ -129,6 +133,7 @@ export async function signin(ctx: Ctx, req: IncomingMessage, res: ServerResponse
     throw refuse(401, "wrong", "that email and password do not match");
   }
   const token = await ctx.startSession(user.id, device);
+  ctx.known.note(user.id, address);
   reply(res, 200, { token, user: ctx.publicUser(user) });
 }
 
@@ -193,9 +198,11 @@ export async function changePassword(ctx: Ctx, req: IncomingMessage, res: Server
   if (typeof body.old !== "string" || body.old.length > 1024) throw badRequest("the old password is text");
   const next = readPassword(body.new, "the new password");
   const address = ctx.addressOf(req);
+  // counted for this address and for this session, not for the account from everywhere: guesses at sign-in from other addresses
+  // must not stop the person changing their password, and somebody holding a stolen session gets 10 tries an hour wherever they are
   const names: [HourlyLimit, string][] = [
     [ctx.limiters.signinAccountAddress, `${user.email}\n${address}`],
-    [ctx.limiters.signinAccount, user.email],
+    [ctx.limiters.signinAccountAddress, `session:${session.id}`],
   ];
   const wait = ctx.waitOf(names);
   if (wait) throw tooMany(wait, "too many wrong passwords; try again later");

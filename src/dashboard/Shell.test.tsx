@@ -297,7 +297,7 @@ describe("<Shell>", () => {
         mountShell();
         await chooseImport(user);
         expect(await screen.findByText("Imported “Travelled”")).toBeTruthy();
-        expect(picker.lastAccept()).toBe(".craftly,.json,application/json");
+        expect(picker.lastAccept()).toBe(".craftly,.json,.pptx,application/json,application/vnd.openxmlformats-officedocument.presentationml.presentation");
         const [imported] = await listDesigns();
         expect(imported.title).toBe("Travelled");
         expect(window.location.hash).toBe(`#/design/${imported.id}`);

@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { anchorPoint, bestSide, connectable, connectedEnds, lineEndpoints, lineFromPoints, rebindClones, reflowLines, retargetLines } from "./connectors";
 import { createDesign, createGroup, createLine, createPage, createShape, createText } from "./factory";
+import { flipElements } from "./ops";
 import type { Design, DesignElement, GroupElement, LineElement, Point } from "./types";
 
 const near = (p: Point, x: number, y: number) => {
@@ -207,6 +208,39 @@ describe("reflowLines", () => {
     expect(lineIn(after)!.start).toEqual({ elementId: "A", anchor: "auto" });
     expect(lineIn(after)!.end).toBeNull();
     expect(after.pages[0].elements).toHaveLength(2);
+  });
+
+  it("keeps the arrow running from its first shape to its second when both are flipped with it", () => {
+    const before = connectedDesign();
+    const flipped = structuredClone(before);
+    flipElements(flipped.pages[0], ["A", "B", "L"], "horizontal");
+    const after = reflowLines(flipped, before);
+    const line = lineIn(after)!;
+    expect([line.start?.elementId, line.end?.elementId]).toEqual(["A", "B"]);
+    // A is now on the right (300..400) and B on the left (0..100): the arrow starts at A's left side and ends at B's right side
+    const ends = lineEndpoints(line);
+    near(ends.start, 300, 25);
+    near(ends.end, 100, 25);
+  });
+
+  it("aims a mirrored line again without its mirror, so that its start is drawn where it was aimed", () => {
+    const before = connectedDesign();
+    const flipped = structuredClone(before);
+    flipElements(flipped.pages[0], ["A", "B", "L"], "horizontal");
+    const moved = withElements(
+      flipped,
+      flipped.pages[0].elements.map((e) => (e.id === "B" ? { ...e, y: e.y + 200 } : e)),
+    );
+    const line = lineIn(reflowLines(moved, flipped))!;
+    expect(line.flipH).toBe(false);
+    near(lineEndpoints(line).start, 350, 50); // A's bottom, facing B below it
+    near(lineEndpoints(line).end, 50, 200); // B's top
+  });
+
+  it("finds the ends of a line mirrored left to right where they are drawn", () => {
+    const ends = lineEndpoints({ x: 0, y: 10, width: 100, height: 0, rotation: 0, flipH: true });
+    near(ends.start, 100, 10);
+    near(ends.end, 0, 10);
   });
 
   it("detaches a line that the person moved by hand, and leaves it where they put it", () => {

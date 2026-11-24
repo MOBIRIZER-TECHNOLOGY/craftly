@@ -29,6 +29,7 @@ import {
   IconFilePlus,
   IconGroup,
   IconLayers,
+  IconLink,
   IconLock,
   IconPaste,
   IconReplace,
@@ -42,6 +43,7 @@ import {
 } from "@/ui";
 import { m } from "@/i18n";
 import { openAltTextDialog } from "./altText";
+import { openLinkDialog } from "./link";
 import { canConvertToPath, combineMenuItems, convertToPath } from "./combine";
 import { IconAccessibility } from "./icons";
 import { pickImageFor } from "./imageFile";
@@ -205,6 +207,14 @@ export function buildContextMenuItems(state: EditorState, opts: ContextMenuOptio
   if (single) {
     const elementId = single.id;
     items.push({ id: "alt-text", label: m.editor.contextMenu.altText, icon: ic(IconAccessibility), onSelect: () => openAltTextDialog(elementId) });
+    // where a click on the element leads, in the presenter, a PDF and an SVG
+    items.push({
+      id: "link",
+      label: single.link ? m.editor.contextMenu.editLink : m.editor.contextMenu.link,
+      icon: ic(IconLink),
+      disabled: !!single.locked,
+      onSelect: () => openLinkDialog(elementId),
+    });
   }
 
   items.push(

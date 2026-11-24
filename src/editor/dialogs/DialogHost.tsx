@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useEditor, type DialogName } from "@/core/store";
+import { AccessDialog } from "./AccessDialog";
 import { DownloadDialog } from "./DownloadDialog";
 import { FindReplaceDialog } from "./FindReplaceDialog";
 import { NewDesignRedirect, RenameDialog, SettingsDialog, ShareDialog } from "./MiscDialogs";
@@ -47,6 +48,8 @@ export function DialogHost() {
       return <RenameDialog open={open} onClose={close} />;
     case "models":
       return <ModelsDialog open={open} onClose={close} />;
+    case "accessibility":
+      return <AccessDialog open={open} onClose={close} />;
     case "newDesign":
       return <NewDesignRedirect onClose={close} />;
     default:

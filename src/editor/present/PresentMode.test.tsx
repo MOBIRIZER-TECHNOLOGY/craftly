@@ -8,7 +8,7 @@ import { contextOf } from "@/test/canvasMock";
 import { chromeDesign } from "@/test/chromeUtils";
 import { flush, resetEditor, stubLayout } from "@/test/helpers";
 import { setMedia } from "@/test/media";
-import { PresentMode } from "./PresentMode";
+import { PresentMode, showClock } from "./PresentMode";
 
 /*
  * The full-screen presenter. The stage is 1000 x 700 (stubLayout), the design 1280 x 720, so a point of the design
@@ -594,5 +594,133 @@ describe("<PresentMode>: motion and damaged pages", () => {
     await userEvent.setup({ delay: null }).keyboard("{ArrowRight}");
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect((stage() as HTMLCanvasElement).hidden).toBe(false);
+  });
+});
+
+describe("<PresentMode>: the clock of the show", () => {
+  const clockButton = () => screen.getByRole("button", { name: /^The show has run / });
+
+  it("writes minutes and seconds, with hours in front once there are some", () => {
+    expect(showClock(0)).toBe("00:00");
+    expect(showClock(75.9)).toBe("01:15");
+    expect(showClock(3725)).toBe("1:02:05");
+    expect(showClock(-5)).toBe("00:00");
+  });
+
+  it("counts from the moment the show opens, and starts again when the clock is pressed", async () => {
+    useClock();
+    await present();
+    expect(clockButton().textContent).toBe("00:00");
+    act(() => void vi.advanceTimersByTime(65_000));
+    expect(clockButton().textContent).toBe("01:05");
+    expect(clockButton().getAttribute("aria-label")).toBe("The show has run 01:05. Start the clock again");
+    fireEvent.click(clockButton());
+    expect(clockButton().textContent).toBe("00:00");
+    act(() => void vi.advanceTimersByTime(3_000));
+    expect(clockButton().textContent).toBe("00:03");
+    // pressing the clock does not turn the page
+    expect(counter()).toBe("1/3");
+  });
+});
+
+describe("<PresentMode>: the pointer", () => {
+  const dot = () => document.querySelector<HTMLElement>("[data-cf-present-dot]");
+  const dialog = () => screen.getByRole("dialog", { name: "Presentation" });
+
+  it("is off to begin with, and follows the mouse once L or its button switches it on", async () => {
+    await present();
+    fireEvent.pointerMove(dialog(), { clientX: 300, clientY: 200 });
+    expect(dot()).toBeNull();
+    expect(dialog().classList.contains("is-pointing")).toBe(false);
+
+    fireEvent.keyDown(window, { key: "l" });
+    expect(screen.getByRole("button", { name: "Hide the pointer" }).getAttribute("aria-pressed")).toBe("true");
+    expect(dialog().classList.contains("is-pointing")).toBe(true);
+    // nothing to show until the mouse has been somewhere
+    expect(dot()).toBeNull();
+    fireEvent.pointerMove(dialog(), { clientX: 300, clientY: 200 });
+    expect([dot()?.style.left, dot()?.style.top]).toEqual(["300px", "200px"]);
+    fireEvent.pointerMove(dialog(), { clientX: 640, clientY: 90 });
+    expect([dot()?.style.left, dot()?.style.top]).toEqual(["640px", "90px"]);
+    expect(dot()?.getAttribute("aria-hidden")).toBe("true");
+    // pointing is not turning the page
+    expect(counter()).toBe("1/3");
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "Hide the pointer" }));
+    expect(dot()).toBeNull();
+    expect(screen.getByRole("button", { name: "Show the pointer" })).toBeTruthy();
+    expect(dialog().classList.contains("is-pointing")).toBe(false);
+  });
+});
+
+describe("<PresentMode>: the presenter window", () => {
+  /** A popup the browser opened and the channel the presenter talks to it on, both standing in for the real ones. */
+  function stubPresenterWindow() {
+    const popup = { closed: false, focus: vi.fn(), close: vi.fn(), document: { write: vi.fn(), close: vi.fn() } };
+    const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+    const channel = { onmessage: null as null | ((event: { data: string }) => void), postMessage: vi.fn(), close: vi.fn() };
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class {
+        constructor() {
+          return channel;
+        }
+      },
+    );
+    /** what the presenter last told the window, leaving out the picture of the next page */
+    const last = () => {
+      const { nextImage: _image, ...state } = channel.postMessage.mock.calls.at(-1)![0];
+      return state;
+    };
+    const command = (data: "next" | "previous") => act(() => channel.onmessage!({ data }));
+    return { popup, open, channel, last, command };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("turns the pages when the window asks for the next or the previous one, and tells it about each page", async () => {
+    const win = stubPresenterWindow();
+    await present();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "Open presenter window" }));
+    expect(win.open).toHaveBeenCalledTimes(1);
+    expect(win.popup.document.write).toHaveBeenCalled();
+
+    win.command("next");
+    await waitFor(() => expect(counter()).toBe("2/3"));
+    // the middle page has neither notes nor a name; the page after it is called Wrap up
+    await waitFor(() => expect(win.last()).toEqual({ index: 1, count: 3, notes: "No notes for this page.", nextName: "Wrap up" }));
+
+    win.command("previous");
+    await waitFor(() => expect(counter()).toBe("1/3"));
+    // the next page has no name of its own, so it is called by its number
+    await waitFor(() => expect(win.last()).toEqual({ index: 0, count: 3, notes: "Welcome everyone", nextName: "Page 2 of 3" }));
+  });
+
+  it("tells the window when the show is on its last page", async () => {
+    const win = stubPresenterWindow();
+    await present(chromeDesign(), 1);
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "Open presenter window" }));
+    win.command("next");
+    await waitFor(() => expect(counter()).toBe("3/3"));
+    await waitFor(() => expect(win.last()).toEqual({ index: 2, count: 3, notes: "Thank you", nextName: "End of the presentation" }));
+  });
+
+  it("brings the open window to the front instead of opening a second one, and closes it when the show ends", async () => {
+    const win = stubPresenterWindow();
+    const view = await present();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "Open presenter window" }));
+    await user.click(screen.getByRole("button", { name: "Open presenter window" }));
+    expect(win.open).toHaveBeenCalledTimes(1);
+    expect(win.popup.focus).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(win.channel.close).toHaveBeenCalled();
+    expect(win.popup.close).toHaveBeenCalled();
   });
 });

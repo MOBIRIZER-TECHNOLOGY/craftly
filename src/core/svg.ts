@@ -64,13 +64,15 @@ export function setSvgStrokeWidth(svg: string, width: number): string {
 }
 
 export function parseViewBox(svg: string): { x: number; y: number; w: number; h: number } | null {
-  const m = svg.match(/viewBox\s*=\s*["']\s*([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)\s*["']/i);
+  // the root's own: a <marker>, <symbol>, <pattern> or nested <svg> inside has a viewBox of its own, which says nothing of the image
+  const root = svg.match(/<svg\b[^>]*>/i)?.[0] ?? svg;
+  const m = root.match(/(?:^|\s)viewBox\s*=\s*["']\s*([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)\s*["']/i);
   if (m) {
     const [x, y, w, h] = [m[1], m[2], m[3], m[4]].map(parseFloat);
     if (w > 0 && h > 0) return { x, y, w, h };
   }
-  const w = svg.match(/<svg[^>]*\swidth\s*=\s*["']([\d.]+)/i);
-  const h = svg.match(/<svg[^>]*\sheight\s*=\s*["']([\d.]+)/i);
+  const w = root.match(/\swidth\s*=\s*["']([\d.]+)/i);
+  const h = root.match(/\sheight\s*=\s*["']([\d.]+)/i);
   if (w && h && parseFloat(w[1]) > 0 && parseFloat(h[1]) > 0) return { x: 0, y: 0, w: parseFloat(w[1]), h: parseFloat(h[1]) };
   return null;
 }

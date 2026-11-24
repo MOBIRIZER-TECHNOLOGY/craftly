@@ -17,7 +17,8 @@ export interface ImageCardProps {
 }
 
 /** "PNG image", "SVG image" ... from the mime type. */
-const kindLabel = (mime: string): string => m.dashboard.cards.imageKind((mime.split("/")[1] ?? "image").replace(/\+.*$/, "").toUpperCase());
+const kindLabel = (mime: string): string =>
+  (mime.startsWith("video/") ? m.dashboard.cards.videoKind : m.dashboard.cards.imageKind)((mime.split("/")[1] ?? "image").replace(/\+.*$/, "").toUpperCase());
 
 /** An uploaded image: preview on a checkerboard, name, size, "Use in new design" and a "..." menu. */
 export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }: ImageCardProps) {
@@ -47,7 +48,13 @@ export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }
       }}
     >
       <div className="cf-icard__stage">
-        {url ? <img className="cf-icard__img" src={url} alt="" loading="lazy" decoding="async" draggable={false} /> : <Skeleton width="100%" height="100%" radius={0} />}
+        {!url ? (
+          <Skeleton width="100%" height="100%" radius={0} />
+        ) : asset.kind === "video" ? (
+          <video className="cf-icard__img" src={url} muted preload="metadata" playsInline draggable={false} />
+        ) : (
+          <img className="cf-icard__img" src={url} alt="" loading="lazy" decoding="async" draggable={false} />
+        )}
         <div className="cf-icard__use">
           <Button size="sm" variant="secondary" onClick={() => void createFromAsset(asset)}>
             {m.dashboard.shared.useInNewDesign}

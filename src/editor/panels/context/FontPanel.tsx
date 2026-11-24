@@ -3,8 +3,8 @@ import { getActions, getSelectedElements, useEditor, useSelectedElements } from 
 import { textEditing, useTextSelectionStyle } from "@/editor/canvas/textEditing";
 import { useCustomFamilies } from "@/components/CustomFonts";
 import { m } from "@/i18n";
-import { cssFontFamily, customFontDefs, ensureFont, FONT_CATALOG, getFontDef, type FontCategory } from "@/render/fonts";
-import { Button, cx, IconBrand, IconCheck, IconFile, IconPlus, IconText, IconUpload, SearchField } from "@/ui";
+import { cssFontFamily, customFontDefs, ensureFont, FONT_CATALOG, getFontDef, snapWeight, type FontCategory } from "@/render/fonts";
+import { Button, cx, IconBrand, IconCheck, IconFile, IconPlus, IconText, IconUpload, SearchField, Select } from "@/ui";
 import { collectDocumentFonts, filterFonts } from "./docFonts";
 import { PanelEmpty, PanelShell, Section } from "./PanelShell";
 import { collectTexts } from "./selectionKinds";
@@ -22,14 +22,46 @@ const CATEGORIES: Array<{ id: FontCategory; label: string; sample: string }> = [
 
 type Filter = FontCategory | "all";
 
+/** What the weights of a font are called. */
+const WEIGHT_NAMES: Record<number, string> = m.panelsContext.font.weights;
+
 export function FontPanel() {
   const els = useSelectedElements();
   const design = useEditor((s) => s.design);
   const texts = collectTexts(els);
   const boxes = els.filter((e) => e.type === "table" || e.type === "chart");
-  // the font at the caret / selection while characters are being formatted
-  const inlineFont = useTextSelectionStyle((s) => (s.active ? s.style.font : undefined));
+  // the font and weight at the caret / selection while characters are being formatted
+  const inline = useTextSelectionStyle((s) => (s.active ? s : undefined));
+  const inlineFont = inline?.style.font;
   const current = inlineFont ?? texts[0]?.fontFamily ?? (boxes[0] && "fontFamily" in boxes[0] ? boxes[0].fontFamily : undefined);
+  const range = !!inline && !inline.collapsed && !!texts.length;
+
+  // A selected character range uses its own family and weight; otherwise the boxes must agree on both.
+  const weightDef = range
+    ? getFontDef(inlineFont ?? texts[0].fontFamily)
+    : texts.length && texts.every((t) => t.fontFamily === texts[0].fontFamily)
+      ? getFontDef(texts[0].fontFamily)
+      : undefined;
+  const weights = weightDef && weightDef.weights.length > 2 ? weightDef.weights : [];
+  const weightNow = weightDef
+    ? range
+      ? snapWeight(weightDef, inline.style.weight ?? texts[0].fontWeight)
+      : texts.every((t) => t.fontWeight === texts[0].fontWeight)
+        ? snapWeight(weightDef, texts[0].fontWeight)
+        : null
+    : null;
+
+  const pickWeight = async (weight: number) => {
+    const sample = collectTexts(getSelectedElements(useEditor.getState()))[0];
+    if (!sample) return;
+    const selection = useTextSelectionStyle.getState();
+    const family = selection.active ? (selection.style.font ?? sample.fontFamily) : sample.fontFamily;
+    const italic = selection.active ? (selection.style.italic ?? sample.italic) : sample.italic;
+    // load the face first so the canvas never paints the fallback font
+    await ensureFont(family, weight, italic);
+    if (textEditing.applyInline({ weight })) return;
+    getActions().setTextProps(null, { fontWeight: weight });
+  };
 
   const kit = useBrandKit();
   const [query, setQuery] = useState("");
@@ -111,6 +143,22 @@ export function FontPanel() {
             </button>
           ))}
         </div>
+
+        {weights.length ? (
+          <div className="cf-font__weight">
+            <span className="cf-font__weight-name" id="cf-font-weight">
+              {m.panelsContext.font.weight}
+            </span>
+            <Select<number>
+              aria-label={m.panelsContext.font.weight}
+              size="sm"
+              value={weightNow !== null && weights.includes(weightNow) ? weightNow : null}
+              placeholder={m.panelsContext.font.weightMixed}
+              options={weights.map((w) => ({ value: w, label: m.panelsContext.font.weightName(WEIGHT_NAMES[w] ?? String(w), w), textValue: WEIGHT_NAMES[w] ?? String(w) }))}
+              onChange={(w) => void pickWeight(w)}
+            />
+          </div>
+        ) : null}
 
         {filter === "all" && ownFonts.length ? (
           <Section title={m.panelsContext.font.yourFonts} icon={<IconUpload />}>

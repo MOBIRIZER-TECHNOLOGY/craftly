@@ -8,7 +8,7 @@
  */
 import { boundsOfElements, boxCenter, clamp, rotatePoint } from "@/core/geometry";
 import * as ops from "@/core/ops";
-import type { DesignElement, ID, ImageElement, Page, TextElement } from "@/core/types";
+import type { DesignElement, ID, ImageElement, Page, TextElement, VideoElement } from "@/core/types";
 
 export const MIN_SIZE = 1;
 export const MIN_TEXT_WIDTH = 24;
@@ -57,11 +57,11 @@ export function describePosition(tops: DesignElement[]): PositionModel | null {
 
 export const normalizeRotation = (deg: number) => ((deg % 360) + 360) % 360;
 
-/** Should the aspect ratio lock start on for this selection? Photos, graphics, groups and multi-selections keep their shape. */
+/** Should the aspect ratio lock start on for this selection? Photos, clips, graphics, groups and multi-selections keep their shape. */
 export function defaultRatioLock(els: DesignElement[]): boolean {
   if (els.length !== 1) return true;
   const t = els[0].type;
-  return t === "image" || t === "graphic" || t === "group";
+  return t === "image" || t === "video" || t === "graphic" || t === "group";
 }
 
 /* ------------------------------------------------------------------ */
@@ -98,7 +98,8 @@ function resizeText(el: TextElement, nw: number, lock: boolean): void {
   }
 }
 
-function resizeImage(el: ImageElement, nw: number, nh: number, lock: boolean): void {
+/** A picture, or a clip, which is framed the same way. */
+function resizeImage(el: ImageElement | VideoElement, nw: number, nh: number, lock: boolean): void {
   const ow = el.width;
   const oh = el.height;
   if (lock || !el.src) {
@@ -145,6 +146,7 @@ export function resizeSingle(el: DesignElement, nw: number, nh: number, lock: bo
       el.width = w;
       break;
     case "image":
+    case "video":
       resizeImage(el, w, h, lock);
       break;
     case "shape":

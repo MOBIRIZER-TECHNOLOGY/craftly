@@ -177,3 +177,16 @@
   flex-wrap: wrap;
   gap: 12px;
 }
+
+/* the titles of a chart's axes: a name and its field on each line */
+.cf-data__axis {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.cf-data__axis-name {
+  color: var(--c-ink-2);
+  font-size: var(--fs-sm);
+}

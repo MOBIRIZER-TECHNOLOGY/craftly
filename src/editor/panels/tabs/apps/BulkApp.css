@@ -1,0 +1,35 @@
+.cf-bulk__columns {
+  margin-top: 18px;
+}
+
+.cf-bulk__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cf-bulk__fields li {
+  max-width: 100%;
+}
+
+.cf-bulk__fields button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-bulk__remove {
+  align-self: flex-start;
+}
+
+.cf-bulk__status {
+  margin: 0 0 10px;
+}
+
+.cf-bulk__status:empty {
+  display: none;
+}

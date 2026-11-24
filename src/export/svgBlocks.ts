@@ -3,8 +3,24 @@
  * maths, same colours), so they match the canvas. Text is positioned on alphabetic baselines: the canvas code
  * uses `textBaseline = "middle"`, which `middleShift` converts exactly by asking the browser for the offset.
  */
+import { tableCellStyle, tableLayout } from "@/core/tableCells";
 import { measureWidth } from "@/core/textMetrics";
-import { categoryStep, chartNumber, fitText, LEGEND_LINE, legendLayout, legendTop, plotLeft, valuesFit } from "@/render/chartText";
+import {
+  AXIS_TITLE_ROOM,
+  axisTitles,
+  categoryStep,
+  chartNumber,
+  fitText,
+  isStacked,
+  LEGEND_LINE,
+  legendLayout,
+  legendTop,
+  plotLeft,
+  percentSeries,
+  stackPieces,
+  stackTotals,
+  valuesFit,
+} from "@/render/chartText";
 import type { ChartElement, TableElement } from "@/core/types";
 import { cssFontFamily } from "@/render/fonts";
 import { colorAttr, esc, num, roundRectPath, svgFontFamily, type SvgDoc } from "./svgUtil";
@@ -91,44 +107,33 @@ function wrapText(font: string, text: string, maxW: number): string[] {
 }
 
 export function tableSvg(el: TableElement, cx: BlockContext): string {
-  const totalW = el.colWidths.reduce((a, b) => a + b, 0) || el.width;
-  const totalH = el.rowHeights.reduce((a, b) => a + b, 0) || el.height;
-  const sx = el.width / totalW;
-  const sy = el.height / totalH;
   const pad = el.fontSize * 0.5;
   const a = cx.alpha;
   let out = "";
-  let y = 0;
-  el.rowHeights.forEach((rh, r) => {
-    const h = rh * sy;
-    let x = 0;
-    el.colWidths.forEach((cw, c) => {
-      const w = cw * sx;
-      const header = el.headerRow && r === 0;
-      const fill = header ? el.headerFill : el.stripeFill && r % 2 === 0 ? el.stripeFill : "#ffffff";
-      out += `<rect x="${num(x)}" y="${num(y)}" width="${num(w)}" height="${num(h)}"${colorAttr("fill", fill, a)}/>`;
-
-      const weight = header ? 700 : 400;
-      const font = `${weight} ${el.fontSize}px ${cssFontFamily(el.fontFamily)}`;
-      const lines = wrapText(font, el.cells[r]?.[c] ?? "", Math.max(10, w - pad * 2));
-      const lh = el.fontSize * 1.25;
-      const top = y + h / 2 - ((lines.length - 1) * lh) / 2;
-      const anchor = el.align === "center" ? "middle" : el.align === "right" ? "end" : "start";
-      const tx = el.align === "center" ? x + w / 2 : el.align === "right" ? x + w - pad : x + pad;
-      const color = header ? el.headerColor : el.color;
-      const texts = lines.map((text, i) => label({ text, x: tx, y: top + i * lh, anchor, size: el.fontSize, weight, color, alpha: a, family: el.fontFamily })).join("");
-      // the canvas clips every cell; only emit a clip when the text can actually spill out
-      const spills = lines.some((l) => measureWidth(font, l) > w - pad * 2 + 0.5) || lines.length * lh > h + 0.5;
-      if (spills && texts) {
-        const clip = cx.doc.clipPath(`<rect x="${num(x)}" y="${num(y)}" width="${num(w)}" height="${num(h)}"/>`, `cell|${num(x)}|${num(y)}|${num(w)}|${num(h)}`);
-        out += `<g clip-path="url(#${clip})">${texts}</g>`;
-      } else out += texts;
-      x += w;
-    });
-    y += h;
-  });
-
-  if (el.borderWidth > 0) {
+  for (const cell of tableLayout(el)) {
+    const style = tableCellStyle(el, cell);
+    const border = el.borderWidth > 0 && el.merges?.length ? `${colorAttr("stroke", el.borderColor, a)} stroke-width="${num(el.borderWidth)}"` : "";
+    out += `<rect x="${num(cell.x)}" y="${num(cell.y)}" width="${num(cell.width)}" height="${num(cell.height)}"${colorAttr("fill", style.fill, a)}${border}/>`;
+    const weight = style.bold ? 700 : 400;
+    const font = `${weight} ${el.fontSize}px ${cssFontFamily(el.fontFamily)}`;
+    const lines = wrapText(font, el.cells[cell.row]?.[cell.col] ?? "", Math.max(10, cell.width - pad * 2));
+    const lh = el.fontSize * 1.25;
+    const top = cell.y + cell.height / 2 - ((lines.length - 1) * lh) / 2;
+    const anchor = style.align === "center" ? "middle" : style.align === "right" ? "end" : "start";
+    const tx = style.align === "center" ? cell.x + cell.width / 2 : style.align === "right" ? cell.x + cell.width - pad : cell.x + pad;
+    const texts = lines.map((text, i) => label({ text, x: tx, y: top + i * lh, anchor, size: el.fontSize, weight, color: style.color, alpha: a, family: el.fontFamily })).join("");
+    const spills = lines.some((line) => measureWidth(font, line) > cell.width - pad * 2 + 0.5) || lines.length * lh > cell.height + 0.5;
+    if (spills && texts) {
+      const clip = cx.doc.clipPath(
+        `<rect x="${num(cell.x)}" y="${num(cell.y)}" width="${num(cell.width)}" height="${num(cell.height)}"/>`,
+        `cell|${num(cell.x)}|${num(cell.y)}|${num(cell.width)}|${num(cell.height)}`,
+      );
+      out += `<g clip-path="url(#${clip})">${texts}</g>`;
+    } else out += texts;
+  }
+  if (el.borderWidth > 0 && !el.merges?.length) {
+    const sx = el.width / (el.colWidths.reduce((a, b) => a + b, 0) || el.width);
+    const sy = el.height / (el.rowHeights.reduce((a, b) => a + b, 0) || el.height);
     let d = "";
     let yy = 0;
     for (let r = 0; r <= el.rowHeights.length; r++) {
@@ -181,6 +186,7 @@ function slicePath(cx: number, cy: number, r: number, inner: number | null, a0: 
 }
 
 export function chartSvg(el: ChartElement, cx: BlockContext): string {
+  if (el.percent) el = { ...el, series: percentSeries(el.series) };
   const fam = cssFontFamily(el.fontFamily);
   const fs = Math.max(11, Math.min(el.width, el.height) * 0.04);
   const a = cx.alpha;
@@ -223,17 +229,62 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
     return out;
   }
 
+  if (el.chart === "scatter") {
+    const labels = el.labels.length ? el.labels.map((label, i) => Number.parseFloat(label) || i + 1) : [1];
+    const minX = Math.min(...labels);
+    const maxX = Math.max(...labels);
+    const spanX = maxX - minX || 1;
+    const max = nice(Math.max(1, ...el.series.flatMap((series) => series.values)));
+    const left = fs * 4;
+    const top = fs * 1.5;
+    const width = el.width - left - fs;
+    const height = el.height - top - fs * 3;
+    for (let i = 0; i <= 4; i++) {
+      const value = (max * i) / 4;
+      const y = top + height - (height * i) / 4;
+      if (el.showGrid)
+        out += `<path d="M${num(left)} ${num(y)}L${num(left + width)} ${num(y)}" fill="none"${colorAttr("stroke", withK(el.textColor, 0.12, a).color, withK(el.textColor, 0.12, a).alpha)} stroke-width="1"/>`;
+      out += text(chartNumber(value), left - fs * 0.4, y, "end", fs * 0.9, 400, el.textColor);
+    }
+    el.series.forEach((series, seriesIndex) => {
+      series.values.forEach((value, i) => {
+        const x = left + (width * (labels[i] - minX)) / spanX;
+        const y = top + height - (height * value) / max;
+        out += `<circle cx="${num(x)}" cy="${num(y)}" r="${num(Math.max(3, fs * 0.35))}"${colorAttr("fill", color(seriesIndex), a)}/>`;
+        if (el.showValues) out += text(chartNumber(value), x, y - fs * 0.8, "middle", fs * 0.85, 600, el.textColor);
+      });
+    });
+    labels.forEach((label, i) => {
+      if (i % categoryStep(fs, width / labels.length, fs * 2) !== 0) return;
+      out += text(
+        fitText(`400 ${fs * 0.9}px ${fam}`, el.labels[i], width / labels.length),
+        left + (width * (label - minX)) / spanX,
+        top + height + fs * 1.4,
+        "middle",
+        fs * 0.9,
+        400,
+        el.textColor,
+      );
+    });
+    return out;
+  }
+
   // cartesian charts
-  const allValues = el.series.flatMap((s) => s.values);
+  const stacked = isStacked(el);
+  const allValues = stacked ? stackTotals(el.series) : el.series.flatMap((s) => s.values);
+  const titles = axisTitles(el);
+  const titleFont = `600 ${fs * 0.9}px ${fam}`;
+  const titleRoom = fs * AXIS_TITLE_ROOM;
   const max = nice(Math.max(...allValues, 1));
   const horizontal = el.chart === "bar";
   const axisFont = `400 ${fs * 0.9}px ${fam}`;
   const labelFont = `500 ${fs * 0.9}px ${fam}`;
   const ticks = [0, 1, 2, 3, 4].map((i) => chartNumber(Math.round(max * (i / 4) * 100) / 100));
   const beside = horizontal ? el.labels.map((l) => measureWidth(labelFont, l)) : ticks.map((t) => measureWidth(axisFont, t));
-  const left = plotLeft(fs, el.width, Math.max(0, ...beside));
-  const besideRoom = left - fs * 0.5;
-  const bottom = fs * 2.2;
+  const labelsLeft = plotLeft(fs, el.width, Math.max(0, ...beside));
+  const left = labelsLeft + (titles.left ? titleRoom : 0);
+  const besideRoom = labelsLeft - fs * 0.5;
+  const bottom = fs * 2.2 + (titles.bottom ? titleRoom : 0);
   const px = left;
   const py = top;
   const pw = el.width - left - fs * 0.5;
@@ -255,13 +306,24 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
     }
   }
 
+  // the titles of the axes, where the painter writes them: under the plot, and turned a quarter on its left
+  if (titles.bottom || titles.left) {
+    const c = withK(el.textColor, 0.85, a);
+    if (titles.bottom) out += text(fitText(titleFont, titles.bottom, pw), px + pw / 2, py + ph + fs * 2.2 + titleRoom * 0.45, "middle", fs * 0.9, 600, c.color, c.alpha);
+    if (titles.left) {
+      const x = titleRoom * 0.5;
+      const y = py + ph / 2;
+      out += `<g transform="rotate(-90 ${num(x)} ${num(y)})">${text(fitText(titleFont, titles.left, ph), x, y, "middle", fs * 0.9, 600, c.color, c.alpha)}</g>`;
+    }
+  }
+
   const n = el.labels.length || 1;
   const sCount = el.series.length || 1;
   // beside a lying plot the names follow each other downwards, where each takes about a line (half a font size and the air around it)
   const step = horizontal ? categoryStep(fs, ph / n, fs * 0.5) : categoryStep(fs, pw / n, Math.max(0, ...el.labels.map((l) => measureWidth(labelFont, l))));
   // the values are written only where they do not run into each other (chartText.ts)
   const slot = (horizontal ? ph : pw) / n;
-  const marks = el.chart === "line" || el.chart === "area" || sCount === 1 ? slot : (slot * 0.72) / sCount;
+  const marks = el.chart === "line" || el.chart === "area" || sCount === 1 || stacked ? slot : (slot * 0.72) / sCount;
   const valueFont = `600 ${fs * 0.85}px ${fam}`;
   const showValues = el.showValues && valuesFit(horizontal ? fs * 0.85 : Math.max(0, ...allValues.map((v) => measureWidth(valueFont, chartNumber(v)))), marks);
   el.labels.forEach((l, i) => {
@@ -271,14 +333,33 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
     else out += text(fitText(labelFont, l, (pw / n) * step), px + (pw / n) * (i + 0.5), py + ph + fs * 1.1, "middle", fs * 0.9, 500, c.color, c.alpha);
   });
 
-  if (el.chart === "line" || el.chart === "area") {
+  if (el.chart === "combo" && el.series[0]) {
+    const groupW = pw / n;
+    const barW = groupW * 0.72;
+    el.series[0].values.forEach((value, i) => {
+      const x = px + groupW * i + groupW * 0.14;
+      const length = (ph * value) / max;
+      out += `<rect x="${num(x)}" y="${num(py + ph - length)}" width="${num(barW)}" height="${num(length)}"${colorAttr("fill", color(0), a)}/>`;
+      if (showValues) out += text(chartNumber(value), x + barW / 2, py + ph - length - fs * 0.7, "middle", fs * 0.85, 600, el.textColor);
+    });
+  }
+  if (el.chart === "line" || el.chart === "area" || el.chart === "combo") {
+    const baselines = Array.from({ length: n }, () => 0);
     el.series.forEach((s, si) => {
-      const pts = s.values.map((v, i) => ({ x: px + (pw / n) * (i + 0.5), y: py + ph - (ph * v) / max, v }));
+      if (el.chart === "combo" && si === 0) return;
+      const pts = s.values.map((v, i) => {
+        const total = v + (el.chart === "area" && stacked ? baselines[i] : 0);
+        return { x: px + (pw / n) * (i + 0.5), y: py + ph - (ph * total) / max, v: total };
+      });
       if (!pts.length) return;
       if (el.chart === "area") {
-        const d = `M${num(pts[0].x)} ${num(py + ph)}${pts.map((p) => `L${num(p.x)} ${num(p.y)}`).join("")}L${num(pts[pts.length - 1].x)} ${num(py + ph)}Z`;
+        const topLine = pts.map((p, i) => `${i ? "L" : "M"}${num(p.x)} ${num(p.y)}`).join("");
+        const bottomLine = pts
+          .map((p, i) => `L${num(p.x)} ${num(py + ph - (ph * baselines[pts.length - 1 - i]) / max)}`)
+          .reverse()
+          .join("");
         const fill = withK(color(si), 0.28, a);
-        out += `<path d="${d}"${colorAttr("fill", fill.color, fill.alpha)}/>`;
+        out += `<path d="${topLine}${bottomLine}Z"${colorAttr("fill", fill.color, fill.alpha)}/>`;
       }
       const line = pts.map((p, i) => `${i ? "L" : "M"}${num(p.x)} ${num(p.y)}`).join("");
       out += `<path d="${line}" fill="none"${colorAttr("stroke", color(si), a)} stroke-width="${num(Math.max(2, fs * 0.22))}" stroke-linejoin="round"/>`;
@@ -286,7 +367,29 @@ export function chartSvg(el: ChartElement, cx: BlockContext): string {
         out += `<circle cx="${num(p.x)}" cy="${num(p.y)}" r="${num(fs * 0.34)}"${colorAttr("fill", "#ffffff", a)}${colorAttr("stroke", color(si), a)} stroke-width="${num(Math.max(2, fs * 0.16))}"/>`;
         if (showValues) out += text(chartNumber(p.v), p.x, p.y - fs * 0.9, "middle", fs * 0.85, 600, el.textColor);
       });
+      if (el.chart === "area" && stacked) pts.forEach((point, i) => (baselines[i] = point.v));
     });
+  } else if (stacked) {
+    // the same pieces as the painter draws: one bar for each category, the far end of its last piece rounded
+    const groupW = (horizontal ? ph : pw) / n;
+    const barW = groupW * 0.72;
+    const unit = (horizontal ? pw : ph) / max;
+    for (const piece of stackPieces(el.series)) {
+      const start = (horizontal ? py : px) + groupW * piece.category + groupW * 0.14;
+      const from = piece.from * unit;
+      const len = piece.value * unit;
+      const r = piece.last ? Math.max(0, Math.min(barW / 2, fs * 0.4, len)) : 0;
+      const d = horizontal ? roundRectPath(px + from, start, len, barW, [0, r, r, 0]) : roundRectPath(start, py + ph - from - len, barW, len, [r, r, 0, 0]);
+      out += `<path d="${d}"${colorAttr("fill", color(piece.series), a)}/>`;
+    }
+    if (showValues) {
+      allValues.forEach((total, i) => {
+        if (!total) return;
+        const start = (horizontal ? py : px) + groupW * i + groupW * 0.14;
+        if (horizontal) out += text(chartNumber(total), px + total * unit + fs * 0.4, start + barW / 2, "start", fs * 0.85, 600, el.textColor);
+        else out += text(chartNumber(total), start + barW / 2, py + ph - total * unit - fs * 0.7, "middle", fs * 0.85, 600, el.textColor);
+      });
+    }
   } else {
     const groupW = (horizontal ? ph : pw) / n;
     const barW = (groupW * 0.72) / sCount;

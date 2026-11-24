@@ -92,7 +92,8 @@ export function TextBar({ els, ids, copyEnabled }: BarProps<TextElement> & { cop
   const flag = (key: Flag): Uniform<boolean> => {
     if (range) return { value: !!sel.style[key], mixed: false };
     return runsUniform(els, (el, run) => {
-      if (key === "bold") return run.bold ?? el.fontWeight >= 600;
+      // a weight of its own decides for a run, as it does where the text is drawn (resolveRunStyle): 800 is bold, 300 is not
+      if (key === "bold") return run.weight !== undefined ? run.weight >= 600 : (run.bold ?? el.fontWeight >= 600);
       if (key === "italic") return run.italic ?? el.italic;
       if (key === "underline") return run.underline ?? el.underline;
       return run.strike ?? el.strike;

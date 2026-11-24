@@ -10,7 +10,7 @@ import { PanelHeader } from "../../shared/PanelHeader";
 import { Panel, PanelScroll, PanelTop } from "../../shared/PanelLayout";
 import "./appKit.css";
 
-export type AppId = "qr" | "emoji" | "lorem" | "placeholder" | "palette";
+export type AppId = "qr" | "emoji" | "lorem" | "placeholder" | "palette" | "bulk";
 
 interface AppsNav {
   app: AppId | null;

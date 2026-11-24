@@ -41,6 +41,8 @@ export function layerKind(el: DesignElement): string {
       return m.panelsContext.layerNames.table;
     case "chart":
       return m.panelsContext.layerNames.chart;
+    case "video":
+      return m.panelsContext.layerNames.video;
   }
 }
 

@@ -23,6 +23,12 @@ export const editorChrome = {
     title: "Settings",
     showRulers: "Show rulers",
     snapToGuides: "Snap to guides",
+    showMargins: "Show margins",
+    marginSize: "Margin size",
+    snapToGrid: "Snap to grid",
+    gridSize: "Grid size",
+    checkSpelling: "Check spelling while typing",
+    checkSpellingOn: "Your browser now marks misspelt words while you type in a text box, in the languages it is set to.",
     showPageThumbnails: "Show page thumbnails",
   },
 
@@ -127,6 +133,8 @@ export const editorChrome = {
     scaleContent: "Scale content to fit",
     scaleHint: "Everything is scaled to fit the new size and centred on each page.",
     keepHint: "Everything stays where it is; the page grows or crops around it.",
+    smartResize: "Smart resize",
+    smartHint: "Elements keep their size where possible and move to fit the new page shape. Anything too large is shrunk to fit.",
     current: "Current",
     next: "New",
     inPixels: "In pixels",
@@ -163,6 +171,7 @@ export const editorChrome = {
       selectNext: "Select the next or previous element",
       copyStyle: "Copy style",
       pasteStyle: "Paste style",
+      link: "Add or edit a link on the selected element",
       enter: "Edit the selected text, crop the selected image, or edit the points of the selected path",
       bold: "Bold the selected text",
       italic: "Italic the selected text",
@@ -247,6 +256,7 @@ export const editorChrome = {
       firstLast: "First or last page",
       autoplay: "Play the show on its own, on or off",
       notes: "Show or hide speaker notes",
+      pointer: "Pointer on or off",
       fullscreen: "Full screen on or off",
       exit: "Exit",
     },
@@ -435,6 +445,26 @@ export const editorChrome = {
     pageTitle: "Page title",
   },
 
+  /* ---- File > Check accessibility (AccessDialog.tsx) ---- */
+
+  access: {
+    title: "Check accessibility",
+    intro: "Every text is compared with the plain colour behind it, and every picture is checked for alternative text.",
+    found: (n: number) => plural(n, { one: `${num(n)} thing to look at`, other: `${num(n)} things to look at` }),
+    none: "Nothing found.",
+    page: (n: number) => `Page ${num(n)}`,
+    /** `label` is the beginning of the text; `ratio` and `needed` are numbers such as 2.85 and 4.5 */
+    contrast: (label: string, ratio: string, needed: string) => `“${label}” has a contrast of ${ratio} to 1 with what is behind it, and needs ${needed} to 1.`,
+    /** `label` is the name of the picture, or empty */
+    alt: (label: string) => (label ? `The picture “${label}” has no alternative text.` : "A picture has no alternative text."),
+    show: "Show",
+    showFor: (issue: string) => `Show on the page: ${issue}`,
+    addText: "Add text",
+    addTextFor: (issue: string) => `Add alternative text: ${issue}`,
+    limits:
+      "A text over a picture, a gradient or a see-through shape is not judged, and neither is a text in gradient colours: look at those yourself. The order a screen reader reads in and the size of text are not checked.",
+  },
+
   /* ---- the presenter ---- */
 
   present: {
@@ -445,9 +475,16 @@ export const editorChrome = {
     autoplay: "Auto-play",
     showNotes: "Show notes",
     hideNotes: "Hide notes",
+    showPointer: "Show the pointer",
+    hidePointer: "Hide the pointer",
+    /** `time` is the clock as it is shown, such as 04:10 */
+    clock: (time: string) => `The show has run ${time}. Start the clock again`,
+    resetClock: "Start the clock again",
     enterFullScreen: "Enter full screen",
     exitFullScreen: "Exit full screen",
     exit: "Exit presentation",
+    secondWindow: "Open presenter window",
+    endOfShow: "End of the presentation",
     speakerNotes: "Speaker notes",
     notesTitle: (n: number) => `Notes - page ${num(n)}`,
     noNotes: "No notes for this page.",

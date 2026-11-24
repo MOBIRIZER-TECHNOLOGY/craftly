@@ -1,0 +1,1336 @@
+{
+  "id": "d_complete",
+  "title": "Everything the format can hold",
+  "typeId": "presentation",
+  "width": 1920,
+  "height": 1080,
+  "unit": "mm",
+  "pages": [
+    {
+      "id": "p_1",
+      "name": "Page p_1",
+      "background": {
+        "type": "solid",
+        "color": "#fafafa"
+      },
+      "elements": [
+        {
+          "id": "t_1",
+          "name": "Layer t_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "text",
+          "paragraphs": [
+            {
+              "runs": [
+                {
+                  "text": "Hello ",
+                  "bold": true,
+                  "weight": 300,
+                  "italic": true,
+                  "underline": true,
+                  "strike": true,
+                  "color": "#ff8800",
+                  "size": 40,
+                  "font": "Playfair Display",
+                  "spacing": 20
+                },
+                {
+                  "text": "world",
+                  "bold": false,
+                  "weight": 500,
+                  "italic": false,
+                  "underline": false,
+                  "strike": false,
+                  "color": "#0088ff",
+                  "size": 36,
+                  "font": "Plus Jakarta Sans",
+                  "spacing": -10
+                }
+              ],
+              "align": "center",
+              "list": "bullet"
+            }
+          ],
+          "fontFamily": "Plus Jakarta Sans",
+          "fontSize": 48,
+          "fontWeight": 700,
+          "italic": true,
+          "underline": true,
+          "strike": true,
+          "color": "#0e1318",
+          "gradient": {
+            "type": "linear",
+            "angle": 45,
+            "stops": [
+              {
+                "offset": 0,
+                "color": "#ff0000"
+              },
+              {
+                "offset": 1,
+                "color": "#0000ff"
+              }
+            ]
+          },
+          "align": "right",
+          "lineHeight": 1.3,
+          "letterSpacing": 25,
+          "textCase": "title",
+          "autoWidth": false,
+          "effect": {
+            "kind": "neon",
+            "color": "#00ffcc",
+            "offset": 40,
+            "direction": 90,
+            "blur": 50,
+            "intensity": 60,
+            "thickness": 20,
+            "roundness": 30,
+            "spread": 10,
+            "transparency": 25
+          },
+          "curve": 30,
+          "list": "number"
+        },
+        {
+          "id": "s_1",
+          "name": "Layer s_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "shape",
+          "shape": "star",
+          "fill": {
+            "type": "radial",
+            "stops": [
+              {
+                "offset": 0,
+                "color": "#ff0000"
+              },
+              {
+                "offset": 1,
+                "color": "#0000ff"
+              }
+            ],
+            "cx": 0.4,
+            "cy": 0.6
+          },
+          "stroke": {
+            "color": "#112233",
+            "width": 3,
+            "style": "dashed",
+            "cap": "round",
+            "join": "bevel"
+          },
+          "radius": 12,
+          "path": "M0 0 L100 0 L100 100 Z",
+          "params": {
+            "sides": 5,
+            "innerRatio": 0.5
+          }
+        },
+        {
+          "id": "s_2",
+          "name": "Layer s_2",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "shape",
+          "shape": "rect",
+          "fill": {
+            "type": "image",
+            "src": "asset:a_fill",
+            "fit": "tile",
+            "dim": 0.2
+          },
+          "stroke": {
+            "color": "#112233",
+            "width": 3,
+            "style": "dashed",
+            "cap": "round",
+            "join": "bevel"
+          },
+          "radius": 0,
+          "path": "M0 0",
+          "params": {
+            "sides": 4
+          }
+        }
+      ],
+      "notes": "Say this out loud",
+      "duration": 7,
+      "transition": {
+        "kind": "slide",
+        "duration": 0.9,
+        "direction": "left"
+      }
+    },
+    {
+      "id": "p_2",
+      "name": "Page p_2",
+      "background": {
+        "type": "linear",
+        "angle": 135,
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#ff0000"
+          },
+          {
+            "offset": 1,
+            "color": "#0000ff"
+          }
+        ]
+      },
+      "elements": [
+        {
+          "id": "s_3",
+          "name": "Layer s_3",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "shape",
+          "shape": "rect",
+          "fill": {
+            "type": "pattern",
+            "pattern": "waves",
+            "color": "#334455",
+            "background": "#eeeeee",
+            "scale": 1.5
+          },
+          "stroke": {
+            "color": "#112233",
+            "width": 3,
+            "style": "dashed",
+            "cap": "round",
+            "join": "bevel"
+          },
+          "radius": 4,
+          "path": "M0 0",
+          "params": {
+            "sides": 4
+          }
+        },
+        {
+          "id": "s_4",
+          "name": "Layer s_4",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "shape",
+          "shape": "oval",
+          "fill": {
+            "type": "linear",
+            "angle": 180,
+            "stops": [
+              {
+                "offset": 0,
+                "color": "#ff0000"
+              },
+              {
+                "offset": 1,
+                "color": "#0000ff"
+              }
+            ]
+          },
+          "stroke": {
+            "color": "#112233",
+            "width": 3,
+            "style": "dashed",
+            "cap": "round",
+            "join": "bevel"
+          },
+          "radius": 0,
+          "path": "M0 0",
+          "params": {
+            "sides": 4
+          }
+        },
+        {
+          "id": "s_5",
+          "name": "Layer s_5",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "shape",
+          "shape": "oval",
+          "fill": {
+            "type": "solid",
+            "color": "#abcdef"
+          },
+          "stroke": {
+            "color": "#112233",
+            "width": 3,
+            "style": "dashed",
+            "cap": "round",
+            "join": "bevel"
+          },
+          "radius": 0,
+          "path": "M0 0",
+          "params": {
+            "sides": 4
+          }
+        }
+      ],
+      "notes": "Say this out loud",
+      "duration": 7,
+      "transition": {
+        "kind": "slide",
+        "duration": 0.9,
+        "direction": "left"
+      }
+    },
+    {
+      "id": "p_3",
+      "name": "Page p_3",
+      "background": {
+        "type": "radial",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#ff0000"
+          },
+          {
+            "offset": 1,
+            "color": "#0000ff"
+          }
+        ],
+        "cx": 0.3,
+        "cy": 0.7
+      },
+      "elements": [
+        {
+          "id": "l_1",
+          "name": "Layer l_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "line",
+          "stroke": {
+            "color": "#112233",
+            "width": 3,
+            "style": "dashed",
+            "cap": "round",
+            "join": "bevel"
+          },
+          "startArrow": "triangle",
+          "endArrow": "open-arrow",
+          "routing": "elbow",
+          "route": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 50,
+              "y": 0
+            },
+            {
+              "x": 50,
+              "y": 40
+            },
+            {
+              "x": 100,
+              "y": 40
+            }
+          ],
+          "label": "Next",
+          "start": {
+            "elementId": "s_1",
+            "anchor": "auto"
+          },
+          "end": {
+            "elementId": "s_5",
+            "anchor": "left"
+          }
+        },
+        {
+          "id": "i_1",
+          "name": "Layer i_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "image",
+          "src": "asset:a_photo",
+          "originalSrc": "asset:a_original",
+          "naturalWidth": 1600,
+          "naturalHeight": 900,
+          "crop": {
+            "x": -0.1,
+            "y": -0.2,
+            "w": 1.2,
+            "h": 1.4,
+            "rotation": 5
+          },
+          "mask": "circle",
+          "maskPath": "M0 0 L100 0 L100 100 L0 100 Z",
+          "radius": 8,
+          "filter": {
+            "preset": "vivid",
+            "intensity": 60,
+            "brightness": 10,
+            "contrast": 12,
+            "saturation": 14,
+            "warmth": -8,
+            "fade": 20,
+            "vignette": 30,
+            "blur": 1,
+            "hue": 5,
+            "highlights": 10,
+            "shadows": -10,
+            "sharpen": 20,
+            "tint": 5,
+            "curves": 15,
+            "levels": -5,
+            "duotone": {
+              "dark": "#101010",
+              "light": "#f0e0d0"
+            }
+          },
+          "stroke": {
+            "color": "#112233",
+            "width": 3,
+            "style": "dashed",
+            "cap": "round",
+            "join": "bevel"
+          },
+          "isFrame": true
+        },
+        {
+          "id": "g_1",
+          "name": "Layer g_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "graphic",
+          "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z\" fill=\"#000000\"/></svg>",
+          "viewW": 24,
+          "viewH": 24,
+          "colors": {
+            "#000000": "#ff0066"
+          },
+          "strokeWidth": 2,
+          "source": {
+            "kind": "icon",
+            "id": "star"
+          }
+        }
+      ],
+      "notes": "Say this out loud",
+      "duration": 7,
+      "transition": {
+        "kind": "slide",
+        "duration": 0.9,
+        "direction": "left"
+      }
+    },
+    {
+      "id": "p_4",
+      "name": "Page p_4",
+      "background": {
+        "type": "pattern",
+        "pattern": "dots",
+        "color": "#99aabb",
+        "background": "#ffffff",
+        "scale": 2
+      },
+      "elements": [
+        {
+          "id": "grp_1",
+          "name": "Layer grp_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "group",
+          "children": [
+            {
+              "id": "t_2",
+              "name": "Layer t_2",
+              "x": 40,
+              "y": 60,
+              "width": 200,
+              "height": 120,
+              "rotation": 15,
+              "opacity": 0.9,
+              "flipH": true,
+              "flipV": true,
+              "locked": true,
+              "hidden": true,
+              "shadow": {
+                "color": "rgba(0,0,0,0.35)",
+                "blur": 12,
+                "x": 4,
+                "y": 6
+              },
+              "blur": 2,
+              "blend": "multiply",
+              "alt": "Described for people who cannot see it",
+              "link": "https://example.com/page",
+              "animation": {
+                "in": {
+                  "kind": "fade",
+                  "duration": 0.8,
+                  "delay": 0.25,
+                  "direction": "up"
+                },
+                "out": {
+                  "kind": "slide",
+                  "duration": 0.8,
+                  "delay": 0.25,
+                  "direction": "left"
+                },
+                "loop": {
+                  "kind": "pulse",
+                  "duration": 0.8,
+                  "delay": 0.25,
+                  "direction": "right"
+                }
+              },
+              "type": "text",
+              "paragraphs": [
+                {
+                  "runs": [
+                    {
+                      "text": "Inside",
+                      "bold": true,
+                      "weight": 300,
+                      "italic": true,
+                      "underline": true,
+                      "strike": true,
+                      "color": "#111111",
+                      "size": 20,
+                      "font": "Inter",
+                      "spacing": 5
+                    }
+                  ],
+                  "align": "left",
+                  "list": "number"
+                }
+              ],
+              "fontFamily": "Inter",
+              "fontSize": 20,
+              "fontWeight": 400,
+              "italic": false,
+              "underline": false,
+              "strike": false,
+              "color": "#111111",
+              "gradient": {
+                "type": "linear",
+                "angle": 0,
+                "stops": [
+                  {
+                    "offset": 0,
+                    "color": "#ff0000"
+                  },
+                  {
+                    "offset": 1,
+                    "color": "#0000ff"
+                  }
+                ]
+              },
+              "align": "left",
+              "lineHeight": 1.2,
+              "letterSpacing": 0,
+              "textCase": "none",
+              "autoWidth": true,
+              "effect": {
+                "kind": "none",
+                "color": "#000000",
+                "offset": 0,
+                "direction": 0,
+                "blur": 0,
+                "intensity": 0,
+                "thickness": 0,
+                "roundness": 0,
+                "spread": 0,
+                "transparency": 0
+              },
+              "curve": 0,
+              "list": "bullet"
+            },
+            {
+              "id": "l_2",
+              "name": "Layer l_2",
+              "x": 40,
+              "y": 60,
+              "width": 200,
+              "height": 120,
+              "rotation": 15,
+              "opacity": 0.9,
+              "flipH": true,
+              "flipV": true,
+              "locked": true,
+              "hidden": true,
+              "shadow": {
+                "color": "rgba(0,0,0,0.35)",
+                "blur": 12,
+                "x": 4,
+                "y": 6
+              },
+              "blur": 2,
+              "blend": "multiply",
+              "alt": "Described for people who cannot see it",
+              "link": "https://example.com/page",
+              "animation": {
+                "in": {
+                  "kind": "fade",
+                  "duration": 0.8,
+                  "delay": 0.25,
+                  "direction": "up"
+                },
+                "out": {
+                  "kind": "slide",
+                  "duration": 0.8,
+                  "delay": 0.25,
+                  "direction": "left"
+                },
+                "loop": {
+                  "kind": "pulse",
+                  "duration": 0.8,
+                  "delay": 0.25,
+                  "direction": "right"
+                }
+              },
+              "type": "line",
+              "stroke": {
+                "color": "#112233",
+                "width": 3,
+                "style": "dashed",
+                "cap": "round",
+                "join": "bevel"
+              },
+              "startArrow": "none",
+              "endArrow": "arrow",
+              "routing": "curved",
+              "route": [
+                {
+                  "x": 0,
+                  "y": 0
+                },
+                {
+                  "x": 30,
+                  "y": -20
+                },
+                {
+                  "x": 70,
+                  "y": 20
+                },
+                {
+                  "x": 100,
+                  "y": 0
+                }
+              ],
+              "label": "Inside",
+              "start": {
+                "elementId": "s_1",
+                "anchor": "top"
+              },
+              "end": {
+                "elementId": "s_5",
+                "anchor": "bottom"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tab_1",
+          "name": "Layer tab_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "table",
+          "cells": [
+            [
+              "Name",
+              "Qty"
+            ],
+            [
+              "Pens",
+              "12"
+            ]
+          ],
+          "merges": [
+            {
+              "row": 0,
+              "col": 0,
+              "rowSpan": 1,
+              "colSpan": 2
+            }
+          ],
+          "cellStyles": {
+            "0:0": {
+              "fill": "#eeeeee",
+              "color": "#111111",
+              "bold": true,
+              "align": "center"
+            }
+          },
+          "colWidths": [
+            120,
+            80
+          ],
+          "rowHeights": [
+            40,
+            40
+          ],
+          "headerRow": true,
+          "fontFamily": "Inter",
+          "fontSize": 16,
+          "color": "#222222",
+          "headerFill": "#222222",
+          "headerColor": "#ffffff",
+          "stripeFill": "#f4f4f4",
+          "borderColor": "#cccccc",
+          "borderWidth": 1,
+          "align": "center"
+        },
+        {
+          "id": "c_1",
+          "name": "Layer c_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "chart",
+          "chart": "donut",
+          "labels": [
+            "North",
+            "South"
+          ],
+          "series": [
+            {
+              "name": "2025",
+              "values": [
+                3,
+                4
+              ],
+              "color": "#ff5500"
+            },
+            {
+              "name": "2026",
+              "values": [
+                5,
+                6
+              ],
+              "color": "#0055ff"
+            }
+          ],
+          "palette": [
+            "#ff5500",
+            "#0055ff",
+            "#00aa55"
+          ],
+          "fontFamily": "Inter",
+          "textColor": "#222222",
+          "showLegend": true,
+          "showValues": true,
+          "showGrid": true,
+          "stacked": true,
+          "percent": true,
+          "valueAxisTitle": "Units",
+          "categoryAxisTitle": "Year"
+        }
+      ],
+      "notes": "Say this out loud",
+      "duration": 7,
+      "transition": {
+        "kind": "slide",
+        "duration": 0.9,
+        "direction": "left"
+      }
+    },
+    {
+      "id": "p_5",
+      "name": "Page p_5",
+      "background": {
+        "type": "image",
+        "src": "asset:a_background",
+        "fit": "cover",
+        "dim": 0.35
+      },
+      "elements": [
+        {
+          "id": "v_1",
+          "name": "Layer v_1",
+          "x": 40,
+          "y": 60,
+          "width": 200,
+          "height": 120,
+          "rotation": 15,
+          "opacity": 0.9,
+          "flipH": true,
+          "flipV": true,
+          "locked": true,
+          "hidden": true,
+          "shadow": {
+            "color": "rgba(0,0,0,0.35)",
+            "blur": 12,
+            "x": 4,
+            "y": 6
+          },
+          "blur": 2,
+          "blend": "multiply",
+          "alt": "Described for people who cannot see it",
+          "link": "https://example.com/page",
+          "animation": {
+            "in": {
+              "kind": "fade",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "up"
+            },
+            "out": {
+              "kind": "slide",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "left"
+            },
+            "loop": {
+              "kind": "pulse",
+              "duration": 0.8,
+              "delay": 0.25,
+              "direction": "right"
+            }
+          },
+          "type": "video",
+          "src": "asset:a_clip",
+          "naturalWidth": 1280,
+          "naturalHeight": 720,
+          "duration": 12.5,
+          "trimStart": 1.5,
+          "trimEnd": 9,
+          "speed": 1.5,
+          "muted": true,
+          "crop": {
+            "x": -0.1,
+            "y": 0,
+            "w": 1.2,
+            "h": 1,
+            "rotation": 3
+          },
+          "mask": "hexagon",
+          "maskPath": "M0 0 L100 0 L50 100 Z",
+          "radius": 12,
+          "stroke": {
+            "color": "#112233",
+            "width": 3,
+            "style": "dashed",
+            "cap": "round",
+            "join": "bevel"
+          }
+        }
+      ],
+      "notes": "Say this out loud",
+      "duration": 7,
+      "transition": {
+        "kind": "slide",
+        "duration": 0.9,
+        "direction": "left"
+      }
+    }
+  ],
+  "createdAt": 1700000000000,
+  "updatedAt": 1700000500000,
+  "folderId": "f_complete",
+  "starred": true,
+  "trashedAt": 1700000900000,
+  "guides": {
+    "vertical": [
+      100,
+      960
+    ],
+    "horizontal": [
+      200,
+      540
+    ]
+  },
+  "margin": 48,
+  "gridSize": 20,
+  "live": {
+    "server": "https://live.example.test",
+    "room": "r_complete",
+    "key": "k_complete",
+    "role": "edit",
+    "ownerKey": "owner-key",
+    "viewKey": "v_complete"
+  },
+  "comments": [
+    {
+      "id": "c_complete",
+      "pageId": "p_1",
+      "anchor": {
+        "x": 120,
+        "y": 80,
+        "elementId": "t1",
+        "dx": 12,
+        "dy": -4
+      },
+      "author": {
+        "name": "Ann",
+        "colorIndex": 3
+      },
+      "createdAt": 1700000100000,
+      "editedAt": 1700000200000,
+      "text": "Make the heading bigger",
+      "resolved": true,
+      "replies": [
+        {
+          "id": "r_complete",
+          "author": {
+            "name": "Bob",
+            "colorIndex": 7
+          },
+          "createdAt": 1700000300000,
+          "editedAt": 1700000400000,
+          "text": "Done"
+        }
+      ]
+    }
+  ],
+  "version": 2
+}

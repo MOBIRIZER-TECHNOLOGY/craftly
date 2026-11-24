@@ -242,7 +242,7 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       if (typingIn && !useEditor.getState().editingTextId) toast.info(m.editor.live.textDeleted);
       // a comment or reply of somebody else is said to a screen reader, once (src/editor/comments/commentsStore.ts)
       if (live.sharesComments) announceArrivals(before, useEditor.getState().design);
-      if (collectAssetIds(shared).length)
+      if (collectAssetIds(shared, { clips: false }).length)
         void media.download(shared).catch((error: unknown) => showMediaError(error instanceof Error ? error.message : m.editor.live.imagesFailed));
     },
     onStatus: (status, reason) => {
@@ -277,8 +277,8 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
   useLiveStatus.setState({ status: "connecting", reason: null, role: null, stopped: false });
   actions().startLive({
     change(before, after) {
-      const known = new Set(collectAssetIds(before));
-      for (const id of collectAssetIds(after)) if (!known.has(id)) allowedUploads.add(id);
+      const known = new Set(collectAssetIds(before, { clips: false }));
+      for (const id of collectAssetIds(after, { clips: false })) if (!known.has(id)) allowedUploads.add(id);
       live.edit(before, after);
     },
     // a text box that somebody else is typing in is not opened here (the store asks before it opens one), and the person is told who has it
@@ -360,7 +360,7 @@ export async function shareDesign(typedServer: string, env: LiveEnv = {}, create
   // a server this person shares on is one they chose: a link to it does not ask again (knownServers.ts)
   rememberServer(server);
   try {
-    if (collectAssetIds(content).length) await sharedMedia(link, env.fetch).upload(content);
+    if (collectAssetIds(content, { clips: false }).length) await sharedMedia(link, env.fetch).upload(content);
   } catch (error) {
     await (env.fetch ?? fetch)(apiUrl(server, `/api/rooms/${encodeURIComponent(link.room)}`), {
       method: "DELETE",

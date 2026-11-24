@@ -904,6 +904,36 @@ describe("admission: what one visitor may cost the server", () => {
     await until("the connection to be closed", () => s.closed() === 1009);
   });
 
+  it("bounds how many messages may wait while the room is being read", async () => {
+    const slow = new (class extends MemoryStorage {
+      async load(id: string) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return super.load(id);
+      }
+    })();
+    const b = await boot({}, slow);
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    for (let i = 0; i < 65; i++) s.say({ t: "ping" });
+    await until("the connection to be closed", () => s.closed() === 1008);
+  });
+
+  it("bounds the bytes of messages that may wait while the room is being read", async () => {
+    const slow = new (class extends MemoryStorage {
+      async load(id: string) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return super.load(id);
+      }
+    })();
+    const b = await boot({ maxUnjoinedMessageBytes: 1024 }, slow);
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    for (let i = 0; i < 300; i++) s.say("x".repeat(1000));
+    await until("the connection to be closed", () => s.closed() === 1008);
+  });
+
   /** A connection that may be refused before it is one: what the server answered the request with, or that it opened. */
   const knock = (b: Booted, room: string) =>
     new Promise<number | "open">((resolve) => {

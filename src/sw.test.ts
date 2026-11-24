@@ -211,16 +211,26 @@ describe("the service worker", () => {
       expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/api/me`)).toBe(false);
     });
 
-    it("passes on, without storing, an answer the server says must not be kept", async () => {
+    it("passes on, without storing, an answer the server says must not be kept, however the server spells it", async () => {
       const worker = await running("b1");
-      worker.network.serve("/api/rooms/r1", () => new Response('{"room":"r1"}', { status: 200, headers: { "content-type": "application/json", "cache-control": "No-Store" } }));
-      expect(await text(await worker.request("/api/rooms/r1"))).toBe('{"room":"r1"}');
+      worker.network.serve("/assets/r1.json", () => new Response('{"room":"r1"}', { status: 200, headers: { "content-type": "application/json", "cache-control": "No-Store" } }));
+      expect(await text(await worker.request("/assets/r1.json"))).toBe('{"room":"r1"}');
       await tick();
-      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/api/rooms/r1`)).toBe(false);
+      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/assets/r1.json`)).toBe(false);
       // and the next time it is asked for, it is the network that answers
       const before = worker.network.calls.length;
-      await worker.request("/api/rooms/r1");
+      await worker.request("/assets/r1.json");
       expect(worker.network.calls).toHaveLength(before + 1);
+    });
+
+    it("leaves the answers of the account and live servers to the browser, with or without a token", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/api/rooms/r1", () => new Response('{"room":"r1"}', { status: 200, headers: { "content-type": "application/json", "cache-control": "No-Store" } }));
+      const before = worker.network.calls.length;
+      expect(await worker.request("/api/rooms/r1")).toBeUndefined();
+      expect(worker.network.calls).toHaveLength(before);
+      await tick();
+      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/api/rooms/r1`)).toBe(false);
     });
 
     it("opens a page from the network first, and keeps the latest copy as the shell", async () => {
@@ -311,6 +321,14 @@ describe("the service worker", () => {
       expect(worker.network.calls).toHaveLength(before);
     });
 
+    it("answers the icon and the manifest that a page asks for from the stored shell, so that nothing fails to load offline", async () => {
+      const worker = await running("b1");
+      worker.network.online = false;
+      expect(await text(await worker.request("/favicon.svg"))).toBe("<svg/>");
+      expect(await text(await worker.request("/icon-192.png"))).toBe("png192");
+      expect((await worker.request("/manifest.webmanifest"))?.ok).toBe(true);
+    });
+
     it("still finds the files of an older build in its cache, for a tab that is running them", async () => {
       const first = await running("b1");
       const second = await running("b2", { network: serveBuild(first.network, "b2"), caches: first.caches });
@@ -350,6 +368,33 @@ describe("the service worker", () => {
       await tick();
       expect(worker.caches.stores.get("craftly-runtime")?.entries.has(`${ORIGIN}/assets/ort.wasm`) ?? false).toBe(false);
       expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/assets/ort.wasm`)).toBe(false);
+    });
+
+    it("leaves account APIs, source files and every credentialed request to the browser", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/api/me", () => new Response("private", { headers: { "cache-control": "no-store" } }));
+      expect(await worker.request("/api/me", { headers: { authorization: "Bearer alice" } })).toBeUndefined();
+      expect(await worker.request("/api/me", { headers: { authorization: "Bearer bob" } })).toBeUndefined();
+      expect(await worker.request("/src/i18n/en/index.ts")).toBeUndefined();
+      expect(await worker.request("/assets/private.js", { headers: { "x-craftly-key": "room-key" } })).toBeUndefined();
+      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/api/me`)).toBe(false);
+      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/assets/private.js`)).toBe(false);
+    });
+
+    it("removes private answers left by an older worker and does not store a no-store answer", async () => {
+      const worker = await running("aaaaaaaaaa");
+      const store = worker.caches.stores.get("craftly-aaaaaaaaaa")!;
+      await store.put(new Request(`${ORIGIN}/api/me`, { headers: { authorization: "Bearer alice" } }), new Response("account"));
+      await store.put(`${ORIGIN}/api/rooms/room/assets/picture`, new Response("room"));
+      await worker.activate();
+      expect(store.entries.has(`${ORIGIN}/api/me`)).toBe(false);
+      expect(store.entries.has(`${ORIGIN}/api/rooms/room/assets/picture`)).toBe(false);
+
+      worker.network.serve("/assets/no-store.js", () => new Response("not cached", { headers: { "cache-control": "no-store" } }));
+      expect(await text(await worker.request("/assets/no-store.js"))).toBe("not cached");
+      expect(await text(await worker.request("/assets/no-store.js"))).toBe("not cached");
+      expect(worker.network.calls.filter((url) => url.endsWith("/assets/no-store.js"))).toHaveLength(2);
+      expect(store.entries.has(`${ORIGIN}/assets/no-store.js`)).toBe(false);
     });
   });
 });

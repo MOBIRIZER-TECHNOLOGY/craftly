@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SyncedMeta, SyncRecord } from "@/core/types";
-import { changedHere, isDirty, planSync, type LocalDesign, type RemoteEntry } from "./syncPlan";
+import { changedHere, isDirty, planSync, withLaterChanges, type LocalDesign, type RemoteEntry } from "./syncPlan";
 
 const META: SyncedMeta = { title: "Poster", folderId: null, starred: false, trashedAt: null };
 const SPACE = "space_of_ann_000001";
@@ -105,12 +105,29 @@ describe("the details", () => {
   it("changed there are taken where they were not changed here; what changed here wins", () => {
     const remote = there("a", 3, { title: "Renamed there", starred: true });
     expect(planSync([here("a")], [], [remote])).toEqual([
-      { kind: "meta-pull", id: "a", meta: { ...META, title: "Renamed there", starred: true }, remote: { ...META, title: "Renamed there", starred: true } },
+      { kind: "meta-pull", id: "a", meta: { ...META, title: "Renamed there", starred: true }, remote: { ...META, title: "Renamed there", starred: true }, local: META },
     ]);
     expect(planSync([here("a", { meta: { title: "Renamed here" } })], [], [remote])).toEqual([
       { kind: "meta-push", id: "a", patch: { title: "Renamed here" } },
-      { kind: "meta-pull", id: "a", meta: { ...META, title: "Renamed here", starred: true }, remote: { ...META, title: "Renamed there", starred: true } },
+      {
+        kind: "meta-pull",
+        id: "a",
+        meta: { ...META, title: "Renamed here", starred: true },
+        remote: { ...META, title: "Renamed there", starred: true },
+        local: { ...META, title: "Renamed here" },
+      },
     ]);
+  });
+
+  it("taken from the server keep a detail that was changed here after the plan was made", () => {
+    const planned = { ...META, title: "Renamed there", starred: true };
+    // nothing changed since the plan: the plan stands
+    expect(withLaterChanges(planned, META, META)).toEqual(planned);
+    // renamed while the run went on: the new name stays, the star is still taken from the server
+    expect(withLaterChanges(planned, META, { ...META, title: "Renamed meanwhile" })).toEqual({ ...planned, title: "Renamed meanwhile" });
+    // a detail kept because it was changed here, changed again: the newest value stays
+    const local = { ...META, folderId: "f1" };
+    expect(withLaterChanges({ ...planned, folderId: "f1" }, local, { ...local, folderId: "f2" })).toEqual({ ...planned, folderId: "f2" });
   });
 
   it("go with a pull: the content is the server's, and a detail changed here is still sent", () => {

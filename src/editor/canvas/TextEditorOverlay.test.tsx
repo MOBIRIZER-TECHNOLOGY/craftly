@@ -89,6 +89,15 @@ describe("opening the editor", () => {
     expect(editor.getAttribute("spellcheck")).toBe("false");
   });
 
+  it("lets the browser check the spelling once that was asked for", async () => {
+    const { editor } = await openEditor();
+    expect(editor.getAttribute("spellcheck")).toBe("false");
+    act(() => state().actions.toggle("spellCheck"));
+    expect(editor.getAttribute("spellcheck")).toBe("true");
+    act(() => state().actions.toggle("spellCheck"));
+    expect(editor.getAttribute("spellcheck")).toBe("false");
+  });
+
   it("follows the zoom", async () => {
     const { rig, editor } = await openEditor();
     act(() => getActions().setZoom(2));
@@ -473,6 +482,22 @@ describe("keys and pointer", () => {
     expect(rig.container.querySelector("[data-cf-text-editor]")).toBe(editor);
   });
 
+  it("lets Save and Print through to the editor's shortcuts, and keeps the other Ctrl keys with the text", async () => {
+    const { editor } = await openEditor();
+    const seen: string[] = [];
+    const listen = (e: KeyboardEvent) => seen.push(`${e.metaKey ? "Cmd" : "Ctrl"}+${e.key}`);
+    window.addEventListener("keydown", listen);
+    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "s", metaKey: true });
+    fireEvent.keyDown(editor, { key: "p", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "P", ctrlKey: true, shiftKey: true });
+    window.removeEventListener("keydown", listen);
+    expect(seen).toEqual(["Ctrl+s", "Cmd+s", "Ctrl+p"]);
+    expect(state().editingTextId).toBe("t");
+  });
+
   it("Escape saves the text and leaves editing", async () => {
     const { rig, editor } = await openEditor();
     editor.innerHTML = "<div>Changed</div>";
@@ -576,6 +601,7 @@ describe("formatting the selected characters", () => {
       else if (name === "foreColor") wrap((s) => (s.style.color = value ?? ""));
       else if (name === "fontName") wrap((s) => (s.style.fontFamily = value ?? ""));
       else if (name === "fontSize") wrap((s) => s.setAttribute("size", "7"), "font");
+      else if (name === "hiliteColor") wrap((s) => (s.style.backgroundColor = value ?? ""));
       return true;
     });
     Object.defineProperty(document, "queryCommandState", { configurable: true, writable: true, value: vi.fn((name: string) => queries.get(name) ?? false) });
@@ -624,6 +650,24 @@ describe("formatting the selected characters", () => {
     expect(exec).toHaveBeenCalledWith("foreColor", false, "#ff0000");
     expect(exec).toHaveBeenCalledWith("fontName", false, expect.stringContaining("Playfair Display"));
     expect(paragraphs()[0].runs[0]).toMatchObject({ text: "Hello", color: "#ff0000", font: "Playfair Display" });
+  });
+
+  it("applies a numeric weight to only the selected characters", async () => {
+    fakeBrowser();
+    await withSelection({ fontWeight: 400 });
+    expect(applyInline({ weight: 300 })).toBe(true);
+    expect(paragraphs()[0].runs).toEqual([{ text: "Hello", weight: 300 }, { text: " world" }]);
+    expect(model().fontWeight).toBe(400);
+  });
+
+  it("sets a weight without touching the size of the characters, and without the command for a size", async () => {
+    const { exec } = fakeBrowser();
+    const { editor } = await withSelection({ fontWeight: 400 });
+    expect(applyInline({ weight: 800 })).toBe(true);
+    expect(exec.mock.calls.map((c) => c[0])).not.toContain("fontSize");
+    // the mark that carried the selection is gone again
+    expect(editor.innerHTML).not.toMatch(/background|xxx-large/);
+    expect(paragraphs()[0].runs[0]).toEqual({ text: "Hello", weight: 800 });
   });
 
   it("sizes the selection in design pixels at the current zoom and keeps it selected", async () => {
