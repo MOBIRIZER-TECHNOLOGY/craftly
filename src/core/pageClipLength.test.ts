@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PAGE_DURATION, MAX_CLIP_PAGE_DURATION, MAX_PAGE_DURATION, clipPlayingLength, pageClipLength, pageDuration } from "./animation";
+import {
+  DEFAULT_PAGE_DURATION,
+  MAX_CLIP_PAGE_DURATION,
+  MAX_CLIP_START,
+  MAX_PAGE_DURATION,
+  clipLocalTime,
+  clipPlayingLength,
+  clipStartAt,
+  pageClipLength,
+  pageDuration,
+} from "./animation";
 import { createGroup, createPage, createShape, createVideo } from "./factory";
 import { buildTimeline } from "./transition";
 import type { VideoElement } from "./types";
@@ -19,6 +29,28 @@ describe("how long a clip plays once", () => {
   it("is never nothing, and a speed that is not a number counts as 1x", () => {
     expect(clipPlayingLength({ trimStart: 4, trimEnd: 4, speed: 1 })).toBe(0.05);
     expect(clipPlayingLength({ trimStart: 0, trimEnd: 6, speed: 0 })).toBe(6);
+  });
+});
+
+describe("when a clip starts on its page", () => {
+  it("is at once unless it is set, and between 0 and ten minutes", () => {
+    expect(clipStartAt({})).toBe(0);
+    expect(clipStartAt({ startAt: 2.5 })).toBe(2.5);
+    expect(clipStartAt({ startAt: -3 })).toBe(0);
+    expect(clipStartAt({ startAt: 9999 })).toBe(MAX_CLIP_START);
+    expect(clipStartAt({ startAt: Number.NaN })).toBe(0);
+  });
+
+  it("counts the clip's own time from there", () => {
+    expect(clipLocalTime({ startAt: 2 }, 1)).toBe(0);
+    expect(clipLocalTime({ startAt: 2 }, 3.5)).toBe(1.5);
+    expect(clipLocalTime({}, 3.5)).toBe(3.5);
+  });
+
+  it("makes a page that follows its clip last until the clip has played once from there", () => {
+    expect(pageDuration(createPage({ elements: [clip({ trimEnd: 6, startAt: 3 })] }))).toBe(9);
+    // the last clip to finish decides, not the longest
+    expect(pageClipLength(createPage({ elements: [clip({ trimEnd: 8 }), clip({ trimEnd: 4, startAt: 6 })] }))).toBe(10);
   });
 });
 

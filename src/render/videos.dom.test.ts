@@ -244,6 +244,23 @@ describe("a clip that plays", () => {
     expect(video.plays).toBe(plays);
   });
 
+  it("waits on its first frame, paused and silent, until its start time", () => {
+    const el = clip({ trimStart: 1, trimEnd: 4, startAt: 2 });
+    playingFrame(el, 0, true);
+    const video = made[0];
+    video.readyState = 4;
+    video.currentTime = 1;
+    const plays = video.plays;
+    expect(playingFrame(el, 1, true)).toBe(video);
+    expect(video.volume).toBe(0);
+    expect(video.plays).toBe(plays);
+    // from its start time it plays, with its sound
+    video.paused = true;
+    playingFrame(el, 2.1, true);
+    expect(video.plays).toBe(plays + 1);
+    expect(video.volume).toBe(1);
+  });
+
   it("leaves the volume alone while it plays silently (in the editor)", () => {
     const el = clip({ volume: 0.3 });
     playingFrame(el, 1);

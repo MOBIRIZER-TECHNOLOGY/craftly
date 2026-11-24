@@ -216,6 +216,7 @@ export const editor: typeof en = {
     trimEnd: "अंत (सेकंड)",
     trimLength: (shown: number, whole: number) => `${num(whole, { maximumFractionDigits: 2 })} सेकंड में से ${num(shown, { maximumFractionDigits: 2 })} सेकंड चलता है`,
     resetTrim: "पूरी क्लिप चलाएँ",
+    startAt: "पेज पर शुरू होती है (सेकंड)",
     loop: "बार-बार चलाएँ",
     loopHint: "क्लिप खत्म होते ही फिर से शुरू होती है, जब तक उसका पेज दिखता है।",
     onceHint: "क्लिप एक बार चलती है, फिर बिना आवाज़ के अपने आखिरी फ़्रेम पर रुकी रहती है।",

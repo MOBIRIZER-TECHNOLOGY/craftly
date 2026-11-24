@@ -238,6 +238,8 @@ export const editor = {
     /** in seconds, as the two fields above it are */
     trimLength: (shown: number, whole: number) => `Plays ${num(shown, { maximumFractionDigits: 2 })} s of ${num(whole, { maximumFractionDigits: 2 })} s`,
     resetTrim: "Play the whole clip",
+    /** when the clip starts on its page; until then it shows its first frame */
+    startAt: "Starts on the page at (seconds)",
     loop: "Play over and over",
     loopHint: "The clip starts again whenever it ends, for as long as its page is shown.",
     onceHint: "The clip plays once, then stays on its last frame without sound.",

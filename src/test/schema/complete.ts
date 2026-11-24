@@ -289,6 +289,7 @@ function completeElements(): Complete<DesignElement>[] {
       speed: 1.5,
       muted: true,
       once: true,
+      startAt: 0.5,
       volume: 0.6,
       fadeIn: 1,
       fadeOut: 2.5,

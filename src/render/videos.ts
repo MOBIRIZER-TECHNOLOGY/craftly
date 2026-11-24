@@ -11,7 +11,7 @@
  *
  * A clip is only ever one of this browser's uploads ("asset:<id>"): a design never plays anything from the web.
  */
-import { clipGainAt, clipPlayingLength } from "@/core/animation";
+import { clipGainAt, clipLocalTime, clipPlayingLength, clipStartAt } from "@/core/animation";
 import { getAssetUrl } from "@/core/assets";
 import type { DesignElement, VideoElement } from "@/core/types";
 
@@ -43,15 +43,19 @@ export const LAST_FRAME_BEFORE_END = 0.04;
  * The place in the clip, in seconds, that `time` seconds of the page stand for: from `trimStart`, at `speed`, over again at
  * `trimEnd`; a clip that plays once stays on its last frame after that.
  */
-export function clipTime(el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed" | "once">, time: number): number {
+export function clipTime(el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed" | "once" | "startAt">, time: number): number {
   const span = trimmedLength(el);
-  const played = Math.max(0, time) * (el.speed > 0 ? el.speed : 1);
+  const played = clipLocalTime(el, time) * (el.speed > 0 ? el.speed : 1);
   if (el.once) return el.trimStart + Math.min(played, Math.max(0, span - LAST_FRAME_BEFORE_END));
   return el.trimStart + (played % span);
 }
 
 /** True when a clip that plays once has played, `time` seconds into its page: it holds its last frame and is silent. */
-export const clipFinished = (el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed" | "once">, time: number): boolean => !!el.once && Math.max(0, time) >= playingLength(el);
+export const clipFinished = (el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed" | "once" | "startAt">, time: number): boolean =>
+  !!el.once && clipLocalTime(el, time) >= playingLength(el);
+
+/** True while a clip waits for its start time on its page: it shows its first frame and is silent. */
+export const clipWaiting = (el: Pick<VideoElement, "startAt">, time: number): boolean => time < clipStartAt(el);
 
 /** The shortest part of a clip that can be left to play, in seconds. */
 export const MIN_TRIM = 0.1;
@@ -231,17 +235,18 @@ export function playingFrame(el: VideoElement, time: number, sound = false): HTM
   if (video.playbackRate !== rate) video.playbackRate = rate;
   const muted = !sound || !!el.muted;
   if (video.muted !== muted) video.muted = muted;
-  const finished = clipFinished(el, time);
+  // a clip that waits for its start time, or has played once, stands still and is silent
+  const still = clipFinished(el, time) || clipWaiting(el, time);
   if (!muted) {
     // its volume, and its fades at the start and the end of every play of it (silent once a clip that plays once has played)
-    const volume = finished ? 0 : clipGainAt(el, Math.max(0, time) % playingLength(el));
+    const volume = still ? 0 : clipGainAt(el, clipLocalTime(el, time) % playingLength(el));
     if (Math.abs(video.volume - volume) > 0.001) video.volume = volume;
   }
   if (video.readyState < 1) return null;
   const off = Math.abs(video.currentTime - want) > DRIFT;
   if (off && !video.seeking) video.currentTime = want;
   // a clip that has played once stands on its last frame; any other plays on
-  if (finished) {
+  if (still) {
     if (!video.paused) video.pause();
   } else if (video.paused || video.ended) start(video);
   return video.readyState >= 2 && !off ? video : null;

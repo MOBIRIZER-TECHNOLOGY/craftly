@@ -178,10 +178,12 @@ const VIDEO = [
 const CLIP_SOUND = ["$.pages[].elements[].fadeIn: number", "$.pages[].elements[].fadeOut: number", "$.pages[].elements[].volume: number"];
 /** A clip that plays once (2026-11-25): optional, absent means over and over as before. */
 const CLIP_ONCE = ["$.pages[].elements[].once: boolean"];
+/** When a clip starts on its page (2026-11-25): optional, absent means at once as before. */
+const CLIP_START = ["$.pages[].elements[].startAt: number"];
 
 const ADDED: Record<string, string[]> = {
   // in the order the shapes are listed: by path
-  design: [...CLIP_SOUND, ...CLIP_ONCE].sort(),
+  design: [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START].sort(),
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

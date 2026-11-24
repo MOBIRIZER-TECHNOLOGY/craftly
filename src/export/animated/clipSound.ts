@@ -8,7 +8,7 @@
  */
 import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from "mediabunny";
 import { getAsset } from "@/core/assets";
-import { clipFades, clipGainAt, clipVolume } from "@/core/animation";
+import { clipFades, clipGainAt, clipStartAt, clipVolume } from "@/core/animation";
 import type { Timeline } from "@/core/transition";
 import type { Page, VideoElement } from "@/core/types";
 import { trimmedLength } from "@/render/videos";
@@ -106,13 +106,16 @@ export async function mixClipSound(pages: readonly Page[], timeline: Timeline, t
       if (!loop) continue;
       const buffer = new AudioBuffer({ length: loop.channels[0].length, numberOfChannels: loop.channels.length, sampleRate: loop.sampleRate });
       loop.channels.forEach((data, c) => buffer.copyToChannel(data as Float32Array<ArrayBuffer>, c));
+      // a clip that starts later on its page is silent until then
+      const begin = from + clipStartAt(el);
+      if (begin >= until) continue;
       const source = loopingSource(ctx, buffer, !el.once);
       const gain = ctx.createGain();
       const fade = Math.min(PAGE_FADE_SECONDS, (until - from) / 2);
       gain.gain.setValueAtTime(1, Math.max(from, until - fade));
       gain.gain.linearRampToValueAtTime(0, until);
       source.connect(gain).connect(ctx.destination);
-      source.start(from);
+      source.start(begin);
       source.stop(until);
       sounding++;
     }

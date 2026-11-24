@@ -246,6 +246,16 @@ describe("video toolbar: trim", () => {
     expect(store().past.length).toBe(before + 1);
   });
 
+  it("sets when the clip starts on its page, and leaves nothing behind at 0", async () => {
+    const el = clip();
+    const { user, dialog } = await openTrim(el);
+    const at = within(dialog).getByRole("spinbutton", { name: "Starts on the page at (seconds) value" });
+    await typeNumber(user, at, "2.5");
+    expect(live<VideoElement>(el).startAt).toBe(2.5);
+    await typeNumber(user, at, "0");
+    expect("startAt" in live<VideoElement>(el)).toBe(false);
+  });
+
   it("plays the clip over and over unless it is set to play once", async () => {
     const el = clip();
     const { user, dialog } = await openTrim(el);

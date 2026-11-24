@@ -30,6 +30,16 @@ export const MAX_CLIP_PAGE_DURATION = 600;
 /** Seconds a clip takes to play once on its page: its trimmed part at its speed (never 0). */
 export const clipPlayingLength = (el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed">): number => Math.max(0.05, el.trimEnd - el.trimStart) / (el.speed > 0 ? el.speed : 1);
 
+/** The latest a clip can start playing on its page, in seconds (as long as a page that follows its clip can last). */
+export const MAX_CLIP_START = 600;
+
+/** Seconds into its page at which a clip starts playing, 0 to MAX_CLIP_START (a value from outside that is not a number counts as 0). */
+export const clipStartAt = (el: Pick<VideoElement, "startAt">): number =>
+  typeof el.startAt === "number" && Number.isFinite(el.startAt) ? clamp(el.startAt, 0, MAX_CLIP_START) : 0;
+
+/** Seconds a clip has been playing when its page has been shown for `time` seconds (0 until it starts). */
+export const clipLocalTime = (el: Pick<VideoElement, "startAt">, time: number): number => Math.max(0, time - clipStartAt(el));
+
 /** The longest a clip's sound can take to fade in or out, in seconds. */
 export const MAX_CLIP_FADE = 5;
 
@@ -69,12 +79,15 @@ export function clipGainAt(el: Pick<VideoElement, "volume" | "fadeIn" | "fadeOut
   return volume * g;
 }
 
-/** How long the longest clip on the page takes to play once (groups looked into, hidden ones left out); null without a clip. */
+/**
+ * When the last clip on the page has played once, from the time it starts (groups looked into, hidden ones left out); null without
+ * a clip.
+ */
 export function pageClipLength(page: { elements?: readonly DesignElement[] }): number | null {
   let longest: number | null = null;
   const visit = (el: DesignElement) => {
     if (el.hidden) return;
-    if (el.type === "video") longest = Math.max(longest ?? 0, clipPlayingLength(el));
+    if (el.type === "video") longest = Math.max(longest ?? 0, clipStartAt(el) + clipPlayingLength(el));
     else if (el.type === "group") el.children.forEach(visit);
   };
   page.elements?.forEach(visit);

@@ -1,5 +1,5 @@
 /** The contextual toolbar of video elements: play, trim, speed, sound, and the frame they are cut to. */
-import { MAX_CLIP_FADE, clipFades, clipVolume } from "@/core/animation";
+import { MAX_CLIP_FADE, MAX_PAGE_DURATION, clipFades, clipStartAt, clipVolume } from "@/core/animation";
 import { VIDEO_SPEED_MAX, VIDEO_SPEED_MIN } from "@/core/factory";
 import type { VideoElement } from "@/core/types";
 import { startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
@@ -24,8 +24,8 @@ export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Ext
   const mask = uniform(els, (e) => e.mask || "rect");
   const speed = uniform(els, (e) => e.speed);
   const muted = els.every((e) => !!e.muted);
-  // the preview plays the page from its start for as long as the longest of these clips plays once
-  const longest = Math.max(1, ...els.map((e) => playingLength(e)));
+  // the preview plays the page from its start until the last of these clips has played once from its start time
+  const longest = Math.max(1, ...els.map((e) => clipStartAt(e) + playingLength(e)));
 
   const frameItems = (): MenuEntry[] =>
     FRAME_SHAPES.map((shape) => ({
@@ -210,6 +210,25 @@ function TrimPopover({ el }: { el: VideoElement }) {
           <Button variant="secondary" size="sm" disabled={!trimmed} onClick={reset}>
             {m.editor.videoBar.resetTrim}
           </Button>
+          <SliderField
+            label={m.editor.videoBar.startAt}
+            value={clipStartAt(el)}
+            min={0}
+            max={MAX_PAGE_DURATION}
+            step={0.5}
+            numberStep={0.1}
+            onChange={(v) =>
+              editElements(
+                [el.id],
+                only("video", (clip) => {
+                  const seconds = Math.min(MAX_PAGE_DURATION, Math.max(0, Math.round(v * 10) / 10));
+                  if (seconds === 0) delete clip.startAt;
+                  else clip.startAt = seconds;
+                }),
+                "start-at",
+              )
+            }
+          />
           <Checkbox
             checked={!el.once}
             label={m.editor.videoBar.loop}

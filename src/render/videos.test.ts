@@ -1,8 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { createVideo } from "@/core/factory";
-import { clampTrim, clipClock, clipFinished, clipTime, isVideoSource, LAST_FRAME_BEFORE_END, MIN_TRIM, playingFrame, playingLength, trimmedLength } from "./videos";
+import { clampTrim, clipClock, clipFinished, clipTime, clipWaiting, isVideoSource, LAST_FRAME_BEFORE_END, MIN_TRIM, playingFrame, playingLength, trimmedLength } from "./videos";
 
 const clip = (over: Partial<Parameters<typeof createVideo>[0]> = {}) => createVideo({ src: "asset:a_clip", naturalWidth: 640, naturalHeight: 360, duration: 10, ...over });
+
+describe("a clip that starts later on its page", () => {
+  it("stays at its trim until then, and plays from there", () => {
+    const el = { trimStart: 1, trimEnd: 5, speed: 1, startAt: 2 };
+    expect(clipTime(el, 0)).toBe(1);
+    expect(clipTime(el, 1.9)).toBe(1);
+    expect(clipTime(el, 3)).toBe(2);
+    expect(clipTime(el, 6)).toBe(1); // round once: 4 s of clip from 2 s
+    expect(clipWaiting(el, 1.9)).toBe(true);
+    expect(clipWaiting(el, 2)).toBe(false);
+    expect(clipWaiting({}, 0)).toBe(false);
+  });
+
+  it("finishes a play once later too", () => {
+    expect(clipFinished({ trimStart: 0, trimEnd: 2, speed: 1, once: true, startAt: 3 }, 4.9)).toBe(false);
+    expect(clipFinished({ trimStart: 0, trimEnd: 2, speed: 1, once: true, startAt: 3 }, 5)).toBe(true);
+  });
+});
 
 describe("a clip that plays once", () => {
   it("goes from its trim at its speed, then stays on its last frame", () => {

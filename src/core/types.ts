@@ -493,6 +493,8 @@ export interface VideoElement extends ElementBase {
   speed: number;
   /** without its sound in Present (a clip is always silent while editing) */
   muted?: boolean;
+  /** seconds into its page at which it starts playing; until then it shows its first frame, silent (0 when absent) */
+  startAt?: number;
   /** plays once and then holds its last frame, silent, for the rest of its page (it plays over and over when absent) */
   once?: boolean;
   /** how loud it plays, from 0 to 1 (1 when absent): see clipVolume in core/animation.ts */
