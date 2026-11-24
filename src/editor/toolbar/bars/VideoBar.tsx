@@ -6,7 +6,7 @@ import { startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
 import { ShapePreview } from "@/editor/panels/shared/ShapePreview";
 import { m } from "@/i18n";
 import { clampTrim, MIN_TRIM, playingLength } from "@/render/videos";
-import { Button, Divider, IconAudio, IconCut, IconFrame, IconMuted, IconPause, IconPlay, IconSound, IconSpeed, type MenuEntry } from "@/ui";
+import { Button, Checkbox, Divider, IconAudio, IconCut, IconFrame, IconMuted, IconPause, IconPlay, IconSound, IconSpeed, type MenuEntry } from "@/ui";
 import { AnimateButton, BorderPopover, CopyStyleButton, FlipMenu, MoreButton, MultiActions, PositionButton, RadiusPopover, TransparencyButton, type BarProps } from "../common";
 import { MenuButton, PopoverButton, SliderField, TBIcon } from "../kit";
 import { editElements, only, uniform } from "../selection";
@@ -210,6 +210,20 @@ function TrimPopover({ el }: { el: VideoElement }) {
           <Button variant="secondary" size="sm" disabled={!trimmed} onClick={reset}>
             {m.editor.videoBar.resetTrim}
           </Button>
+          <Checkbox
+            checked={!el.once}
+            label={m.editor.videoBar.loop}
+            onChange={(loop) =>
+              editElements(
+                [el.id],
+                only("video", (v) => {
+                  if (loop) delete v.once;
+                  else v.once = true;
+                }),
+              )
+            }
+          />
+          <p className="cf-tbpop__hint">{el.once ? m.editor.videoBar.onceHint : m.editor.videoBar.loopHint}</p>
         </div>
       )}
     </PopoverButton>

@@ -246,6 +246,19 @@ describe("video toolbar: trim", () => {
     expect(store().past.length).toBe(before + 1);
   });
 
+  it("plays the clip over and over unless it is set to play once", async () => {
+    const el = clip();
+    const { user, dialog } = await openTrim(el);
+    const loop = within(dialog).getByRole("checkbox", { name: "Play over and over" }) as HTMLInputElement;
+    expect(loop.checked).toBe(true);
+    expect(within(dialog).getByText(/starts again whenever it ends/)).toBeTruthy();
+    await user.click(loop);
+    expect(live<VideoElement>(el).once).toBe(true);
+    expect(within(dialog).getByText("The clip plays once, then stays on its last frame without sound.")).toBeTruthy();
+    await user.click(loop);
+    expect("once" in live<VideoElement>(el)).toBe(false);
+  });
+
   it("plays the whole clip again", async () => {
     const el = clip({ trimStart: 1, trimEnd: 4 });
     const { user, dialog } = await openTrim(el);

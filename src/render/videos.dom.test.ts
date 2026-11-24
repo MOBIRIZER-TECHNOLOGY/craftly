@@ -223,6 +223,27 @@ describe("a clip that plays", () => {
     expect(video.volume).toBeCloseTo(0.25);
   });
 
+  it("stands on its last frame, paused and silent, once a clip that plays once has played", () => {
+    const el = clip({ trimStart: 0, trimEnd: 4, once: true });
+    playingFrame(el, 0, true);
+    const video = made[0];
+    video.readyState = 4;
+    video.paused = false;
+    video.currentTime = 3.97;
+    let paused = 0;
+    (video as unknown as { pause: () => void }).pause = () => {
+      paused++;
+      video.paused = true;
+    };
+    expect(playingFrame(el, 5, true)).toBe(video);
+    expect(paused).toBe(1);
+    expect(video.volume).toBe(0);
+    // and it is not started again
+    const plays = video.plays;
+    playingFrame(el, 6, true);
+    expect(video.plays).toBe(plays);
+  });
+
   it("leaves the volume alone while it plays silently (in the editor)", () => {
     const el = clip({ volume: 0.3 });
     playingFrame(el, 1);

@@ -238,6 +238,9 @@ export const editor = {
     /** in seconds, as the two fields above it are */
     trimLength: (shown: number, whole: number) => `Plays ${num(shown, { maximumFractionDigits: 2 })} s of ${num(whole, { maximumFractionDigits: 2 })} s`,
     resetTrim: "Play the whole clip",
+    loop: "Play over and over",
+    loopHint: "The clip starts again whenever it ends, for as long as its page is shown.",
+    onceHint: "The clip plays once, then stays on its last frame without sound.",
     speed: "Speed",
     speedTip: "How fast the clip plays",
     speedValue: (x: number) => `${num(x)}×`,

@@ -288,6 +288,7 @@ function completeElements(): Complete<DesignElement>[] {
       trimEnd: 9,
       speed: 1.5,
       muted: true,
+      once: true,
       volume: 0.6,
       fadeIn: 1,
       fadeOut: 2.5,

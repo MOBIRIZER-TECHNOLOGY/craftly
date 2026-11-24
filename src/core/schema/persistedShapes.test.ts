@@ -176,10 +176,12 @@ const VIDEO = [
 ];
 /** A clip's volume and fades (2026-11-25): optional, read with defaults (clipVolume and clipFades in src/core/animation.ts). */
 const CLIP_SOUND = ["$.pages[].elements[].fadeIn: number", "$.pages[].elements[].fadeOut: number", "$.pages[].elements[].volume: number"];
+/** A clip that plays once (2026-11-25): optional, absent means over and over as before. */
+const CLIP_ONCE = ["$.pages[].elements[].once: boolean"];
 
 const ADDED: Record<string, string[]> = {
   // in the order the shapes are listed: by path
-  design: CLIP_SOUND,
+  design: [...CLIP_SOUND, ...CLIP_ONCE].sort(),
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

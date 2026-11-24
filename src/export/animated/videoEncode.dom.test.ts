@@ -293,6 +293,14 @@ describe("the clips' pictures, frame by frame", () => {
     expect(mb.seeks[1][1]).toBeLessThan(0.6);
   });
 
+  it("holds the last frame of a clip that plays once", async () => {
+    const frames = new ClipFrames();
+    const el = clip({ trimEnd: 1, once: true });
+    frames.frame(el, 2.5);
+    await frames.fill();
+    expect(picture(frames, el, 2.5)).toBe(`a@${28 / 30}`);
+  });
+
   it("reads two copies of one clip separately, each at its own place", async () => {
     const frames = new ClipFrames();
     const one = clip();
@@ -604,6 +612,11 @@ describe("a clip's volume and fades in the mix", () => {
     expect(left[500]).toBeCloseTo(sample(500) * 0.5, 6);
     expect(left[1200]).toBeCloseTo(sample(1200), 6);
     expect(left[1750]).toBeCloseTo(sample(1750) * 0.5, 6);
+  });
+
+  it("plays a clip that plays once a single time, and loops any other", async () => {
+    await mixClipSound([page([clip({ once: true }), clip({ trimStart: 1 })])], buildTimeline([page([])]), 3);
+    expect(FakeOfflineContext.last!.played.map((p) => p.loop)).toEqual([false, true]);
   });
 
   it("reads a clip again when only its volume differs, and once for two copies alike", async () => {

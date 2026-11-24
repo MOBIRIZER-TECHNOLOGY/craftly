@@ -106,7 +106,7 @@ export async function mixClipSound(pages: readonly Page[], timeline: Timeline, t
       if (!loop) continue;
       const buffer = new AudioBuffer({ length: loop.channels[0].length, numberOfChannels: loop.channels.length, sampleRate: loop.sampleRate });
       loop.channels.forEach((data, c) => buffer.copyToChannel(data as Float32Array<ArrayBuffer>, c));
-      const source = loopingSource(ctx, buffer);
+      const source = loopingSource(ctx, buffer, !el.once);
       const gain = ctx.createGain();
       const fade = Math.min(PAGE_FADE_SECONDS, (until - from) / 2);
       gain.gain.setValueAtTime(1, Math.max(from, until - fade));
@@ -148,10 +148,13 @@ export function keepUnderFullScale(mix: AudioBuffer): void {
   }
 }
 
-/** A looping source node for `buffer` (a clip's loop starts again at its beginning, as the clip goes back to its trim). */
-function loopingSource(ctx: BaseAudioContext, buffer: AudioBuffer): AudioBufferSourceNode {
+/**
+ * A source node for `buffer`; with `loop` it starts again at its beginning, as the clip goes back to its trim, and without (a clip
+ * that plays once) it plays once and is silent after.
+ */
+function loopingSource(ctx: BaseAudioContext, buffer: AudioBuffer, loop: boolean): AudioBufferSourceNode {
   const node = ctx.createBufferSource();
   node.buffer = buffer;
-  node.loop = true;
+  node.loop = loop;
   return node;
 }

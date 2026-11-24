@@ -1,8 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { createVideo } from "@/core/factory";
-import { clampTrim, clipClock, clipTime, isVideoSource, MIN_TRIM, playingFrame, playingLength, trimmedLength } from "./videos";
+import { clampTrim, clipClock, clipFinished, clipTime, isVideoSource, LAST_FRAME_BEFORE_END, MIN_TRIM, playingFrame, playingLength, trimmedLength } from "./videos";
 
 const clip = (over: Partial<Parameters<typeof createVideo>[0]> = {}) => createVideo({ src: "asset:a_clip", naturalWidth: 640, naturalHeight: 360, duration: 10, ...over });
+
+describe("a clip that plays once", () => {
+  it("goes from its trim at its speed, then stays on its last frame", () => {
+    const el = { trimStart: 2, trimEnd: 6, speed: 2, once: true };
+    expect(clipTime(el, 0)).toBe(2);
+    expect(clipTime(el, 1)).toBe(4);
+    expect(clipTime(el, 2)).toBeCloseTo(6 - LAST_FRAME_BEFORE_END);
+    expect(clipTime(el, 30)).toBeCloseTo(6 - LAST_FRAME_BEFORE_END);
+  });
+
+  it("has played once its playing length has gone by, and a looping clip never has", () => {
+    expect(clipFinished({ trimStart: 0, trimEnd: 4, speed: 2, once: true }, 1.9)).toBe(false);
+    expect(clipFinished({ trimStart: 0, trimEnd: 4, speed: 2, once: true }, 2)).toBe(true);
+    expect(clipFinished({ trimStart: 0, trimEnd: 4, speed: 2 }, 100)).toBe(false);
+  });
+
+  it("never holds before its trim, even for the shortest clip (which plays for 0.05 s)", () => {
+    expect(clipTime({ trimStart: 1, trimEnd: 1.02, speed: 1, once: true }, 5)).toBeCloseTo(1.01);
+  });
+});
 
 describe("the part of a clip that plays", () => {
   it("is the trimmed part, never shorter than a twentieth of a second", () => {

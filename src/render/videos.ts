@@ -36,12 +36,22 @@ export function trimmedLength(el: Pick<VideoElement, "trimStart" | "trimEnd">): 
 /** How long the part that plays takes to play once, in seconds of the page, at the element's speed. */
 export const playingLength = clipPlayingLength;
 
-/** The place in the clip, in seconds, that `time` seconds of the page stand for: from `trimStart`, at `speed`, over again at `trimEnd`. */
-export function clipTime(el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed">, time: number): number {
+/** How far before `trimEnd` a clip that plays once holds: a seek there lands on its last frame, which a seek to the very end may miss. */
+export const LAST_FRAME_BEFORE_END = 0.04;
+
+/**
+ * The place in the clip, in seconds, that `time` seconds of the page stand for: from `trimStart`, at `speed`, over again at
+ * `trimEnd`; a clip that plays once stays on its last frame after that.
+ */
+export function clipTime(el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed" | "once">, time: number): number {
   const span = trimmedLength(el);
   const played = Math.max(0, time) * (el.speed > 0 ? el.speed : 1);
+  if (el.once) return el.trimStart + Math.min(played, Math.max(0, span - LAST_FRAME_BEFORE_END));
   return el.trimStart + (played % span);
 }
+
+/** True when a clip that plays once has played, `time` seconds into its page: it holds its last frame and is silent. */
+export const clipFinished = (el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed" | "once">, time: number): boolean => !!el.once && Math.max(0, time) >= playingLength(el);
 
 /** The shortest part of a clip that can be left to play, in seconds. */
 export const MIN_TRIM = 0.1;
@@ -221,15 +231,19 @@ export function playingFrame(el: VideoElement, time: number, sound = false): HTM
   if (video.playbackRate !== rate) video.playbackRate = rate;
   const muted = !sound || !!el.muted;
   if (video.muted !== muted) video.muted = muted;
+  const finished = clipFinished(el, time);
   if (!muted) {
-    // its volume, and its fades at the start and the end of every play of it
-    const volume = clipGainAt(el, Math.max(0, time) % playingLength(el));
+    // its volume, and its fades at the start and the end of every play of it (silent once a clip that plays once has played)
+    const volume = finished ? 0 : clipGainAt(el, Math.max(0, time) % playingLength(el));
     if (Math.abs(video.volume - volume) > 0.001) video.volume = volume;
   }
   if (video.readyState < 1) return null;
   const off = Math.abs(video.currentTime - want) > DRIFT;
   if (off && !video.seeking) video.currentTime = want;
-  if (video.paused || video.ended) start(video);
+  // a clip that has played once stands on its last frame; any other plays on
+  if (finished) {
+    if (!video.paused) video.pause();
+  } else if (video.paused || video.ended) start(video);
   return video.readyState >= 2 && !off ? video : null;
 }
 
