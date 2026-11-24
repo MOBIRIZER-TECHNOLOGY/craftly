@@ -120,6 +120,42 @@ describe("<Popover>", () => {
       expect(document.activeElement).toBe(trigger);
     });
 
+    it("keeps the keyboard when focus inside it falls to the page (a number field dropping its edit on Escape)", async () => {
+      const user = userEvent.setup();
+      render(<Demo />);
+      const trigger = screen.getByRole("button", { name: "Toggle" });
+      await user.click(trigger);
+      const first = within(panel()).getByRole("button", { name: "First" });
+      first.focus();
+      // what a number field does on Escape: it lets go of the focus, which goes nowhere
+      act(() => first.blur());
+      await waitFor(() => expect(document.activeElement).toBe(panel()));
+      // and so the next Escape closes the panel and gives the keyboard back to the trigger
+      await user.keyboard("{Escape}");
+      expect(queryPanel()).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it("leaves focus that went somewhere on purpose alone, and keeps nothing when it does not trap focus", async () => {
+      const user = userEvent.setup();
+      const { unmount } = render(<Demo closeOnOutsidePress={false} />);
+      await user.click(screen.getByRole("button", { name: "Toggle" }));
+      within(panel()).getByRole("button", { name: "First" }).focus();
+      const elsewhere = screen.getByRole("button", { name: "Elsewhere" });
+      act(() => elsewhere.focus());
+      await new Promise((r) => requestAnimationFrame(r));
+      expect(document.activeElement).toBe(elsewhere);
+      unmount();
+
+      render(<Demo trapFocus={false} />);
+      await user.click(screen.getByRole("button", { name: "Toggle" }));
+      const first = within(panel()).getByRole("button", { name: "First" });
+      first.focus();
+      act(() => first.blur());
+      await new Promise((r) => requestAnimationFrame(r));
+      expect(document.activeElement).toBe(document.body);
+    });
+
     it("gives the focus to the item marked data-autofocus, also in StrictMode", async () => {
       const user = userEvent.setup();
       function Marked() {
