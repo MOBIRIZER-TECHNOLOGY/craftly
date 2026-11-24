@@ -244,6 +244,15 @@ export const editor = {
     sound: "Sound",
     soundOnTip: "The clip plays with its sound in Present. Click to mute it",
     soundOffTip: "The clip is muted. Click to play it with its sound in Present",
+    audio: "Audio",
+    audioTip: "Volume and fades",
+    volume: "Volume (%)",
+    fadeIn: "Fade in (seconds)",
+    fadeOut: "Fade out (seconds)",
+    /** under the fades */
+    fadeHint: "The sound rises at the start of every play of the clip and falls at its end.",
+    /** in the Audio popover of a muted clip */
+    audioMuted: "The clip is muted: turn Sound on to hear it.",
     frameShapeTip: "Cut the clip to a shape",
   },
 

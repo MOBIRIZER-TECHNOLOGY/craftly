@@ -11,6 +11,7 @@ class FakeVideo {
   /** the readyState a new one starts with */
   static startReady = 0;
   muted = false;
+  volume = 1;
   preload = "";
   playsInline = false;
   playbackRate = 1;
@@ -203,6 +204,29 @@ describe("a clip that plays", () => {
     expect(made[0].muted).toBe(true);
     playingFrame({ ...el, speed: 0 }, 0);
     expect(made[0].playbackRate).toBe(1);
+  });
+
+  it("plays at its volume, with its fades at the start and the end of every play", () => {
+    // 4 s of clip: a fade in of 1 s and a fade out of 2 s, at half volume
+    const el = clip({ trimStart: 0, trimEnd: 4, volume: 0.5, fadeIn: 1, fadeOut: 2 });
+    playingFrame(el, 0, true);
+    const video = made[0];
+    expect(video.volume).toBe(0);
+    playingFrame(el, 0.5, true);
+    expect(video.volume).toBeCloseTo(0.25);
+    playingFrame(el, 1.5, true);
+    expect(video.volume).toBeCloseTo(0.5);
+    playingFrame(el, 3, true);
+    expect(video.volume).toBeCloseTo(0.25);
+    // the second play fades in again
+    playingFrame(el, 4.5, true);
+    expect(video.volume).toBeCloseTo(0.25);
+  });
+
+  it("leaves the volume alone while it plays silently (in the editor)", () => {
+    const el = clip({ volume: 0.3 });
+    playingFrame(el, 1);
+    expect(made[0].volume).toBe(1);
   });
 
   it("plays silently when the browser will not play its sound yet, and goes on when it cannot play at all", async () => {

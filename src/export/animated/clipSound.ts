@@ -8,6 +8,7 @@
  */
 import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from "mediabunny";
 import { getAsset } from "@/core/assets";
+import { clipFades, clipGainAt, clipVolume } from "@/core/animation";
 import type { Timeline } from "@/core/transition";
 import type { Page, VideoElement } from "@/core/types";
 import { trimmedLength } from "@/render/videos";
@@ -19,6 +20,14 @@ export const SOUND_RATE = 48_000;
 /** a clip fades in and out over this long where it loops and where its page ends, so it never clicks */
 const FADE_SECONDS = 0.005;
 const PAGE_FADE_SECONDS = 0.01;
+
+/** Gives one play of a clip its volume and its fades (clipGainAt, the same curve Present follows). */
+function shapeLoud(channels: Float32Array[], sampleRate: number, el: VideoElement): void {
+  const volume = clipVolume(el);
+  const { fadeIn, fadeOut } = clipFades(el);
+  if (volume === 1 && fadeIn === 0 && fadeOut === 0) return;
+  for (const data of channels) for (let i = 0; i < data.length; i++) data[i] *= clipGainAt(el, i / sampleRate);
+}
 
 /** One loop of a clip as it sounds on the page: the trimmed part, at the clip's speed. */
 interface Loop {
@@ -57,6 +66,7 @@ async function readLoop(el: VideoElement): Promise<Loop | null> {
     const speed = el.speed > 0 ? el.speed : 1;
     const played = timeStretch(channels, speed);
     fadeEnds(played, Math.round(FADE_SECONDS * sampleRate));
+    shapeLoud(played, sampleRate, el);
     return { channels: played, sampleRate };
   } catch {
     return null;
@@ -73,7 +83,7 @@ export async function mixClipSound(pages: readonly Page[], timeline: Timeline, t
   const loops = new Map<string, Promise<Loop | null>>();
   const loopOf = (el: VideoElement) => {
     // one read per clip, trim and speed: two copies of a clip on one page sound the same
-    const key = `${el.src}|${el.trimStart}|${el.trimEnd}|${el.speed}`;
+    const key = `${el.src}|${el.trimStart}|${el.trimEnd}|${el.speed}|${clipVolume(el)}|${el.fadeIn ?? 0}|${el.fadeOut ?? 0}`;
     let loop = loops.get(key);
     if (!loop) {
       loop = readLoop(el);

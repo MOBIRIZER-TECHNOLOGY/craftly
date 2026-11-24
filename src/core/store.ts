@@ -504,7 +504,7 @@ const STYLE_KEYS: Record<string, string[]> = {
   shape: ["fill", "stroke", "radius"],
   line: ["stroke", "startArrow", "endArrow"],
   image: ["filter", "radius", "stroke"],
-  video: ["radius", "stroke", "speed", "muted"],
+  video: ["radius", "stroke", "speed", "muted", "volume", "fadeIn", "fadeOut"],
   graphic: ["colors", "strokeWidth"],
 };
 

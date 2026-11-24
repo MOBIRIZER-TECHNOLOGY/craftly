@@ -30,6 +30,45 @@ export const MAX_CLIP_PAGE_DURATION = 600;
 /** Seconds a clip takes to play once on its page: its trimmed part at its speed (never 0). */
 export const clipPlayingLength = (el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed">): number => Math.max(0.05, el.trimEnd - el.trimStart) / (el.speed > 0 ? el.speed : 1);
 
+/** The longest a clip's sound can take to fade in or out, in seconds. */
+export const MAX_CLIP_FADE = 5;
+
+const finiteOr = (v: unknown, fallback: number): number => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+
+/** How loud a clip plays, 0 to 1 (a value from outside that is not a number counts as 1). */
+export const clipVolume = (el: Pick<VideoElement, "volume">): number => clamp(finiteOr(el.volume, 1), 0, 1);
+
+/**
+ * How long a clip's sound fades in and out, in seconds of the page, 0 to MAX_CLIP_FADE each; when the two add up to more than one
+ * play of the clip they are shortened alike, so that they meet instead of overlapping.
+ */
+export function clipFades(el: Pick<VideoElement, "fadeIn" | "fadeOut" | "trimStart" | "trimEnd" | "speed">): { fadeIn: number; fadeOut: number } {
+  let fadeIn = clamp(finiteOr(el.fadeIn, 0), 0, MAX_CLIP_FADE);
+  let fadeOut = clamp(finiteOr(el.fadeOut, 0), 0, MAX_CLIP_FADE);
+  const length = clipPlayingLength(el);
+  if (fadeIn + fadeOut > length) {
+    const k = length / (fadeIn + fadeOut);
+    fadeIn *= k;
+    fadeOut *= k;
+  }
+  return { fadeIn, fadeOut };
+}
+
+/**
+ * How loud a clip sounds `t` seconds into one play of it (0 <= t <= its playing length): its volume, times its fades. Present sets
+ * the <video>'s volume to this, and a video download shapes the clip's sound with it.
+ */
+export function clipGainAt(el: Pick<VideoElement, "volume" | "fadeIn" | "fadeOut" | "trimStart" | "trimEnd" | "speed">, t: number): number {
+  const volume = clipVolume(el);
+  if (volume === 0) return 0;
+  const { fadeIn, fadeOut } = clipFades(el);
+  const length = clipPlayingLength(el);
+  let g = 1;
+  if (fadeIn > 0 && t < fadeIn) g = Math.min(g, Math.max(0, t) / fadeIn);
+  if (fadeOut > 0 && t > length - fadeOut) g = Math.min(g, Math.max(0, length - t) / fadeOut);
+  return volume * g;
+}
+
 /** How long the longest clip on the page takes to play once (groups looked into, hidden ones left out); null without a clip. */
 export function pageClipLength(page: { elements?: readonly DesignElement[] }): number | null {
   let longest: number | null = null;

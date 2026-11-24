@@ -583,3 +583,32 @@ describe("edge cases of the mix", () => {
     expect(FakeOfflineContext.last!.played.map((p) => p.start)).toEqual([0]);
   });
 });
+
+describe("a clip's volume and fades in the mix", () => {
+  const page = (elements: VideoElement[]) => createPage({ duration: 3, elements });
+  const loop = async (el: VideoElement) => {
+    await mixClipSound([page([el])], buildTimeline([page([])]), 3);
+    return FakeOfflineContext.last!.played[0].buffer;
+  };
+  // the stand-in clip's left channel is 0.1 plus a tiny ramp, at 1,000 samples a second
+  const sample = (at: number) => 0.1 + at / 1e9;
+
+  it("plays the clip's sound at its volume", async () => {
+    const buffer = await loop(clip({ volume: 0.5 }));
+    expect(buffer.getChannelData(0)[1000]).toBeCloseTo(sample(1000) * 0.5, 6);
+  });
+
+  it("rises over its fade in and falls over its fade out, once every play", async () => {
+    const buffer = await loop(clip({ fadeIn: 1, fadeOut: 0.5 }));
+    const left = buffer.getChannelData(0);
+    expect(left[500]).toBeCloseTo(sample(500) * 0.5, 6);
+    expect(left[1200]).toBeCloseTo(sample(1200), 6);
+    expect(left[1750]).toBeCloseTo(sample(1750) * 0.5, 6);
+  });
+
+  it("reads a clip again when only its volume differs, and once for two copies alike", async () => {
+    await mixClipSound([page([clip(), clip(), clip({ volume: 0.2 })])], buildTimeline([page([])]), 3);
+    expect(FakeOfflineContext.last!.played).toHaveLength(3);
+    expect(mb.inputsDisposed).toBe(2);
+  });
+});

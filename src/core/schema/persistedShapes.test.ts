@@ -174,9 +174,12 @@ const VIDEO = [
   "$.pages[].elements[].trimEnd: number",
   "$.pages[].elements[].trimStart: number",
 ];
+/** A clip's volume and fades (2026-11-25): optional, read with defaults (clipVolume and clipFades in src/core/animation.ts). */
+const CLIP_SOUND = ["$.pages[].elements[].fadeIn: number", "$.pages[].elements[].fadeOut: number", "$.pages[].elements[].volume: number"];
+
 const ADDED: Record<string, string[]> = {
   // in the order the shapes are listed: by path
-  design: [],
+  design: CLIP_SOUND,
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

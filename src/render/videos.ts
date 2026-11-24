@@ -11,7 +11,7 @@
  *
  * A clip is only ever one of this browser's uploads ("asset:<id>"): a design never plays anything from the web.
  */
-import { clipPlayingLength } from "@/core/animation";
+import { clipGainAt, clipPlayingLength } from "@/core/animation";
 import { getAssetUrl } from "@/core/assets";
 import type { DesignElement, VideoElement } from "@/core/types";
 
@@ -221,6 +221,11 @@ export function playingFrame(el: VideoElement, time: number, sound = false): HTM
   if (video.playbackRate !== rate) video.playbackRate = rate;
   const muted = !sound || !!el.muted;
   if (video.muted !== muted) video.muted = muted;
+  if (!muted) {
+    // its volume, and its fades at the start and the end of every play of it
+    const volume = clipGainAt(el, Math.max(0, time) % playingLength(el));
+    if (Math.abs(video.volume - volume) > 0.001) video.volume = volume;
+  }
   if (video.readyState < 1) return null;
   const off = Math.abs(video.currentTime - want) > DRIFT;
   if (off && !video.seeking) video.currentTime = want;

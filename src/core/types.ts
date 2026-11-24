@@ -493,6 +493,11 @@ export interface VideoElement extends ElementBase {
   speed: number;
   /** without its sound in Present (a clip is always silent while editing) */
   muted?: boolean;
+  /** how loud it plays, from 0 to 1 (1 when absent): see clipVolume in core/animation.ts */
+  volume?: number;
+  /** seconds over which its sound rises at the start of every play of it, and falls at the end (0 to 5, 0 when absent) */
+  fadeIn?: number;
+  fadeOut?: number;
   crop: ImageCrop;
   /** frame shape from the shape catalogue ("rect" = none) */
   mask: ShapeKind;

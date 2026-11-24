@@ -74,6 +74,7 @@ describe("video toolbar", () => {
       "Trim",
       "Speed",
       "Sound",
+      "Audio",
       "Frame shape",
       "Flip",
       "Corner radius",
@@ -134,6 +135,52 @@ describe("video toolbar: playing", () => {
     act(() => usePreview.setState({ preview: { startedAt: 0, from: 0, until: 5 } }));
     expect(has("Stop")).toBe(true);
     expect(has("Play")).toBe(false);
+  });
+});
+
+describe("video toolbar: audio", () => {
+  const openAudio = async (els: VideoElement[]) => {
+    const user = userEvent.setup();
+    mount(els);
+    await user.click(btn("Audio"));
+    const dialog = screen.getByRole("dialog", { name: "Audio" });
+    return { user, dialog };
+  };
+  const field = (dialog: HTMLElement, name: string) => within(dialog).getByRole("spinbutton", { name: `${name} value` });
+
+  it("shows the full volume and no fades for a new clip", async () => {
+    const { dialog } = await openAudio([clip()]);
+    expect((field(dialog, "Volume (%)") as HTMLInputElement).value).toBe("100");
+    expect((field(dialog, "Fade in (seconds)") as HTMLInputElement).value).toBe("0");
+    expect((field(dialog, "Fade out (seconds)") as HTMLInputElement).value).toBe("0");
+    expect(within(dialog).queryByRole("status")).toBeNull();
+  });
+
+  it("sets the volume and the fades, and leaves nothing behind at their defaults", async () => {
+    const el = clip();
+    const { user, dialog } = await openAudio([el]);
+    await typeNumber(user, field(dialog, "Volume (%)"), "40");
+    await typeNumber(user, field(dialog, "Fade in (seconds)"), "1.5");
+    await typeNumber(user, field(dialog, "Fade out (seconds)"), "9");
+    expect(live<VideoElement>(el)).toMatchObject({ volume: 0.4, fadeIn: 1.5, fadeOut: 5 });
+    await typeNumber(user, field(dialog, "Volume (%)"), "100");
+    await typeNumber(user, field(dialog, "Fade in (seconds)"), "0");
+    const after = live<VideoElement>(el);
+    expect("volume" in after).toBe(false);
+    expect("fadeIn" in after).toBe(false);
+  });
+
+  it("sets them on every selected clip", async () => {
+    const one = clip();
+    const two = clip({ x: 500 });
+    const { user, dialog } = await openAudio([one, two]);
+    await typeNumber(user, field(dialog, "Volume (%)"), "25");
+    expect([live<VideoElement>(one).volume, live<VideoElement>(two).volume]).toEqual([0.25, 0.25]);
+  });
+
+  it("says that a muted clip is not heard", async () => {
+    const { dialog } = await openAudio([clip({ muted: true })]);
+    expect(within(dialog).getByRole("status").textContent).toBe("The clip is muted: turn Sound on to hear it.");
   });
 });
 

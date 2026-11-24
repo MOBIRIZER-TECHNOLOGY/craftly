@@ -1,11 +1,12 @@
 /** The contextual toolbar of video elements: play, trim, speed, sound, and the frame they are cut to. */
+import { MAX_CLIP_FADE, clipFades, clipVolume } from "@/core/animation";
 import { VIDEO_SPEED_MAX, VIDEO_SPEED_MIN } from "@/core/factory";
 import type { VideoElement } from "@/core/types";
 import { startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
 import { ShapePreview } from "@/editor/panels/shared/ShapePreview";
 import { m } from "@/i18n";
 import { clampTrim, MIN_TRIM, playingLength } from "@/render/videos";
-import { Button, Divider, IconCut, IconFrame, IconMuted, IconPause, IconPlay, IconSound, IconSpeed, type MenuEntry } from "@/ui";
+import { Button, Divider, IconAudio, IconCut, IconFrame, IconMuted, IconPause, IconPlay, IconSound, IconSpeed, type MenuEntry } from "@/ui";
 import { AnimateButton, BorderPopover, CopyStyleButton, FlipMenu, MoreButton, MultiActions, PositionButton, RadiusPopover, TransparencyButton, type BarProps } from "../common";
 import { MenuButton, PopoverButton, SliderField, TBIcon } from "../kit";
 import { editElements, only, uniform } from "../selection";
@@ -86,6 +87,7 @@ export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Ext
           )
         }
       />
+      <AudioPopover els={els} ids={ids} muted={muted} />
       <MenuButton label={m.editor.imageBar.frameShape} tip={m.editor.videoBar.frameShapeTip} icon={<IconFrame />} items={frameItems} />
       <FlipMenu />
       {rounded && <RadiusPopover els={els} ids={ids} />}
@@ -98,6 +100,72 @@ export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Ext
       <CopyStyleButton els={els} enabled={copyEnabled} />
       <MoreButton />
     </>
+  );
+}
+
+/** How loud the clips play, and how long their sound takes to rise at the start of every play and fall at its end. */
+function AudioPopover({ els, ids, muted }: { els: VideoElement[]; ids: string[]; muted: boolean }) {
+  // several clips: the first one's values are shown, and a change sets them on all of them
+  const first = els[0];
+  const { fadeIn, fadeOut } = clipFades(first);
+  const set = (change: (el: VideoElement) => void, tag: string) => editElements(ids, only("video", change), tag);
+  return (
+    <PopoverButton label={m.editor.videoBar.audio} tip={m.editor.videoBar.audioTip} icon={<IconAudio />}>
+      {() => (
+        <div className="cf-tbpop__stack">
+          {muted ? (
+            <p className="cf-tbpop__hint" role="status">
+              {m.editor.videoBar.audioMuted}
+            </p>
+          ) : null}
+          <SliderField
+            label={m.editor.videoBar.volume}
+            value={Math.round(clipVolume(first) * 100)}
+            min={0}
+            max={100}
+            step={1}
+            onChange={(v) =>
+              set((el) => {
+                const volume = Math.min(1, Math.max(0, v / 100));
+                if (volume === 1) delete el.volume;
+                else el.volume = volume;
+              }, "volume")
+            }
+          />
+          <SliderField
+            label={m.editor.videoBar.fadeIn}
+            value={Math.round(fadeIn * 10) / 10}
+            min={0}
+            max={MAX_CLIP_FADE}
+            step={0.1}
+            numberStep={0.1}
+            onChange={(v) =>
+              set((el) => {
+                const seconds = Math.min(MAX_CLIP_FADE, Math.max(0, Math.round(v * 10) / 10));
+                if (seconds === 0) delete el.fadeIn;
+                else el.fadeIn = seconds;
+              }, "fade-in")
+            }
+          />
+          <SliderField
+            label={m.editor.videoBar.fadeOut}
+            value={Math.round(fadeOut * 10) / 10}
+            min={0}
+            max={MAX_CLIP_FADE}
+            step={0.1}
+            numberStep={0.1}
+            onChange={(v) =>
+              set((el) => {
+                const seconds = Math.min(MAX_CLIP_FADE, Math.max(0, Math.round(v * 10) / 10));
+                if (seconds === 0) delete el.fadeOut;
+                else el.fadeOut = seconds;
+              }, "fade-out")
+            }
+          />
+          <p className="cf-tbpop__hint">{m.editor.videoBar.fadeHint}</p>
+        </div>
+      )}
+    </PopoverButton>
   );
 }
 
