@@ -20,11 +20,10 @@ const peak = (data: Float32Array, from: number, to: number) => {
 };
 
 describe("timeStretch", () => {
-  it("leaves a clip at its own speed as it is (a copy)", () => {
+  it("leaves a clip at its own speed as it is, without copying it (a long clip would be held twice)", () => {
     const input = tone(440, 0.5);
     const [out] = timeStretch([input], 1);
-    expect(out).toEqual(input);
-    expect(out).not.toBe(input);
+    expect(out).toBe(input);
   });
 
   it.each([

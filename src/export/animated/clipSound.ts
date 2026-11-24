@@ -4,7 +4,7 @@
  * page starts (after the transition into it) to the moment the page ends; a transition, which shows the pages still, is silent.
  *
  * Each clip's audio is read from its stored file with Mediabunny, only the trimmed part, stretched to its speed at the same pitch
- * (stretch.ts), and the whole timeline is mixed in an OfflineAudioContext at 48 kHz stereo.
+ * (stretch.ts), and the timeline is mixed at 48 kHz stereo a second at a time (`ClipSoundMix.read`), as the encoder needs it.
  */
 import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from "mediabunny";
 import { getAsset } from "@/core/assets";
@@ -75,14 +75,38 @@ async function readLoop(el: VideoElement): Promise<Loop | null> {
   }
 }
 
+/** One play of a clip's sound on the export's timeline: from `begin` to `until` seconds, looping or not. */
+interface Play {
+  loop: Loop;
+  begin: number;
+  until: number;
+  looping: boolean;
+}
+
+/** How much of the mix is rendered at once, in seconds: a long video never holds its whole sound. */
+export const MIX_WINDOW_SECONDS = 1;
+
+/**
+ * The mixed sound of a video download, read a window at a time (`read`) as the encoder needs it, so a ten-minute video does not hold
+ * ten minutes of sound at once. `gain` lowers the whole mix evenly when it would go past full scale (measured before the first read).
+ */
+export interface ClipSoundMix {
+  sampleRate: number;
+  /** samples, the length of the video */
+  length: number;
+  gain: number;
+  /** the mix from sample `from` to sample `to` */
+  read(from: number, to: number): Promise<AudioBuffer>;
+}
+
 /**
  * The mixed sound of the playback described by `timeline` over `pages` (the chosen pages, in playing order), `total` seconds long;
  * null when no clip on them makes a sound, so the video gets no sound track at all.
  */
-export async function mixClipSound(pages: readonly Page[], timeline: Timeline, total: number, signal?: AbortSignal): Promise<AudioBuffer | null> {
+export async function mixClipSound(pages: readonly Page[], timeline: Timeline, total: number, signal?: AbortSignal): Promise<ClipSoundMix | null> {
   const loops = new Map<string, Promise<Loop | null>>();
   const loopOf = (el: VideoElement) => {
-    // one read per clip, trim and speed: two copies of a clip on one page sound the same
+    // one read per clip, trim, speed, volume and fades: two copies of a clip alike sound the same
     const key = `${el.src}|${el.trimStart}|${el.trimEnd}|${el.speed}|${clipVolume(el)}|${el.fadeIn ?? 0}|${el.fadeOut ?? 0}`;
     let loop = loops.get(key);
     if (!loop) {
@@ -92,72 +116,114 @@ export async function mixClipSound(pages: readonly Page[], timeline: Timeline, t
     return loop;
   };
 
-  const length = Math.max(1, Math.ceil(total * SOUND_RATE));
-  const ctx = new OfflineAudioContext({ numberOfChannels: 2, length, sampleRate: SOUND_RATE });
-  let sounding = 0;
+  const plays: Play[] = [];
   for (const seg of timeline.segments) {
     const page = pages[seg.page];
-    const from = seg.playStart;
     const until = Math.min(seg.end, total);
-    if (!page || until - from <= 0) continue;
+    if (!page || until - seg.playStart <= 0) continue;
     for (const el of soundingClips(page.elements)) {
       throwIfAborted(signal);
-      const loop = await loopOf(el);
-      if (!loop) continue;
-      const buffer = new AudioBuffer({ length: loop.channels[0].length, numberOfChannels: loop.channels.length, sampleRate: loop.sampleRate });
-      loop.channels.forEach((data, c) => buffer.copyToChannel(data as Float32Array<ArrayBuffer>, c));
       // a clip that starts later on its page is silent until then
-      const begin = from + clipStartAt(el);
+      const begin = seg.playStart + clipStartAt(el);
       if (begin >= until) continue;
-      const source = loopingSource(ctx, buffer, !el.once);
-      const gain = ctx.createGain();
-      const fade = Math.min(PAGE_FADE_SECONDS, (until - from) / 2);
-      gain.gain.setValueAtTime(1, Math.max(from, until - fade));
-      gain.gain.linearRampToValueAtTime(0, until);
-      source.connect(gain).connect(ctx.destination);
-      source.start(begin);
-      source.stop(until);
-      sounding++;
+      const loop = await loopOf(el);
+      if (loop) plays.push({ loop, begin, until, looping: !el.once });
     }
   }
-  if (!sounding) return null;
-  throwIfAborted(signal);
-  const mixed = await ctx.startRendering();
-  keepUnderFullScale(mixed);
-  return mixed;
+  if (!plays.length) return null;
+
+  const length = Math.max(1, Math.ceil(total * SOUND_RATE));
+  const mix: ClipSoundMix = { sampleRate: SOUND_RATE, length, gain: 1, read: (from, to) => renderWindow(plays, from, to, mix.gain) };
+  // the loudest moment, window by window, before anything is encoded: the gain must be the same all through
+  const step = MIX_WINDOW_SECONDS * SOUND_RATE;
+  let peak = 0;
+  for (let from = 0; from < length; from += step) {
+    throwIfAborted(signal);
+    peak = Math.max(peak, peakOf(await renderWindow(plays, from, Math.min(length, from + step), 1)));
+  }
+  if (peak > MIX_CEILING) mix.gain = MIX_CEILING / peak;
+  return mix;
 }
 
 /** The loudest a mix is left: a little under full scale, so that the encoder does not clip it. */
 export const MIX_CEILING = 0.98;
 
-/**
- * Lowers the whole mix evenly when clips that sound at once add up past full scale, which an encoder would clip into a crackle
- * (two clips recorded near full volume do). A mix that fits is left exactly as it is.
- */
-export function keepUnderFullScale(mix: AudioBuffer): void {
+function peakOf(buffer: AudioBuffer): number {
   let peak = 0;
-  for (let c = 0; c < mix.numberOfChannels; c++) {
-    const data = mix.getChannelData(c);
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const data = buffer.getChannelData(c);
     for (let i = 0; i < data.length; i++) {
       const v = Math.abs(data[i]);
       if (v > peak) peak = v;
     }
   }
-  if (peak <= MIX_CEILING) return;
-  const gain = MIX_CEILING / peak;
-  for (let c = 0; c < mix.numberOfChannels; c++) {
-    const data = mix.getChannelData(c);
-    for (let i = 0; i < data.length; i++) data[i] *= gain;
-  }
+  return peak;
 }
 
 /**
- * A source node for `buffer`; with `loop` it starts again at its beginning, as the clip goes back to its trim, and without (a clip
- * that plays once) it plays once and is silent after.
+ * The plays mixed from sample `from` to sample `to` of the timeline, times `gain`. Each play gives only the samples of its sound that
+ * fall in the window (going round its loop as often as it needs), and fades out over the last 10 ms of its page.
  */
-function loopingSource(ctx: BaseAudioContext, buffer: AudioBuffer, loop: boolean): AudioBufferSourceNode {
-  const node = ctx.createBufferSource();
-  node.buffer = buffer;
-  node.loop = loop;
-  return node;
+async function renderWindow(plays: readonly Play[], from: number, to: number, gain: number): Promise<AudioBuffer> {
+  const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: Math.max(1, to - from), sampleRate: SOUND_RATE });
+  const w0 = from / SOUND_RATE;
+  const w1 = to / SOUND_RATE;
+  for (const play of plays) {
+    const start = Math.max(play.begin, w0);
+    const end = Math.min(play.until, w1);
+    if (end <= start) continue;
+    const piece = pieceOf(play, start - play.begin, end - start);
+    if (!piece) continue;
+    const source = ctx.createBufferSource();
+    source.buffer = piece;
+    const level = ctx.createGain();
+    // the page ends inside this window: fade out over its last 10 ms (from wherever that fade has got to at the window's start)
+    const fade = Math.min(PAGE_FADE_SECONDS, (play.until - play.begin) / 2);
+    if (play.until <= w1 && play.until - fade < w1) {
+      const fadeFrom = Math.max(start, play.until - fade);
+      // a fade that began in the window before has got part of the way: start this window where it has got to
+      const reached = play.until - fade >= start ? 1 : Math.min(1, (play.until - fadeFrom) / fade);
+      level.gain.setValueAtTime(reached, fadeFrom - w0);
+      level.gain.linearRampToValueAtTime(0, play.until - w0);
+    }
+    source.connect(level).connect(ctx.destination);
+    source.start(start - w0);
+  }
+  const rendered = await ctx.startRendering();
+  if (gain !== 1) {
+    for (let c = 0; c < rendered.numberOfChannels; c++) {
+      const data = rendered.getChannelData(c);
+      for (let i = 0; i < data.length; i++) data[i] *= gain;
+    }
+  }
+  return rendered;
+}
+
+/**
+ * `seconds` of a play's sound from `into` seconds after it began, as its own buffer: round its loop as often as needed, or, for a
+ * clip that plays once, only what there is (null when it has finished).
+ */
+function pieceOf(play: Play, into: number, seconds: number): AudioBuffer | null {
+  const { channels, sampleRate } = play.loop;
+  const loopLength = channels[0].length;
+  let offset = Math.round(into * sampleRate);
+  let count = Math.max(1, Math.round(seconds * sampleRate));
+  if (play.looping) offset %= loopLength;
+  else {
+    if (offset >= loopLength) return null;
+    count = Math.min(count, loopLength - offset);
+  }
+  const piece = new AudioBuffer({ length: count, numberOfChannels: channels.length, sampleRate });
+  channels.forEach((data, c) => {
+    const out = piece.getChannelData(c);
+    let written = 0;
+    let at = offset;
+    while (written < count) {
+      const take = Math.min(count - written, loopLength - at);
+      out.set(data.subarray(at, at + take), written);
+      written += take;
+      at = 0;
+    }
+  });
+  return piece;
 }

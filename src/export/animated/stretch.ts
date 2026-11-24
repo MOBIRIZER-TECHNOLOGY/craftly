@@ -18,11 +18,14 @@ const COMPARE_STEP = 4;
 /** A periodic Hann window: two of them half a window apart add up to exactly 1. */
 const WINDOW = Float32Array.from({ length: FRAME }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FRAME));
 
-/** `channels` played `speed` times as fast at the same pitch: each comes out `length / speed` samples long. */
+/**
+ * `channels` played `speed` times as fast at the same pitch: each comes out `length / speed` samples long. At the clip's own speed the
+ * very same arrays come back, not copies: a ten-minute clip would otherwise be held twice.
+ */
 export function timeStretch(channels: readonly Float32Array[], speed: number): Float32Array[] {
   if (!channels.length) return [];
   const length = channels[0].length;
-  if (!(speed > 0) || Math.abs(speed - 1) < 1e-6) return channels.map((c) => c.slice());
+  if (!(speed > 0) || Math.abs(speed - 1) < 1e-6) return [...channels];
   const outLength = Math.max(1, Math.floor(length / speed));
   const out = channels.map(() => new Float32Array(outLength + FRAME));
   // the windows are chosen on the sum of the channels, and the same choice is used for every channel

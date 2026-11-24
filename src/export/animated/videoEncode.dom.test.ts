@@ -195,31 +195,28 @@ class FakeAudioBuffer {
   }
 }
 
-/** An OfflineAudioContext that writes down the sources it plays and when. */
+/** An OfflineAudioContext that writes down, for every window of the mix, the pieces it plays, where, and their fades. */
 class FakeOfflineContext {
-  static last: FakeOfflineContext | null = null;
-  readonly played: Array<{ buffer: FakeAudioBuffer; loop: boolean; start: number; stop: number; fades: Array<[string, number, number]> }> = [];
+  /** every context made, in order: the mix makes one per window, first for its loudness and then as the encoder reads */
+  static all: FakeOfflineContext[] = [];
+  readonly pieces: Array<{ buffer: FakeAudioBuffer; start: number; fades: Array<[string, number, number]> }> = [];
   readonly destination = {};
   constructor(readonly options: { numberOfChannels: number; length: number; sampleRate: number }) {
-    FakeOfflineContext.last = this;
+    FakeOfflineContext.all.push(this);
   }
   createBufferSource() {
-    const entry = { buffer: null as unknown as FakeAudioBuffer, loop: false, start: Number.NaN, stop: Number.NaN, fades: [] as Array<[string, number, number]> };
+    const entry = { buffer: null as unknown as FakeAudioBuffer, start: Number.NaN, fades: [] as Array<[string, number, number]> };
     const node = {
       set buffer(b: FakeAudioBuffer) {
         entry.buffer = b;
-      },
-      set loop(v: boolean) {
-        entry.loop = v;
       },
       connect: (gain: { fades: Array<[string, number, number]> }) => {
         entry.fades = gain.fades;
         return gain;
       },
       start: (at: number) => (entry.start = at),
-      stop: (at: number) => (entry.stop = at),
     };
-    this.played.push(entry);
+    this.pieces.push(entry);
     return node;
   }
   createGain() {
@@ -234,16 +231,20 @@ class FakeOfflineContext {
       connect: () => undefined,
     };
   }
-  /** what the rendered mix holds: the same sample everywhere, or a few loud ones */
+  /** what a rendered window holds: the same sample everywhere, or a few loud ones (window index, channel, sample, value) */
   static level = 0;
-  static spikes: Array<[number, number, number]> = [];
+  static spikes: Array<[number, number, number, number]> = [];
   async startRendering() {
+    const index = FakeOfflineContext.all.indexOf(this);
     const out = new FakeAudioBuffer({ length: this.options.length, numberOfChannels: 2, sampleRate: this.options.sampleRate });
     for (let c = 0; c < 2; c++) out.getChannelData(c).fill(FakeOfflineContext.level);
-    for (const [c, i, v] of FakeOfflineContext.spikes) out.getChannelData(c)[i] = v;
+    for (const [w, c, i, v] of FakeOfflineContext.spikes) if (w === index) out.getChannelData(c)[i] = v;
     return out;
   }
 }
+
+/** The windows the mix rendered to find its loudness: one per second of the timeline, in order. */
+const windows = () => FakeOfflineContext.all;
 
 const { ClipFrames } = await import("./clipFrames");
 const { chooseEncoding, encodeFrames } = await import("./encode");
@@ -299,6 +300,7 @@ beforeEach(() => {
   mb.inputsDisposed = 0;
   mb.outputs = [];
   mb.failAt = -1;
+  FakeOfflineContext.all = [];
   FakeOfflineContext.level = 0;
   FakeOfflineContext.spikes = [];
   vi.stubGlobal("AudioBuffer", FakeAudioBuffer);
@@ -440,7 +442,16 @@ describe("choosing the encoding", () => {
 
 describe("encoding the frames", () => {
   const canvas = () => document.createElement("canvas");
-  const sound = (seconds: number, rate = 1000) => new FakeAudioBuffer({ length: seconds * rate, numberOfChannels: 2, sampleRate: rate }) as unknown as AudioBuffer;
+  /** sound read a piece at a time, as the mix gives it: writes down the pieces asked for */
+  const asked: Array<[number, number]> = [];
+  const sound = (seconds: number, rate = 1000) => ({
+    sampleRate: rate,
+    length: seconds * rate,
+    read: async (from: number, to: number) => {
+      asked.push([from, to]);
+      return new FakeAudioBuffer({ length: to - from, numberOfChannels: 2, sampleRate: rate }) as unknown as AudioBuffer;
+    },
+  });
 
   it("paints and encodes every frame at its time, and returns the file", async () => {
     const painted: number[] = [];
@@ -475,8 +486,13 @@ describe("encoding the frames", () => {
     });
     const out = mb.outputs[0];
     expect(out).toMatchObject({ format: "webm", audioCodec: "opus" });
-    // 75 frames are 2.5 s: two whole seconds and a half, of the four the sound lasts
+    // 75 frames are 2.5 s: two whole seconds and a half, of the four the sound lasts, each read when it is needed
     expect(out.sound).toEqual([1000, 1000, 500]);
+    expect(asked.slice(-3)).toEqual([
+      [0, 1000],
+      [1000, 2000],
+      [2000, 2500],
+    ]);
   });
 
   it("leaves the sound out when the encoding has no sound track", async () => {
@@ -534,55 +550,91 @@ describe("encoding the frames", () => {
 describe("mixing the clips' sound", () => {
   const page = (elements: VideoElement[], duration = 3, transition?: number) =>
     createPage({ duration, elements, transition: transition ? { kind: "dissolve", duration: transition } : undefined });
+  /** the pieces of every window, as [window, start in the window, samples, first sample of the left channel] */
+  const placed = () =>
+    windows().flatMap((w, k) => w.pieces.map((p) => [k, Math.round(p.start * 1000) / 1000, p.buffer.length, Math.round(p.buffer.getChannelData(0)[0] * 1e4) / 1e4]));
 
   it("is nothing when no clip makes a sound, so the video gets no sound track", async () => {
     mb.clips.quiet = { frames: frames30(2), sound: null };
     const pages = [page([clip({ muted: true }), clip({ src: "asset:quiet" })])];
     expect(await mixClipSound(pages, buildTimeline(pages), 3)).toBeNull();
+    expect(windows()).toEqual([]);
+  });
+
+  it("is rendered a second at a time, never whole: a window of 48,000 samples for every second", async () => {
+    const pages = [page([clip()], 3)];
+    const mix = (await mixClipSound(pages, buildTimeline(pages), 3))!;
+    expect(mix).toMatchObject({ sampleRate: 48000, length: 144000, gain: 1 });
+    expect(windows().map((w) => w.options.length)).toEqual([48000, 48000, 48000]);
+    const piece = await mix.read(48000, 72000);
+    expect(piece.length).toBe(24000);
   });
 
   it("plays each clip over and over while its page is on screen, and not during the transition into the next", async () => {
     const pages = [page([clip()], 3), page([], 2, 1), page([clip({ trimStart: 0.5, trimEnd: 1.5 })], 2, 0.5)];
     const timeline = buildTimeline(pages);
-    const mixed = await mixClipSound(pages, timeline, timeline.total);
-    expect(mixed).not.toBeNull();
-    const ctx = FakeOfflineContext.last!;
-    expect(ctx.options).toEqual({ numberOfChannels: 2, sampleRate: 48000, length: Math.ceil(timeline.total * 48000) });
-    // page 1 from 0 to 3; nothing on page 2; page 3 from its start after the half-second transition (6.5) to its end (8.5)
-    expect(ctx.played.map((p) => [p.start, p.stop, p.loop])).toEqual([
-      [0, 3, true],
-      [6.5, 8.5, true],
-    ]);
-    // the whole clip loops on page 1, and only its trimmed second on page 3
-    expect(ctx.played[0].buffer.length).toBe(2000);
-    expect(ctx.played[1].buffer.length).toBe(1000);
-    // each fades out over the last 10 ms of its page instead of stopping with a click
-    expect(ctx.played[0].fades).toEqual([
-      ["set", 1, 2.99],
-      ["ramp", 0, 3],
+    await mixClipSound(pages, timeline, timeline.total);
+    // page 1 from 0 to 3 s: a second of the 2 s clip in each window, round again at 2 s; nothing from 3 s to 6.5 s; page 3 from
+    // 6.5 s to 8.5 s with its 1 s loop (each loop fades in from 0)
+    expect(placed()).toEqual([
+      [0, 0, 1000, 0],
+      [1, 0, 1000, 0.1],
+      [2, 0, 1000, 0],
+      [6, 0.5, 500, 0],
+      [7, 0, 1000, 0.1],
+      [8, 0, 500, 0.1],
     ]);
   });
 
-  it("stretches a clip to its speed (a 2 s clip at 2x loops every second)", async () => {
+  it("fades out over the last 10 ms of its page, in the window where the page ends", async () => {
+    const pages = [page([clip()], 2.5)];
+    await mixClipSound(pages, buildTimeline(pages), 2.5);
+    expect(windows()[2].pieces[0].fades).toEqual([
+      ["set", 1, expect.closeTo(0.49, 6)],
+      ["ramp", 0, expect.closeTo(0.5, 6)],
+    ]);
+    expect(windows()[1].pieces[0].fades).toEqual([]);
+  });
+
+  it("plays a clip that plays once a single time, and nothing after it", async () => {
+    const pages = [page([clip({ once: true })], 3.5)];
+    await mixClipSound(pages, buildTimeline(pages), 3.5);
+    expect(placed().map(([w]) => w)).toEqual([0, 1]);
+  });
+
+  it("starts a clip's sound at its start time, and leaves out one that starts after its page", async () => {
+    const pages = [page([clip({ startAt: 1.5 }), clip({ trimStart: 1, startAt: 4 })])];
+    await mixClipSound(pages, buildTimeline(pages), 3);
+    expect(placed().map(([w, at]) => [w, at])).toEqual([
+      [1, 0.5],
+      [2, 0],
+    ]);
+  });
+
+  it("stretches a clip to its speed (a 2 s clip at 2x goes round every second)", async () => {
     const pages = [page([clip({ speed: 2 })])];
     await mixClipSound(pages, buildTimeline(pages), 3);
-    expect(FakeOfflineContext.last!.played[0].buffer.length).toBe(1000);
+    expect(placed().map(([, , n, first]) => [n, first])).toEqual([
+      [1000, 0],
+      [1000, 0],
+      [1000, 0],
+    ]);
   });
 
   it("keeps the clip's channels, two at most, from where the trim starts", async () => {
     mb.clips.wide = { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 6 } };
     const pages = [page([clip({ src: "asset:wide", trimStart: 1.25, trimEnd: 2 })])];
     await mixClipSound(pages, buildTimeline(pages), 3);
-    const buffer = FakeOfflineContext.last!.played[0].buffer;
-    expect(buffer.numberOfChannels).toBe(2);
-    // the first sample (after the fade in) is the clip's sample at 1.25 s
-    expect(buffer.getChannelData(1)[100]).toBeCloseTo(0.2 + (1250 + 100) / 1e9, 6);
+    const piece = windows()[0].pieces[0].buffer;
+    expect(piece.numberOfChannels).toBe(2);
+    // after the fade in, the clip's sample at 1.25 s
+    expect(piece.getChannelData(1)[100]).toBeCloseTo(0.2 + (1250 + 100) / 1e9, 6);
   });
 
   it("reads a clip once for two copies of it on two pages", async () => {
     const pages = [page([clip()]), page([clip()])];
     await mixClipSound(pages, buildTimeline(pages), 6);
-    expect(FakeOfflineContext.last!.played).toHaveLength(2);
+    expect(placed()).toHaveLength(6);
     expect(mb.inputsDisposed).toBe(1);
   });
 
@@ -596,8 +648,6 @@ describe("mixing the clips' sound", () => {
     expect(isCancelled(error)).toBe(true);
   });
 });
-
-/* ------------------------------------------------------------------ */
 
 describe("edge cases of a clip's pictures", () => {
   const picture = (frames: InstanceType<typeof ClipFrames>, el: VideoElement, t: number) => (frames.frame(el, t) as { picture: string } | null)?.picture ?? null;
@@ -699,25 +749,28 @@ describe("edge cases of a clip's pictures", () => {
 describe("edge cases of the mix", () => {
   const page = (elements: VideoElement[]) => createPage({ duration: 3, elements });
 
-  it("lowers a mix that goes past full scale evenly, so the encoder does not clip it", async () => {
+  it("is lowered evenly when it goes past full scale anywhere, so the encoder does not clip it", async () => {
     FakeOfflineContext.level = 0.5;
-    FakeOfflineContext.spikes = [[1, 10, -1.96]];
-    const mixed = (await mixClipSound([page([clip(), clip({ trimStart: 0.5 })])], buildTimeline([page([])]), 3))!;
-    expect(Math.abs(mixed.getChannelData(1)[10])).toBeCloseTo(MIX_CEILING, 5);
-    // everything else by the same amount: the balance between the clips is kept
-    expect(mixed.getChannelData(0)[0]).toBeCloseTo(0.25, 5);
+    // one loud sample in the second window
+    FakeOfflineContext.spikes = [[1, 1, 10, -1.96]];
+    const mix = (await mixClipSound([page([clip(), clip({ trimStart: 0.5 })])], buildTimeline([page([])]), 3))!;
+    expect(mix.gain).toBeCloseTo(MIX_CEILING / 1.96, 6);
+    // every window the encoder reads is lowered by the same amount
+    const first = await mix.read(0, 48000);
+    expect(first.getChannelData(0)[0]).toBeCloseTo(0.25, 5);
   });
 
-  it("leaves a mix that fits exactly as it is", async () => {
+  it("is left exactly as it is when it fits", async () => {
     FakeOfflineContext.level = 0.7;
-    const mixed = (await mixClipSound([page([clip()])], buildTimeline([page([])]), 3))!;
-    expect(mixed.getChannelData(0)[5]).toBeCloseTo(0.7, 6);
+    const mix = (await mixClipSound([page([clip()])], buildTimeline([page([])]), 3))!;
+    expect(mix.gain).toBe(1);
+    expect((await mix.read(0, 100)).getChannelData(0)[5]).toBeCloseTo(0.7, 6);
   });
 
   it("keeps a mono clip mono (the mix spreads it to both sides)", async () => {
     mb.clips.mono = { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 1 } };
     await mixClipSound([page([clip({ src: "asset:mono" })])], buildTimeline([page([])]), 3);
-    expect(FakeOfflineContext.last!.played[0].buffer.numberOfChannels).toBe(1);
+    expect(windows()[0].pieces[0].buffer.numberOfChannels).toBe(1);
   });
 
   it("leaves out a clip with a sound track that holds nothing, or a file that is not media", async () => {
@@ -730,45 +783,31 @@ describe("edge cases of the mix", () => {
     const pages = [page([clip()]), page([clip()])];
     // the second page starts at 3 s; a total of 3 s leaves it no time
     await mixClipSound(pages, buildTimeline(pages), 3);
-    expect(FakeOfflineContext.last!.played.map((p) => p.start)).toEqual([0]);
+    expect(windows()).toHaveLength(3);
   });
 });
 
 describe("a clip's volume and fades in the mix", () => {
   const page = (elements: VideoElement[]) => createPage({ duration: 3, elements });
-  const loop = async (el: VideoElement) => {
-    await mixClipSound([page([el])], buildTimeline([page([])]), 3);
-    return FakeOfflineContext.last!.played[0].buffer;
-  };
   // the stand-in clip's left channel is 0.1 plus a tiny ramp, at 1,000 samples a second
   const sample = (at: number) => 0.1 + at / 1e9;
 
   it("plays the clip's sound at its volume", async () => {
-    const buffer = await loop(clip({ volume: 0.5 }));
-    expect(buffer.getChannelData(0)[1000]).toBeCloseTo(sample(1000) * 0.5, 6);
+    await mixClipSound([page([clip({ volume: 0.5 })])], buildTimeline([page([])]), 3);
+    expect(windows()[0].pieces[0].buffer.getChannelData(0)[500]).toBeCloseTo(sample(500) * 0.5, 6);
   });
 
   it("rises over its fade in and falls over its fade out, once every play", async () => {
-    const buffer = await loop(clip({ fadeIn: 1, fadeOut: 0.5 }));
-    const left = buffer.getChannelData(0);
-    expect(left[500]).toBeCloseTo(sample(500) * 0.5, 6);
-    expect(left[1200]).toBeCloseTo(sample(1200), 6);
-    expect(left[1750]).toBeCloseTo(sample(1750) * 0.5, 6);
-  });
-
-  it("starts a clip's sound at its start time, and leaves out one that starts after its page", async () => {
-    await mixClipSound([page([clip({ startAt: 1.5 }), clip({ trimStart: 1, startAt: 4 })])], buildTimeline([page([])]), 3);
-    expect(FakeOfflineContext.last!.played.map((p) => p.start)).toEqual([1.5]);
-  });
-
-  it("plays a clip that plays once a single time, and loops any other", async () => {
-    await mixClipSound([page([clip({ once: true }), clip({ trimStart: 1 })])], buildTimeline([page([])]), 3);
-    expect(FakeOfflineContext.last!.played.map((p) => p.loop)).toEqual([false, true]);
+    await mixClipSound([page([clip({ fadeIn: 1, fadeOut: 0.5 })])], buildTimeline([page([])]), 3);
+    const [w0, w1] = windows().map((w) => w.pieces[0].buffer.getChannelData(0));
+    expect(w0[500]).toBeCloseTo(sample(500) * 0.5, 6);
+    expect(w1[200]).toBeCloseTo(sample(1200), 6);
+    expect(w1[750]).toBeCloseTo(sample(1750) * 0.5, 6);
   });
 
   it("reads a clip again when only its volume differs, and once for two copies alike", async () => {
     await mixClipSound([page([clip(), clip(), clip({ volume: 0.2 })])], buildTimeline([page([])]), 3);
-    expect(FakeOfflineContext.last!.played).toHaveLength(3);
+    expect(windows()[0].pieces).toHaveLength(3);
     expect(mb.inputsDisposed).toBe(2);
   });
 });

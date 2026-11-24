@@ -78,17 +78,19 @@ export interface EncodeOptions {
   frames: number;
   fps: number;
   bitrate: number;
-  /** the sound, as long as the video (or longer: the rest is left out) */
-  sound: AudioBuffer | null;
+  /** the sound, as long as the video (or longer: the rest is left out), read a piece at a time */
+  sound: SoundSource | null;
   onFrame?: (done: number) => void;
   signal?: AbortSignal;
 }
 
-/** A slice of `buffer` from sample `from` to `to`, as its own AudioBuffer. */
-function sliceBuffer(buffer: AudioBuffer, from: number, to: number): AudioBuffer {
-  const out = new AudioBuffer({ length: to - from, numberOfChannels: buffer.numberOfChannels, sampleRate: buffer.sampleRate });
-  for (let c = 0; c < buffer.numberOfChannels; c++) out.copyToChannel(buffer.getChannelData(c).subarray(from, to), c);
-  return out;
+/** Sound that is read a piece at a time (the mixed sound of a video download: clipSound.ts), so it never has to be held whole. */
+export interface SoundSource {
+  sampleRate: number;
+  /** samples */
+  length: number;
+  /** samples `from` to `to` */
+  read(from: number, to: number): Promise<AudioBuffer>;
 }
 
 /** Paints and encodes every frame (and the sound alongside it) and returns the file. */
@@ -114,7 +116,7 @@ export async function encodeFrames(options: EncodeOptions): Promise<Blob> {
     const end = Math.min(soundEnd, Math.round(until * sound.sampleRate));
     while (soundDone < end && (last || soundDone + sound.sampleRate <= end)) {
       const to = Math.min(end, soundDone + sound.sampleRate);
-      await audio.add(sliceBuffer(sound, soundDone, to));
+      await audio.add(await sound.read(soundDone, to));
       soundDone = to;
     }
   };
