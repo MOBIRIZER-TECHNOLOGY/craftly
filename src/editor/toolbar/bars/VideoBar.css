@@ -1,0 +1,31 @@
+/* The Captions popover of a clip: a line per caption (from, to, the words, remove), wider than the other popovers. */
+.cf-tbpop--captions {
+  width: 380px;
+  max-width: calc(100vw - 24px);
+}
+
+.cf-captions__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0 2px 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.cf-captions__row {
+  display: grid;
+  grid-template-columns: 64px 64px minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: center;
+}
+
+.cf-captions__head {
+  display: grid;
+  grid-template-columns: 64px 64px minmax(0, 1fr) 28px;
+  gap: 6px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-xs, 11px);
+}

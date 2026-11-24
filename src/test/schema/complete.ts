@@ -290,6 +290,7 @@ function completeElements(): Complete<DesignElement>[] {
       muted: true,
       once: true,
       startAt: 0.5,
+      captions: [{ start: 0, end: 2.5, text: "Hello" }],
       volume: 0.6,
       fadeIn: 1,
       fadeOut: 2.5,

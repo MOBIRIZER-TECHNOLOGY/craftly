@@ -274,6 +274,7 @@ export {
   Volume2 as IconSound,
   VolumeX as IconMuted,
   Gauge as IconSpeed,
+  Captions as IconCaptions,
   Monitor as IconDesktop,
   Smartphone as IconPhone,
   Tablet as IconTablet,

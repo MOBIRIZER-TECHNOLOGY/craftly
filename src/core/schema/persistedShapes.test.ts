@@ -180,10 +180,18 @@ const CLIP_SOUND = ["$.pages[].elements[].fadeIn: number", "$.pages[].elements[]
 const CLIP_ONCE = ["$.pages[].elements[].once: boolean"];
 /** When a clip starts on its page (2026-11-25): optional, absent means at once as before. */
 const CLIP_START = ["$.pages[].elements[].startAt: number"];
+/** A clip's typed captions (2026-11-25): optional, cleaned where they are read (clipCaptions in src/core/animation.ts). */
+const CLIP_CAPTIONS = [
+  "$.pages[].elements[].captions: array",
+  "$.pages[].elements[].captions[].end: number",
+  "$.pages[].elements[].captions[].start: number",
+  "$.pages[].elements[].captions[].text: string",
+  "$.pages[].elements[].captions[]: object",
+];
 
 const ADDED: Record<string, string[]> = {
   // in the order the shapes are listed: by path
-  design: [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START].sort(),
+  design: [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START, ...CLIP_CAPTIONS].sort(),
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

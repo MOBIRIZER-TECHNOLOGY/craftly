@@ -1,16 +1,37 @@
 /** The contextual toolbar of video elements: play, trim, speed, sound, and the frame they are cut to. */
-import { MAX_CLIP_FADE, MAX_PAGE_DURATION, clipFades, clipStartAt, clipVolume } from "@/core/animation";
+import { MAX_CAPTIONS, MAX_CAPTION_LENGTH, MAX_CLIP_FADE, MAX_CLIP_START, MAX_PAGE_DURATION, clipFades, clipStartAt, clipVolume } from "@/core/animation";
+import type { ClipCaption } from "@/core/types";
 import { VIDEO_SPEED_MAX, VIDEO_SPEED_MIN } from "@/core/factory";
 import type { VideoElement } from "@/core/types";
 import { startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
 import { ShapePreview } from "@/editor/panels/shared/ShapePreview";
 import { m } from "@/i18n";
 import { clampTrim, MIN_TRIM, playingLength } from "@/render/videos";
-import { Button, Checkbox, Divider, IconAudio, IconCut, IconFrame, IconMuted, IconPause, IconPlay, IconSound, IconSpeed, type MenuEntry } from "@/ui";
+import {
+  Button,
+  Checkbox,
+  Divider,
+  IconAudio,
+  IconButton,
+  IconCaptions,
+  IconPlus,
+  IconTrash,
+  NumberField,
+  TextField,
+  IconCut,
+  IconFrame,
+  IconMuted,
+  IconPause,
+  IconPlay,
+  IconSound,
+  IconSpeed,
+  type MenuEntry,
+} from "@/ui";
 import { AnimateButton, BorderPopover, CopyStyleButton, FlipMenu, MoreButton, MultiActions, PositionButton, RadiusPopover, TransparencyButton, type BarProps } from "../common";
 import { MenuButton, PopoverButton, SliderField, TBIcon } from "../kit";
 import { editElements, only, uniform } from "../selection";
 import { FRAME_SHAPES } from "./ImageBar";
+import "./VideoBar.css";
 
 type Extra = { copyEnabled: boolean };
 
@@ -88,6 +109,7 @@ export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Ext
         }
       />
       <AudioPopover els={els} ids={ids} muted={muted} />
+      {single && <CaptionsPopover el={single} />}
       <MenuButton label={m.editor.imageBar.frameShape} tip={m.editor.videoBar.frameShapeTip} icon={<IconFrame />} items={frameItems} />
       <FlipMenu />
       {rounded && <RadiusPopover els={els} ids={ids} />}
@@ -163,6 +185,112 @@ function AudioPopover({ els, ids, muted }: { els: VideoElement[]; ids: string[];
             }
           />
           <p className="cf-tbpop__hint">{m.editor.videoBar.fadeHint}</p>
+        </div>
+      )}
+    </PopoverButton>
+  );
+}
+
+/** Typed captions: lines of words, each shown over the clip from one second of its play to another. */
+function CaptionsPopover({ el }: { el: VideoElement }) {
+  const lines: ClipCaption[] = Array.isArray(el.captions) ? el.captions : [];
+  const words = m.editor.videoBar;
+  const change = (fn: (captions: ClipCaption[]) => void, tag?: string) =>
+    editElements(
+      [el.id],
+      only("video", (clip) => {
+        const captions = Array.isArray(clip.captions) ? clip.captions : [];
+        fn(captions);
+        if (captions.length) clip.captions = captions;
+        else delete clip.captions;
+      }),
+      tag,
+    );
+  const seconds = (v: number) => Math.min(MAX_CLIP_START, Math.max(0, Math.round(v * 10) / 10));
+  const add = () =>
+    change((captions) => {
+      const last = captions[captions.length - 1];
+      const start = last ? last.end : 0;
+      captions.push({ start, end: start + 2, text: "" });
+    });
+  return (
+    <PopoverButton label={words.captions} tip={words.captionsTip} icon={<IconCaptions />} panelClass="cf-tbpop--captions">
+      {() => (
+        <div className="cf-tbpop__stack">
+          {lines.length ? (
+            <>
+              <div className="cf-captions__head" aria-hidden="true">
+                <span>{words.captionFrom}</span>
+                <span>{words.captionTo}</span>
+                <span>{words.captionText}</span>
+              </div>
+              <ol className="cf-captions__list">
+                {lines.map((line, i) => (
+                  <li key={i} className="cf-captions__row">
+                    <NumberField
+                      size="sm"
+                      aria-label={words.captionFromLabel(i + 1)}
+                      value={line.start}
+                      min={0}
+                      max={MAX_CLIP_START}
+                      step={0.1}
+                      onChange={(v) =>
+                        change((captions) => {
+                          const c = captions[i];
+                          c.start = seconds(v);
+                          // the end moves out of the way of a start set past it
+                          if (c.end <= c.start) c.end = seconds(c.start + 0.5);
+                        }, `caption-from-${i}`)
+                      }
+                    />
+                    <NumberField
+                      size="sm"
+                      aria-label={words.captionToLabel(i + 1)}
+                      value={line.end}
+                      min={0}
+                      max={MAX_CLIP_START}
+                      step={0.1}
+                      onChange={(v) =>
+                        change((captions) => {
+                          const c = captions[i];
+                          c.end = seconds(v);
+                          if (c.end <= c.start) c.start = Math.max(0, seconds(c.end - 0.5));
+                        }, `caption-to-${i}`)
+                      }
+                    />
+                    <TextField
+                      size="sm"
+                      aria-label={words.captionTextLabel(i + 1)}
+                      value={line.text}
+                      maxLength={MAX_CAPTION_LENGTH}
+                      onChange={(e) => {
+                        const text = e.currentTarget.value;
+                        change((captions) => {
+                          captions[i].text = text;
+                        }, `caption-text-${i}`);
+                      }}
+                    />
+                    <IconButton
+                      size="sm"
+                      label={words.captionRemove(i + 1)}
+                      icon={<IconTrash />}
+                      onClick={() =>
+                        change((captions) => {
+                          captions.splice(i, 1);
+                        })
+                      }
+                    />
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : (
+            <p className="cf-tbpop__hint">{words.captionsNone}</p>
+          )}
+          <Button variant="secondary" size="sm" icon={<IconPlus />} disabled={lines.length >= MAX_CAPTIONS} onClick={add}>
+            {words.captionAdd}
+          </Button>
+          <p className="cf-tbpop__hint">{words.captionsHint}</p>
         </div>
       )}
     </PopoverButton>

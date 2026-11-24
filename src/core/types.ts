@@ -478,6 +478,13 @@ export interface ChartElement extends ElementBase {
  * as the frame at `trimStart`, and in Present, an animation preview and a recorded video as the clip playing from `trimStart`
  * to `trimEnd` at `speed`, over and over. Still downloads (PNG, PDF, SVG, PowerPoint) hold that first frame.
  */
+/** One line of a clip's captions. */
+export interface ClipCaption {
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface VideoElement extends ElementBase {
   type: "video";
   /** "asset:<id>": a clip stored in this browser's uploads (no other scheme: a design never plays a clip from the web) */
@@ -493,6 +500,11 @@ export interface VideoElement extends ElementBase {
   speed: number;
   /** without its sound in Present (a clip is always silent while editing) */
   muted?: boolean;
+  /**
+   * Lines of text shown over the bottom of the clip while it plays, each from `start` to `end` seconds of one play of the clip (from
+   * when it starts on its page, at its speed); they come again with every play. See clipCaptions in core/animation.ts.
+   */
+  captions?: ClipCaption[];
   /** seconds into its page at which it starts playing; until then it shows its first frame, silent (0 when absent) */
   startAt?: number;
   /** plays once and then holds its last frame, silent, for the rest of its page (it plays over and over when absent) */

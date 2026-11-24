@@ -75,6 +75,7 @@ describe("video toolbar", () => {
       "Speed",
       "Sound",
       "Audio",
+      "Captions",
       "Frame shape",
       "Flip",
       "Corner radius",
@@ -143,6 +144,68 @@ describe("video toolbar: playing", () => {
     act(() => usePreview.setState({ preview: { startedAt: 0, from: 0, until: 5 } }));
     expect(has("Stop")).toBe(true);
     expect(has("Play")).toBe(false);
+  });
+});
+
+describe("video toolbar: captions", () => {
+  const openCaptions = async (el: VideoElement) => {
+    const user = userEvent.setup();
+    mount([el]);
+    await user.click(btn("Captions"));
+    const dialog = screen.getByRole("dialog", { name: "Captions" });
+    return { user, dialog };
+  };
+  const box = (dialog: HTMLElement, name: string) => within(dialog).getByRole(name.includes("words") ? "textbox" : "spinbutton", { name }) as HTMLInputElement;
+
+  it("says there are none, and adds a line of two seconds after the last", async () => {
+    const el = clip();
+    const { user, dialog } = await openCaptions(el);
+    expect(within(dialog).getByText("No captions yet.")).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Add a line" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add a line" }));
+    expect(live<VideoElement>(el).captions).toEqual([
+      { start: 0, end: 2, text: "" },
+      { start: 2, end: 4, text: "" },
+    ]);
+  });
+
+  it("takes the words of a line in one step of undo, and its times", async () => {
+    const el = clip({ captions: [{ start: 0, end: 2, text: "" }] });
+    const { user, dialog } = await openCaptions(el);
+    const before = store().past.length;
+    await user.type(box(dialog, "Line 1: words"), "Hello there");
+    expect(live<VideoElement>(el).captions![0].text).toBe("Hello there");
+    expect(store().past.length).toBe(before + 1);
+    await typeNumber(user, box(dialog, "Line 1: to (seconds)"), "3.5");
+    expect(live<VideoElement>(el).captions![0]).toMatchObject({ start: 0, end: 3.5 });
+  });
+
+  it("keeps a line's end after its start, whichever is changed", async () => {
+    const el = clip({ captions: [{ start: 1, end: 2, text: "a" }] });
+    const { user, dialog } = await openCaptions(el);
+    await typeNumber(user, box(dialog, "Line 1: from (seconds)"), "4");
+    expect(live<VideoElement>(el).captions![0]).toMatchObject({ start: 4, end: 4.5 });
+    await typeNumber(user, box(dialog, "Line 1: to (seconds)"), "1");
+    expect(live<VideoElement>(el).captions![0]).toMatchObject({ start: 0.5, end: 1 });
+  });
+
+  it("removes a line, and leaves nothing behind when the last one goes", async () => {
+    const el = clip({
+      captions: [
+        { start: 0, end: 1, text: "a" },
+        { start: 1, end: 2, text: "b" },
+      ],
+    });
+    const { user, dialog } = await openCaptions(el);
+    await user.click(within(dialog).getByRole("button", { name: "Remove line 1" }));
+    expect(live<VideoElement>(el).captions).toEqual([{ start: 1, end: 2, text: "b" }]);
+    await user.click(within(dialog).getByRole("button", { name: "Remove line 1" }));
+    expect("captions" in live<VideoElement>(el)).toBe(false);
+  });
+
+  it("is only there for a single clip", () => {
+    mount([clip(), clip({ x: 500 })]);
+    expect(screen.queryByRole("button", { name: "Captions" })).toBeNull();
   });
 });
 

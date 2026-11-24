@@ -146,3 +146,49 @@ describe("a playback with clips", () => {
     expect(playingFrame).not.toHaveBeenCalled();
   });
 });
+
+describe("a clip's captions", () => {
+  const lines = [
+    { start: 0, end: 1, text: "First words" },
+    { start: 1, end: 2, text: "Second words" },
+  ];
+  const texts = (spy: ReturnType<typeof paint>["spy"]) => spy.to("fillText").map((c) => c.args[0]);
+
+  it("show the line of the moment over a playing clip, white on a dark band", () => {
+    frames.playing = canvas();
+    const { spy } = paint([clip({ captions: lines, trimEnd: 4 })], { scale: 1, animation: { time: 1.5 }, playVideos: {} });
+    expect(texts(spy)).toEqual(["Second words"]);
+    const filled = spy.to("fillText")[0];
+    expect(filled.state.fillStyle).toBe("#ffffff");
+    expect(spy.to("fill").some((c) => c.state.fillStyle === "rgba(0, 0, 0, 0.66)")).toBe(true);
+  });
+
+  it("come again with every play of the clip", () => {
+    frames.playing = canvas();
+    // 4 s of clip: 4.5 s into the page is 0.5 s into its second play
+    expect(texts(paint([clip({ captions: lines, trimEnd: 4 })], { scale: 1, animation: { time: 4.5 }, playVideos: {} }).spy)).toEqual(["First words"]);
+  });
+
+  it("are not shown at rest, before the clip starts, after a clip that plays once has played, or between lines", () => {
+    frames.playing = canvas();
+    expect(texts(paint([clip({ captions: lines })]).spy)).toEqual([]);
+    expect(texts(paint([clip({ captions: lines, startAt: 2 })], { scale: 1, animation: { time: 1 }, playVideos: {} }).spy)).toEqual([]);
+    expect(texts(paint([clip({ captions: lines, trimEnd: 2, once: true })], { scale: 1, animation: { time: 3 }, playVideos: {} }).spy)).toEqual([]);
+    expect(texts(paint([clip({ captions: lines, trimEnd: 4 })], { scale: 1, animation: { time: 2.5 }, playVideos: {} }).spy)).toEqual([]);
+  });
+
+  it("wrap to the clip's width, three lines at most, the rest ending in an ellipsis", () => {
+    frames.playing = canvas();
+    const long = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+    const { spy } = paint([clip({ captions: [{ start: 0, end: 5, text: long }], trimEnd: 5 })], { scale: 1, animation: { time: 1 }, playVideos: {} });
+    const drawn = texts(spy) as string[];
+    expect(drawn).toHaveLength(3);
+    expect(drawn[2].endsWith("…")).toBe(true);
+    expect(drawn.join(" ").startsWith("word0 word1")).toBe(true);
+  });
+
+  it("are drawn in a video download too, which hands the clip's frames over itself", () => {
+    const { spy } = paint([clip({ captions: lines, trimEnd: 4 })], { scale: 1, animation: { time: 0.2 }, playVideos: { frame: () => canvas() } });
+    expect(texts(spy)).toEqual(["First words"]);
+  });
+});

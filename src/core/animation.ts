@@ -9,7 +9,7 @@
  *   emphasis   repeats every `duration` for as long as the page is shown
  */
 import { m } from "@/i18n";
-import type { AnimDirection, DesignElement, ElementAnimation, ElementAnimations, Page, VideoElement } from "./types";
+import type { AnimDirection, ClipCaption, DesignElement, ElementAnimation, ElementAnimations, Page, VideoElement } from "./types";
 
 export type AnimPhase = "in" | "out" | "loop";
 
@@ -39,6 +39,36 @@ export const clipStartAt = (el: Pick<VideoElement, "startAt">): number =>
 
 /** Seconds a clip has been playing when its page has been shown for `time` seconds (0 until it starts). */
 export const clipLocalTime = (el: Pick<VideoElement, "startAt">, time: number): number => Math.max(0, time - clipStartAt(el));
+
+/** At most this many caption lines on a clip, and this many letters in one. */
+export const MAX_CAPTIONS = 200;
+export const MAX_CAPTION_LENGTH = 300;
+
+/**
+ * A clip's caption lines as they can be shown: lines with a text, a start that is a number of at least 0 and an end after it, at most
+ * MAX_CAPTIONS of them, each cut to MAX_CAPTION_LENGTH letters, in the order they start. Anything else (from a file or a shared
+ * design) is left out.
+ */
+export function clipCaptions(el: Pick<VideoElement, "captions">): ClipCaption[] {
+  if (!Array.isArray(el.captions)) return [];
+  const out: ClipCaption[] = [];
+  for (const line of el.captions as unknown[]) {
+    if (out.length >= MAX_CAPTIONS) break;
+    if (typeof line !== "object" || line === null) continue;
+    const { start, end, text } = line as Record<string, unknown>;
+    if (typeof text !== "string" || !text.trim()) continue;
+    if (typeof start !== "number" || typeof end !== "number" || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) continue;
+    out.push({ start, end, text: text.trim().slice(0, MAX_CAPTION_LENGTH) });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/** The caption line showing `t` seconds into one play of a clip (the last one to start, when two overlap), or null. */
+export function captionAt(captions: readonly ClipCaption[], t: number): ClipCaption | null {
+  let found: ClipCaption | null = null;
+  for (const line of captions) if (line.start <= t && t < line.end) found = line;
+  return found;
+}
 
 /** The longest a clip's sound can take to fade in or out, in seconds. */
 export const MAX_CLIP_FADE = 5;
