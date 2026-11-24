@@ -31,6 +31,19 @@ describe("line routes", () => {
     expect(hitTestElement(line, { x: 50, y: 80 })).toBe(false);
   });
 
+  it("follows a curve whose two pulls differ, down as well as across", () => {
+    // a quarter of the way along: 0.421875 a + 0.421875 b + 0.140625 c + 0.015625 d, the same weights for x and for y
+    const route = [
+      { x: 0, y: 0 },
+      { x: 0, y: 90 },
+      { x: 100, y: 10 },
+      { x: 100, y: 100 },
+    ];
+    const quarter = lineSegments({ width: 100, height: 100, routing: "curved", route })[6];
+    expect(quarter.x).toBeCloseTo(15.625);
+    expect(quarter.y).toBeCloseTo(40.9375);
+  });
+
   it("scales every route point with the element", () => {
     const line = createLine({ ...lineFromRoute(start, end, "elbow"), routing: "elbow" });
     const before = structuredClone(line.route!);

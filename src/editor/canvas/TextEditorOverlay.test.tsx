@@ -601,6 +601,7 @@ describe("formatting the selected characters", () => {
       else if (name === "foreColor") wrap((s) => (s.style.color = value ?? ""));
       else if (name === "fontName") wrap((s) => (s.style.fontFamily = value ?? ""));
       else if (name === "fontSize") wrap((s) => s.setAttribute("size", "7"), "font");
+      else if (name === "hiliteColor") wrap((s) => (s.style.backgroundColor = value ?? ""));
       return true;
     });
     Object.defineProperty(document, "queryCommandState", { configurable: true, writable: true, value: vi.fn((name: string) => queries.get(name) ?? false) });
@@ -657,6 +658,16 @@ describe("formatting the selected characters", () => {
     expect(applyInline({ weight: 300 })).toBe(true);
     expect(paragraphs()[0].runs).toEqual([{ text: "Hello", weight: 300 }, { text: " world" }]);
     expect(model().fontWeight).toBe(400);
+  });
+
+  it("sets a weight without touching the size of the characters, and without the command for a size", async () => {
+    const { exec } = fakeBrowser();
+    const { editor } = await withSelection({ fontWeight: 400 });
+    expect(applyInline({ weight: 800 })).toBe(true);
+    expect(exec.mock.calls.map((c) => c[0])).not.toContain("fontSize");
+    // the mark that carried the selection is gone again
+    expect(editor.innerHTML).not.toMatch(/background|xxx-large/);
+    expect(paragraphs()[0].runs[0]).toEqual({ text: "Hello", weight: 800 });
   });
 
   it("sizes the selection in design pixels at the current zoom and keeps it selected", async () => {

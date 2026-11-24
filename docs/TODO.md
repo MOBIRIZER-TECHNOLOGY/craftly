@@ -38,6 +38,7 @@ Tick a line when it ships, and move the feature's row in the report.
 - [x] **PPTX import, basic** (2026-11-24): Import project file accepts `.pptx`, reads the slide size, text boxes, pictures and rectangles, and opens the saved design. Tested by downloading and reopening a PPTX in the browser; PowerPoint, Keynote and Google Slides still need a person.
 - [x] **Bulk create: a standalone design for each row** (2026-11-24): Apps > Bulk create > Designs saves an independent, single-page project for every row, including image-column substitution, and offers to open the first. Tested in the browser.
 - [x] **More native PowerPoint shapes** (2026-11-24): common basic shapes, polygons, stars, arrows and symbols become editable PPTX objects with solid fills and strokes. Rounded corners and star inner sizes are exported. A browser-downloaded PPTX was inspected for native ellipse geometry and editable text; complex custom paths still use the background picture.
+- [x] **A weight for selected characters** (2026-11-24): the Font panel's Weight sets it for the characters selected in the open text box; the Bold button reads it.
 
 ## 1. Can be built here with no new dependency
 
@@ -59,7 +60,6 @@ Nothing in this section needs a new package, a model file, an outside service or
 
 ### Missing parts of features that exist (rows the report calls Partial)
 
-- [ ] A weight for selected characters, where it is the whole text box now (M).
 - [ ] Brand: more than one kit, brand templates (M). Approvals and locked controls need the account server (M).
 - [ ] PDF: pages as vector drawings with embedded fonts, tags, and alternative text (L).
 - [ ] MP4 export of the animations in every browser, not recorded as it plays: an MP4 writer of our own on the browser's `VideoEncoder` (M).

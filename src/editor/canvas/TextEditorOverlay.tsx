@@ -13,6 +13,10 @@ import { registerTextEditor, useTextSelectionStyle, type InlineFormat } from "./
 /* model <-> DOM                                                       */
 /* ------------------------------------------------------------------ */
 
+/** The background that marks the selected characters while a weight is set on them (see `applyInline`): no text has one. */
+const WEIGHT_MARK = "#010203";
+const WEIGHT_MARK_RGB = "rgb(1, 2, 3)";
+
 function applyRunStyle(style: CSSStyleDeclaration, run: TextRun, zoom: number): void {
   if (run.weight !== undefined) style.fontWeight = String(run.weight);
   else if (run.bold !== undefined) style.fontWeight = run.bold ? "700" : "400";
@@ -331,28 +335,49 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
         toggle("strikeThrough", f.strike);
         if (f.color) cmd("foreColor", f.color);
         if (f.font) cmd("fontName", cssFontFamily(f.font));
-        if (f.size || f.weight) {
+        // select the styled text again: replacing or restyling nodes can collapse the selection
+        const reselect = (made: HTMLElement[]) => {
+          if (!made.length) return;
+          const range = document.createRange();
+          range.setStartBefore(made[0]);
+          range.setEndAfter(made[made.length - 1]);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+          lastRange.current = range.cloneRange();
+        };
+        if (f.size) {
           cmd("fontSize", "7");
           const made: HTMLElement[] = [];
           root.querySelectorAll<HTMLElement>('font[size="7"], span[style*="xxx-large"]').forEach((n) => {
             const span = document.createElement("span");
             span.style.cssText = n.getAttribute("style") ?? "";
-            if (f.size) span.style.fontSize = `${f.size * zoomRef.current}px`;
-            if (f.weight) span.style.fontWeight = String(f.weight);
+            span.style.fontSize = `${f.size! * zoomRef.current}px`;
             while (n.firstChild) span.appendChild(n.firstChild);
             n.replaceWith(span);
             made.push(span);
           });
-          // replacing the nodes collapses the selection: select the styled text again
-          if (made.length) {
-            const range = document.createRange();
-            range.setStartBefore(made[0]);
-            range.setEndAfter(made[made.length - 1]);
-            const sel = window.getSelection();
-            sel?.removeAllRanges();
-            sel?.addRange(range);
-            lastRange.current = range.cloneRange();
-          }
+          reselect(made);
+        }
+        if (f.weight) {
+          // There is no command for a weight, and borrowing the one for the size would take the sizes of the characters away. A
+          // background no text has (text has none at all) marks what is selected instead: the browser splits the spans at the ends
+          // of the selection, and every element that carries the mark gets the weight in its place.
+          cmd("hiliteColor", WEIGHT_MARK);
+          const made: HTMLElement[] = [];
+          root.querySelectorAll<HTMLElement>("[style*='background-color']").forEach((n) => {
+            if (n.style.backgroundColor !== WEIGHT_MARK_RGB) return;
+            n.style.backgroundColor = "";
+            n.style.fontWeight = String(f.weight);
+            // a bold or a weight further in would still win over the one set here
+            n.querySelectorAll<HTMLElement>("*").forEach((inner) => {
+              if (inner.style.backgroundColor === WEIGHT_MARK_RGB) return;
+              if (inner.tagName === "B" || inner.tagName === "STRONG") inner.style.fontWeight = "inherit";
+              else if (inner.style.fontWeight) inner.style.fontWeight = "";
+            });
+            made.push(n);
+          });
+          reselect(made);
         }
         commit();
         return true;

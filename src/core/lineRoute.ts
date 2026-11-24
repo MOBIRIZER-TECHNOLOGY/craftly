@@ -13,7 +13,7 @@ function cubic(a: Point, b: Point, c: Point, d: Point, t: number): Point {
   const u = 1 - t;
   return {
     x: u ** 3 * a.x + 3 * u * u * t * b.x + 3 * u * t * t * c.x + t ** 3 * d.x,
-    y: u ** 3 * a.y + 3 * u * t * t * b.y + 3 * u * t * t * c.y + t ** 3 * d.y,
+    y: u ** 3 * a.y + 3 * u * u * t * b.y + 3 * u * t * t * c.y + t ** 3 * d.y,
   };
 }
 

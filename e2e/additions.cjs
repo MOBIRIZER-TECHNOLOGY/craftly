@@ -175,6 +175,34 @@ let shotN = 0;
     return "300";
   });
 
+  await step("Font weight: Extra bold for the first word only, its size kept, and Bold reads mixed", async () => {
+    await select("pale");
+    const weight = page.getByRole("combobox", { name: "Weight" });
+    if (!(await weight.isVisible().catch(() => false))) await toolbar.getByRole("button", { name: /^Toggle font selector/ }).click();
+    await edit(`(a) => { const s = window.__editor.getState(); a.startTextEdit(s.design.pages[0].elements.find((e) => e.name === "pale").id); }`);
+    await wait(400);
+    await page.locator("[contenteditable=true]").first().focus();
+    await page.keyboard.press("Control+Home");
+    for (let i = 0; i < 4; i++) await page.keyboard.press("Shift+ArrowRight");
+    await wait(300);
+    await weight.click();
+    await page.getByRole("option", { name: "Extra bold (800)" }).click();
+    await wait(600);
+    const pale = await el("pale");
+    const runs = pale.paragraphs[0].runs;
+    if (runs[0].text !== "Pale" || runs[0].weight !== 800) throw new Error("the first run is " + JSON.stringify(runs[0]));
+    if (runs.slice(1).some((r) => r.weight !== undefined || r.bold !== undefined)) throw new Error("the rest got a weight: " + JSON.stringify(runs));
+    // the command a browser has for the size of characters must not be what carries the weight
+    if (runs.some((r) => r.size !== undefined)) throw new Error("the size of the characters changed: " + JSON.stringify(runs));
+    if (pale.fontWeight !== 300) throw new Error("the box is " + pale.fontWeight);
+    await page.keyboard.press("Escape");
+    await wait(300);
+    await select("pale");
+    const pressed = await toolbar.getByRole("button", { name: "Bold", exact: true }).getAttribute("aria-pressed");
+    if (pressed !== "mixed") throw new Error("Bold is " + pressed + " for a text that is partly Extra bold");
+    return "Pale 800, the rest 300, Bold mixed";
+  });
+
   await step("Link: an address that could run code is refused, a web address is stored in full", async () => {
     await select("polygon");
     await toolbar.getByRole("button", { name: "More actions" }).click();
