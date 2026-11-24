@@ -1,11 +1,11 @@
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addAssetFromFile, listAssets } from "@/core/assets";
+import { addAssetFromFile, listAssets, restoreAssets } from "@/core/assets";
 import { createPage, createText, solid } from "@/core/factory";
 import { createFolder, getDesign, getSummary, listDesigns, listFolders } from "@/core/library";
 import { metaGet } from "@/core/persistence";
-import type { DesignSummary, Folder, Template } from "@/core/types";
+import type { Asset, DesignSummary, Folder, Template } from "@/core/types";
 import { Hosts, dismissOpenDialogs, emptyLibrary, imageFile, seedDesign } from "@/test/dashuiUtils";
 import { toast } from "@/ui";
 import { DESIGN_DRAG_TYPE, DesignCard, DesignCardSkeleton } from "./DesignCard";
@@ -443,6 +443,31 @@ describe("<ImageCard>", () => {
   it("takes its look from the layout", async () => {
     await mountImage("a.png", "image/png", { layout: "row" });
     expect(card().classList.contains("cf-icard--row")).toBe(true);
+  });
+
+  describe("a video upload", () => {
+    const clip = async (mime = "video/mp4") => {
+      const asset: Asset = { id: "a-clip", name: "trip", kind: "video", mime, size: 2048, width: 1920, height: 1080, createdAt: NOON, blob: new Blob(["clip"], { type: mime }) };
+      await restoreAssets([asset]);
+      return asset;
+    };
+
+    it("shows a silent preview of the clip instead of a picture, and calls it a video", async () => {
+      render(<ImageCard asset={await clip()} now={NOON} />);
+      await waitFor(() => expect(card().querySelector("video")?.getAttribute("src")).toMatch(/^blob:/));
+      const video = card().querySelector("video") as HTMLVideoElement;
+      expect(video.muted).toBe(true);
+      expect(video.getAttribute("preload")).toBe("metadata");
+      expect(card().querySelector("img")).toBeNull();
+      expect(card().textContent).toContain("MP4 video");
+      expect(card().textContent).not.toContain("MP4 image");
+      expect(card().textContent).toContain("1920 × 1080 px · 2.0 KB");
+    });
+
+    it("names the kind of clip after its type", async () => {
+      render(<ImageCard asset={await clip("video/webm")} now={NOON} />);
+      expect(card().textContent).toContain("WEBM video");
+    });
   });
 
   it("does not show a picture that arrives after the card is gone", async () => {

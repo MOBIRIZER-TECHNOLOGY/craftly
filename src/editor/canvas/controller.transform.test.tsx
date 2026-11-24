@@ -5,8 +5,8 @@
  */
 import { act, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { createChart, createGroup, createImage, createLine, createShape, createTable, createText } from "@/core/factory";
-import type { GroupElement, ImageElement, LineElement, TableElement, TextElement } from "@/core/types";
+import { createChart, createGroup, createImage, createLine, createShape, createTable, createText, createVideo } from "@/core/factory";
+import type { GroupElement, ImageElement, LineElement, TableElement, TextElement, VideoElement } from "@/core/types";
 import { getActions, useEditor } from "@/core/store";
 import { boxOf, canvasDesign, elementOf, mountWorkspace, selectIds } from "@/test/canvasUtils";
 import { useGesture } from "./gestureStore";
@@ -519,6 +519,33 @@ describe("resizing other kinds of element", () => {
     expect([img.y, img.height]).toEqual([375, 75]);
     expect(img.crop.y).toBe(-1);
     expect(img.crop.h).toBe(2);
+  });
+
+  it("keeps a clip in proportion when a corner is dragged and scales its radius, as a picture", async () => {
+    const clip = createVideo({ id: "vid", src: "asset:clip", x: 500, y: 300, width: 200, height: 150, naturalWidth: 400, naturalHeight: 300, radius: 10 });
+    const rig = await mountWorkspace(canvasDesign([clip]));
+    noSnap();
+    selectIds("vid");
+    rig.down(700, 450, { target: rig.handle("resize:se") });
+    rig.move(800, 500);
+    rig.up(800, 500);
+    const el = elementOf<VideoElement>("vid");
+    expect([el.x, el.y, el.width, el.height]).toEqual([500, 300, 300, 225]);
+    expect(el.radius).toBe(15);
+    expect(el.crop).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+  });
+
+  it("moves the frame over a clip from a side handle: the clip keeps its size and position", async () => {
+    const clip = createVideo({ id: "vid", src: "asset:clip", x: 500, y: 300, width: 200, height: 150, naturalWidth: 400, naturalHeight: 300 });
+    const rig = await mountWorkspace(canvasDesign([clip]));
+    noSnap();
+    selectIds("vid");
+    rig.down(700, 375, { target: rig.handle("resize:e") });
+    rig.move(600, 375);
+    rig.up(600, 375);
+    const el = elementOf<VideoElement>("vid");
+    expect([el.x, el.y, el.width, el.height]).toEqual([500, 300, 100, 150]);
+    expect(el.crop).toEqual({ x: 0, y: 0, w: 2, h: 1 });
   });
 
   it("scales the children of a group along with it", async () => {

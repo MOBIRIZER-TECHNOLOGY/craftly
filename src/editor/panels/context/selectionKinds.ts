@@ -19,9 +19,9 @@ export function forEachText(el: DesignElement, fn: (text: TextElement) => void):
 }
 
 /** The renderer paints a drop shadow for these types only. */
-export const supportsShadow = (el: DesignElement): boolean => el.type === "shape" || el.type === "line" || el.type === "image" || el.type === "graphic";
+export const supportsShadow = (el: DesignElement): boolean => el.type === "shape" || el.type === "line" || el.type === "image" || el.type === "video" || el.type === "graphic";
 
 /** Elements that have a stroke / border (an image only when it is not an empty frame being decorated). */
-export const supportsStroke = (el: DesignElement): boolean => el.type === "shape" || el.type === "line" || el.type === "image";
+export const supportsStroke = (el: DesignElement): boolean => el.type === "shape" || el.type === "line" || el.type === "image" || el.type === "video";
 
 export const isImage = (el: DesignElement): el is Extract<DesignElement, { type: "image" }> => el.type === "image";

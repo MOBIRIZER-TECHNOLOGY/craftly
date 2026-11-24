@@ -464,8 +464,9 @@ export const panelsTabs: typeof en = {
   },
 
   uploads: {
-    notImages: "सिर्फ़ चित्र अपलोड किए जा सकते हैं: PNG, JPG, WebP, GIF, AVIF, BMP या SVG।",
-    skipped: (n: number) => plural(n, { one: `${num(n)} फ़ाइल छोड़ दी गई क्योंकि वह चित्र नहीं है।`, other: `${num(n)} फ़ाइलें छोड़ दी गईं क्योंकि वे चित्र नहीं हैं।` }),
+    notImages: "सिर्फ़ चित्र और वीडियो अपलोड किए जा सकते हैं: PNG, JPG, WebP, GIF, AVIF, BMP, SVG, MP4, WebM या Ogg।",
+    skipped: (n: number) =>
+      plural(n, { one: `${num(n)} फ़ाइल छोड़ दी गई क्योंकि वह चित्र या वीडियो नहीं है।`, other: `${num(n)} फ़ाइलें छोड़ दी गईं क्योंकि वे चित्र या वीडियो नहीं हैं।` }),
     failed: (n: number) => plural(n, { one: `${num(n)} अपलोड नहीं हो सका। छोटा चित्र आज़माएँ।`, other: `${num(n)} अपलोड नहीं हो सके। छोटा चित्र आज़माएँ।` }),
     search: "नाम से अपलोड खोजें",
     uploadFiles: "फ़ाइलें अपलोड करें",
@@ -478,6 +479,8 @@ export const panelsTabs: typeof en = {
     introText: "अपनी फ़ोटो और लोगो जोड़ें। वे इसी ब्राउज़र में रहते हैं, किसी भी डिज़ाइन के लिए तैयार।",
     deleteTitle: (name: string) => `"${name}" हटाएँ?`,
     deleteText: "जिन डिज़ाइनों में यह चित्र है, उनमें इसकी जगह खाली फ़्रेम दिखेगा। इसे पहले जैसा नहीं किया जा सकता।",
+    deleteVideoText: "जिन डिज़ाइनों में यह वीडियो है, उनमें इसकी जगह खाली बॉक्स दिखेगा। इसे पहले जैसा नहीं किया जा सकता।",
+    video: "वीडियो",
     deleted: "अपलोड हटाया गया",
     addToPage: (name: string) => `${name} को पेज पर जोड़ें`,
     name: "अपलोड का नाम",

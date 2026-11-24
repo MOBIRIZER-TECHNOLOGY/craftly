@@ -112,7 +112,7 @@ export function describeTarget(target: ColorTarget, key: string | undefined, els
     case "stroke": {
       const el = els.find(supportsStroke);
       supported = !!el;
-      if (el && (el.type === "shape" || el.type === "image" || el.type === "line") && el.stroke) current = solidPaint(el.stroke.color);
+      if (el && (el.type === "shape" || el.type === "image" || el.type === "video" || el.type === "line") && el.stroke) current = solidPaint(el.stroke.color);
       break;
     }
     case "shadow": {
@@ -195,7 +195,7 @@ export function applySolid(target: ColorTarget, key: string | undefined, color: 
     }
     case "stroke":
       a.updateSelection((el) => {
-        if (el.type === "shape" || el.type === "image" || el.type === "line") el.stroke = { ...(el.stroke ?? defaultStroke(color)), color };
+        if (el.type === "shape" || el.type === "image" || el.type === "video" || el.type === "line") el.stroke = { ...(el.stroke ?? defaultStroke(color)), color };
       });
       return;
     case "shadow": {

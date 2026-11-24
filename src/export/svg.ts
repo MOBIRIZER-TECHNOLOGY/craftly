@@ -17,12 +17,13 @@
  */
 import { getAsset } from "@/core/assets";
 import { blendOf } from "@/core/blend";
+import { defaultFilter } from "@/core/factory";
 import { lineLabelPoint, linePath, lineRouteAngles } from "@/core/lineRoute";
 import { svgProblem } from "@/core/svgSafety";
 import type { Design, DesignElement, Fill, GraphicElement, ImageElement, LineElement, Page, ShapeElement, Stroke, TableElement } from "@/core/types";
 import { m } from "@/i18n";
 import { isNeutral, renderFiltered } from "@/render/imageFilters";
-import { drawableSize, loadImage, type Drawable } from "@/render/images";
+import { drawableSize, loadImage, videoPosterKey, type Drawable } from "@/render/images";
 import { collectResources, graphicMarkup } from "@/render/renderPage";
 import { getShape, shapeFillRule, shapePathData } from "@/render/shapePaths";
 import { bytesToBase64, blobToDataUrl } from "./encoding";
@@ -95,7 +96,8 @@ async function sourceHref(src: string, drawable: Drawable, doc: SvgDoc): Promise
   // (a picture on the web is never loaded, so it does not get here: src/core/imageSources.ts)
   try {
     const canvas = toCanvas(drawable);
-    const photo = src.startsWith("builtin:");
+    // a clip's first frame (its poster, src/render/videos.ts) is a photograph too
+    const photo = src.startsWith("builtin:") || src.startsWith("video:");
     return { href: canvas.toDataURL(photo ? "image/jpeg" : "image/png", 0.92), mime: photo ? "image/jpeg" : "image/png" };
   } catch {
     doc.warn(m.exporting.errors.svgImages);
@@ -259,6 +261,7 @@ class PageBuilder {
     const visit = (el: DesignElement) => {
       if (el.hidden) return;
       if (el.type === "image" && el.src) (isNeutral(el.filter) ? plain : filtered).add(el.src);
+      else if (el.type === "video") plain.add(videoPosterKey(el));
       else if (el.type === "group") el.children.forEach(visit);
     };
     this.page.elements.forEach(visit);
@@ -375,6 +378,10 @@ class PageBuilder {
         break;
       case "image":
         inner = this.image(el, matrix, a);
+        break;
+      case "video":
+        // an SVG is a still picture: the clip's first frame, framed as a picture is
+        inner = this.image({ ...el, type: "image", src: videoPosterKey(el), filter: defaultFilter() }, matrix, a);
         break;
       case "graphic":
         inner = this.graphic(el, matrix, a);

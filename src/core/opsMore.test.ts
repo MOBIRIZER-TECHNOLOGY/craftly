@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createChart, createDesign, createGroup, createImage, createLine, createPage, createShape, createTable, createText } from "./factory";
+import { createChart, createDesign, createGroup, createImage, createLine, createPage, createShape, createTable, createText, createVideo } from "./factory";
 import {
   alignElements,
   applyTextProps,
@@ -357,6 +357,15 @@ describe("scaling", () => {
     const plain = createImage({ src: "x.png", radius: 5, stroke: null }) as ImageElement;
     scaleElement(plain, 2, 2);
     expect(plain.radius).toBe(10);
+  });
+
+  it("scales the corner radius and the outline of a clip as a picture's", () => {
+    const outlined = createVideo({ src: "asset:clip", radius: 5, stroke: { color: "#000000", width: 1, style: "solid" } });
+    scaleElement(outlined, 2, 4);
+    expect([outlined.radius, outlined.stroke!.width]).toEqual([15, 3]);
+    const plain = createVideo({ src: "asset:clip", radius: 5 });
+    scaleElement(plain, 2, 2);
+    expect([plain.radius, plain.stroke]).toEqual([10, null]);
   });
 
   it("scales the cells and the grid of a table and its text and border", () => {

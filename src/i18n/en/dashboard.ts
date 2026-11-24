@@ -430,6 +430,7 @@ export const dashboard = {
     folder: "Folder",
     actionsForFolder: (name: string) => `Actions for folder ${name}`,
     imageKind: (format: string) => `${format} image`,
+    videoKind: (format: string) => `${format} video`,
     previewTemplate: (name: string) => `Preview template ${name}`,
     actionsForTemplate: (name: string) => `Actions for template ${name}`,
   },

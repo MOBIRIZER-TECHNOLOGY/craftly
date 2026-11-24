@@ -20,6 +20,70 @@ const urlCache = new Map<string, string>();
 
 export const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml", "image/avif", "image/bmp"];
 
+/**
+ * The clips an upload may be (src/render/videos.ts plays them): the formats browsers play. A clip is stored under its own type, so
+ * that a blob: address of it is a video and nothing else.
+ */
+export const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg"];
+const VIDEO_EXTENSIONS: Record<string, string> = { mp4: "video/mp4", m4v: "video/mp4", webm: "video/webm", ogv: "video/ogg" };
+/** The largest clip that is kept, in bytes: it stays in this browser's storage, whole. */
+export const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
+
+/** The type a clip is stored under, from its own type or (with no type, or a vague one) its name; null for anything that is not one of ACCEPTED_VIDEO_TYPES. */
+export function videoType(blob: Blob, name = ""): string | null {
+  const own = blob.type.toLowerCase().split(";")[0].trim();
+  if (ACCEPTED_VIDEO_TYPES.includes(own)) return own;
+  if (own && own !== "application/octet-stream") return null;
+  const ext = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? "";
+  return VIDEO_EXTENSIONS[ext] ?? null;
+}
+
+export function isAcceptedVideo(file: File): boolean {
+  return videoType(file, file.name) !== null;
+}
+
+/** The size and the length of a clip, read by the browser from its first bytes; null when it cannot play it. */
+export function videoInfo(blob: Blob, timeoutMs = 15_000): Promise<{ width: number; height: number; duration: number } | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement("video");
+    let done = false;
+    const finish = (info: { width: number; height: number; duration: number } | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+      resolve(info);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    video.muted = true;
+    video.preload = "metadata";
+    video.onerror = () => finish(null);
+    const read = () => {
+      const { videoWidth: width, videoHeight: height, duration } = video;
+      finish(width > 0 && height > 0 ? { width, height, duration: Number.isFinite(duration) && duration > 0 ? duration : 0 } : null);
+    };
+    video.onloadedmetadata = () => {
+      if (Number.isFinite(video.duration)) return read();
+      // a recording made in a browser (MediaRecorder) says Infinity until it has been read to the end: a seek far past it makes the
+      // browser find the end, and the length is known then (or read as unknown, 0, when it is not)
+      video.ondurationchange = () => {
+        if (Number.isFinite(video.duration)) read();
+      };
+      video.onseeked = read;
+      video.currentTime = 1e101;
+    };
+    video.src = url;
+  });
+}
+
+/** A clip this browser cannot play is refused with these words. */
+export const UNPLAYABLE_VIDEO_MESSAGE = m.core.unplayableVideo;
+/** A clip over MAX_VIDEO_BYTES is refused with these words. */
+export const VIDEO_TOO_BIG_MESSAGE = m.core.videoTooBig(MAX_VIDEO_BYTES / (1024 * 1024));
+
 /** An SVG that could not be kept and could not be drawn either is refused with these words. */
 export const UNDRAWABLE_SVG_MESSAGE = m.core.undrawableSvg;
 
@@ -100,11 +164,14 @@ const typed = (blob: Blob, mime: string) => (blob.type === mime ? blob : new Blo
  *   - An SVG that is plain drawing (`svgProblem`) is kept as it is.
  *   - Any other SVG (a style sheet, a comment, a script, a link, a picture from the web) is not kept as an SVG: it is drawn and
  *     stored as a PNG, and `subscribeFlattenedSvg` is told. One that cannot be drawn is refused (`UNDRAWABLE_SVG_MESSAGE`).
+ *   - A clip of ACCEPTED_VIDEO_TYPES (by its type, or by its name when it has none) is kept under that type.
  *   - Anything else is stored under its own type only when that is a picture type, and as a PNG otherwise, so that nothing is
  *     ever stored as a page.
  * An SVG is known by its type or by the name it came with. The size of the picture is not measured here.
  */
 export async function checkUpload(blob: Blob, name = ""): Promise<CheckedUpload> {
+  const video = videoType(blob, name);
+  if (video) return { blob: typed(blob, video), kind: "video", mime: video };
   if (!/svg/i.test(blob.type) && !/\.svg$/i.test(name)) {
     const mime = blob.type.startsWith("image/") ? blob.type : "image/png";
     return { blob: typed(blob, mime), kind: "image", mime };
@@ -186,7 +253,13 @@ export function isAcceptedImage(file: File): boolean {
 
 export async function prepareAssetFromFile(file: File, id = uid("a")): Promise<Asset> {
   const checked = await checkUpload(file, file.name);
-  const size = checked.drawn ?? (await measure(checked.blob, checked.markup));
+  let size: { width: number; height: number };
+  if (checked.kind === "video") {
+    if (checked.blob.size > MAX_VIDEO_BYTES) throw new Error(VIDEO_TOO_BIG_MESSAGE);
+    const info = await videoInfo(checked.blob);
+    if (!info) throw new Error(UNPLAYABLE_VIDEO_MESSAGE);
+    size = info;
+  } else size = checked.drawn ?? (await measure(checked.blob, checked.markup));
   return {
     id,
     name: file.name.replace(/\.[^.]+$/, "") || "Upload",

@@ -61,6 +61,8 @@ export function PageView() {
           clip: { x: (v.scrollLeft - v.pageLeft) / z, y: (v.scrollTop - v.pageTop) / z, w: v.width / z, h: v.height / z },
           hide,
           animation: playing && time !== null ? { time } : undefined,
+          // the preview plays the page's clips too, without their sound
+          playVideos: playing ? {} : undefined,
         },
         useGesture.getState().active,
       );

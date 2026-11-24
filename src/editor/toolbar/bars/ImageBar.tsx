@@ -26,7 +26,7 @@ import { clampNumber, editElements, only, uniform } from "../selection";
 type Extra = { copyEnabled: boolean };
 
 /** Every catalogue shape can cut a picture; rect means the ordinary frame. */
-const FRAME_SHAPES: ReadonlyArray<{ mask: string; name: string }> = [
+export const FRAME_SHAPES: ReadonlyArray<{ mask: string; name: string }> = [
   { mask: "rect", name: m.editor.imageBar.frameNone },
   ...SHAPES.filter((shape) => shape.id !== "rect").map((shape) => ({ mask: shape.id, name: shape.name })),
 ];

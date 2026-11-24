@@ -205,6 +205,26 @@ export const editor: typeof en = {
     frameNone: "कोई फ़्रेम नहीं",
   },
 
+  videoBar: {
+    play: "चलाएँ",
+    playTip: "क्लिप को पेज पर चलाएँ",
+    stop: "रोकें",
+    stopTip: "चलाना रोकें",
+    trim: "ट्रिम",
+    trimTip: "क्लिप का वह हिस्सा चुनें जो चलता है",
+    trimStart: "शुरुआत (सेकंड)",
+    trimEnd: "अंत (सेकंड)",
+    trimLength: (shown: string, whole: string) => `${whole} में से ${shown} चलता है`,
+    resetTrim: "पूरी क्लिप चलाएँ",
+    speed: "गति",
+    speedTip: "क्लिप कितनी तेज़ चलती है",
+    speedValue: (x: number) => `${num(x)}×`,
+    sound: "आवाज़",
+    soundOnTip: "प्रेज़ेंट में क्लिप अपनी आवाज़ के साथ चलती है। म्यूट करने के लिए क्लिक करें",
+    soundOffTip: "क्लिप म्यूट है। प्रेज़ेंट में आवाज़ के साथ चलाने के लिए क्लिक करें",
+    frameShapeTip: "क्लिप को किसी आकार में काटें",
+  },
+
   miscBars: {
     ungroupTip: "ग्रुप को उसके एलिमेंट में अलग करें",
     editData: "डेटा एडिट करें",

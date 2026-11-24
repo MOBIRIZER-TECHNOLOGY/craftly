@@ -60,6 +60,10 @@ const journeys = [
     "a phone (375 x 812, touch) and a tablet, in English and Hindi: no sideways scroll, every tab reached by taps, top bar and toolbars fit, a text added and edited, menus and Share fit, a PNG downloaded, pages, Present",
   ],
   ["animate.cjs", "element and page animations, timing, transitions, preview, motion templates"],
+  [
+    "video.cjs",
+    "the video element: a WebM recorded in the page uploaded, placed, its first frame drawn, Trim, Speed and Sound, Play on the page, Present and a WebM download read back from the pixels, a reload",
+  ],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
   ["animated-export.cjs", "animated GIF and WebM downloads: structure, length, loop, decoded by the browser, cancel"],
   ["a11y.cjs", "keyboard and screen reader basics: the first Tab reaches a control, the canvas is a stop, focus goes back after a dialog, headings and landmarks"],

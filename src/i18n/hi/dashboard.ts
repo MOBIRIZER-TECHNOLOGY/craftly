@@ -412,6 +412,7 @@ export const dashboard: typeof en = {
     folder: "फ़ोल्डर",
     actionsForFolder: (name: string) => `फ़ोल्डर ${name} के विकल्प`,
     imageKind: (format: string) => `${format} इमेज`,
+    videoKind: (format: string) => `${format} वीडियो`,
     previewTemplate: (name: string) => `टेम्पलेट का प्रीव्यू: ${name}`,
     actionsForTemplate: (name: string) => `टेम्पलेट ${name} के विकल्प`,
   },

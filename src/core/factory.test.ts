@@ -1,3 +1,4 @@
+import { CURRENT_DESIGN_VERSION } from "@/core/schema/design";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FONT,
@@ -241,7 +242,17 @@ describe("pages and designs", () => {
 
   it("makes a design with one blank page unless pages are given", () => {
     const design = createDesign({ width: 800, height: 600 });
-    expect(design).toMatchObject({ title: "Untitled design", typeId: "custom", unit: "px", width: 800, height: 600, folderId: null, starred: false, trashedAt: null, version: 1 });
+    expect(design).toMatchObject({
+      title: "Untitled design",
+      typeId: "custom",
+      unit: "px",
+      width: 800,
+      height: 600,
+      folderId: null,
+      starred: false,
+      trashedAt: null,
+      version: CURRENT_DESIGN_VERSION,
+    });
     expect(design.pages).toHaveLength(1);
     expect(design.createdAt).toBe(design.updatedAt);
     expect(design.id).toMatch(/^d_/);

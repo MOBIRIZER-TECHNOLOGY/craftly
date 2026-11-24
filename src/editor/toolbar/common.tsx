@@ -7,7 +7,7 @@ import { BLEND_MODES, blendLabel, blendOf } from "@/core/blend";
 import { connectable } from "@/core/connectors";
 import { DEFAULT_INK } from "@/core/factory";
 import { getActions, getActivePage, useEditor } from "@/core/store";
-import type { BlendMode, DesignElement, ID, ImageElement, ShapeElement, Stroke, StrokeStyle } from "@/core/types";
+import type { BlendMode, DesignElement, ID, ImageElement, ShapeElement, Stroke, StrokeStyle, VideoElement } from "@/core/types";
 import {
   Button,
   IconAlignObjBottom,
@@ -252,7 +252,7 @@ export function MultiActions({ ids }: { ids: ID[] }) {
 /* border + corner radius (shapes and images)                          */
 /* ------------------------------------------------------------------ */
 
-type Bordered = ShapeElement | ImageElement;
+type Bordered = ShapeElement | ImageElement | VideoElement;
 
 const STROKE_STYLES: Array<"none" | StrokeStyle> = ["none", "solid", "dashed", "dotted"];
 
@@ -275,7 +275,7 @@ function defaultStroke(style: StrokeStyle = "solid"): Stroke {
 
 function setBorderStyle(ids: ID[], value: "none" | StrokeStyle): void {
   editElements(ids, (el) => {
-    if (el.type !== "shape" && el.type !== "image") return;
+    if (el.type !== "shape" && el.type !== "image" && el.type !== "video") return;
     if (value === "none") {
       el.stroke = null;
       return;
@@ -294,7 +294,7 @@ function setBorderWeight(ids: ID[], width: number): void {
   editElements(
     ids,
     (el) => {
-      if (el.type !== "shape" && el.type !== "image") return;
+      if (el.type !== "shape" && el.type !== "image" && el.type !== "video") return;
       if (el.stroke) el.stroke.width = width;
       else if (width > 0) el.stroke = { ...defaultStroke(), width };
     },
@@ -364,7 +364,7 @@ export function RadiusPopover({ els, ids }: { els: Bordered[]; ids: ID[] }) {
             editElements(
               ids,
               (el) => {
-                if (el.type === "shape" || el.type === "image") el.radius = v;
+                if (el.type === "shape" || el.type === "image" || el.type === "video") el.radius = v;
               },
               "radius",
             )

@@ -8,15 +8,16 @@ import { blendOf } from "@/core/blend";
 import { DEG } from "@/core/geometry";
 import { lineLabelPoint, linePath, lineRouteAngles } from "@/core/lineRoute";
 import { recolorSvg, setSvgStrokeWidth } from "@/core/svg";
-import type { BlendMode, Design, DesignElement, Fill, GraphicElement, ID, ImageElement, LineElement, Page, Rect, ShapeElement, Stroke } from "@/core/types";
+import type { BlendMode, Design, DesignElement, Fill, GraphicElement, ID, ImageElement, LineElement, Page, Rect, ShapeElement, Stroke, VideoElement } from "@/core/types";
 import { drawChart, drawTable } from "./drawBlocks";
 import { drawTextElement } from "./drawText";
 import { ensureFont, isFontReady } from "./fonts";
 import { cssFilter, filterKey, isNeutral, renderFiltered, supportsCtxFilter } from "./imageFilters";
-import { getImage, getSvgImage, loadImage, loadSvgImage, type Drawable, drawableSize } from "./images";
+import { getImage, getSvgImage, loadImage, loadSvgImage, type Drawable, drawableSize, videoPosterKey } from "./images";
 import { paintFor } from "./paint";
 import { getPath2D, shapeFillRule } from "./shapePaths";
 import { layoutText, resolveRunStyle } from "./textLayout";
+import { playingFrame } from "./videos";
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -31,6 +32,12 @@ export interface RenderOptions {
   hide?: ReadonlySet<ID>;
   /** paint the page `time` seconds into its animations (entrance, exit, emphasis); without it elements sit at rest */
   animation?: { time: number };
+  /**
+   * Play the clips of video elements at `animation.time` (src/render/videos.ts), with their sound when `sound` is set: for what
+   * plays in real time (Present, the animation preview, a video recorded as it plays). Without it a clip is its first frame, which
+   * is what every still download and a GIF (painted faster or slower than real time) hold.
+   */
+  playVideos?: { sound?: boolean };
   /**
    * Design pixels to paint beyond every edge of the page (a print export with bleed). The canvas then starts `bleed`
    * above and left of the page, and `clip` is measured from that corner; the background is stretched over the larger
@@ -52,6 +59,9 @@ interface Env {
   pending: boolean;
   /** how many blended elements the one being painted is inside of: which layer it would be painted on */
   depth: number;
+  /** clips play, this many seconds into the page (RenderOptions.playVideos) */
+  videoTime?: number;
+  videoSound?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -365,6 +375,49 @@ function drawImageElement(ctx: Ctx, el: ImageElement, env: Env): void {
   }
 }
 
+/** A clip: the frame that plays now, or its first frame, drawn as a picture is (crop, frame shape, shadow, outline); no filter. */
+function drawVideoElement(ctx: Ctx, el: VideoElement, env: Env): void {
+  const w = el.width;
+  const h = el.height;
+  const clip = getPath2D(el.mask || "rect", w, h, { radius: el.radius, path: el.maskPath });
+  const playing = env.videoTime === undefined ? null : playingFrame(el, env.videoTime, env.videoSound);
+  const frame: CanvasImageSource | null = playing ?? (getImage(videoPosterKey(el)) as CanvasImageSource | null);
+  if (el.shadow) {
+    shadowOnly(ctx, el, env, () => {
+      ctx.fillStyle = "#000";
+      ctx.fill(clip);
+    });
+  }
+  ctx.save();
+  ctx.clip(clip);
+  if (!frame) {
+    // still loading (the page is painted again when it has come), or a clip this browser cannot play: a dark box with a play sign
+    if (env.videoTime === undefined) env.pending = true;
+    ctx.fillStyle = "#2a2f3a";
+    ctx.fillRect(0, 0, w, h);
+    const s = Math.min(w, h) * 0.18;
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - s * 0.4, h / 2 - s / 2);
+    ctx.lineTo(w / 2 + s * 0.5, h / 2);
+    ctx.lineTo(w / 2 - s * 0.4, h / 2 + s / 2);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    if (el.crop.rotation) {
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate(el.crop.rotation * DEG);
+      ctx.translate(-w / 2, -h / 2);
+    }
+    ctx.drawImage(frame, el.crop.x * w, el.crop.y * h, el.crop.w * w, el.crop.h * h);
+  }
+  ctx.restore();
+  if (el.stroke && el.stroke.width > 0) {
+    applyStroke(ctx, el.stroke);
+    ctx.stroke(clip);
+  }
+}
+
 const svgCache = new WeakMap<GraphicElement, string>();
 /** Final markup of a graphic after recolouring (shared with the SVG exporter). */
 export function graphicMarkup(el: GraphicElement): string {
@@ -511,6 +564,9 @@ function paintByType(ctx: Ctx, el: DesignElement, env: Env): void {
     case "chart":
       drawChart(ctx, el);
       break;
+    case "video":
+      drawVideoElement(ctx, el, env);
+      break;
   }
 }
 
@@ -592,6 +648,10 @@ function drawAnimated(ctx: Ctx, el: DesignElement, env: Env, st: AnimState, unit
 export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, page: Page, opts: RenderOptions): boolean {
   const { scale, clip } = opts;
   const env: Env = { scale, hide: opts.hide, pending: false, depth: 0 };
+  if (opts.playVideos && opts.animation) {
+    env.videoTime = opts.animation.time;
+    env.videoSound = !!opts.playVideos.sound;
+  }
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const part = opts.part;
@@ -640,6 +700,7 @@ export function collectResources(page: Page): Resources {
   const visit = (el: DesignElement) => {
     if (el.hidden) return;
     if (el.type === "image" && el.src) r.images.add(el.src);
+    else if (el.type === "video") r.images.add(videoPosterKey(el));
     else if (el.type === "graphic") r.svgs.add(graphicMarkup(el));
     else if (el.type === "group") el.children.forEach(visit);
     else if (el.type === "text") {

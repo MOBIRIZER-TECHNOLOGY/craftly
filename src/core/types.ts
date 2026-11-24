@@ -88,7 +88,7 @@ export interface Shadow {
 /* Elements                                                           */
 /* ------------------------------------------------------------------ */
 
-export type ElementType = "text" | "shape" | "line" | "image" | "graphic" | "group" | "table" | "chart";
+export type ElementType = "text" | "shape" | "line" | "image" | "graphic" | "group" | "table" | "chart" | "video";
 
 /** How an element mixes its colours with what is under it (src/core/blend.ts). The names are those of a canvas's `globalCompositeOperation` and of a style sheet's `mix-blend-mode`. */
 export type BlendMode =
@@ -471,7 +471,37 @@ export interface ChartElement extends ElementBase {
   categoryAxisTitle?: string;
 }
 
-export type DesignElement = TextElement | ShapeElement | LineElement | ImageElement | GraphicElement | GroupElement | TableElement | ChartElement;
+/* ---- video ---- */
+
+/**
+ * An uploaded clip on the page (src/render/videos.ts). It is drawn like a picture (crop, frame shape, corners, outline): at rest
+ * as the frame at `trimStart`, and in Present, an animation preview and a recorded video as the clip playing from `trimStart`
+ * to `trimEnd` at `speed`, over and over. Still downloads (PNG, PDF, SVG, PowerPoint) hold that first frame.
+ */
+export interface VideoElement extends ElementBase {
+  type: "video";
+  /** "asset:<id>": a clip stored in this browser's uploads (no other scheme: a design never plays a clip from the web) */
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  /** seconds: the length of the whole clip */
+  duration: number;
+  /** seconds into the clip where it starts and stops playing (0 <= trimStart < trimEnd <= duration) */
+  trimStart: number;
+  trimEnd: number;
+  /** how fast it plays, 0.25 to 4 (1 = as recorded) */
+  speed: number;
+  /** without its sound in Present (a clip is always silent while editing) */
+  muted?: boolean;
+  crop: ImageCrop;
+  /** frame shape from the shape catalogue ("rect" = none) */
+  mask: ShapeKind;
+  maskPath?: string;
+  radius: number;
+  stroke?: Stroke | null;
+}
+
+export type DesignElement = TextElement | ShapeElement | LineElement | ImageElement | GraphicElement | GroupElement | TableElement | ChartElement | VideoElement;
 
 export type ElementOf<T extends ElementType> = Extract<DesignElement, { type: T }>;
 
@@ -656,7 +686,7 @@ export interface SyncRecord {
 export interface Asset {
   id: ID;
   name: string;
-  kind: "image" | "svg";
+  kind: "image" | "svg" | "video";
   mime: string;
   size: number;
   width: number;

@@ -350,6 +350,7 @@ export const panelsContext: typeof en = {
     group: "ग्रुप",
     table: "टेबल",
     chart: "चार्ट",
+    video: "वीडियो",
     emptyText: "खाली टेक्स्ट",
     groupOf: (n: number) => `ग्रुप (${num(n)})`,
   },

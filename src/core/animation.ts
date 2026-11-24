@@ -308,8 +308,11 @@ export function evaluateAnimation(anim: ElementAnimations | null | undefined, t:
 /** True when the element has any animation at all. */
 export const isAnimated = (el: Pick<DesignElement, "animation">): boolean => !!el.animation && !!(el.animation.in || el.animation.out || el.animation.loop);
 
-/** True when some element on the page is animated. */
-export const pageHasAnimation = (page: Pick<Page, "elements">): boolean => page.elements.some(isAnimated);
+/** True when the element is a clip that plays, or a group with one (a hidden one plays nothing). */
+export const playsClip = (el: DesignElement): boolean => !el.hidden && (el.type === "video" || (el.type === "group" && el.children.some(playsClip)));
+
+/** True when some element on the page is animated, or is a clip, which plays for as long as the page is shown. */
+export const pageHasAnimation = (page: Pick<Page, "elements">): boolean => page.elements.some((el) => isAnimated(el) || playsClip(el));
 
 /* ------------------------------------------------------------------ */
 /* page animations: one preset for every element, staggered            */

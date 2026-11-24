@@ -16,7 +16,8 @@ const refused = (status: number) => status >= 400 && status < 500 && status !== 
 const imageType = /^image\/(?:png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
 
 /**
- * The pictures of a shared design, sent to its room and fetched from it. With `session`, the room is one bound to a design of a team
+ * The pictures of a shared design, sent to its room and fetched from it. Its clips are not: a room keeps pictures only, so the
+ * others see a clip's element without the clip. With `session`, the room is one bound to a design of a team
  * (docs/ACCOUNTS.md): the member's session goes as a bearer token in place of the key.
  */
 export function sharedMedia(link: LiveLink, request: typeof fetch = fetch, session?: string) {
@@ -25,7 +26,7 @@ export function sharedMedia(link: LiveLink, request: typeof fetch = fetch, sessi
   const downloads = new Map<string, Promise<void>>();
   return {
     async upload(design: Design, allowed?: ReadonlySet<string>): Promise<void> {
-      for (const id of collectAssetIds(design)) {
+      for (const id of collectAssetIds(design, { clips: false })) {
         if (uploaded.has(id) || (allowed && !allowed.has(id))) continue;
         const asset = await getAsset(id);
         // An asset from another member may still be downloading. It already belongs to this room.
@@ -52,7 +53,7 @@ export function sharedMedia(link: LiveLink, request: typeof fetch = fetch, sessi
     },
     async download(design: Design): Promise<void> {
       await Promise.all(
-        collectAssetIds(design).map(async (id) => {
+        collectAssetIds(design, { clips: false }).map(async (id) => {
           if (await getAsset(id)) return;
           let pending = downloads.get(id);
           if (!pending) {

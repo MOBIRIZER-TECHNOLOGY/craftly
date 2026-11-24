@@ -1,7 +1,7 @@
 /**
  * "Complete" documents: every optional field of the stored formats is present, and the compiler checks it. A new optional
  * property on `Design`, an element, a fill, a summary ... makes the builders below fail to compile until it is added here,
- * and a new property in the builders then differs from the frozen v1 fixtures, which the tests of src/core/schema name
+ * and a new property in the builders then differs from the frozen fixtures of the current version, which the tests of src/core/schema name
  * (docs/MIGRATIONS.md: "changing what is stored"). Adding a field is allowed; doing it without noticing is what this stops.
  *
  * `Complete<T>`: T with every optional property required and not null, in every nested object, array item and union member.
@@ -277,12 +277,29 @@ function completeElements(): Complete<DesignElement>[] {
       valueAxisTitle: "Units",
       categoryAxisTitle: "Year",
     },
+    {
+      ...base("v_1"),
+      type: "video",
+      src: "asset:a_clip",
+      naturalWidth: 1280,
+      naturalHeight: 720,
+      duration: 12.5,
+      trimStart: 1.5,
+      trimEnd: 9,
+      speed: 1.5,
+      muted: true,
+      crop: { x: -0.1, y: 0, w: 1.2, h: 1, rotation: 3 },
+      mask: "hexagon",
+      maskPath: "M0 0 L100 0 L50 100 Z",
+      radius: 12,
+      stroke,
+    },
   ];
 }
 
 /** Five pages: one for each kind of page background, the elements spread over them. */
 function completePages(): Complete<Page>[] {
-  const [text, star, imageFill, patternFill, linearShape, solidShape, line, image, graphic, group, table, chart] = completeElements();
+  const [text, star, imageFill, patternFill, linearShape, solidShape, line, image, graphic, group, table, chart, video] = completeElements();
   const page = (id: string, background: Complete<Page>["background"], elements: Complete<DesignElement>[]): Complete<Page> => ({
     id,
     name: `Page ${id}`,
@@ -297,7 +314,7 @@ function completePages(): Complete<Page>[] {
     page("p_2", { type: "linear", angle: 135, stops }, [patternFill, linearShape, solidShape]),
     page("p_3", { type: "radial", stops, cx: 0.3, cy: 0.7 }, [line, image, graphic]),
     page("p_4", { type: "pattern", pattern: "dots", color: "#99aabb", background: "#ffffff", scale: 2 }, [group, table, chart]),
-    page("p_5", { type: "image", src: "asset:a_background", fit: "cover", dim: 0.35 }, []),
+    page("p_5", { type: "image", src: "asset:a_background", fit: "cover", dim: 0.35 }, [video]),
   ];
 }
 
@@ -333,7 +350,7 @@ export function completeDesign(): Complete<Design> {
         replies: [{ id: "r_complete", author: { name: "Bob", colorIndex: 7 }, createdAt: 1_700_000_300_000, editedAt: 1_700_000_400_000, text: "Done" }],
       },
     ],
-    version: 1,
+    version: 2,
   };
 }
 
@@ -424,6 +441,21 @@ export function minimalDesign(): Design {
             valueAxisTitle: "",
             categoryAxisTitle: "",
           },
+          {
+            id: "v_1",
+            type: "video",
+            ...required,
+            src: "asset:a_clip",
+            naturalWidth: 640,
+            naturalHeight: 360,
+            duration: 4,
+            trimStart: 0,
+            trimEnd: 4,
+            speed: 1,
+            crop: { x: 0, y: 0, w: 1, h: 1 },
+            mask: "rect",
+            radius: 0,
+          },
         ],
       },
     ],
@@ -432,7 +464,7 @@ export function minimalDesign(): Design {
     folderId: null,
     starred: false,
     trashedAt: null,
-    version: 1,
+    version: 2,
   };
 }
 

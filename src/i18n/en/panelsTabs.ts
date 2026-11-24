@@ -501,8 +501,9 @@ export const panelsTabs = {
   /* Uploads                                                            */
   /* ---------------------------------------------------------------- */
   uploads: {
-    notImages: "Only images can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP or SVG.",
-    skipped: (n: number) => plural(n, { one: `${num(n)} file was skipped because it is not an image.`, other: `${num(n)} files were skipped because they are not images.` }),
+    notImages: "Only images and videos can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP, SVG, MP4, WebM or Ogg.",
+    skipped: (n: number) =>
+      plural(n, { one: `${num(n)} file was skipped because it is not an image or a video.`, other: `${num(n)} files were skipped because they are not images or videos.` }),
     failed: (n: number) => plural(n, { one: `${num(n)} upload failed. Try a smaller image.`, other: `${num(n)} uploads failed. Try a smaller image.` }),
     search: "Search uploads by name",
     uploadFiles: "Upload files",
@@ -516,6 +517,8 @@ export const panelsTabs = {
     introText: "Add your own photos and logos. They stay in this browser, ready for any design.",
     deleteTitle: (name: string) => `Delete "${name}"?`,
     deleteText: "Designs that use this image will show an empty frame in its place. This cannot be undone.",
+    deleteVideoText: "Designs that use this video will show an empty box in its place. This cannot be undone.",
+    video: "Video",
     deleted: "Upload deleted",
     addToPage: (name: string) => `Add ${name} to the page`,
     name: "Upload name",

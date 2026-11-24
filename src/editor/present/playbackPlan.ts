@@ -3,7 +3,7 @@
  * plays and which way it travels, what a page looks like once its exits are left out, which frames are worth
  * painting, and how an automatic playback turns seconds into frames. `PresentPlayer` does the drawing.
  */
-import { evaluateAnimation, pageDuration } from "@/core/animation";
+import { evaluateAnimation, pageDuration, playsClip } from "@/core/animation";
 import { buildTimeline, frameAt, getTransitionPreset, transitionSeconds, type Timeline, type TimelineFrame } from "@/core/transition";
 import type { AnimDirection, DesignElement, Page } from "@/core/types";
 
@@ -82,6 +82,8 @@ export function stripExits(page: Page): Page {
  */
 export function isAnimating(page: Pick<Page, "elements" | "duration">, t: number): boolean {
   const duration = pageDuration(page);
+  // a clip plays for as long as the page is shown
+  if (page.elements.some(playsClip)) return true;
   return page.elements.some((el) => !el.hidden && !!el.animation && evaluateAnimation(el.animation, t, duration) !== null);
 }
 

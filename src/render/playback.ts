@@ -57,7 +57,14 @@ export class PlaybackRenderer {
   private a: HTMLCanvasElement | null = null;
   private b: HTMLCanvasElement | null = null;
 
-  constructor(private readonly design: Pick<Design, "width" | "height" | "pages">) {}
+  /**
+   * With `videos` the clips of video elements play (RenderOptions.playVideos): for a playback that runs in real time. A GIF, which is
+   * painted frame by frame as fast as it can be, leaves it out and holds every clip's first frame.
+   */
+  constructor(
+    private readonly design: Pick<Design, "width" | "height" | "pages">,
+    private readonly videos?: { sound?: boolean },
+  ) {}
 
   private pair(w: number, h: number): [HTMLCanvasElement, HTMLCanvasElement] {
     if (!this.a || this.a.width !== w || this.a.height !== h) this.a = scratch(w, h);
@@ -66,9 +73,10 @@ export class PlaybackRenderer {
   }
 
   /** One page `time` seconds into its own animations. True when every image and font was ready. */
-  renderPageAt(ctx: Ctx, page: Page, time: number, opts: { transparent?: boolean } = {}): boolean {
+  renderPageAt(ctx: Ctx, page: Page, time: number, opts: { transparent?: boolean; still?: boolean } = {}): boolean {
     const scale = ctx.canvas.width / this.design.width;
-    return renderPage(ctx, this.design, page, { scale, transparent: opts.transparent, animation: { time } });
+    const playVideos = this.videos && !opts.still ? this.videos : undefined;
+    return renderPage(ctx, this.design, page, { scale, transparent: opts.transparent, animation: { time }, playVideos });
   }
 
   /** The frame at `t` seconds of the whole playback described by `timeline`. */
@@ -79,9 +87,9 @@ export class PlaybackRenderer {
     const [a, b] = this.pair(ctx.canvas.width, ctx.canvas.height);
     const actx = a.getContext("2d")!;
     const bctx = b.getContext("2d")!;
-    // the old page is frozen at its last moment, the new one at its first
-    const ready1 = this.renderPageAt(actx, pages[frame.from], pageDuration(pages[frame.from]));
-    const ready2 = this.renderPageAt(bctx, pages[frame.to], 0);
+    // the old page is frozen at its last moment, the new one at its first (and their clips at their first frames)
+    const ready1 = this.renderPageAt(actx, pages[frame.from], pageDuration(pages[frame.from]), { still: true });
+    const ready2 = this.renderPageAt(bctx, pages[frame.to], 0, { still: true });
     const tr = pages[frame.to].transition;
     drawTransition(ctx, a, b, tr?.kind ?? "dissolve", frame.progress, tr?.direction);
     return ready1 && ready2;

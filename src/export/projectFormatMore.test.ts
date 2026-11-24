@@ -1,3 +1,4 @@
+import { CURRENT_DESIGN_VERSION } from "@/core/schema/design";
 import { describe, expect, it } from "vitest";
 import { createChart, createDesign, createGraphic, createGroup, createImage, createLine, createPage, createShape, createTable, createText, solid } from "@/core/factory";
 import type { Design } from "@/core/types";
@@ -189,7 +190,16 @@ describe("reading a design the way the library stores it", () => {
 
   it("keeps the id, the dates and the library data that a project file would reset", () => {
     const raw = stored((r) => Object.assign(r, { id: "d_kept", createdAt: 11, updatedAt: 22, folderId: "f_1", starred: true, trashedAt: 33 }));
-    expect(parseStoredDesign(raw)).toMatchObject({ id: "d_kept", title: "T", createdAt: 11, updatedAt: 22, folderId: "f_1", starred: true, trashedAt: 33, version: 1 });
+    expect(parseStoredDesign(raw)).toMatchObject({
+      id: "d_kept",
+      title: "T",
+      createdAt: 11,
+      updatedAt: 22,
+      folderId: "f_1",
+      starred: true,
+      trashedAt: 33,
+      version: CURRENT_DESIGN_VERSION,
+    });
   });
 
   it("falls back to the plain values for library data that is not usable", () => {

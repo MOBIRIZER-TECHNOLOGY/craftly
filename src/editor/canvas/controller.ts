@@ -7,7 +7,7 @@
  * components; this file only reads/writes the stores.
  */
 import { tableCellAt } from "@/core/tableCells";
-import { isAcceptedImage } from "@/core/assets";
+import { isAcceptedImage, isAcceptedVideo } from "@/core/assets";
 import { createLine, createShape, createText } from "@/core/factory";
 import {
   boundsOfElements,
@@ -716,7 +716,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const corner = isCorner(g.handle);
     let keepAspect = false;
     if (g.multi) keepAspect = corner && !e.shiftKey;
-    else if (type === "image" && corner) keepAspect = true;
+    else if ((type === "image" || type === "video") && corner) keepAspect = true;
     else if ((type === "graphic" || type === "group" || type === "text") && corner) keepAspect = !e.shiftKey || type === "text";
     else if (type === "shape" && corner) keepAspect = e.shiftKey;
     else if ((type === "table" || type === "chart") && corner) keepAspect = e.shiftKey;
@@ -774,7 +774,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       }
       return;
     }
-    if (o.type === "image" && el.type === "image") {
+    // a clip is framed as a picture is: corners scale it, sides move the frame over it
+    if ((o.type === "image" && el.type === "image") || (o.type === "video" && el.type === "video")) {
       const corner = isCorner(handle);
       if (corner) {
         el.x = box.x;
@@ -1110,7 +1111,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const s = st();
     if (!s.design || s.mode === "view") return;
     const pt = toDesign(e);
-    const files = Array.from(e.dataTransfer?.files ?? []).filter(isAcceptedImage);
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => isAcceptedImage(f) || isAcceptedVideo(f));
     if (files.length) {
       await insertImageFiles(files, pt);
       return;

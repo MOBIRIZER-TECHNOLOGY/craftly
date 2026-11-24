@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { m } from "@/i18n";
 import { addAssetFromFile, getAsset, listAssets, prepareAssetFromFile } from "@/core/assets";
-import { createDesign, createImage, createPage, createShape } from "@/core/factory";
+import { createDesign, createImage, createPage, createShape, createVideo } from "@/core/factory";
 import {
   getDesign,
   getSummary,
@@ -1023,6 +1023,32 @@ describe("sending the pictures of a design", () => {
     expect(useSyncStatus.getState()).toMatchObject({ state: "problem", problem: m.cloud.errors.server, waiting: 1 });
     expect((await run()).pushed).toBe(1);
     expect((await call(b, "GET", `/api/spaces/${space()}/assets/${asset.id}`, { token: other })).status).toBe(200);
+  });
+
+  it("sends the picture of a design and never its clip, which stays on this device", async () => {
+    const asset = await localPicture();
+    const elements = [createImage({ src: `asset:${asset.id}` }), createVideo({ src: "asset:a_clip_here" })];
+    const design = await local("Picture and clip", { pages: [createPage({ elements })] });
+    const watched = serverThat(() => undefined);
+    expect(await run({ fetch: watched.fetch })).toMatchObject({ pushed: 1, problems: [] });
+    // the server is asked only whether it has the picture, and only the picture is sent
+    expect(watched.bodies.get(`POST /api/spaces/${space()}/assets/missing`)).toEqual({ ids: [asset.id] });
+    expect(watched.seen.filter((r) => r.includes("/assets/") && !r.endsWith("/missing"))).toEqual([`PUT /api/spaces/${space()}/assets/${asset.id}`]);
+    // the design itself goes with its video element in it
+    expect((await remote(design.id)).body.design.pages[0].elements[1]).toMatchObject({ type: "video", src: "asset:a_clip_here" });
+  });
+
+  it("fetches the picture of a design from the server and never asks for its clip", async () => {
+    await call(b, "PUT", `/api/spaces/${space()}/assets/a_pic_there`, { token: other, body: { mime: "image/png", base64: PNG } });
+    const elements = [createImage({ src: "asset:a_pic_there" }), createVideo({ src: "asset:a_clip_there" })];
+    const made = await fromThePhone("Picture and clip there", { pages: [createPage({ elements })] });
+    const watched = serverThat(() => undefined);
+    // a clip that is not here is no missing upload: nothing is said about it
+    expect(await run({ fetch: watched.fetch })).toMatchObject({ pulled: 1, problems: [] });
+    expect(watched.seen.filter((r) => r.includes("/assets/"))).toEqual([`GET /api/spaces/${space()}/assets/a_pic_there`]);
+    expect((await getAsset("a_pic_there"))?.mime).toBe("image/png");
+    expect(await getAsset("a_clip_there")).toBeNull();
+    expect(await getSummary(made.id)).not.toBeNull();
   });
 });
 

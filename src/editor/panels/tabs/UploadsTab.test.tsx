@@ -131,7 +131,7 @@ describe("Uploads tab", () => {
       const click = vi.spyOn(HTMLInputElement.prototype, "click");
       await user.click(screen.getByRole("button", { name: "Upload files" }));
       expect(click.mock.contexts).toContain(fileInput());
-      expect(fileInput().accept).toBe("image/*");
+      expect(fileInput().accept).toBe("image/*,video/mp4,video/webm,video/ogg");
       expect(fileInput().multiple).toBe(true);
     });
 
@@ -161,14 +161,14 @@ describe("Uploads tab", () => {
     it("explains when nothing chosen is an image", async () => {
       await openUploads();
       fireEvent.change(fileInput(), { target: { files: [new File(["x"], "notes.txt", { type: "text/plain" })] } });
-      expect(await screen.findByText("Only images can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP or SVG.")).toBeTruthy();
+      expect(await screen.findByText("Only images and videos can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP, SVG, MP4, WebM or Ogg.")).toBeTruthy();
       expect(await listAssets()).toHaveLength(0);
     });
 
     it("stores the pictures and says how many other files were skipped", async () => {
       await openUploads();
       fireEvent.change(fileInput(), { target: { files: [imageFile("keep.png"), new File(["x"], "a.txt", { type: "text/plain" })] } });
-      expect(await screen.findByText("1 file was skipped because it is not an image.")).toBeTruthy();
+      expect(await screen.findByText("1 file was skipped because it is not an image or a video.")).toBeTruthy();
       await waitFor(() => expect(cardNames()).toEqual(["keep"]));
     });
 
@@ -177,7 +177,7 @@ describe("Uploads tab", () => {
       fireEvent.change(fileInput(), {
         target: { files: [imageFile("keep.png"), new File(["x"], "a.txt", { type: "text/plain" }), new File(["y"], "b.doc", { type: "application/msword" })] },
       });
-      expect(await screen.findByText("2 files were skipped because they are not images.")).toBeTruthy();
+      expect(await screen.findByText("2 files were skipped because they are not images or videos.")).toBeTruthy();
     });
 
     it("reports the uploads that failed and keeps the ones that worked", async () => {
@@ -260,7 +260,7 @@ describe("Uploads tab", () => {
     it("explains when a dropped file is not a picture", async () => {
       await openUploads();
       fireEvent.drop(zone(), { dataTransfer: fakeDataTransfer({ files: [new File(["x"], "a.txt", { type: "text/plain" })], types: ["Files"] }) });
-      expect(await screen.findByText("Only images can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP or SVG.")).toBeTruthy();
+      expect(await screen.findByText("Only images and videos can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP, SVG, MP4, WebM or Ogg.")).toBeTruthy();
     });
   });
 

@@ -358,6 +358,7 @@ export const panelsContext = {
     group: "Group",
     table: "Table",
     chart: "Chart",
+    video: "Video",
     emptyText: "Empty text",
     groupOf: (n: number) => `Group (${num(n)})`,
   },

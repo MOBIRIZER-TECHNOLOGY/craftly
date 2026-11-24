@@ -7,6 +7,8 @@ import { getAssetUrl } from "@/core/assets";
 import { isRemoteImage } from "@/core/imageSources";
 import { svgToDataUrl } from "@/core/svg";
 import { getPhotoImage, getPhotoThumb } from "@/data/photos";
+import type { VideoElement } from "@/core/types";
+import { loadPoster, onVideosChange } from "./videos";
 
 export type Drawable = HTMLImageElement | HTMLCanvasElement | ImageBitmap;
 
@@ -17,6 +19,12 @@ const subs = new Set<() => void>();
 let epoch = 0;
 
 export const imagesEpoch = () => epoch;
+
+// a clip that has its first frame to play, or cannot be played, is told to whoever paints when a picture has come
+onVideosChange(() => {
+  epoch++;
+  subs.forEach((cb) => cb());
+});
 
 export function retryAssetImage(id: string): void {
   if (!failed.delete(`asset:${id}`)) return;
@@ -42,6 +50,11 @@ function loadElement(url: string): Promise<HTMLImageElement> {
  * A picture on the web is not fetched (src/core/imageSources.ts says why): it counts as a picture that could not be loaded.
  */
 async function resolveSource(src: string): Promise<Drawable | null> {
+  // a clip's first frame (videoPosterKey): only ever of an upload of this browser
+  if (src.startsWith("video:")) {
+    const poster = /^video:(asset:[\w-]+)@(\d+(?:\.\d+)?)$/.exec(src);
+    return poster ? loadPoster(poster[1], Number(poster[2])) : null;
+  }
   if (isRemoteImage(src)) return null;
   if (src.startsWith("builtin:")) return getPhotoImage(src.slice(8), 1600);
   if (src.startsWith("asset:")) {
@@ -88,6 +101,12 @@ export function getImage(src: string): Drawable | null {
   if (!failed.has(src) && !inflight.has(src)) void loadImage(src);
   return null;
 }
+
+/**
+ * The key of a clip's poster, its frame at `trimStart` (src/render/videos.ts), in this cache: it is loaded, waited for and counted as
+ * missing like a picture (`getImage`, `loadImage`, the exports' checks), and is no address for anything else.
+ */
+export const videoPosterKey = (el: Pick<VideoElement, "src" | "trimStart">) => `video:${el.src}@${Math.max(0, Math.round(el.trimStart * 100) / 100)}`;
 
 /* ---------------- SVG graphics ---------------- */
 

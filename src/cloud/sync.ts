@@ -98,9 +98,12 @@ export async function waitingDesigns(session = useCloud.getState().session): Pro
 
 /* ---------------- uploads ---------------- */
 
-/** Fetches the uploads a design uses that are not here, checked as any picture from outside is (`checkUpload`). */
+/**
+ * Fetches the uploads a design uses that are not here, checked as any picture from outside is (`checkUpload`). A clip of a video
+ * element is not among them: an account server keeps pictures only, so a clip stays on the device it was uploaded on.
+ */
 async function fetchAssets(conn: Conn, space: string, design: Design, report: SyncReport): Promise<void> {
-  for (const id of collectAssetIds(design)) {
+  for (const id of collectAssetIds(design, { clips: false })) {
     if (await getLocalAsset(id)) continue;
     try {
       const { mime, base64 } = await api.getAsset(conn, space, id);
@@ -117,9 +120,9 @@ async function fetchAssets(conn: Conn, space: string, design: Design, report: Sy
   }
 }
 
-/** Sends the uploads a design uses that the space does not have, before the design. */
+/** Sends the pictures a design uses that the space does not have, before the design (not its clips: see `fetchAssets`). */
 async function sendAssets(conn: Conn, space: string, design: Design): Promise<void> {
-  const ids = collectAssetIds(design);
+  const ids = collectAssetIds(design, { clips: false });
   if (!ids.length) return;
   const missing = await api.missingAssets(conn, space, ids.slice(0, 1000));
   for (const id of missing) {

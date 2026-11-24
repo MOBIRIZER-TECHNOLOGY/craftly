@@ -394,6 +394,7 @@ export function scaleElement(el: DesignElement, sx: number, sy: number): void {
         }
       break;
     case "image":
+    case "video":
       el.radius *= s;
       if (el.stroke) el.stroke.width *= s;
       break;

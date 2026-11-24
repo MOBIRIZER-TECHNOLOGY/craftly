@@ -4,7 +4,7 @@ import * as assets from "@/core/assets";
 import { addAssetFromFile, listAssets } from "@/core/assets";
 import * as library from "@/core/library";
 import { getDesign, listDesigns } from "@/core/library";
-import type { ImageElement, Template } from "@/core/types";
+import type { Asset, ImageElement, Template, VideoElement } from "@/core/types";
 import { DESIGN_TYPES, getDesignType } from "@/data/designTypes";
 import { TEMPLATES } from "@/data/templates";
 import * as renderPage from "@/render/renderPage";
@@ -315,6 +315,55 @@ describe("createFromAsset", () => {
     const asset = await addAssetFromFile(imageFile("logo.png"));
     await createFromAsset({ ...asset, name: "" });
     expect((await onlyDesign()).title).toBe("Untitled design");
+  });
+
+  describe("a video upload", () => {
+    const clip = (): Asset => ({
+      id: "a-clip",
+      name: "trip",
+      kind: "video",
+      mime: "video/mp4",
+      size: 4,
+      width: 1920,
+      height: 1080,
+      createdAt: 1,
+      blob: new Blob(["clip"], { type: "video/mp4" }),
+    });
+    const onlyElement = async () => (await getDesign((await onlyDesign()).id))?.pages[0].elements[0] as VideoElement;
+
+    it("makes a design the size of the clip with the clip filling the page and playing whole", async () => {
+      vi.spyOn(assets, "videoInfo").mockResolvedValueOnce({ width: 1920, height: 1080, duration: 14.5 });
+      await createFromAsset(clip());
+      const saved = await onlyDesign();
+      expect(saved).toMatchObject({ typeId: "custom", title: "trip", width: 1920, height: 1080 });
+      expect(await onlyElement()).toMatchObject({
+        type: "video",
+        src: assets.assetSrc("a-clip"),
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        naturalWidth: 1920,
+        naturalHeight: 1080,
+        duration: 14.5,
+        trimStart: 0,
+        trimEnd: 14.5,
+        name: "trip",
+      });
+      expect(window.location.hash).toBe(`#/design/${saved.id}`);
+    });
+
+    it("makes the clip one second long when its length cannot be read", async () => {
+      vi.spyOn(assets, "videoInfo").mockResolvedValueOnce(null);
+      await createFromAsset(clip());
+      expect(await onlyElement()).toMatchObject({ type: "video", duration: 1, trimEnd: 1 });
+    });
+
+    it("makes the clip one second long when the browser reads no length", async () => {
+      vi.spyOn(assets, "videoInfo").mockResolvedValueOnce({ width: 1920, height: 1080, duration: 0 });
+      await createFromAsset(clip());
+      expect(await onlyElement()).toMatchObject({ type: "video", duration: 1 });
+    });
   });
 
   it("reports a failure", async () => {

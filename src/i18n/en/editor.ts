@@ -225,6 +225,27 @@ export const editor = {
     frameNone: "No frame",
   },
 
+  /** VideoBar.tsx: a clip on the page */
+  videoBar: {
+    play: "Play",
+    playTip: "Play the clip on the page",
+    stop: "Stop",
+    stopTip: "Stop playing",
+    trim: "Trim",
+    trimTip: "Choose the part of the clip that plays",
+    trimStart: "Start (seconds)",
+    trimEnd: "End (seconds)",
+    trimLength: (shown: string, whole: string) => `Plays ${shown} of ${whole}`,
+    resetTrim: "Play the whole clip",
+    speed: "Speed",
+    speedTip: "How fast the clip plays",
+    speedValue: (x: number) => `${num(x)}×`,
+    sound: "Sound",
+    soundOnTip: "The clip plays with its sound in Present. Click to mute it",
+    soundOffTip: "The clip is muted. Click to play it with its sound in Present",
+    frameShapeTip: "Cut the clip to a shape",
+  },
+
   /** MiscBars.tsx: group, table and chart, locked selection, page */
   miscBars: {
     ungroupTip: "Split the group into its elements",
