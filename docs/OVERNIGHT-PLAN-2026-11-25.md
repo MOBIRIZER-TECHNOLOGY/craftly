@@ -43,6 +43,16 @@ checked, and what was left. The plan of the earlier night is [`OVERNIGHT-PLAN.md
 | B4 | **Sound in the editor's Play** on a clip's toolbar (it is silent today) | tests; checked in the pane |
 | B5 | **Typed captions** for a clip, if the night allows: lines with a start and an end, shown on the page over the clip, in Present and in downloads | tests; checked in the pane and in a download |
 
+## Part D: added at 00:30, when parts A and B were done
+
+The planned items took about an hour, so the rest of the night goes to these, in this order, under the same rules.
+
+| # | Item | Done when |
+| --- | --- | --- |
+| D1 | **The sound of a video download mixed in pieces**: a 10-minute page raised the heap by about 345 MB, most of it the whole sound held at once | the heap of the same 10-minute download measured again; the sound read back as before |
+| D2 | **Subtitle files for captions**: paste or open an `.srt` file into a clip's captions, and copy them out as `.srt` | tests of the reader and writer (times, several lines of text, a broken file); checked in the pane |
+| D3 | **The keyboard through tonight's popovers** (Audio, Trim, Captions): every control reachable with Tab, named for a screen reader, Esc closes and gives the keyboard back to the toolbar | checked in the pane; fixes with tests |
+
 ## Part C: the end of the night
 
 | # | Item | Done when |
