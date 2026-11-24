@@ -9,16 +9,22 @@
  *   2. the page is painted; `frame(el, time)` answers from what was read and notes any clip it had no frame for;
  *   3. when something was missing (a clip seen for the first time, a jump), `fill()` reads it and the page is painted again.
  */
-import { ALL_FORMATS, BlobSource, CanvasSink, Input, type WrappedCanvas } from "mediabunny";
-import { getAsset } from "@/core/assets";
+import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input, type WrappedCanvas } from "mediabunny";
+import { getAsset, getAssetUrl } from "@/core/assets";
 import type { VideoElement } from "@/core/types";
 import { clipTime, isVideoSource } from "@/render/videos";
 
 /** A frame read for this place in the clip may stand for any time up to this far after it (a frame lasts 1/30 s or less). */
 const SAME_PLACE = 1e-6;
 
+/** What reads the frames of one clip: Mediabunny's decoder, or a <video> sought to each frame. */
+interface FrameReader {
+  frameAt(seconds: number): Promise<CanvasImageSource | null>;
+  dispose(): Promise<void>;
+}
+
 /** Moves through the frames of one clip in order; asked for an earlier place, it starts again from there. */
-class ClipReader {
+class ClipReader implements FrameReader {
   private iterator: AsyncGenerator<WrappedCanvas, void, unknown> | null = null;
   private current: WrappedCanvas | null = null;
   private next: WrappedCanvas | null = null;
@@ -61,6 +67,57 @@ class ClipReader {
   }
 }
 
+/** A seek that has not landed after this long is given up: the frame before stays. */
+const SEEK_TIMEOUT_MS = 4000;
+
+/**
+ * Reads a clip by seeking a hidden <video> to every frame: slower than decoding it (a seek for each frame), but it plays whatever
+ * the browser plays. For a clip Mediabunny cannot decode here (an Ogg clip, say), and for one with a transparency layer, whose
+ * frames Mediabunny joins in workers it makes from blob: addresses, which the app's Content-Security-Policy (worker-src 'self')
+ * refuses.
+ */
+class SeekReader implements FrameReader {
+  private readonly video: HTMLVideoElement;
+  private ready: Promise<boolean>;
+  private at = Number.NaN;
+
+  constructor(url: string) {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.preload = "auto";
+    video.playsInline = true;
+    this.video = video;
+    this.ready = new Promise<boolean>((resolve) => {
+      video.onloadeddata = () => resolve(true);
+      video.onerror = () => resolve(false);
+      setTimeout(() => resolve(video.readyState >= 2), SEEK_TIMEOUT_MS);
+    });
+    video.src = url;
+  }
+
+  async frameAt(seconds: number): Promise<CanvasImageSource | null> {
+    if (!(await this.ready)) return null;
+    const video = this.video;
+    if (seconds !== this.at) {
+      this.at = seconds;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, SEEK_TIMEOUT_MS);
+        video.onseeked = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        video.currentTime = seconds;
+      });
+    }
+    return video.readyState >= 2 ? video : null;
+  }
+
+  async dispose(): Promise<void> {
+    this.video.removeAttribute("src");
+    this.video.load();
+  }
+}
+
 interface Wanted {
   el: VideoElement;
   /** seconds into the page */
@@ -69,8 +126,8 @@ interface Wanted {
 
 /** The clip frames of one export. `frame` is the renderer's `playVideos.frame`. */
 export class ClipFrames {
-  /** one reader per stored clip; null when the clip cannot be decoded here (its first frame is drawn instead) */
-  private readers = new Map<string, Promise<ClipReader | null>>();
+  /** one reader per clip element; null when the clip cannot be read here (its first frame is drawn instead) */
+  private readers = new Map<string, Promise<FrameReader | null>>();
   /** element id -> the place in the clip that was read, and its picture */
   private ready = new Map<string, { place: number; picture: CanvasImageSource | null }>();
   /** clips asked for in the last painting that had no frame read for that place */
@@ -111,12 +168,23 @@ export class ClipFrames {
   private async read(el: VideoElement, time: number): Promise<void> {
     const place = clipTime(el, time);
     const reader = await this.readerFor(el);
-    const picture = reader ? await reader.frameAt(place).catch(() => null) : null;
+    let picture: CanvasImageSource | null = null;
+    if (reader) {
+      try {
+        picture = await reader.frameAt(place);
+      } catch {
+        // the decoder broke down part-way (a frame it could not decode): the rest of the clip is sought in a <video> instead
+        await reader.dispose().catch(() => undefined);
+        const seek = openSeekReader(el);
+        this.readers.set(el.id, seek);
+        picture = (await (await seek)?.frameAt(place).catch(() => null)) ?? null;
+      }
+    }
     this.ready.set(el.id, { place, picture });
   }
 
   /** Readers are per element, not per file: two copies of one clip play at different places and each needs its own. */
-  private readerFor(el: VideoElement): Promise<ClipReader | null> {
+  private readerFor(el: VideoElement): Promise<FrameReader | null> {
     let reader = this.readers.get(el.id);
     if (!reader) {
       reader = openReader(el);
@@ -133,16 +201,25 @@ export class ClipFrames {
   }
 }
 
-async function openReader(el: VideoElement): Promise<ClipReader | null> {
+/** A reader that seeks the clip in a <video>; null when the clip is not stored here. */
+async function openSeekReader(el: VideoElement): Promise<FrameReader | null> {
+  if (!isVideoSource(el.src) || typeof document === "undefined") return null;
+  const url = await getAssetUrl(el.src.slice(6));
+  return url ? new SeekReader(url) : null;
+}
+
+async function openReader(el: VideoElement): Promise<FrameReader | null> {
   if (!isVideoSource(el.src)) return null;
   try {
     const asset = await getAsset(el.src.slice(6));
     if (!asset) return null;
     const input = new Input({ source: new BlobSource(asset.blob), formats: ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
-    if (!track || !(await track.canDecode())) {
+    // a clip the decoder cannot take, or one with a transparency layer (see SeekReader), is sought in a <video> instead
+    const first = track && (await track.canDecode()) ? await new EncodedPacketSink(track).getFirstPacket() : null;
+    if (!track || !first || first.sideData.alpha) {
       input.dispose();
-      return null;
+      return openSeekReader(el);
     }
     // the clip at its own size: the renderer scales it into the element as it does a playing <video>
     return new ClipReader(new CanvasSink(track), input);

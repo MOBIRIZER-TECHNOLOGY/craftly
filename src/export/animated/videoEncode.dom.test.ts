@@ -15,7 +15,20 @@ const mb = vi.hoisted(() => ({
   video: {} as Record<string, boolean>,
   audio: {} as Record<string, boolean>,
   /** the stored clips: per asset id, its frames' timestamps (null: no picture track) and its sound (null: none) */
-  clips: {} as Record<string, { frames: number[] | null; sound: { rate: number; seconds: number; channels: number } | null; decodes?: boolean; broken?: boolean }>,
+  clips: {} as Record<
+    string,
+    {
+      frames: number[] | null;
+      sound: { rate: number; seconds: number; channels: number } | null;
+      decodes?: boolean;
+      broken?: boolean;
+      alpha?: boolean;
+      playable?: boolean;
+      breaksAt?: number;
+    }
+  >,
+  /** the places a <video> was sought to, as [asset id, seconds] (the reader for clips the decoder does not take) */
+  sought: [] as Array<[string, number]>,
   /** every `canvases(start)` asked of a clip, as [asset id, start] */
   seeks: [] as Array<[string, number]>,
   inputsDisposed: 0,
@@ -58,7 +71,18 @@ vi.mock("mediabunny", () => {
       const frames = this.track.frames;
       let first = frames.findIndex((t, i) => t <= start && (i === frames.length - 1 || frames[i + 1] > start));
       if (first < 0) first = 0;
-      for (const t of frames.slice(first)) yield { canvas: { picture: `${this.track.id}@${t}` }, timestamp: t, duration: 1 / 30 };
+      const breaksAt = mb.clips[this.track.id]?.breaksAt;
+      for (const t of frames.slice(first)) {
+        if (breaksAt !== undefined && t >= breaksAt) throw new Error("the decoder could not decode a frame");
+        yield { canvas: { picture: `${this.track.id}@${t}` }, timestamp: t, duration: 1 / 30 };
+      }
+    }
+  }
+  class EncodedPacketSink {
+    constructor(private readonly track: { id: string; frames: number[] }) {}
+    async getFirstPacket() {
+      const clip = mb.clips[this.track.id];
+      return clip.frames?.length ? { sideData: clip.alpha ? { alpha: new Uint8Array(1) } : {} } : null;
     }
   }
   class AudioBufferSink {
@@ -133,6 +157,7 @@ vi.mock("mediabunny", () => {
     BufferTarget,
     CanvasSink,
     CanvasSource,
+    EncodedPacketSink,
     Input,
     Mp4OutputFormat,
     Output,
@@ -146,6 +171,7 @@ vi.mock("mediabunny", () => {
 vi.mock("@/core/assets", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/core/assets")>()),
   getAsset: vi.fn(async (id: string) => (mb.clips[id] ? { id, blob: Object.assign(new Blob(["x"]), { assetId: id }) } : null)),
+  getAssetUrl: vi.fn(async (id: string) => (mb.clips[id] ? `blob:${id}` : null)),
 }));
 
 /** Web Audio's AudioBuffer, which jsdom does not have. */
@@ -226,7 +252,44 @@ const frames30 = (seconds: number) => Array.from({ length: Math.round(seconds * 
 const clip = (over: Partial<VideoElement> & { src?: string } = {}) =>
   createVideo({ src: "asset:a", duration: 2, naturalWidth: 64, naturalHeight: 36, width: 64, height: 36, ...over } as Parameters<typeof createVideo>[0]);
 
+/** The <video> the seeking reader makes: it loads at once (unless the clip is not playable) and lands each seek at once. */
+class SeekVideo {
+  muted = false;
+  preload = "";
+  playsInline = false;
+  readyState = 0;
+  onloadeddata: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onseeked: (() => void) | null = null;
+  private id = "";
+  private time = 0;
+  get picture() {
+    return `${this.id}~${this.time}`;
+  }
+  set src(url: string) {
+    this.id = url.replace("blob:", "");
+    queueMicrotask(() => {
+      if (mb.clips[this.id]?.playable === false) return this.onerror?.();
+      this.readyState = 2;
+      this.onloadeddata?.();
+    });
+  }
+  get currentTime() {
+    return this.time;
+  }
+  set currentTime(v: number) {
+    this.time = v;
+    mb.sought.push([this.id, v]);
+    queueMicrotask(() => this.onseeked?.());
+  }
+  removeAttribute() {}
+  load() {}
+}
+const realCreateElement = document.createElement.bind(document);
+
 beforeEach(() => {
+  mb.sought = [];
+  vi.spyOn(document, "createElement").mockImplementation(((tag: string) => (tag === "video" ? new SeekVideo() : realCreateElement(tag))) as typeof document.createElement);
   mb.video = {};
   mb.audio = {};
   mb.clips = { a: { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 2 } } };
@@ -322,11 +385,9 @@ describe("the clips' pictures, frame by frame", () => {
     expect(picture(frames, two, 0)).toBe("a@1");
   });
 
-  it("draws the first frame of a clip it cannot read: not stored, no picture track, not decodable here", async () => {
-    mb.clips.b = { frames: null, sound: null };
-    mb.clips.c = { frames: frames30(1), sound: null, decodes: false };
+  it("draws the first frame of a clip it cannot read: not stored, or not one of the uploads", async () => {
     const frames = new ClipFrames();
-    for (const el of [clip({ src: "asset:gone" }), clip({ src: "asset:b" }), clip({ src: "asset:c" }), clip({ src: "https://x.test/v.mp4" })]) {
+    for (const el of [clip({ src: "asset:gone" }), clip({ src: "https://x.test/v.mp4" })]) {
       frames.frame(el, 0);
       await frames.fill();
       expect(frames.frame(el, 0)).toBeNull();
@@ -550,17 +611,64 @@ describe("edge cases of a clip's pictures", () => {
     expect(picture(frames, el, 0.6)).toBe("late@0.5");
   });
 
-  it("has no picture for a clip without frames, and for one that is not a media file", async () => {
-    mb.clips.empty = { frames: [], sound: null };
+  it("has no picture for a file that is not media", async () => {
     mb.clips.junk = { frames: frames30(1), sound: null, broken: true };
     const frames = new ClipFrames();
-    for (const src of ["asset:empty", "asset:junk"]) {
-      const el = clip({ src });
-      frames.frame(el, 0);
-      await frames.fill();
-      expect(frames.frame(el, 0)).toBeNull();
-    }
+    const el = clip({ src: "asset:junk" });
+    frames.frame(el, 0);
+    await frames.fill();
+    expect(frames.frame(el, 0)).toBeNull();
     await frames.dispose();
+  });
+
+  it("seeks a <video> instead for a clip with a transparency layer, which would need workers from blob: addresses", async () => {
+    mb.clips.alpha = { frames: frames30(2), sound: null, alpha: true };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:alpha" });
+    frames.frame(el, 0.5);
+    await frames.fill();
+    expect(picture(frames, el, 0.5)).toBe("alpha~0.5");
+    await frames.prefetch(0.5);
+    expect(picture(frames, el, 1)).toBe("alpha~1");
+    // the decoder never ran for it
+    expect(mb.seeks.filter(([id]) => id === "alpha")).toEqual([]);
+    await frames.dispose();
+  });
+
+  it("seeks a <video> for a clip the decoder cannot take or that has no frames to it", async () => {
+    mb.clips.ogg = { frames: frames30(2), sound: null, decodes: false };
+    mb.clips.none = { frames: [], sound: null };
+    const frames = new ClipFrames();
+    for (const id of ["ogg", "none"]) {
+      const el = clip({ src: `asset:${id}` });
+      frames.frame(el, 0.25);
+      await frames.fill();
+      expect(picture(frames, el, 0.25)).toBe(`${id}~0.25`);
+    }
+    expect(mb.sought.map(([id]) => id)).toEqual(["ogg", "none"]);
+  });
+
+  it("goes on in a <video> when the decoder breaks down part-way through a clip", async () => {
+    mb.clips.flaky = { frames: frames30(2), sound: null, breaksAt: 1 };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:flaky" });
+    frames.frame(el, 0.5);
+    await frames.fill();
+    expect(picture(frames, el, 0.5)).toBe("flaky@0.5");
+    await frames.prefetch(0.6);
+    expect(picture(frames, el, 1.1)).toBe("flaky~1.1");
+    await frames.prefetch(0.1);
+    expect(Number(String(picture(frames, el, 1.2)).split("~")[1])).toBeCloseTo(1.2, 9);
+    await frames.dispose();
+  });
+
+  it("has no picture for a clip the browser cannot play either", async () => {
+    mb.clips.mute = { frames: frames30(2), sound: null, decodes: false, playable: false };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:mute" });
+    frames.frame(el, 0);
+    await frames.fill();
+    expect(frames.frame(el, 0)).toBeNull();
   });
 });
 
