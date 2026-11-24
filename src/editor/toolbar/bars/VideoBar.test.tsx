@@ -1,12 +1,19 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createShape, createVideo, VIDEO_SPEED_MAX, VIDEO_SPEED_MIN } from "@/core/factory";
 import type { DesignElement, VideoElement } from "@/core/types";
 import { stopPreview, usePreview } from "@/editor/canvas/preview";
 import { ContextHost, live, openElements, selectElements, store, typeNumber } from "@/test/ctxUtils";
 import { resetEditor, stubLayout } from "@/test/helpers";
 import { FloatingToolbar } from "../FloatingToolbar";
+
+const saved = vi.hoisted(() => ({ files: [] as Array<{ name: string; blob: Blob }> }));
+vi.mock("@/export/download", () => ({
+  downloadBlob: (blob: Blob, name: string) => {
+    saved.files.push({ name, blob });
+  },
+}));
 import { VIDEO_SPEEDS } from "./VideoBar";
 
 let restoreLayout: () => void;
@@ -201,6 +208,53 @@ describe("video toolbar: captions", () => {
     expect(live<VideoElement>(el).captions).toEqual([{ start: 1, end: 2, text: "b" }]);
     await user.click(within(dialog).getByRole("button", { name: "Remove line 1" }));
     expect("captions" in live<VideoElement>(el)).toBe(false);
+  });
+
+  const fileInput = (dialog: HTMLElement) => dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  const srt = ["1", "00:00:00,000 --> 00:00:01,500", "Hello", "", "2", "broken block", "", "3", "00:00:01,500 --> 00:00:03,000", "World", ""].join("\n");
+
+  it("opens a subtitle file in place of the lines, in one step of undo, and says what it read", async () => {
+    const el = clip({ captions: [{ start: 0, end: 1, text: "old" }] });
+    const { user, dialog } = await openCaptions(el);
+    const before = store().past.length;
+    await user.upload(fileInput(dialog), new File([srt], "talk.srt", { type: "application/x-subrip" }));
+    await screen.findByText("Read 2 lines; 1 could not be read.");
+    expect(live<VideoElement>(el).captions).toEqual([
+      { start: 0, end: 1.5, text: "Hello" },
+      { start: 1.5, end: 3, text: "World" },
+    ]);
+    expect(store().past.length).toBe(before + 1);
+  });
+
+  it("says so, and changes nothing, when a file holds no subtitles", async () => {
+    const el = clip({ captions: [{ start: 0, end: 1, text: "kept" }] });
+    const { user, dialog } = await openCaptions(el);
+    await user.upload(fileInput(dialog), new File(["just words"], "notes.txt", { type: "text/plain" }));
+    await screen.findByText("No subtitles were found in that file.");
+    expect(live<VideoElement>(el).captions).toEqual([{ start: 0, end: 1, text: "kept" }]);
+  });
+
+  it("saves the lines that can be shown as a subtitle file named after the clip", async () => {
+    saved.files = [];
+    const el = clip({
+      name: "Interview",
+      captions: [
+        { start: 0, end: 1.5, text: "Hello" },
+        { start: 2, end: 2, text: "no time" },
+      ],
+    });
+    const { user, dialog } = await openCaptions(el);
+    await user.click(within(dialog).getByRole("button", { name: "Save as .srt" }));
+    expect(saved.files.map((f) => f.name)).toEqual(["Interview.srt"]);
+    // only the lines that can be shown
+    expect(await saved.files[0].blob.text()).toBe(["1", "00:00:00,000 --> 00:00:01,500", "Hello", ""].join("\r\n"));
+  });
+
+  it("names the file captions.srt for a clip without a name", async () => {
+    saved.files = [];
+    const { user, dialog } = await openCaptions(clip({ captions: [{ start: 0, end: 1, text: "a" }] }));
+    await user.click(within(dialog).getByRole("button", { name: "Save as .srt" }));
+    expect(saved.files[0].name).toBe("captions.srt");
   });
 
   it("is only there for a single clip", () => {

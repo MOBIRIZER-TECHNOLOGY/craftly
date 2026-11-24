@@ -1,6 +1,10 @@
 /** The contextual toolbar of video elements: play, trim, speed, sound, and the frame they are cut to. */
-import { MAX_CAPTIONS, MAX_CAPTION_LENGTH, MAX_CLIP_FADE, MAX_CLIP_START, MAX_PAGE_DURATION, clipFades, clipStartAt, clipVolume } from "@/core/animation";
+import { MAX_CAPTIONS, MAX_CAPTION_LENGTH, MAX_CLIP_FADE, MAX_CLIP_START, MAX_PAGE_DURATION, clipCaptions, clipFades, clipStartAt, clipVolume } from "@/core/animation";
+import { readSrt, writeSrt } from "@/core/srt";
 import type { ClipCaption } from "@/core/types";
+import { downloadBlob } from "@/export/download";
+import { safeFileName } from "@/export/options";
+import { useRef, useState } from "react";
 import { VIDEO_SPEED_MAX, VIDEO_SPEED_MIN } from "@/core/factory";
 import type { VideoElement } from "@/core/types";
 import { startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
@@ -14,8 +18,10 @@ import {
   IconAudio,
   IconButton,
   IconCaptions,
+  IconDownload,
   IconPlus,
   IconTrash,
+  IconUpload,
   NumberField,
   TextField,
   IconCut,
@@ -195,6 +201,26 @@ function AudioPopover({ els, ids, muted }: { els: VideoElement[]; ids: string[];
 function CaptionsPopover({ el }: { el: VideoElement }) {
   const lines: ClipCaption[] = Array.isArray(el.captions) ? el.captions : [];
   const words = m.editor.videoBar;
+  const fileRef = useRef<HTMLInputElement>(null);
+  /** what the last subtitle file gave: said under the buttons until the popover closes */
+  const [note, setNote] = useState<string | null>(null);
+  const openFile = async (file: File | undefined) => {
+    if (!file) return;
+    const { captions, skipped } = readSrt(await file.text());
+    if (!captions.length) {
+      setNote(words.captionsFileEmpty);
+      return;
+    }
+    // the file's lines take the place of the clip's (one step of undo brings them back)
+    change((list) => {
+      list.splice(0, list.length, ...captions);
+    });
+    setNote(words.captionsFileRead(captions.length, skipped));
+  };
+  const saveFile = () => {
+    const blob = new Blob([writeSrt(clipCaptions(el))], { type: "application/x-subrip" });
+    downloadBlob(blob, `${safeFileName(el.name ?? "", words.captionsFileName)}.srt`);
+  };
   const change = (fn: (captions: ClipCaption[]) => void, tag?: string) =>
     editElements(
       [el.id],
@@ -290,6 +316,30 @@ function CaptionsPopover({ el }: { el: VideoElement }) {
           <Button variant="secondary" size="sm" icon={<IconPlus />} disabled={lines.length >= MAX_CAPTIONS} onClick={add}>
             {words.captionAdd}
           </Button>
+          <div className="cf-captions__files">
+            <Button variant="secondary" size="sm" icon={<IconUpload />} onClick={() => fileRef.current?.click()}>
+              {words.captionsOpen}
+            </Button>
+            <Button variant="secondary" size="sm" icon={<IconDownload />} disabled={!clipCaptions(el).length} onClick={saveFile}>
+              {words.captionsSave}
+            </Button>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".srt,application/x-subrip,text/plain"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              void openFile(file);
+            }}
+          />
+          {note ? (
+            <p className="cf-tbpop__hint" role="status">
+              {note}
+            </p>
+          ) : null}
           <p className="cf-tbpop__hint">{words.captionsHint}</p>
         </div>
       )}

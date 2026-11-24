@@ -261,6 +261,13 @@ export const editor = {
     captionToLabel: (n: number) => `Line ${n}: to (seconds)`,
     captionTextLabel: (n: number) => `Line ${n}: words`,
     captionRemove: (n: number) => `Remove line ${n}`,
+    captionsOpen: "Open subtitles (.srt)",
+    captionsSave: "Save as .srt",
+    /** the file name of saved captions when the clip has no name */
+    captionsFileName: "captions",
+    captionsFileEmpty: "No subtitles were found in that file.",
+    captionsFileRead: (lines: number, skipped: number) =>
+      `Read ${plural(lines, { one: "1 line", other: `${num(lines)} lines` })}${skipped ? `; ${plural(skipped, { one: "1 could not be read", other: `${num(skipped)} could not be read` })}` : ""}.`,
     captionsHint: "Seconds of the clip as it plays, from when it starts on the page; the lines come again each time it plays. They show in Present, Play and a video download.",
     audio: "Audio",
     audioTip: "Volume and fades",

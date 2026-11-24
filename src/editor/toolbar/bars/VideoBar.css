@@ -1,3 +1,10 @@
+/* Open and save a subtitle file: the two buttons side by side */
+.cf-captions__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* The Captions popover of a clip: a line per caption (from, to, the words, remove), wider than the other popovers. */
 .cf-tbpop--captions {
   width: 380px;
