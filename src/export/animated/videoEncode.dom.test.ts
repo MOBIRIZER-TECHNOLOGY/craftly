@@ -25,6 +25,7 @@ const mb = vi.hoisted(() => ({
       alpha?: boolean;
       playable?: boolean;
       breaksAt?: number;
+      stalls?: "load" | "seek";
     }
   >,
   /** the places a <video> was sought to, as [asset id, seconds] (the reader for clips the decoder does not take) */
@@ -269,6 +270,7 @@ class SeekVideo {
   set src(url: string) {
     this.id = url.replace("blob:", "");
     queueMicrotask(() => {
+      if (mb.clips[this.id]?.stalls === "load") return;
       if (mb.clips[this.id]?.playable === false) return this.onerror?.();
       this.readyState = 2;
       this.onloadeddata?.();
@@ -280,7 +282,7 @@ class SeekVideo {
   set currentTime(v: number) {
     this.time = v;
     mb.sought.push([this.id, v]);
-    queueMicrotask(() => this.onseeked?.());
+    if (mb.clips[this.id]?.stalls !== "seek") queueMicrotask(() => this.onseeked?.());
   }
   removeAttribute() {}
   load() {}
@@ -660,6 +662,28 @@ describe("edge cases of a clip's pictures", () => {
     await frames.prefetch(0.1);
     expect(Number(String(picture(frames, el, 1.2)).split("~")[1])).toBeCloseTo(1.2, 9);
     await frames.dispose();
+  });
+
+  it("gives up on a clip that never loads, and goes on from a seek that never lands", async () => {
+    vi.useFakeTimers();
+    try {
+      mb.clips.slow = { frames: frames30(2), sound: null, decodes: false, stalls: "load" };
+      mb.clips.stuck = { frames: frames30(2), sound: null, decodes: false, stalls: "seek" };
+      const frames = new ClipFrames();
+      const slow = clip({ src: "asset:slow" });
+      const stuck = clip({ src: "asset:stuck" });
+      frames.frame(slow, 0);
+      frames.frame(stuck, 0.5);
+      const filling = frames.fill();
+      await vi.advanceTimersByTimeAsync(4100);
+      await filling;
+      // the one that never loaded has no picture; the stuck seek shows the frame the <video> has
+      expect(frames.frame(slow, 0)).toBeNull();
+      expect(picture(frames, stuck, 0.5)).toBe("stuck~0.5");
+      await frames.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("has no picture for a clip the browser cannot play either", async () => {
