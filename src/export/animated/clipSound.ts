@@ -109,7 +109,33 @@ export async function mixClipSound(pages: readonly Page[], timeline: Timeline, t
   }
   if (!sounding) return null;
   throwIfAborted(signal);
-  return ctx.startRendering();
+  const mixed = await ctx.startRendering();
+  keepUnderFullScale(mixed);
+  return mixed;
+}
+
+/** The loudest a mix is left: a little under full scale, so that the encoder does not clip it. */
+export const MIX_CEILING = 0.98;
+
+/**
+ * Lowers the whole mix evenly when clips that sound at once add up past full scale, which an encoder would clip into a crackle
+ * (two clips recorded near full volume do). A mix that fits is left exactly as it is.
+ */
+export function keepUnderFullScale(mix: AudioBuffer): void {
+  let peak = 0;
+  for (let c = 0; c < mix.numberOfChannels; c++) {
+    const data = mix.getChannelData(c);
+    for (let i = 0; i < data.length; i++) {
+      const v = Math.abs(data[i]);
+      if (v > peak) peak = v;
+    }
+  }
+  if (peak <= MIX_CEILING) return;
+  const gain = MIX_CEILING / peak;
+  for (let c = 0; c < mix.numberOfChannels; c++) {
+    const data = mix.getChannelData(c);
+    for (let i = 0; i < data.length; i++) data[i] *= gain;
+  }
 }
 
 /** A looping source node for `buffer` (a clip's loop starts again at its beginning, as the clip goes back to its trim). */

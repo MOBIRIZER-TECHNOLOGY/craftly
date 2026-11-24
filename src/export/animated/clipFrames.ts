@@ -50,10 +50,8 @@ class ClipReader {
     this.current = first.done ? null : first.value;
     const second = first.done ? { done: true as const, value: undefined } : await this.iterator.next();
     this.next = second.done ? null : second.value;
-    if (this.current && this.current.timestamp > seconds + SAME_PLACE) {
-      // nothing starts before `seconds` (the very start of the clip): its first frame stands in
-      this.next = this.current;
-    }
+    // when nothing starts at or before `seconds` (a clip whose first frame comes a little after its beginning, as an MP4 with
+    // B-frames often has), the first frame stands in: `frameAt` returns `current` until `next` is due
   }
 
   async dispose(): Promise<void> {

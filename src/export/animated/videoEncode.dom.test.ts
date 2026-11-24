@@ -15,7 +15,7 @@ const mb = vi.hoisted(() => ({
   video: {} as Record<string, boolean>,
   audio: {} as Record<string, boolean>,
   /** the stored clips: per asset id, its frames' timestamps (null: no picture track) and its sound (null: none) */
-  clips: {} as Record<string, { frames: number[] | null; sound: { rate: number; seconds: number; channels: number } | null; decodes?: boolean }>,
+  clips: {} as Record<string, { frames: number[] | null; sound: { rate: number; seconds: number; channels: number } | null; decodes?: boolean; broken?: boolean }>,
   /** every `canvases(start)` asked of a clip, as [asset id, start] */
   seeks: [] as Array<[string, number]>,
   inputsDisposed: 0,
@@ -38,10 +38,12 @@ vi.mock("mediabunny", () => {
     }
     async getPrimaryVideoTrack() {
       const clip = mb.clips[this.id];
+      if (clip?.broken) throw new Error("not a media file");
       return clip?.frames ? { id: this.id, frames: clip.frames, canDecode: async () => clip.decodes !== false } : null;
     }
     async getPrimaryAudioTrack() {
       const clip = mb.clips[this.id];
+      if (clip?.broken) throw new Error("not a media file");
       return clip?.sound ? { id: this.id, sound: clip.sound, canDecode: async () => clip.decodes !== false } : null;
     }
     dispose() {
@@ -205,14 +207,20 @@ class FakeOfflineContext {
       connect: () => undefined,
     };
   }
+  /** what the rendered mix holds: the same sample everywhere, or a few loud ones */
+  static level = 0;
+  static spikes: Array<[number, number, number]> = [];
   async startRendering() {
-    return new FakeAudioBuffer({ length: this.options.length, numberOfChannels: 2, sampleRate: this.options.sampleRate });
+    const out = new FakeAudioBuffer({ length: this.options.length, numberOfChannels: 2, sampleRate: this.options.sampleRate });
+    for (let c = 0; c < 2; c++) out.getChannelData(c).fill(FakeOfflineContext.level);
+    for (const [c, i, v] of FakeOfflineContext.spikes) out.getChannelData(c)[i] = v;
+    return out;
   }
 }
 
 const { ClipFrames } = await import("./clipFrames");
 const { chooseEncoding, encodeFrames } = await import("./encode");
-const { mixClipSound } = await import("./clipSound");
+const { MIX_CEILING, mixClipSound } = await import("./clipSound");
 
 const frames30 = (seconds: number) => Array.from({ length: Math.round(seconds * 30) }, (_, i) => i / 30);
 const clip = (over: Partial<VideoElement> & { src?: string } = {}) =>
@@ -226,6 +234,8 @@ beforeEach(() => {
   mb.inputsDisposed = 0;
   mb.outputs = [];
   mb.failAt = -1;
+  FakeOfflineContext.level = 0;
+  FakeOfflineContext.spikes = [];
   vi.stubGlobal("AudioBuffer", FakeAudioBuffer);
   vi.stubGlobal("OfflineAudioContext", FakeOfflineContext);
 });
@@ -503,5 +513,73 @@ describe("mixing the clips' sound", () => {
     abort.abort();
     const error = await mixClipSound([page([clip()])], buildTimeline([page([clip()])]), 3, abort.signal).catch((e: unknown) => e);
     expect(isCancelled(error)).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe("edge cases of a clip's pictures", () => {
+  const picture = (frames: InstanceType<typeof ClipFrames>, el: VideoElement, t: number) => (frames.frame(el, t) as { picture: string } | null)?.picture ?? null;
+
+  it("shows the first frame of a clip whose frames start a little after its beginning", async () => {
+    mb.clips.late = { frames: [0.25, 0.5, 0.75], sound: null };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:late" });
+    frames.frame(el, 0);
+    await frames.fill();
+    expect(picture(frames, el, 0)).toBe("late@0.25");
+    await frames.prefetch(0.6);
+    expect(picture(frames, el, 0.6)).toBe("late@0.5");
+  });
+
+  it("has no picture for a clip without frames, and for one that is not a media file", async () => {
+    mb.clips.empty = { frames: [], sound: null };
+    mb.clips.junk = { frames: frames30(1), sound: null, broken: true };
+    const frames = new ClipFrames();
+    for (const src of ["asset:empty", "asset:junk"]) {
+      const el = clip({ src });
+      frames.frame(el, 0);
+      await frames.fill();
+      expect(frames.frame(el, 0)).toBeNull();
+    }
+    await frames.dispose();
+  });
+});
+
+describe("edge cases of the mix", () => {
+  const page = (elements: VideoElement[]) => createPage({ duration: 3, elements });
+
+  it("lowers a mix that goes past full scale evenly, so the encoder does not clip it", async () => {
+    FakeOfflineContext.level = 0.5;
+    FakeOfflineContext.spikes = [[1, 10, -1.96]];
+    const mixed = (await mixClipSound([page([clip(), clip({ trimStart: 0.5 })])], buildTimeline([page([])]), 3))!;
+    expect(Math.abs(mixed.getChannelData(1)[10])).toBeCloseTo(MIX_CEILING, 5);
+    // everything else by the same amount: the balance between the clips is kept
+    expect(mixed.getChannelData(0)[0]).toBeCloseTo(0.25, 5);
+  });
+
+  it("leaves a mix that fits exactly as it is", async () => {
+    FakeOfflineContext.level = 0.7;
+    const mixed = (await mixClipSound([page([clip()])], buildTimeline([page([])]), 3))!;
+    expect(mixed.getChannelData(0)[5]).toBeCloseTo(0.7, 6);
+  });
+
+  it("keeps a mono clip mono (the mix spreads it to both sides)", async () => {
+    mb.clips.mono = { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 1 } };
+    await mixClipSound([page([clip({ src: "asset:mono" })])], buildTimeline([page([])]), 3);
+    expect(FakeOfflineContext.last!.played[0].buffer.numberOfChannels).toBe(1);
+  });
+
+  it("leaves out a clip with a sound track that holds nothing, or a file that is not media", async () => {
+    mb.clips.hollow = { frames: frames30(2), sound: { rate: 1000, seconds: 0, channels: 2 } };
+    mb.clips.junk = { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 2 }, broken: true };
+    expect(await mixClipSound([page([clip({ src: "asset:hollow" }), clip({ src: "asset:junk" })])], buildTimeline([page([])]), 3)).toBeNull();
+  });
+
+  it("skips a page the timeline has no room for", async () => {
+    const pages = [page([clip()]), page([clip()])];
+    // the second page starts at 3 s; a total of 3 s leaves it no time
+    await mixClipSound(pages, buildTimeline(pages), 3);
+    expect(FakeOfflineContext.last!.played.map((p) => p.start)).toEqual([0]);
   });
 });
