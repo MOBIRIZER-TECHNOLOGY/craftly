@@ -6,6 +6,7 @@
 import { create } from "zustand";
 import { animationWindow, pageDuration, type AnimPhase } from "@/core/animation";
 import type { ElementAnimation, Page } from "@/core/types";
+import { pauseVideos } from "@/render/videos";
 
 export interface PreviewState {
   /** performance.now() when the preview began */
@@ -13,17 +14,22 @@ export interface PreviewState {
   /** seconds into the page where it begins and where it stops */
   from: number;
   until: number;
+  /** the page's clips play with their sound (the clip toolbar's Play); an animation preview leaves it out */
+  sound?: boolean;
 }
 
 export const usePreview = create<{ preview: PreviewState | null }>(() => ({ preview: null }));
 
-/** Plays the active page from second `from` to second `until`. */
-export function startPreview(from: number, until: number): void {
-  usePreview.setState({ preview: { startedAt: performance.now(), from: Math.max(0, from), until } });
+/** Plays the active page from second `from` to second `until`; with `sound` its clips are heard. */
+export function startPreview(from: number, until: number, opts: { sound?: boolean } = {}): void {
+  usePreview.setState({ preview: { startedAt: performance.now(), from: Math.max(0, from), until, ...(opts.sound ? { sound: true } : {}) } });
 }
 
+/** Ends the preview, and stops its clips at once: one that was heard would otherwise go on until the players idle. */
 export function stopPreview(): void {
-  if (usePreview.getState().preview) usePreview.setState({ preview: null });
+  if (!usePreview.getState().preview) return;
+  usePreview.setState({ preview: null });
+  pauseVideos();
 }
 
 /** Page seconds a running preview has reached. */

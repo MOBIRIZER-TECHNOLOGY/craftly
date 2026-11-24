@@ -109,11 +109,19 @@ describe("video toolbar: playing", () => {
     mount([a, b]);
     expect(preview()).toBeNull();
     await user.click(btn("Play"));
-    expect(preview()).toMatchObject({ from: 0, until: 24 });
+    // with the clips' sound: it was asked for by a click on the clip
+    expect(preview()).toMatchObject({ from: 0, until: 24, sound: true });
     expect(has("Play")).toBe(false);
     await user.click(btn("Stop"));
     expect(preview()).toBeNull();
     expect(has("Play")).toBe(true);
+  });
+
+  it("plays until a clip that starts later has played once", async () => {
+    const user = userEvent.setup();
+    mount([clip({ duration: 4, startAt: 3 })]);
+    await user.click(btn("Play"));
+    expect(preview()).toMatchObject({ from: 0, until: 7 });
   });
 
   it("plays the trimmed part at the clip's speed", async () => {

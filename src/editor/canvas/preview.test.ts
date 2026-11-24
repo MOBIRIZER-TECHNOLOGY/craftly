@@ -1,4 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const players = vi.hoisted(() => ({ paused: 0 }));
+vi.mock("@/render/videos", () => ({
+  pauseVideos: () => {
+    players.paused++;
+  },
+}));
 import { previewEntrances, previewRange, previewTime, startPreview, stopPreview, usePreview } from "./preview";
 
 afterEach(() => {
@@ -11,6 +18,22 @@ describe("starting and stopping a preview", () => {
     vi.spyOn(performance, "now").mockReturnValue(5000);
     startPreview(1.5, 4);
     expect(usePreview.getState().preview).toEqual({ startedAt: 5000, from: 1.5, until: 4 });
+  });
+
+  it("plays the clips' sound only when asked to", () => {
+    startPreview(0, 2);
+    expect(usePreview.getState().preview).not.toHaveProperty("sound");
+    startPreview(0, 2, { sound: true });
+    expect(usePreview.getState().preview?.sound).toBe(true);
+  });
+
+  it("stops every clip when it stops, so that none is heard after it", () => {
+    players.paused = 0;
+    stopPreview();
+    expect(players.paused).toBe(0);
+    startPreview(0, 2, { sound: true });
+    stopPreview();
+    expect(players.paused).toBe(1);
   });
 
   it("never starts before the beginning of the page", () => {

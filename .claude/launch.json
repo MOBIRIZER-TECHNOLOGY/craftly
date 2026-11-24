@@ -18,6 +18,21 @@
         "preview"
       ],
       "port": 4173
+    },
+    {
+      "name": "e2e-build",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--outDir",
+        "dist-e2e",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4174"
+      ],
+      "port": 4174
     }
   ]
 }

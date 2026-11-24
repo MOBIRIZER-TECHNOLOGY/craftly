@@ -62,7 +62,7 @@ export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Ext
         label={playing ? m.editor.videoBar.stop : m.editor.videoBar.play}
         tip={playing ? m.editor.videoBar.stopTip : m.editor.videoBar.playTip}
         icon={playing ? <IconPause /> : <IconPlay />}
-        onClick={() => (playing ? stopPreview() : startPreview(0, longest))}
+        onClick={() => (playing ? stopPreview() : startPreview(0, longest, { sound: true }))}
       />
       {single && <TrimPopover el={single} />}
       <MenuButton
