@@ -51,14 +51,17 @@ export function Dashboard() {
   const dialogsLoaded = useAccountDialogs((s) => s.loaded);
 
   // tab title follows the page, and the original title returns when the dashboard goes away (the editor sets its own)
+  const pageTitle = useRef("");
   useEffect(() => {
     const original = document.title;
     return () => {
-      document.title = original;
+      // a screen mounted since owns its title now: do not put an older screen's title back over it
+      if (document.title === pageTitle.current) document.title = original;
     };
   }, []);
   useEffect(() => {
-    document.title = TITLES[route.name] ?? HOME_TITLE;
+    pageTitle.current = TITLES[route.name] ?? HOME_TITLE;
+    document.title = pageTitle.current;
   }, [route.name]);
 
   // another screen (the editor's "Create new design") may ask for the Create dialog on arrival

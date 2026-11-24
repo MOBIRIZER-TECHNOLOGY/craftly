@@ -9,6 +9,7 @@ export const ui: typeof en = {
     opacity: "अपारदर्शिता",
     current: "मौजूदा रंग",
     hex: "हेक्स रंग",
+    palettes: "नाम वाले पैलेट",
   },
   confirm: {
     areYouSure: "क्या आप निश्चित हैं?",

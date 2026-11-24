@@ -89,6 +89,15 @@ describe("opening the editor", () => {
     expect(editor.getAttribute("spellcheck")).toBe("false");
   });
 
+  it("lets the browser check the spelling once that was asked for", async () => {
+    const { editor } = await openEditor();
+    expect(editor.getAttribute("spellcheck")).toBe("false");
+    act(() => state().actions.toggle("spellCheck"));
+    expect(editor.getAttribute("spellcheck")).toBe("true");
+    act(() => state().actions.toggle("spellCheck"));
+    expect(editor.getAttribute("spellcheck")).toBe("false");
+  });
+
   it("follows the zoom", async () => {
     const { rig, editor } = await openEditor();
     act(() => getActions().setZoom(2));
@@ -640,6 +649,14 @@ describe("formatting the selected characters", () => {
     expect(exec).toHaveBeenCalledWith("foreColor", false, "#ff0000");
     expect(exec).toHaveBeenCalledWith("fontName", false, expect.stringContaining("Playfair Display"));
     expect(paragraphs()[0].runs[0]).toMatchObject({ text: "Hello", color: "#ff0000", font: "Playfair Display" });
+  });
+
+  it("applies a numeric weight to only the selected characters", async () => {
+    fakeBrowser();
+    await withSelection({ fontWeight: 400 });
+    expect(applyInline({ weight: 300 })).toBe(true);
+    expect(paragraphs()[0].runs).toEqual([{ text: "Hello", weight: 300 }, { text: " world" }]);
+    expect(model().fontWeight).toBe(400);
   });
 
   it("sizes the selection in design pixels at the current zoom and keeps it selected", async () => {

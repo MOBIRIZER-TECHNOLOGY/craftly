@@ -46,12 +46,24 @@ const LINE_ATTACHMENTS = [
   "$.pages[].elements[].children[].start.anchor: string",
   "$.pages[].elements[].children[].start.elementId: string",
   "$.pages[].elements[].children[].start: object",
+  "$.pages[].elements[].children[].label: string",
+  "$.pages[].elements[].children[].routing: string",
+  "$.pages[].elements[].children[].route: array",
+  "$.pages[].elements[].children[].route[].x: number",
+  "$.pages[].elements[].children[].route[].y: number",
+  "$.pages[].elements[].children[].route[]: object",
   "$.pages[].elements[].end.anchor: string",
   "$.pages[].elements[].end.elementId: string",
   "$.pages[].elements[].end: object",
   "$.pages[].elements[].start.anchor: string",
   "$.pages[].elements[].start.elementId: string",
   "$.pages[].elements[].start: object",
+  "$.pages[].elements[].label: string",
+  "$.pages[].elements[].routing: string",
+  "$.pages[].elements[].route: array",
+  "$.pages[].elements[].route[]: object",
+  "$.pages[].elements[].route[].x: number",
+  "$.pages[].elements[].route[].y: number",
 ];
 /** An element's `blend` (2026-11-10, src/core/blend.ts): how it mixes with what is under it. Optional for good: an element with none is Normal. */
 const BLEND = ["$.pages[].elements[].blend: string", "$.pages[].elements[].children[].blend: string"];
@@ -108,8 +120,49 @@ const REVISION = ["$.revision: string"];
  * server that it belongs to. Optional for good: a record without one is on this device only, which every record before accounts is.
  */
 const SPACE = ["$.space: string"];
+/**
+ * A chart's `stacked`, `valueAxisTitle` and `categoryAxisTitle` (2026-11-23, src/render/chartText.ts): series on top of each other,
+ * and the words along the two axes. Optional for good: a chart without them is drawn side by side and without titles, as before.
+ */
+const CHART_EXTRAS = [
+  "$.pages[].elements[].categoryAxisTitle: string",
+  "$.pages[].elements[].percent: boolean",
+  "$.pages[].elements[].stacked: boolean",
+  "$.pages[].elements[].valueAxisTitle: string",
+];
+const TABLE_EXTRAS = [
+  "$.pages[].elements[].cellStyles: object",
+  "$.pages[].elements[].cellStyles.0:0: object",
+  "$.pages[].elements[].cellStyles.0:0.align: string",
+  "$.pages[].elements[].cellStyles.0:0.bold: boolean",
+  "$.pages[].elements[].cellStyles.0:0.color: string",
+  "$.pages[].elements[].cellStyles.0:0.fill: string",
+  "$.pages[].elements[].merges: array",
+  "$.pages[].elements[].merges[]: object",
+  "$.pages[].elements[].merges[].col: number",
+  "$.pages[].elements[].merges[].colSpan: number",
+  "$.pages[].elements[].merges[].row: number",
+  "$.pages[].elements[].merges[].rowSpan: number",
+];
+const FILTER_EXTRAS = ["curves", "highlights", "levels", "shadows", "sharpen", "tint"].map((key) => `$.pages[].elements[].filter.${key}: number`);
+/** A run's numeric `weight` is optional: without it the run keeps using `bold` or the containing text box's weight. */
+const RUN_WEIGHT = ["$.pages[].elements[].paragraphs[].runs[].weight: number", "$.pages[].elements[].children[].paragraphs[].runs[].weight: number"];
 const ADDED: Record<string, string[]> = {
-  design: [...COMMENTS, ...LIVE_LINK, ...BLEND, ...LINE_ATTACHMENTS],
+  // in the order the shapes are listed: by path
+  design: [
+    ...COMMENTS,
+    ...LIVE_LINK,
+    ...BLEND,
+    ...LINE_ATTACHMENTS,
+    ...CHART_EXTRAS,
+    ...TABLE_EXTRAS,
+    ...FILTER_EXTRAS,
+    ...RUN_WEIGHT,
+    "$.margin: number",
+    "$.gridSize: number",
+    "$.pages[].elements[].maskPath: string",
+    "$.pages[].elements[].crop.rotation: number",
+  ].sort(),
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

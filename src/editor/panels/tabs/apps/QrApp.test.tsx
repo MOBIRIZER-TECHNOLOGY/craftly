@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { extractSvgColors } from "@/core/svg";
@@ -244,6 +244,30 @@ describe("QR code app", () => {
       const before = pageElements().length;
       await user.click(add());
       expect(pageElements()).toHaveLength(before);
+    });
+
+    it("adds a QR with a logo as a PNG and returns to a vector when the logo is removed", async () => {
+      const user = await openQr();
+      await user.upload(screen.getByLabelText("Logo (optional)"), new File(["logo"], "logo.png", { type: "image/png" }));
+      await waitFor(() => expect(code()?.src).toMatch(/^data:image\/png/));
+      await user.click(add());
+      const withLogo = lastElement();
+      expect(withLogo.type).toBe("image");
+      if (withLogo.type !== "image") throw new Error("QR with a logo should be an image");
+      expect(withLogo.src).toMatch(/^data:image\/png/);
+
+      await user.click(screen.getByRole("button", { name: "Remove logo" }));
+      await waitFor(() => expect(code()?.src).toMatch(/^data:image\/svg\+xml/));
+      await user.click(add());
+      expect(lastElement().type).toBe("graphic");
+    });
+
+    it("rejects a file that is not a picture and keeps the vector QR usable", async () => {
+      const user = await openQr();
+      fireEvent.change(screen.getByLabelText("Logo (optional)"), { target: { files: [new File(["notes"], "notes.txt", { type: "text/plain" })] } });
+      expect((await screen.findByRole("alert")).textContent).toContain("That picture could not be read as a logo.");
+      await user.click(add());
+      expect(lastElement().type).toBe("graphic");
     });
   });
 

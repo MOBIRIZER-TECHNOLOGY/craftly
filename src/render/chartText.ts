@@ -4,6 +4,7 @@
  * plot. The painter (drawBlocks.ts) and the SVG writer (src/export/svgBlocks.ts) both ask here, so the two draw the same chart.
  */
 import { measureWidth } from "@/core/textMetrics";
+import type { ChartElement, ChartSeries } from "@/core/types";
 
 export const ELLIPSIS = "…";
 
@@ -107,3 +108,76 @@ export function categoryStep(fs: number, slot: number, widestLabel: number): num
  * than none. A quarter of overlap is allowed, because the widest value is seldom beside one as wide.
  */
 export const valuesFit = (size: number, gap: number): boolean => size <= gap * 1.25;
+
+/* ------------------------------------------------------------------ */
+/* stacked bars and columns                                            */
+/* ------------------------------------------------------------------ */
+
+/** True for a chart that puts its series on top of each other: a bar or column chart that was asked to and has more than one series. */
+export const isStacked = (el: Pick<ChartElement, "chart" | "series" | "stacked">): boolean =>
+  !!el.stacked && (el.chart === "bar" || el.chart === "column" || el.chart === "area") && el.series.length > 1;
+
+export function percentSeries(series: ChartSeries[]): ChartSeries[] {
+  const count = Math.max(1, ...series.map((series) => series.values.length));
+  const totals = Array.from({ length: count }, (_unused, i) => series.reduce((sum, series) => sum + Math.max(0, series.values[i] ?? 0), 0));
+  return series.map((series) => ({
+    ...series,
+    values: series.values.map((value, i) => (totals[i] ? (Math.max(0, value) / totals[i]) * 100 : 0)),
+  }));
+}
+
+/** What a value adds to its stack: nothing when it is negative, missing or no number. */
+const stackValue = (value: number | undefined): number => (typeof value === "number" && value > 0 && Number.isFinite(value) ? value : 0);
+
+/** The height of every stack: the sum of what its series add, for as many categories as the longest series has values. */
+export function stackTotals(series: readonly ChartSeries[]): number[] {
+  const count = Math.max(0, ...series.map((s) => s.values.length));
+  return Array.from({ length: count }, (_v, i) => series.reduce((sum, s) => sum + stackValue(s.values[i]), 0));
+}
+
+export interface StackPiece {
+  /** index of the series (its colour) and of the category (its stack) */
+  series: number;
+  category: number;
+  /** where the piece begins, in the unit of the values, and how much it adds */
+  from: number;
+  value: number;
+  /** the last piece of its stack: the one whose far end is rounded */
+  last: boolean;
+}
+
+/** The pieces of every stack, in the order they are painted: stack after stack, each from the axis outwards. Pieces of no size are left out. */
+export function stackPieces(series: readonly ChartSeries[]): StackPiece[] {
+  const pieces: StackPiece[] = [];
+  stackTotals(series).forEach((_total, category) => {
+    let from = 0;
+    const first = pieces.length;
+    series.forEach((s, index) => {
+      const value = stackValue(s.values[category]);
+      if (!value) return;
+      pieces.push({ series: index, category, from, value, last: false });
+      from += value;
+    });
+    if (pieces.length > first) pieces[pieces.length - 1].last = true;
+  });
+  return pieces;
+}
+
+/* ------------------------------------------------------------------ */
+/* axis titles                                                         */
+/* ------------------------------------------------------------------ */
+
+/** The room a title along an axis takes beside or under the plot, in font sizes. */
+export const AXIS_TITLE_ROOM = 1.6;
+
+const titleText = (text: string | undefined): string => (text ?? "").replace(/\s+/g, " ").trim();
+
+/**
+ * The titles of the two axes by where they are written: under the plot and, turned a quarter, on its left. A bar chart lies on
+ * its side, so its values run along the bottom; every other chart has its categories there. Empty strings where there is none.
+ */
+export function axisTitles(el: Pick<ChartElement, "chart" | "valueAxisTitle" | "categoryAxisTitle">): { bottom: string; left: string } {
+  const value = titleText(el.valueAxisTitle);
+  const category = titleText(el.categoryAxisTitle);
+  return el.chart === "bar" ? { bottom: value, left: category } : { bottom: category, left: value };
+}

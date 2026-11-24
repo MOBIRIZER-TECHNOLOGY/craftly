@@ -66,6 +66,48 @@ describe("moving", () => {
     expect(boxOf("g")).toEqual([350, 330, 100, 100]);
   });
 
+  it("moves a child inside a group and fits the group around its children", async () => {
+    const group = createGroup([createShape("rect", { id: "a", x: 0, y: 0, width: 100, height: 100 }), createShape("rect", { id: "b", x: 120, y: 0, width: 100, height: 100 })], {
+      id: "g",
+      x: 100,
+      y: 100,
+      width: 220,
+      height: 100,
+    });
+    const rig = await mountWorkspace(canvasDesign([group]));
+    noSnap();
+    rig.dblclick(150, 150);
+    expect(state().focusGroupId).toBe("g");
+    expect(state().selection).toEqual(["a"]);
+    rig.drag([150, 150], [200, 180]);
+    expect(boxOf("g")).toEqual([150, 100, 170, 130]);
+    expect(boxOf("a")).toEqual([0, 30, 100, 100]);
+    expect(boxOf("b")).toEqual([70, 0, 100, 100]);
+    expect(state().past).toHaveLength(1);
+  });
+
+  it("resizes a child inside a group with its ordinary handles", async () => {
+    const group = createGroup([createShape("rect", { id: "a", x: 0, y: 0, width: 100, height: 100 })], { id: "g", x: 100, y: 100, width: 100, height: 100 });
+    const rig = await mountWorkspace(canvasDesign([group]));
+    noSnap();
+    rig.dblclick(150, 150);
+    rig.down(200, 200, { target: rig.handle("resize:se") });
+    rig.move(250, 260);
+    rig.up(250, 260);
+    expect(boxOf("a")).toEqual([0, 0, 150, 160]);
+    expect(boxOf("g")).toEqual([100, 100, 150, 160]);
+  });
+
+  it("moves a child in the coordinate space of a rotated group", async () => {
+    const group = createGroup([createShape("rect", { id: "a", x: 0, y: 0, width: 100, height: 100 })], { id: "g", x: 100, y: 100, width: 100, height: 100, rotation: 90 });
+    const rig = await mountWorkspace(canvasDesign([group]));
+    noSnap();
+    rig.dblclick(150, 150);
+    rig.drag([150, 150], [200, 150]);
+    expect(boxOf("a")).toEqual([0, 0, 100, 100]);
+    expect(boxOf("g")).toEqual([150, 100, 100, 100]);
+  });
+
   it("drags from the Move handle even when the pointer starts away from the element", async () => {
     const rig = await mountWorkspace(canvasDesign(shapes()));
     noSnap();
@@ -118,6 +160,17 @@ describe("moving", () => {
     rig.move(800, 150); // a's left edge lands at 702
     expect(boxOf("a")[0]).toBe(700);
     rig.up(800, 150);
+  });
+
+  it("snaps to the custom page margin while margins are shown", async () => {
+    const rig = await mountWorkspace(canvasDesign([createShape("rect", { id: "a", x: 100, y: 100, width: 200, height: 100 })], { margin: 150 }));
+    act(() => getActions().toggle("showMargins"));
+    rig.down(200, 150);
+    rig.move(300, 150);
+    rig.move(249, 150); // a's left edge lands at 149, one pixel from the margin
+    expect(boxOf("a")[0]).toBe(150);
+    expect(state().snapGuides).toContainEqual(expect.objectContaining({ axis: "v", pos: 150, kind: "page" }));
+    rig.up(249, 150);
   });
 
   it("does not snap while ctrl is held", async () => {

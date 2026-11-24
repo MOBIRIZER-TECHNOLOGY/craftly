@@ -31,6 +31,7 @@ describe("<ShortcutsDialog>", () => {
     expect(keys("Bold the selected text")).toEqual(["Ctrl", "B"]);
     expect(keys("Italic the selected text")).toEqual(["Ctrl", "I"]);
     expect(keys("Underline the selected text")).toEqual(["Ctrl", "U"]);
+    expect(keys("Add or edit a link on the selected element")).toEqual(["Ctrl", "K"]);
   });
 
   it("lists the Pen, with its key, and the keys of point editing", () => {

@@ -633,6 +633,12 @@ export const data = {
     vignette: "Vignette",
     blur: "Blur",
     hue: "Hue",
+    highlights: "Highlights",
+    shadows: "Shadows",
+    sharpen: "Sharpen",
+    tint: "Tint",
+    curves: "Curves",
+    levels: "Levels",
   },
   /** the names of the colour palettes, by id */
   palettes: {

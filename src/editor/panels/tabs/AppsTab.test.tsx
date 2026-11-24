@@ -19,6 +19,7 @@ const APPS = [
   ["lorem", "Lorem ipsum", "Placeholder text by the paragraph, sentence or word"],
   ["placeholder", "Placeholder image", "A coloured stand-in picture at any size"],
   ["palette", "Colour palette from image", "Pull the main colours out of a picture"],
+  ["bulk", "Bulk create", "Make a page for every row of a spreadsheet"],
 ] as const;
 
 async function openApps() {
@@ -31,7 +32,7 @@ async function openApps() {
 const appItems = () => screen.getAllByRole("button").filter((b) => APPS.some(([, name, description]) => b.getAttribute("aria-label") === `${name}. ${description}`));
 
 describe("Apps tab", () => {
-  it("lists the five built-in apps with what each one does", async () => {
+  it("lists the six built-in apps with what each one does", async () => {
     await openApps();
     expect(screen.getByRole("heading", { name: "Built into Craftly" })).toBeTruthy();
     expect(screen.getByText("Tools that run right here")).toBeTruthy();

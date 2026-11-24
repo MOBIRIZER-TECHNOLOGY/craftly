@@ -168,3 +168,37 @@
 .cf-cp__hex-input:focus-visible {
   outline: none;
 }
+
+.cf-cp__palettes {
+  max-height: 160px;
+  padding-top: 10px;
+  overflow: auto;
+  border-top: 1px solid var(--c-line);
+}
+
+.cf-cp__palettes-title {
+  margin: 0 0 8px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.cf-cp__palette {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0 6px 6px 0;
+  padding: 3px;
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+}
+
+.cf-cp__palette:hover {
+  border-color: var(--c-primary);
+}
+
+.cf-cp__palette-color {
+  width: 14px;
+  height: 20px;
+  border-radius: 2px;
+}

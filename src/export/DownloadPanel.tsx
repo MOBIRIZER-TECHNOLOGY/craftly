@@ -15,6 +15,7 @@ import {
   IconImage,
   IconImages,
   IconLayers,
+  IconPresentation,
   IconPrint,
   IconVideo,
   IconWebsite,
@@ -49,6 +50,7 @@ import {
   type PagesMode,
   type PrintDpi,
 } from "./settings";
+import { exportPptx, pptxOptions } from "./pptxExport";
 import { exportWebPage, webPageOptions } from "./webPageExport";
 
 /* ------------------------------------------------------------------ */
@@ -89,7 +91,7 @@ function useTabHidden(active: boolean): boolean {
 /* ------------------------------------------------------------------ */
 
 /** Downloads that are more than one kind of file. They are chosen in the same list, but are not remembered as a format. */
-type Bundle = "sizes" | "html";
+type Bundle = "sizes" | "html" | "pptx";
 type FileKey = "png" | "jpg" | "pdf-standard" | "pdf-print" | "svg" | "gif" | "webm" | Bundle;
 
 function Option({ name, hint, badge }: { name: string; hint: string; badge?: string }) {
@@ -119,6 +121,7 @@ const FILE_OPTIONS: SelectOption<FileKey>[] = [
   { value: "webm", icon: <IconVideo aria-hidden="true" />, textValue: TYPES.video, label: <Option name={TYPES.video} hint={TYPES.videoHint} /> },
   { value: "sizes", icon: <IconLayers aria-hidden="true" />, textValue: TYPES.sizes, label: <Option name={TYPES.sizes} hint={TYPES.sizesHint} /> },
   { value: "html", icon: <IconWebsite aria-hidden="true" />, textValue: TYPES.html, label: <Option name={TYPES.html} hint={TYPES.htmlHint} /> },
+  { value: "pptx", icon: <IconPresentation aria-hidden="true" />, textValue: TYPES.pptx, label: <Option name={TYPES.pptx} hint={TYPES.pptxHint} /> },
 ];
 
 /**
@@ -264,6 +267,8 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
     if (!design || !pages.length) return 0;
     // a web page: its pictures, a third larger for being written as text
     if (bundle === "html") return Math.round((estimateExportBytes(design, { ...webPageOptions(design, 0), pages }) * 4) / 3);
+    // a presentation: its pictures, and little else
+    if (bundle === "pptx") return estimateExportBytes(design, { ...pptxOptions(design, 0), pages });
     if (!sizePlan) return estimateExportBytes(design, options);
     // every size is weighed as the design at that size: what is on the pages stays, the pixels change
     const each = multiSizeOptions(sizesFormat, settings.quality, pages);
@@ -323,7 +328,9 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
         : bundle === "html"
           ? // the file says which language it is in; the words on the pages are pictures, so that is the language of its own few words
             await exportWebPage(design, { pages, notes: webNotes, lang: document.documentElement.lang || "en" }, report, controller.signal)
-          : await exportDesign(design, options, report, controller.signal);
+          : bundle === "pptx"
+            ? await exportPptx(design, { pages, notes: webNotes }, report, controller.signal)
+            : await exportDesign(design, options, report, controller.signal);
       downloadBlob(file.blob, file.name);
       toast.show({ kind: "success", message: words.downloaded(file.name) });
       if (file.note) toast.show({ kind: "info", message: file.note, duration: 9000 });
@@ -389,7 +396,7 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
           options={fileOptions}
           disabled={busy}
           onChange={(key) => {
-            if (key === "sizes" || key === "html") {
+            if (key === "sizes" || key === "html" || key === "pptx") {
               setBundle(key);
               return;
             }
@@ -603,6 +610,15 @@ export function DownloadPanel({ onDone }: { onDone?: () => void }) {
           <p className="cf-dl__hint">{words.htmlPictures}</p>
           <Switch checked={webNotes} onChange={setWebNotes} label={words.includeNotes} disabled={busy} />
           <p className="cf-dl__hint">{webNotes ? words.notesShown : words.notesPrivate}</p>
+        </div>
+      )}
+
+      {format === "pptx" && (
+        <div className="cf-dl__group">
+          <p className="cf-dl__hint">{words.pptxHint}</p>
+          <p className="cf-dl__hint">{words.pptxPictures}</p>
+          <Switch checked={webNotes} onChange={setWebNotes} label={words.includeNotes} disabled={busy} />
+          <p className="cf-dl__hint">{webNotes ? words.pptxNotesShown : words.notesPrivate}</p>
         </div>
       )}
 

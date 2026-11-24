@@ -43,6 +43,12 @@ export const defaultFilter = (): ImageFilter => ({
   vignette: 0,
   blur: 0,
   hue: 0,
+  highlights: 0,
+  shadows: 0,
+  sharpen: 0,
+  tint: 0,
+  curves: 0,
+  levels: 0,
   duotone: null,
 });
 

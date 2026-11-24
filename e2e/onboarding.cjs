@@ -64,17 +64,21 @@ const EN = {
 
   /** the words of the welcome and of the note in `lang`, from the catalog the dev server serves; English as written above otherwise */
   const words = (lang) =>
-    page
-      .evaluate(async (l) => {
-        const c = (await import(`/src/i18n/${l}/index.ts`))[l];
-        const w = c.dashboard.welcome;
-        const h = c.editor.emptyHint;
-        return { title: w.title, ways: w.ways, dismiss: w.dismiss, local: w.local, hintLabel: h.label, hintDismiss: h.dismiss };
-      }, lang)
-      .catch(() => (lang === "en" ? EN : null));
+    process.env.OFFLINE
+      ? lang === "en"
+        ? EN
+        : null
+      : page
+          .evaluate(async (l) => {
+            const c = (await import(`/src/i18n/${l}/index.ts`))[l];
+            const w = c.dashboard.welcome;
+            const h = c.editor.emptyHint;
+            return { title: w.title, ways: w.ways, dismiss: w.dismiss, local: w.local, hintLabel: h.label, hintDismiss: h.dismiss };
+          }, lang)
+          .catch(() => (lang === "en" ? EN : null));
 
   /** whether this build has an account server built in (read from the module on the dev server; a production build has none in the journeys) */
-  const accountServer = () => page.evaluate(async () => (await import("/src/cloud/state.ts")).CONFIGURED_SERVER).catch(() => "");
+  const accountServer = () => (process.env.OFFLINE ? "" : page.evaluate(async () => (await import("/src/cloud/state.ts")).CONFIGURED_SERVER).catch(() => ""));
 
   const home = async () => {
     await page.goto(BASE + "/#/", { waitUntil: "load" });

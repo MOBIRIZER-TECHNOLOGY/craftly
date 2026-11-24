@@ -46,6 +46,12 @@ const filter = {
   vignette: 30,
   blur: 1,
   hue: 5,
+  highlights: 10,
+  shadows: -10,
+  sharpen: 20,
+  tint: 5,
+  curves: 15,
+  levels: -5,
   duotone: { dark: "#101010", light: "#f0e0d0" },
 };
 const stroke = { color: "#112233", width: 3, style: "dashed" as const, cap: "round" as const, join: "bevel" as const };
@@ -63,8 +69,8 @@ function completeElements(): Complete<DesignElement>[] {
       paragraphs: [
         {
           runs: [
-            { text: "Hello ", bold: true, italic: true, underline: true, strike: true, color: "#ff8800", size: 40, font: "Playfair Display", spacing: 20 },
-            { text: "world", bold: false, italic: false, underline: false, strike: false, color: "#0088ff", size: 36, font: "Plus Jakarta Sans", spacing: -10 },
+            { text: "Hello ", bold: true, weight: 300, italic: true, underline: true, strike: true, color: "#ff8800", size: 40, font: "Playfair Display", spacing: 20 },
+            { text: "world", bold: false, weight: 500, italic: false, underline: false, strike: false, color: "#0088ff", size: 36, font: "Plus Jakarta Sans", spacing: -10 },
           ],
           align: "center",
           list: "bullet",
@@ -143,6 +149,14 @@ function completeElements(): Complete<DesignElement>[] {
       stroke,
       startArrow: "triangle",
       endArrow: "open-arrow",
+      routing: "elbow",
+      route: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 50, y: 40 },
+        { x: 100, y: 40 },
+      ],
+      label: "Next",
       start: { elementId: "s_1", anchor: "auto" },
       end: { elementId: "s_5", anchor: "left" },
     },
@@ -153,8 +167,9 @@ function completeElements(): Complete<DesignElement>[] {
       originalSrc: "asset:a_original",
       naturalWidth: 1600,
       naturalHeight: 900,
-      crop: { x: -0.1, y: -0.2, w: 1.2, h: 1.4 },
+      crop: { x: -0.1, y: -0.2, w: 1.2, h: 1.4, rotation: 5 },
       mask: "circle",
+      maskPath: "M0 0 L100 0 L100 100 L0 100 Z",
       radius: 8,
       filter,
       stroke,
@@ -179,7 +194,7 @@ function completeElements(): Complete<DesignElement>[] {
           type: "text",
           paragraphs: [
             {
-              runs: [{ text: "Inside", bold: true, italic: true, underline: true, strike: true, color: "#111111", size: 20, font: "Inter", spacing: 5 }],
+              runs: [{ text: "Inside", bold: true, weight: 300, italic: true, underline: true, strike: true, color: "#111111", size: 20, font: "Inter", spacing: 5 }],
               align: "left",
               list: "number",
             },
@@ -201,7 +216,23 @@ function completeElements(): Complete<DesignElement>[] {
           curve: 0,
           list: "bullet",
         },
-        { ...base("l_2"), type: "line", stroke, startArrow: "none", endArrow: "arrow", start: { elementId: "s_1", anchor: "top" }, end: { elementId: "s_5", anchor: "bottom" } },
+        {
+          ...base("l_2"),
+          type: "line",
+          stroke,
+          startArrow: "none",
+          endArrow: "arrow",
+          routing: "curved",
+          route: [
+            { x: 0, y: 0 },
+            { x: 30, y: -20 },
+            { x: 70, y: 20 },
+            { x: 100, y: 0 },
+          ],
+          label: "Inside",
+          start: { elementId: "s_1", anchor: "top" },
+          end: { elementId: "s_5", anchor: "bottom" },
+        },
       ],
     },
     {
@@ -211,6 +242,8 @@ function completeElements(): Complete<DesignElement>[] {
         ["Name", "Qty"],
         ["Pens", "12"],
       ],
+      merges: [{ row: 0, col: 0, rowSpan: 1, colSpan: 2 }],
+      cellStyles: { "0:0": { fill: "#eeeeee", color: "#111111", bold: true, align: "center" } },
       colWidths: [120, 80],
       rowHeights: [40, 40],
       headerRow: true,
@@ -239,6 +272,10 @@ function completeElements(): Complete<DesignElement>[] {
       showLegend: true,
       showValues: true,
       showGrid: true,
+      stacked: true,
+      percent: true,
+      valueAxisTitle: "Units",
+      categoryAxisTitle: "Year",
     },
   ];
 }
@@ -280,6 +317,8 @@ export function completeDesign(): Complete<Design> {
     starred: true,
     trashedAt: 1_700_000_900_000,
     guides: { vertical: [100, 960], horizontal: [200, 540] },
+    margin: 48,
+    gridSize: 20,
     live: { server: "https://live.example.test", room: "r_complete", key: "k_complete", role: "edit", ownerKey: "owner-key", viewKey: "v_complete" },
     comments: [
       {
@@ -380,6 +419,10 @@ export function minimalDesign(): Design {
             showLegend: false,
             showValues: false,
             showGrid: false,
+            stacked: false,
+            percent: false,
+            valueAxisTitle: "",
+            categoryAxisTitle: "",
           },
         ],
       },

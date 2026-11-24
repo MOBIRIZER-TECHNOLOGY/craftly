@@ -14,7 +14,8 @@ import { registerTextEditor, useTextSelectionStyle, type InlineFormat } from "./
 /* ------------------------------------------------------------------ */
 
 function applyRunStyle(style: CSSStyleDeclaration, run: TextRun, zoom: number): void {
-  if (run.bold !== undefined) style.fontWeight = run.bold ? "700" : "400";
+  if (run.weight !== undefined) style.fontWeight = String(run.weight);
+  else if (run.bold !== undefined) style.fontWeight = run.bold ? "700" : "400";
   if (run.italic !== undefined) style.fontStyle = run.italic ? "italic" : "normal";
   const deco: string[] = [];
   if (run.underline) deco.push("underline");
@@ -72,8 +73,12 @@ function styleAt(node: Node | null, root: HTMLElement, base: TextElement, zoom: 
   if (!el || !root.contains(el)) return {};
   const cs = getComputedStyle(el);
   const run: Partial<TextRun> = {};
-  const bold = (parseInt(cs.fontWeight, 10) || 400) >= 600;
-  if (bold !== base.fontWeight >= 600) run.bold = bold;
+  const weight = parseInt(cs.fontWeight, 10) || 400;
+  if (weight !== base.fontWeight) {
+    if (weight === 700 && base.fontWeight < 600) run.bold = true;
+    else if (weight === 400 && base.fontWeight >= 600) run.bold = false;
+    else run.weight = weight;
+  }
   const italic = cs.fontStyle === "italic" || cs.fontStyle === "oblique";
   if (italic !== base.italic) run.italic = italic;
   let underline = false;
@@ -176,6 +181,7 @@ export function TextEditorOverlay() {
 function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number; width: number; height: number; rotation: number } }) {
   const ref = useRef<HTMLDivElement>(null);
   const zoom = useEditor((s) => s.zoom);
+  const spellCheck = useEditor((s) => s.spellCheck);
   const elRef = useRef(el);
   elRef.current = el;
   const zoomRef = useRef(zoom);
@@ -284,7 +290,8 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
         active: true,
         collapsed: sel.isCollapsed,
         style: {
-          bold: s.bold ?? base.fontWeight >= 600,
+          bold: s.bold ?? (s.weight ?? base.fontWeight) >= 600,
+          weight: s.weight ?? base.fontWeight,
           italic: s.italic ?? base.italic,
           underline: s.underline ?? base.underline,
           strike: s.strike ?? base.strike,
@@ -324,18 +331,19 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
         toggle("strikeThrough", f.strike);
         if (f.color) cmd("foreColor", f.color);
         if (f.font) cmd("fontName", cssFontFamily(f.font));
-        if (f.size) {
+        if (f.size || f.weight) {
           cmd("fontSize", "7");
           const made: HTMLElement[] = [];
           root.querySelectorAll<HTMLElement>('font[size="7"], span[style*="xxx-large"]').forEach((n) => {
             const span = document.createElement("span");
             span.style.cssText = n.getAttribute("style") ?? "";
-            span.style.fontSize = `${f.size! * zoomRef.current}px`;
+            if (f.size) span.style.fontSize = `${f.size * zoomRef.current}px`;
+            if (f.weight) span.style.fontWeight = String(f.weight);
             while (n.firstChild) span.appendChild(n.firstChild);
             n.replaceWith(span);
             made.push(span);
           });
-          // replacing the nodes collapses the selection: select the resized text again
+          // replacing the nodes collapses the selection: select the styled text again
           if (made.length) {
             const range = document.createRange();
             range.setStartBefore(made[0]);
@@ -398,7 +406,7 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
       data-list={el.list ?? undefined}
       contentEditable
       suppressContentEditableWarning
-      spellCheck={false}
+      spellCheck={spellCheck}
       style={style}
       onInput={commit}
       onKeyDown={(e) => {

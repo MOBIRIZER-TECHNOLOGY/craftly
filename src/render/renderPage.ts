@@ -6,6 +6,7 @@
 import { evaluateAnimation, isHidden, pageDuration, type AnimState } from "@/core/animation";
 import { blendOf } from "@/core/blend";
 import { DEG } from "@/core/geometry";
+import { lineLabelPoint, linePath, lineRouteAngles } from "@/core/lineRoute";
 import { recolorSvg, setSvgStrokeWidth } from "@/core/svg";
 import type { BlendMode, Design, DesignElement, Fill, GraphicElement, ID, ImageElement, LineElement, Page, Rect, ShapeElement, Stroke } from "@/core/types";
 import { drawChart, drawTable } from "./drawBlocks";
@@ -249,25 +250,57 @@ function drawLine(ctx: Ctx, el: LineElement, env: Env): void {
     ctx.shadowOffsetX = el.shadow.x * env.scale;
     ctx.shadowOffsetY = el.shadow.y * env.scale;
   }
-  // shaft
-  let x0 = 0;
-  let x1 = el.width;
-  ctx.save();
-  ctx.translate(el.width, 0);
-  const endInset = el.endArrow !== "none" ? arrowHead(ctx, el.endArrow, head, s.color, s.width) : 0;
-  ctx.restore();
-  ctx.save();
-  ctx.translate(0, 0);
-  ctx.scale(-1, 1);
-  const startShaft = el.startArrow !== "none" ? arrowHead(ctx, el.startArrow, head, s.color, s.width) : 0;
-  ctx.restore();
-  x0 += startShaft + startInset;
-  x1 -= endInset;
-  applyStroke(ctx, s);
-  ctx.beginPath();
-  ctx.moveTo(x0, 0);
-  ctx.lineTo(Math.max(x0, x1), 0);
-  ctx.stroke();
+  const routed = el.routing && el.routing !== "straight" && el.route && el.route.length >= 2;
+  if (routed) {
+    const path = linePath(el);
+    const angles = lineRouteAngles(el);
+    const last = path[path.length - 1];
+    ctx.save();
+    ctx.translate(last.x, last.y);
+    ctx.rotate(angles.end);
+    if (el.endArrow !== "none") arrowHead(ctx, el.endArrow, head, s.color, s.width);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(path[0].x, path[0].y);
+    ctx.rotate(angles.start + Math.PI);
+    if (el.startArrow !== "none") arrowHead(ctx, el.startArrow, head, s.color, s.width);
+    ctx.restore();
+    applyStroke(ctx, s);
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    if (el.routing === "curved" && path.length === 4) ctx.bezierCurveTo(path[1].x, path[1].y, path[2].x, path[2].y, path[3].x, path[3].y);
+    else for (const point of path.slice(1)) ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  } else {
+    let x0 = 0;
+    let x1 = el.width;
+    ctx.save();
+    ctx.translate(el.width, 0);
+    const endInset = el.endArrow !== "none" ? arrowHead(ctx, el.endArrow, head, s.color, s.width) : 0;
+    ctx.restore();
+    ctx.save();
+    ctx.translate(0, 0);
+    ctx.scale(-1, 1);
+    const startShaft = el.startArrow !== "none" ? arrowHead(ctx, el.startArrow, head, s.color, s.width) : 0;
+    ctx.restore();
+    x0 += startShaft + startInset;
+    x1 -= endInset;
+    applyStroke(ctx, s);
+    ctx.beginPath();
+    ctx.moveTo(x0, 0);
+    ctx.lineTo(Math.max(x0, x1), 0);
+    ctx.stroke();
+  }
+  if (el.label) {
+    const point = lineLabelPoint(el);
+    ctx.save();
+    ctx.fillStyle = s.color;
+    ctx.font = "600 14px 'Plus Jakarta Sans Variable', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(el.label, point.x, point.y - 8);
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -276,7 +309,7 @@ const placeholderIcon = new Path2D("M4 18 L9 11 L13 16 L16 12 L22 18 Z M17 7 A2 
 function drawImageElement(ctx: Ctx, el: ImageElement, env: Env): void {
   const w = el.width;
   const h = el.height;
-  const clip = getPath2D(el.mask || "rect", w, h, { radius: el.radius });
+  const clip = getPath2D(el.mask || "rect", w, h, { radius: el.radius, path: el.maskPath });
   if (!el.src) {
     ctx.save();
     ctx.clip(clip);
@@ -314,6 +347,11 @@ function drawImageElement(ctx: Ctx, el: ImageElement, env: Env): void {
   }
   ctx.save();
   ctx.clip(clip);
+  if (el.crop.rotation) {
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(el.crop.rotation * DEG);
+    ctx.translate(-w / 2, -h / 2);
+  }
   if (neutral) {
     ctx.drawImage(img as CanvasImageSource, dx, dy, dw, dh);
   } else {

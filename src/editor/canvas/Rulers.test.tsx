@@ -176,6 +176,17 @@ describe("dragging a guide out of a ruler", () => {
   });
 });
 
+describe("page margins", () => {
+  it("draws the default margin and then the custom size saved on the design", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    expect(rig.container.querySelector("[data-cf-margins]")).toBeNull();
+    act(() => getActions().toggle("showMargins"));
+    expect(rig.container.querySelector<HTMLElement>("[data-cf-margins]")?.style.inset).toBe("30px");
+    act(() => getActions().setMargin(75));
+    expect(rig.container.querySelector<HTMLElement>("[data-cf-margins]")?.style.inset).toBe("75px");
+  });
+});
+
 describe("guides on the page", () => {
   const withGuides = () => canvasDesign([], { guides: { vertical: [300], horizontal: [200] } });
   const line = (rig: CanvasRig, axis: "v" | "h") => rig.container.querySelector<HTMLElement>(`.cf-gline--${axis}:not(.cf-gline--draft)`)!;
@@ -280,5 +291,21 @@ describe("guides on the page", () => {
     showRulers();
     rig.down(300, 100, { target: line(rig, "v") });
     expect(state().selection).toEqual([]);
+  });
+});
+
+describe("the margins of the page", () => {
+  const margins = (rig: CanvasRig) => rig.container.querySelector<HTMLElement>("[data-cf-margins]");
+
+  it("are drawn only when they are switched on, a twentieth of the shorter side in from every edge, at the zoom of the view", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    expect(margins(rig)).toBeNull();
+    act(() => getActions().toggle("showMargins"));
+    const d = state().design!;
+    const inset = Math.round(Math.min(d.width, d.height) * 0.05) * state().zoom;
+    expect(margins(rig)?.style.inset).toBe(`${inset}px`);
+    expect(margins(rig)?.getAttribute("aria-hidden")).toBe("true");
+    act(() => getActions().toggle("showMargins"));
+    expect(margins(rig)).toBeNull();
   });
 });

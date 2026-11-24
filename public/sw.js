@@ -31,6 +31,15 @@ const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./favicon.svg", 
 const HOME = new URL("./", self.location.href).pathname;
 const isHome = (url) => url.pathname === HOME || url.pathname === HOME + "index.html";
 const isPage = (res) => res.ok && (res.headers.get("content-type") || "").toLowerCase().startsWith("text/html");
+const PRIVATE_HEADERS = ["authorization", "x-craftly-key", "x-craftly-create-key", "x-craftly-admin-key"];
+const isPrivateRequest = (req, url) =>
+  url.pathname.startsWith(`${HOME}api/`) ||
+  url.pathname === `${HOME}metrics` ||
+  url.pathname.startsWith("/api/") ||
+  url.pathname === "/metrics" ||
+  PRIVATE_HEADERS.some((name) => req.headers.has(name));
+// Only files of the application build belong in its caches. APIs and anything carrying a credential always go to the network.
+const isStaticAsset = (url) => url.pathname.startsWith(`${HOME}assets/`);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -77,6 +86,12 @@ self.addEventListener("activate", (event) => {
       // the marker of the build that ran before this one says which files a tab that is still open on it may need
       const before = names.find((name) => /^craftly-active-[a-f0-9]{10}$/.test(name));
       const keep = new Set([VERSION, RUNTIME, ACTIVE + BUILD_ID, before ? "craftly-" + before.slice(ACTIVE.length) : null]);
+      // Workers before this rule could put a person's API answer in a build cache. Do not only bypass it: remove it.
+      for (const name of names) {
+        if (!/^craftly-(?:active-)?[a-f0-9]{10}$/.test(name)) continue;
+        const store = await caches.open(name);
+        for (const request of await store.keys()) if (isPrivateRequest(request, new URL(request.url))) await store.delete(request);
+      }
       await Promise.all(names.filter((name) => /^craftly-(?:active-)?[a-f0-9]{10}$/.test(name) && !keep.has(name)).map((name) => caches.delete(name)));
       await caches.open(ACTIVE + BUILD_ID);
       await self.clients.claim();
@@ -97,7 +112,7 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (isModelFile(url)) return;
+  if (isModelFile(url) || isPrivateRequest(req, url)) return;
 
   if (req.mode === "navigate") {
     event.respondWith(
@@ -117,6 +132,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (!isStaticAsset(url) || req.cache === "no-store") return;
+
   // ignoreVary: static hosts often send "Vary: Origin", and module scripts send an Origin header that the precache fetch lacks
   event.respondWith(
     caches.match(req, { ignoreVary: true }).then(
@@ -125,7 +142,8 @@ self.addEventListener("fetch", (event) => {
         fetch(req).then((res) => {
           // a runtime file must really be one: a host that answers an unknown path with its home page (a 200 with HTML)
           // would otherwise get a web page stored under a .wasm name
-          if (res.ok && (!isRuntimeFile(url) || /wasm/.test(res.headers.get("content-type") || ""))) {
+          const cacheControl = res.headers.get("cache-control") || "";
+          if (res.ok && !/no-store|private/i.test(cacheControl) && (!isRuntimeFile(url) || /wasm/.test(res.headers.get("content-type") || ""))) {
             const copy = res.clone();
             caches.open(isRuntimeFile(url) ? RUNTIME : VERSION).then((c) => c.put(req, copy));
           }

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createPage, createShape, solid } from "@/core/factory";
@@ -107,8 +107,10 @@ describe("<DownloadPanel> choices", () => {
     mountPanel();
     await user.click(fileType());
     const names = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(names).toHaveLength(9);
-    ["PNG", "JPG", "PDF Standard", "PDF Print", "SVG", "Animated GIF", "Video (WebM)", "Several sizes", "Web page (HTML)"].forEach((name, i) => expect(names[i]).toContain(name));
+    expect(names).toHaveLength(10);
+    ["PNG", "JPG", "PDF Standard", "PDF Print", "SVG", "Animated GIF", "Video (WebM)", "Several sizes", "Web page (HTML)", "PowerPoint (PPTX)"].forEach((name, i) =>
+      expect(names[i]).toContain(name),
+    );
     const video = screen.getByRole("option", { name: /Video \(WebM\)/ });
     expect(video.getAttribute("aria-disabled")).toBe("true");
     expect(video.textContent).toContain("Not supported in this browser");
@@ -211,7 +213,7 @@ describe("<DownloadPanel> choices", () => {
     radio("Bleed", "3 mm").focus();
     await user.keyboard("{ArrowRight}");
     expect(radio("Bleed", "0.125 in").getAttribute("aria-checked")).toBe("true");
-    expect(document.activeElement).toBe(radio("Bleed", "0.125 in"));
+    await waitFor(() => expect(document.activeElement).toBe(radio("Bleed", "0.125 in")));
     expect(stored().bleed).toBe("eighth");
     expect(screen.getByText(/extended 3\.175 mm beyond every edge/)).toBeTruthy();
     await user.keyboard("{ArrowRight}");

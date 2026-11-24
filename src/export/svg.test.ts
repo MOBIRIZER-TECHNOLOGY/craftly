@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { BLEND_MODES } from "@/core/blend";
+import { lineFromRoute } from "@/core/connectors";
 import { createChart, createDesign, createGraphic, createGroup, createLine, createPage, createShape, createTable, createText, solid } from "@/core/factory";
 import { newPathShape } from "@/core/penShape";
 import type { DesignElement, Fill, Page, Point, TextEffect } from "@/core/types";
@@ -340,6 +341,16 @@ describe("shapes and lines", () => {
     // head = max(4 * 3.2, 14) = 14; the shaft stops 0.9 heads short of the tip
     expect(svg).toContain('<path d="M0 0L100 0"'.replace("100", "87.4"));
     expect(svg).toContain('<path d="M0 0L-14 -7.7L-14 7.7Z"');
+  });
+
+  it("exports elbow and curved routes, directed arrowheads and escaped labels", async () => {
+    const elbow = await render([createLine({ ...lineFromRoute({ x: 0, y: 0 }, { x: 300, y: 100 }, "elbow"), routing: "elbow", label: "Next <step>", endArrow: "arrow" })]);
+    expect(elbow.svg).toContain("Next &lt;step&gt;");
+    expect(elbow.svg).toContain("rotate(");
+    checkXml(elbow.svg);
+    const curved = await render([createLine({ ...lineFromRoute({ x: 0, y: 0 }, { x: 300, y: 100 }, "curved"), routing: "curved" })]);
+    expect(curved.svg).toMatch(/<path d="M[^"]+C[^"]+" fill="none"/);
+    checkXml(curved.svg);
   });
 });
 

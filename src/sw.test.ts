@@ -327,5 +327,32 @@ describe("the service worker", () => {
       expect(worker.caches.stores.get("craftly-runtime")?.entries.has(`${ORIGIN}/assets/ort.wasm`) ?? false).toBe(false);
       expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/assets/ort.wasm`)).toBe(false);
     });
+
+    it("leaves account APIs, source files and every credentialed request to the browser", async () => {
+      const worker = await running("b1");
+      worker.network.serve("/api/me", () => new Response("private", { headers: { "cache-control": "no-store" } }));
+      expect(await worker.request("/api/me", { headers: { authorization: "Bearer alice" } })).toBeUndefined();
+      expect(await worker.request("/api/me", { headers: { authorization: "Bearer bob" } })).toBeUndefined();
+      expect(await worker.request("/src/i18n/en/index.ts")).toBeUndefined();
+      expect(await worker.request("/assets/private.js", { headers: { "x-craftly-key": "room-key" } })).toBeUndefined();
+      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/api/me`)).toBe(false);
+      expect(worker.caches.stores.get("craftly-b1")!.entries.has(`${ORIGIN}/assets/private.js`)).toBe(false);
+    });
+
+    it("removes private answers left by an older worker and does not store a no-store answer", async () => {
+      const worker = await running("aaaaaaaaaa");
+      const store = worker.caches.stores.get("craftly-aaaaaaaaaa")!;
+      await store.put(new Request(`${ORIGIN}/api/me`, { headers: { authorization: "Bearer alice" } }), new Response("account"));
+      await store.put(`${ORIGIN}/api/rooms/room/assets/picture`, new Response("room"));
+      await worker.activate();
+      expect(store.entries.has(`${ORIGIN}/api/me`)).toBe(false);
+      expect(store.entries.has(`${ORIGIN}/api/rooms/room/assets/picture`)).toBe(false);
+
+      worker.network.serve("/assets/no-store.js", () => new Response("not cached", { headers: { "cache-control": "no-store" } }));
+      expect(await text(await worker.request("/assets/no-store.js"))).toBe("not cached");
+      expect(await text(await worker.request("/assets/no-store.js"))).toBe("not cached");
+      expect(worker.network.calls.filter((url) => url.endsWith("/assets/no-store.js"))).toHaveLength(2);
+      expect(store.entries.has(`${ORIGIN}/assets/no-store.js`)).toBe(false);
+    });
   });
 });

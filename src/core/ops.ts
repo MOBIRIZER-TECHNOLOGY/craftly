@@ -6,7 +6,7 @@ import { blendOf } from "./blend";
 import { cloneDeep } from "./clone";
 import { rebindClones, retargetLines } from "./connectors";
 import { cloneElement, createGroup } from "./factory";
-import { boundsOfElements, boxBounds, boxCenter, rotatePoint } from "./geometry";
+import { boundsOfElements, boxBounds, boxCenter, fromLocalPoint, rotatePoint } from "./geometry";
 import { uid } from "./ids";
 import type { Design, DesignElement, GroupElement, ID, Page, Rect, TextElement, TextParagraph, TextRun } from "./types";
 
@@ -179,6 +179,23 @@ export function groupElements(page: Page, ids: ID[]): GroupElement | null {
   const group = createGroup(children, { x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h });
   list.splice(top - removedBefore, 0, group);
   return group;
+}
+
+/** Fits a group around its children without moving their appearance in the group's parent space. */
+export function fitGroup(group: GroupElement): void {
+  const bounds = boundsOfElements(group.children);
+  if (!bounds) return;
+  if (Math.abs(bounds.x) < 0.001 && Math.abs(bounds.y) < 0.001 && Math.abs(bounds.w - group.width) < 0.001 && Math.abs(bounds.h - group.height) < 0.001) return;
+  const topLeft = fromLocalPoint(group, { x: bounds.x, y: bounds.y });
+  const centreOffset = rotatePoint({ x: bounds.w / 2, y: bounds.h / 2 }, { x: 0, y: 0 }, group.rotation);
+  for (const child of group.children) {
+    child.x -= bounds.x;
+    child.y -= bounds.y;
+  }
+  group.x = topLeft.x + centreOffset.x - bounds.w / 2;
+  group.y = topLeft.y + centreOffset.y - bounds.h / 2;
+  group.width = bounds.w;
+  group.height = bounds.h;
 }
 
 /** Dissolves a group; children get absolute (parent-space) coordinates. Returns the child ids. */
@@ -370,6 +387,11 @@ export function scaleElement(el: DesignElement, sx: number, sy: number): void {
       break;
     case "line":
       el.stroke.width *= s;
+      if (el.route)
+        for (const point of el.route) {
+          point.x *= sx;
+          point.y *= sy;
+        }
       break;
     case "image":
       el.radius *= s;
@@ -393,10 +415,21 @@ export function scaleElement(el: DesignElement, sx: number, sy: number): void {
  * Changes the design canvas size. With `scaleContent` all content is scaled
  * uniformly to fit and centred on every page.
  */
-export function resizeDesign(design: Design, width: number, height: number, scaleContent: boolean): void {
+export function resizeDesign(design: Design, width: number, height: number, scaleContent: boolean, smart = false): void {
   const ow = design.width;
   const oh = design.height;
-  if (scaleContent) {
+  if (smart) {
+    for (const page of design.pages) {
+      for (const el of page.elements) {
+        const cx = el.x + el.width / 2;
+        const cy = el.y + el.height / 2;
+        const fit = Math.min(1, width / el.width, height / el.height);
+        if (fit < 1) scaleElement(el, fit, fit);
+        el.x = Math.max(0, Math.min(width - el.width, (cx / ow) * width - el.width / 2));
+        el.y = Math.max(0, Math.min(height - el.height, (cy / oh) * height - el.height / 2));
+      }
+    }
+  } else if (scaleContent) {
     const s = Math.min(width / ow, height / oh);
     const ox = (width - ow * s) / 2;
     const oy = (height - oh * s) / 2;
@@ -459,12 +492,17 @@ export function applyTextProps(el: TextElement, patch: Partial<TextElement>): vo
   for (const key of Object.keys(patch) as Array<keyof TextElement>) {
     const runKey = PROP_TO_RUN[key];
     if (!runKey) continue;
-    for (const p of el.paragraphs) for (const r of p.runs) delete r[runKey];
+    for (const p of el.paragraphs)
+      for (const r of p.runs) {
+        delete r[runKey];
+        if (key === "fontWeight") delete r.weight;
+      }
   }
 }
 
 const sameStyle = (a: TextRun, b: TextRun) =>
   a.bold === b.bold &&
+  a.weight === b.weight &&
   a.italic === b.italic &&
   a.underline === b.underline &&
   a.strike === b.strike &&

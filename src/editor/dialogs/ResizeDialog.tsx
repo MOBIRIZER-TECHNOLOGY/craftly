@@ -49,6 +49,7 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [ratio, setRatio] = useState((design?.width ?? 1) / (design?.height ?? 1));
   const [lock, setLock] = useState(true);
   const [scale, setScale] = useState(true);
+  const [smart, setSmart] = useState(false);
   const [preset, setPreset] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // what is being typed into a side, checked at every key (B8); the field clamps it to the limits when it is committed
@@ -95,7 +96,7 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
   };
 
   const resizeHere = () => {
-    useEditor.getState().actions.resizeDesign(nw, nh, scale, unit);
+    useEditor.getState().actions.resizeDesign(nw, nh, scale, unit, smart);
     onClose();
     toast.success(m.editorChrome.resize.resized(describeSize(nw, nh, unit)));
   };
@@ -109,7 +110,7 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
       if ((await waitForSaved()) !== "saved") throw new Error("The original design could not be saved.");
       const copy = await duplicateDesign(current.id);
       if (!copy) throw new Error("missing");
-      applyResize(copy, nw, nh, scale);
+      applyResize(copy, nw, nh, scale, smart);
       copy.typeId = "custom";
       copy.unit = unit;
       let thumb: string | undefined;
@@ -217,8 +218,9 @@ export function ResizeDialog({ open, onClose }: { open: boolean; onClose: () => 
             </span>
             <Select<SizeUnit> value={unit} onChange={setUnit} options={UNIT_OPTIONS} aria-label={m.editorChrome.resize.units} width={120} />
           </div>
-          <Checkbox checked={scale} onChange={setScale} label={m.editorChrome.resize.scaleContent} />
-          <p className="cf-resize__hint">{scale ? m.editorChrome.resize.scaleHint : m.editorChrome.resize.keepHint}</p>
+          <Checkbox checked={scale} disabled={smart} onChange={setScale} label={m.editorChrome.resize.scaleContent} />
+          <Checkbox checked={smart} onChange={setSmart} label={m.editorChrome.resize.smartResize} />
+          <p className="cf-resize__hint">{smart ? m.editorChrome.resize.smartHint : scale ? m.editorChrome.resize.scaleHint : m.editorChrome.resize.keepHint}</p>
           <dl className="cf-resize__facts">
             <div>
               <dt>{m.editorChrome.resize.current}</dt>

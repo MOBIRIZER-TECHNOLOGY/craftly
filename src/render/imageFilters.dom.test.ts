@@ -57,9 +57,30 @@ describe("isNeutral", () => {
   });
 
   it("is false as soon as one slider moves", () => {
-    for (const key of ["brightness", "contrast", "saturation", "warmth", "fade", "vignette", "blur", "hue"] as const) {
+    for (const key of [
+      "brightness",
+      "contrast",
+      "saturation",
+      "warmth",
+      "fade",
+      "vignette",
+      "blur",
+      "hue",
+      "highlights",
+      "shadows",
+      "sharpen",
+      "tint",
+      "curves",
+      "levels",
+    ] as const) {
       expect(isNeutral(filter({ [key]: 5 })), key).toBe(false);
     }
+  });
+
+  it("treats every new field as zero in a filter from an older design", () => {
+    const legacy = filter();
+    for (const key of ["highlights", "shadows", "sharpen", "tint", "curves", "levels"] as const) delete legacy[key];
+    expect(isNeutral(legacy)).toBe(true);
   });
 
   it("is false for a duotone and for a preset that has any effect", () => {

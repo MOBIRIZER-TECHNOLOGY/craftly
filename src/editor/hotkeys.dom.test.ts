@@ -17,6 +17,7 @@ import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore
 import { usePreview, startPreview } from "./canvas/preview";
 import { takeSelectAllOnEdit } from "./canvas/controller";
 import { installHotkeys } from "./hotkeys";
+import { useLinkDialog } from "./toolbar/link";
 
 // the machine may be busy: give waitFor more than its default second
 configure({ asyncUtilTimeout: 20_000 });
@@ -302,6 +303,40 @@ describe("selection and arrangement shortcuts", () => {
     expect(t.type === "text" && t.fontSize).toBe(20);
     expect(t.type === "text" && t.color).toBe("#ff0000");
     expect(t.type === "text" && t.fontWeight).toBe(700);
+  });
+});
+
+describe("link shortcuts", () => {
+  it("Ctrl+K opens the link dialog for one unlocked selected element", () => {
+    open();
+    actions().select(["r"]);
+    expect(ctrl("k")).toBe(true);
+    expect(useLinkDialog.getState().id).toBe("r");
+  });
+
+  it("does not open it for no selection, several elements or a locked element", () => {
+    open();
+    useLinkDialog.setState({ id: null });
+    expect(ctrl("k")).toBe(true);
+    expect(useLinkDialog.getState().id).toBeNull();
+    actions().select(["r", "e"]);
+    ctrl("k");
+    expect(useLinkDialog.getState().id).toBeNull();
+    actions().setLocked(["r"], true);
+    actions().select(["r"]);
+    ctrl("k");
+    expect(useLinkDialog.getState().id).toBeNull();
+  });
+
+  it("leaves Ctrl+K to the browser in view mode and while typing", () => {
+    open();
+    actions().select(["r"]);
+    actions().setMode("view");
+    actions().select(["r"]);
+    expect(ctrl("k")).toBe(false);
+    actions().setMode("edit");
+    const input = document.body.appendChild(document.createElement("input"));
+    expect(press("k", { ctrlKey: true }, input)).toBe(false);
   });
 });
 

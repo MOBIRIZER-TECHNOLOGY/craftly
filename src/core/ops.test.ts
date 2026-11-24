@@ -266,4 +266,23 @@ describe("design resize", () => {
     expect(d.pages[0].elements[0].width).toBe(40);
     expect(boundsOfElements(d.pages[0].elements)!.w).toBe(40);
   });
+  it("smart resize keeps element sizes and moves their relative centres into the new page", () => {
+    const d = createDesign({ width: 1000, height: 500, pages: [pageWith(1)] });
+    const e = d.pages[0].elements[0];
+    e.x = 900;
+    e.y = 400;
+    resizeDesign(d, 500, 1000, false, true);
+    expect([e.width, e.height]).toEqual([40, 40]);
+    expect(e.x + e.width / 2).toBeCloseTo(460);
+    expect(e.y + e.height / 2).toBeCloseTo(840);
+  });
+  it("smart resize shrinks only elements too large for the new page", () => {
+    const d = createDesign({ width: 1000, height: 500, pages: [pageWith(1)] });
+    const e = d.pages[0].elements[0];
+    e.width = 600;
+    e.height = 200;
+    resizeDesign(d, 300, 800, false, true);
+    expect([e.width, e.height]).toEqual([300, 100]);
+    expect(e.x).toBe(0);
+  });
 });

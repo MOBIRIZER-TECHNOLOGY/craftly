@@ -16,7 +16,7 @@ import { HANDLE_VEC, type Handle } from "./resize";
 export function clampCrop(c: ImageCrop): ImageCrop {
   const x = Math.min(0, Math.max(1 - c.w, c.x));
   const y = Math.min(0, Math.max(1 - c.h, c.y));
-  return { x, y, w: c.w, h: c.h };
+  return { ...c, x, y };
 }
 
 /** Width of the picture that exactly covers the frame, in design px. */
@@ -41,7 +41,7 @@ export function setCropScale(id: string, scale: number): void {
       const ih = (iw * d.naturalHeight) / d.naturalWidth;
       const w = iw / d.width;
       const h = ih / d.height;
-      d.crop = clampCrop({ x: 0.5 - cx * w, y: 0.5 - cy * h, w, h });
+      d.crop = clampCrop({ x: 0.5 - cx * w, y: 0.5 - cy * h, w, h, rotation: d.crop.rotation });
     },
     { coalesce: `cropzoom:${id}` },
   );
@@ -52,6 +52,71 @@ export function resetCrop(id: string): void {
   setCropScale(id, 1);
   getActions().updateElements([id], (d) => {
     if (d.type === "image") d.crop = clampCrop({ x: (1 - d.crop.w) / 2, y: (1 - d.crop.h) / 2, w: d.crop.w, h: d.crop.h });
+  });
+}
+
+export function setCropRotation(id: string, rotation: number): void {
+  getActions().updateElements(
+    [id],
+    (d) => {
+      if (d.type === "image") d.crop = { ...d.crop, rotation: Math.max(-45, Math.min(45, rotation)) };
+    },
+    { coalesce: `crop-rotate:${id}` },
+  );
+}
+
+/** The shapes the crop toolbar offers for the frame: width over height, or "original" for the shape of the picture itself. */
+export const CROP_RATIOS = [
+  { id: "original", ratio: null },
+  { id: "1:1", ratio: 1 },
+  { id: "4:3", ratio: 4 / 3 },
+  { id: "3:2", ratio: 3 / 2 },
+  { id: "16:9", ratio: 16 / 9 },
+  { id: "3:4", ratio: 3 / 4 },
+  { id: "2:3", ratio: 2 / 3 },
+  { id: "9:16", ratio: 9 / 16 },
+] as const;
+
+export type CropRatioId = (typeof CROP_RATIOS)[number]["id"];
+
+/** Width over height of a ratio of the list, for this picture. */
+export const cropRatioOf = (el: ImageElement, id: CropRatioId): number => CROP_RATIOS.find((r) => r.id === id)?.ratio ?? el.naturalWidth / el.naturalHeight;
+
+/** The ratio of the list that the frame has now (within half a pixel on its longer side), or null when it has a shape of its own. */
+export function currentCropRatio(el: ImageElement): CropRatioId | null {
+  const fits = (ratio: number) => Math.abs(el.width - el.height * ratio) <= 0.5 || Math.abs(el.height - el.width / ratio) <= 0.5;
+  // a named ratio before "original", so that a square picture in a square frame reads 1:1
+  const named = CROP_RATIOS.find((r) => r.ratio !== null && fits(r.ratio));
+  if (named) return named.id;
+  return fits(el.naturalWidth / el.naturalHeight) ? "original" : null;
+}
+
+/**
+ * Gives the frame the shape `ratio` (width over height): the largest frame of that shape that the picture covers, around the
+ * middle of the frame as it was and no further than the edge of the picture. The picture stays where it is on the page, as when
+ * the frame is trimmed by a handle, so only what is seen of it changes. One step of undo.
+ */
+export function setCropRatio(id: string, ratio: number): void {
+  const page = getActivePage(useEditor.getState());
+  const el = page && findElement(page, id);
+  if (!el || el.type !== "image" || !(ratio > 0) || !Number.isFinite(ratio)) return;
+  // the picture in the frame's own space, in design px
+  const ix = el.crop.x * el.width;
+  const iy = el.crop.y * el.height;
+  const iw = el.crop.w * el.width;
+  const ih = el.crop.h * el.height;
+  const w = Math.min(iw, ih * ratio);
+  const h = w / ratio;
+  const left = clamp(el.width / 2 - w / 2, ix, ix + iw - w);
+  const top = clamp(el.height / 2 - h / 2, iy, iy + ih - h);
+  const c = fromLocalPoint(el, { x: left + w / 2, y: top + h / 2 });
+  getActions().updateElements([id], (n) => {
+    if (n.type !== "image") return;
+    n.x = c.x - w / 2;
+    n.y = c.y - h / 2;
+    n.width = w;
+    n.height = h;
+    n.crop = { x: (ix - left) / w, y: (iy - top) / h, w: iw / w, h: ih / h, rotation: n.crop.rotation };
   });
 }
 
@@ -83,6 +148,7 @@ function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
   const W = el.width * zoom;
   const H = el.height * zoom;
   const img = { left: el.crop.x * W, top: el.crop.y * H, width: el.crop.w * W, height: el.crop.h * H };
+  const imgStyle = { ...img, transform: el.crop.rotation ? `rotate(${el.crop.rotation}deg)` : undefined, transformOrigin: `${W / 2 - img.left}px ${H / 2 - img.top}px` };
   const actions = getActions();
 
   /** client delta -> element-local design px */
@@ -157,7 +223,7 @@ function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
         n.y = c.y - h / 2;
         n.width = w;
         n.height = h;
-        n.crop = { x: (ix - left) / w, y: (iy - top) / h, w: iw / w, h: ih / h };
+        n.crop = { x: (ix - left) / w, y: (iy - top) / h, w: iw / w, h: ih / h, rotation: n.crop.rotation };
       });
     });
   };
@@ -172,9 +238,9 @@ function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
         setCropScale(el.id, getCropScale(el) * Math.exp(-e.deltaY * 0.0015));
       }}
     >
-      {url && <img className="cf-crop__ghost" src={url} alt="" draggable={false} style={img} />}
+      {url && <img className="cf-crop__ghost" src={url} alt="" draggable={false} style={imgStyle} />}
       <div className="cf-crop__window" onPointerDown={startPan}>
-        {url && <img className="cf-crop__live" src={url} alt="" draggable={false} style={img} />}
+        {url && <img className="cf-crop__live" src={url} alt="" draggable={false} style={imgStyle} />}
       </div>
       {HANDLES.map((h) => (
         <div key={h} className={`cf-crop__handle cf-crop__handle--${h}`} onPointerDown={(e) => startFrame(e, h)} />

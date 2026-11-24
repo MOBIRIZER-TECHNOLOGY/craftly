@@ -71,6 +71,8 @@ export const editor: typeof en = {
     hide: "छिपाएँ",
     replaceImage: "फ़ोटो बदलें",
     altText: "वैकल्पिक टेक्स्ट",
+    link: "लिंक",
+    editLink: "लिंक बदलें",
   },
 
   toolbar: {
@@ -149,12 +151,21 @@ export const editor: typeof en = {
   shapeBar: {
     editPoints: "पॉइंट बदलें",
     editPointsTip: "इस पाथ के पॉइंट हिलाएँ, जोड़ें और हटाएँ",
+    useAsFrame: "पिक्चर फ्रेम के रूप में इस्तेमाल करें",
     combine: "मिलाएँ",
     combineTip: "चुने गए आकारों को एक में मिलाएँ, या एक को दूसरे से काटें",
+    shapeOptions: "आकार के विकल्प",
+    shapeOptionsTip: "इस आकार की भुजाएँ, नोकें और दूसरी संख्याएँ",
+    percent: (label: string) => `${label} (%)`,
+    params: { sides: "भुजाएँ", points: "नोकें", inner: "भीतरी साइज़", lobes: "पंखुड़ियाँ", amp: "पंखुड़ियों की गहराई", hole: "छेद का साइज़" },
     lineColor: "लाइन का रंग",
     lineWeight: "लाइन की मोटाई",
     weight: "मोटाई",
     lineStyle: "लाइन की स्टाइल",
+    routing: "कनेक्टर का रास्ता",
+    routes: { straight: "सीधा", elbow: "कोणीय", curved: "वक्र" },
+    lineLabel: "लाइन का लेबल",
+    lineLabelTip: "लाइन के बीच में दिखने वाला टेक्स्ट",
     startArrowhead: "शुरू का तीर का सिरा",
     start: "शुरू",
     endArrowhead: "आख़िर का तीर का सिरा",
@@ -181,9 +192,17 @@ export const editor: typeof en = {
     uploadTip: "इस फ़्रेम में फ़ोटो अपलोड करें",
     zoom: "ज़ूम",
     cropZoom: "क्रॉप का ज़ूम",
+    straighten: "सीधा करें",
     resetCrop: "क्रॉप रीसेट करें",
     resetCropTip: "पहले वाला क्रॉप वापस लाएँ",
     finishCropTip: "क्रॉप करना पूरा करें",
+    ratio: "क्रॉप का आकार",
+    ratioTip: "फ़्रेम को एक तय आकार दें",
+    ratioFree: "मुक्त",
+    ratioOriginal: "मूल",
+    frameShape: "फ़्रेम का आकार",
+    frameShapeTip: "फ़ोटो को किसी आकार में काटें",
+    frameNone: "कोई फ़्रेम नहीं",
   },
 
   miscBars: {
@@ -216,6 +235,15 @@ export const editor: typeof en = {
     colorN: (n: number) => `रंग ${num(n)}`,
     colorNOf: (n: number, total: number) => `रंग ${num(n)}/${num(total)}`,
     strokeWidth: "लाइन की मोटाई",
+  },
+
+  link: {
+    title: "लिंक",
+    hint: "इस एलिमेंट पर क्लिक करने से यह पता खुलता है: प्रेज़ेंटर में, PDF में और SVG डाउनलोड में।",
+    address: "पता",
+    placeholder: "example.com, या mailto: या tel: से शुरू होने वाला पता",
+    invalid: "यह ऐसा पता नहीं है जिस पर लिंक जा सके। example.com जैसा वेब पता लिखें, या ऐसा जो https://, mailto: या tel: से शुरू हो।",
+    remove: "लिंक हटाएँ",
   },
 
   altText: {

@@ -17,6 +17,7 @@
  */
 import { getAsset } from "@/core/assets";
 import { blendOf } from "@/core/blend";
+import { lineLabelPoint, linePath, lineRouteAngles } from "@/core/lineRoute";
 import { svgProblem } from "@/core/svgSafety";
 import type { Design, DesignElement, Fill, GraphicElement, ImageElement, LineElement, Page, ShapeElement, Stroke, TableElement } from "@/core/types";
 import { m } from "@/i18n";
@@ -464,11 +465,30 @@ class PageBuilder {
     const startInset = el.startArrow !== "none" ? head * 0.1 : 0;
     const end = el.endArrow !== "none" ? this.arrowHead(el.endArrow, head, s, a) : { markup: "", inset: 0 };
     const start = el.startArrow !== "none" ? this.arrowHead(el.startArrow, head, s, a) : { markup: "", inset: 0 };
-    const x0 = start.inset + startInset;
-    const x1 = el.width - end.inset;
-    let body = `<path d="M${num(x0)} 0L${num(Math.max(x0, x1))} 0" fill="none"${strokeAttrs(s, a)}/>`;
-    if (end.markup) body += `<g transform="translate(${num(el.width)} 0)">${end.markup}</g>`;
-    if (start.markup) body += `<g transform="scale(-1 1)">${start.markup}</g>`;
+    let body: string;
+    const routed = el.routing && el.routing !== "straight" && el.route && el.route.length >= 2;
+    if (routed) {
+      const path = linePath(el);
+      const angles = lineRouteAngles(el);
+      const last = path[path.length - 1];
+      const d =
+        el.routing === "curved" && path.length === 4
+          ? `M${num(path[0].x)} ${num(path[0].y)}C${num(path[1].x)} ${num(path[1].y)} ${num(path[2].x)} ${num(path[2].y)} ${num(path[3].x)} ${num(path[3].y)}`
+          : path.map((point, i) => `${i ? "L" : "M"}${num(point.x)} ${num(point.y)}`).join("");
+      body = `<path d="${d}" fill="none"${strokeAttrs(s, a)}/>`;
+      if (end.markup) body += `<g transform="translate(${num(last.x)} ${num(last.y)}) rotate(${num((angles.end * 180) / Math.PI)})">${end.markup}</g>`;
+      if (start.markup) body += `<g transform="translate(${num(path[0].x)} ${num(path[0].y)}) rotate(${num((angles.start * 180) / Math.PI + 180)})">${start.markup}</g>`;
+    } else {
+      const x0 = start.inset + startInset;
+      const x1 = el.width - end.inset;
+      body = `<path d="M${num(x0)} 0L${num(Math.max(x0, x1))} 0" fill="none"${strokeAttrs(s, a)}/>`;
+      if (end.markup) body += `<g transform="translate(${num(el.width)} 0)">${end.markup}</g>`;
+      if (start.markup) body += `<g transform="scale(-1 1)">${start.markup}</g>`;
+    }
+    if (el.label) {
+      const point = lineLabelPoint(el);
+      body += `<text x="${num(point.x)}" y="${num(point.y - 8)}"${colorAttr("fill", s.color, a)} font-family="Plus Jakarta Sans Variable, system-ui, sans-serif" font-size="14" font-weight="600" text-anchor="middle">${escText(el.label)}</text>`;
+    }
     const filter = this.shadowFilterFor(el, matrix, true);
     return filter ? `<g filter="url(#${filter})">${body}</g>` : body;
   }
@@ -477,9 +497,9 @@ class PageBuilder {
 
   private image(el: ImageElement, matrix: Matrix, a: number): string {
     const { width: w, height: h } = el;
-    const geometry = shapeGeometry(el.mask || "rect", w, h, { radius: el.radius });
+    const geometry = shapeGeometry(el.mask || "rect", w, h, { radius: el.radius, path: el.maskPath });
     if (!geometry) return "";
-    const clipId = this.doc.clipPath(geometry(""), `img|${el.mask || "rect"}|${num(w)}|${num(h)}|${num(el.radius)}`);
+    const clipId = this.doc.clipPath(geometry(""), `img|${el.mask || "rect"}|${num(w)}|${num(h)}|${num(el.radius)}|${el.maskPath ?? ""}`);
     const opacity = a < 0.9995 ? ` opacity="${num(a)}"` : "";
 
     if (!el.src) {
@@ -515,7 +535,9 @@ class PageBuilder {
         this.doc.warn(m.exporting.errors.svgFilteredImages);
       }
     }
-    out += picture ? `<g clip-path="url(#${clipId})">${picture}</g>` : `<g clip-path="url(#${clipId})"><rect width="${num(w)}" height="${num(h)}" fill="#eceef3"${opacity}/></g>`;
+    out += picture
+      ? `<g clip-path="url(#${clipId})">${el.crop.rotation ? `<g transform="rotate(${num(el.crop.rotation)} ${num(w / 2)} ${num(h / 2)})">${picture}</g>` : picture}</g>`
+      : `<g clip-path="url(#${clipId})"><rect width="${num(w)}" height="${num(h)}" fill="#eceef3"${opacity}/></g>`;
     if (el.stroke && el.stroke.width > 0) out += geometry(` fill="none"${strokeAttrs(el.stroke, a)}`);
     return out;
   }

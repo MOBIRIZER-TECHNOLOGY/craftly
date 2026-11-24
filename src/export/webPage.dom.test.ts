@@ -102,6 +102,16 @@ describe("buildWebPage: the document", () => {
     expect(images.every((i) => i.getAttribute("width") === "400" && i.getAttribute("height") === "300")).toBe(true);
   });
 
+  it("puts safe, named link hotspots over the page picture at scaled positions", () => {
+    const doc = parse(buildWebPage(input({ slides: [{ src: PNG, links: [{ url: "https://example.com", x: 40, y: 30, w: 100, h: 60 }] }] })));
+    const link = doc.querySelector<HTMLAnchorElement>(".picture a")!;
+    expect(link.href).toBe("https://example.com/");
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toBe("noopener noreferrer");
+    expect(link.getAttribute("aria-label")).toBe("https://example.com");
+    expect(link.getAttribute("style")).toBe("left:10%;top:10%;width:25%;height:20%");
+  });
+
   it("describes every picture: with the alt text of the page where there is one, with its number and name otherwise", () => {
     const doc = parse(buildWebPage(input()));
     expect([...doc.querySelectorAll(".slide img")].map((i) => i.getAttribute("alt"))).toEqual(["A plate of pasta", "Page 2", "Page 3: Desserts"]);

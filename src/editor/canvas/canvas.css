@@ -512,3 +512,49 @@
 .cf-workspace.is-previewing .cf-pageframe {
   visibility: hidden;
 }
+
+/* the margins of the page, when File > Rulers and guides > Show margins is on */
+.cf-margins {
+  position: absolute;
+  border: 1px dashed var(--c-ring);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.cf-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-image: linear-gradient(to right, rgba(124, 58, 237, 0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(124, 58, 237, 0.12) 1px, transparent 1px);
+  pointer-events: none;
+}
+
+.cf-linkmark {
+  position: absolute;
+  z-index: 17;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+  pointer-events: none;
+}
+
+.cf-tablecell-editor {
+  position: absolute;
+  z-index: 16;
+  box-sizing: border-box;
+  padding: 0.5em;
+  border: 2px solid var(--c-ring);
+  border-radius: 0;
+  outline: none;
+  resize: none;
+  overflow: auto;
+  line-height: 1.25;
+  pointer-events: auto;
+  transform-origin: center;
+  user-select: text;
+  -webkit-user-select: text;
+}

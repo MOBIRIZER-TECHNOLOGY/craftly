@@ -251,6 +251,8 @@ const boundKey = (space: string, designId: string) => `${space}\n${designId}`;
 const SEAT_TRIES = 5;
 /** The most messages that may wait for the answer to a join with a session (a browser sends a few at most before its welcome). */
 const PENDING_MAX = 64;
+/** What may wait before the room has even been read: no more than a small queue and 256 KiB of unauthenticated messages. */
+const EARLY_MAX_BYTES = 256 * 1024;
 
 export function createLiveServer(options: LiveServerOptions): LiveServer {
   const o = {
@@ -1202,6 +1204,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     ws.on("pong", () => answered.set(ws, true));
     // what arrives while the room is being loaded waits here
     const early: RawData[] = [];
+    let earlyBytes = 0;
     let handle: ((data: RawData) => void) | null = null;
     let shownKey = false;
     ws.on("message", (data) => {
@@ -1213,8 +1216,13 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         metrics.countBy("connections_closed_total", "size");
         return void ws.close(1009, "too big before the key");
       }
-      if (handle) handle(data);
-      else early.push(data);
+      if (handle) return handle(data);
+      if (early.length >= PENDING_MAX || earlyBytes + sizeOf(data) > EARLY_MAX_BYTES) {
+        metrics.countBy("connections_closed_total", "rate");
+        return void ws.close(1008, "too much before the room loads");
+      }
+      early.push(data);
+      earlyBytes += sizeOf(data);
     });
 
     let l: Loaded | null;

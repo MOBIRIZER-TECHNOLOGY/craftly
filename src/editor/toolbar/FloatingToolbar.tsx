@@ -29,6 +29,7 @@ import { useGesture } from "@/editor/canvas/gestureStore";
 import { usePathEdit } from "@/editor/canvas/pathEditStore";
 import { m } from "@/i18n";
 import { AltTextDialog } from "./AltTextDialog";
+import { LinkDialog } from "./LinkDialog";
 import { CropBar, FrameBar, ImageBar } from "./bars/ImageBar";
 import { PathBar } from "./bars/PathBar";
 import { GraphicBar } from "./bars/GraphicBar";
@@ -127,6 +128,7 @@ export function FloatingToolbar() {
         </ToolbarFrame>
       )}
       <AltTextDialog />
+      <LinkDialog />
     </>
   );
 }

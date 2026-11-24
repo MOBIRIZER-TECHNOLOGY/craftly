@@ -8,7 +8,7 @@ import { contextOf } from "@/test/canvasMock";
 import { chromeDesign } from "@/test/chromeUtils";
 import { flush, resetEditor, stubLayout } from "@/test/helpers";
 import { setMedia } from "@/test/media";
-import { PresentMode } from "./PresentMode";
+import { PresentMode, showClock } from "./PresentMode";
 
 /*
  * The full-screen presenter. The stage is 1000 x 700 (stubLayout), the design 1280 x 720, so a point of the design
@@ -594,5 +594,62 @@ describe("<PresentMode>: motion and damaged pages", () => {
     await userEvent.setup({ delay: null }).keyboard("{ArrowRight}");
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect((stage() as HTMLCanvasElement).hidden).toBe(false);
+  });
+});
+
+describe("<PresentMode>: the clock of the show", () => {
+  const clockButton = () => screen.getByRole("button", { name: /^The show has run / });
+
+  it("writes minutes and seconds, with hours in front once there are some", () => {
+    expect(showClock(0)).toBe("00:00");
+    expect(showClock(75.9)).toBe("01:15");
+    expect(showClock(3725)).toBe("1:02:05");
+    expect(showClock(-5)).toBe("00:00");
+  });
+
+  it("counts from the moment the show opens, and starts again when the clock is pressed", async () => {
+    useClock();
+    await present();
+    expect(clockButton().textContent).toBe("00:00");
+    act(() => void vi.advanceTimersByTime(65_000));
+    expect(clockButton().textContent).toBe("01:05");
+    expect(clockButton().getAttribute("aria-label")).toBe("The show has run 01:05. Start the clock again");
+    fireEvent.click(clockButton());
+    expect(clockButton().textContent).toBe("00:00");
+    act(() => void vi.advanceTimersByTime(3_000));
+    expect(clockButton().textContent).toBe("00:03");
+    // pressing the clock does not turn the page
+    expect(counter()).toBe("1/3");
+  });
+});
+
+describe("<PresentMode>: the pointer", () => {
+  const dot = () => document.querySelector<HTMLElement>("[data-cf-present-dot]");
+  const dialog = () => screen.getByRole("dialog", { name: "Presentation" });
+
+  it("is off to begin with, and follows the mouse once L or its button switches it on", async () => {
+    await present();
+    fireEvent.pointerMove(dialog(), { clientX: 300, clientY: 200 });
+    expect(dot()).toBeNull();
+    expect(dialog().classList.contains("is-pointing")).toBe(false);
+
+    fireEvent.keyDown(window, { key: "l" });
+    expect(screen.getByRole("button", { name: "Hide the pointer" }).getAttribute("aria-pressed")).toBe("true");
+    expect(dialog().classList.contains("is-pointing")).toBe(true);
+    // nothing to show until the mouse has been somewhere
+    expect(dot()).toBeNull();
+    fireEvent.pointerMove(dialog(), { clientX: 300, clientY: 200 });
+    expect([dot()?.style.left, dot()?.style.top]).toEqual(["300px", "200px"]);
+    fireEvent.pointerMove(dialog(), { clientX: 640, clientY: 90 });
+    expect([dot()?.style.left, dot()?.style.top]).toEqual(["640px", "90px"]);
+    expect(dot()?.getAttribute("aria-hidden")).toBe("true");
+    // pointing is not turning the page
+    expect(counter()).toBe("1/3");
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "Hide the pointer" }));
+    expect(dot()).toBeNull();
+    expect(screen.getByRole("button", { name: "Show the pointer" })).toBeTruthy();
+    expect(dialog().classList.contains("is-pointing")).toBe(false);
   });
 });

@@ -435,3 +435,85 @@ describe("pie and donut charts", () => {
     expect(slices(zero)).toHaveLength(2);
   });
 });
+
+describe("stacked charts and axis titles, written as the painter draws them", () => {
+  const SERIES = [
+    { name: "A", values: [10, 20, 30, 40], color: "#aa0000" },
+    { name: "B", values: [15, 25, 35, 45], color: "#0000aa" },
+  ];
+  /** the x, y, width and height of every bar of one colour, read from the points its path visits */
+  const boxes = (svg: string, fill: string) =>
+    [...svg.matchAll(new RegExp(`<path d="([^"]*)" fill="${fill}"/>`, "g"))].map((m) => {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (const [, command, rest] of m[1].matchAll(/([MHVA])([^MHVAZ]*)/g)) {
+        const n = rest.trim().split(/[ ,]+/).map(Number);
+        if (command === "H") xs.push(n[0]);
+        else if (command === "V") ys.push(n[0]);
+        else {
+          // M x y, and an arc ends at its last two numbers
+          xs.push(n[n.length - 2]);
+          ys.push(n[n.length - 1]);
+        }
+      }
+      return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    });
+
+  it("draws one column of pieces for each category, the second series on the first, and the sum above", () => {
+    const svg = chartOf({ series: SERIES, stacked: true });
+    expect(bars(svg)).toBe(8);
+    const first = boxes(svg, "#aa0000");
+    const second = boxes(svg, "#0000aa");
+    expect(first).toHaveLength(4);
+    expect(second).toHaveLength(4);
+    // 584 px of plot in four categories; a column takes 72 % of its category; the axis ends at 100 over 352 px
+    expect(first[0].x).toBeCloseTo(48 + 146 * 0.14, 1);
+    expect(first[0].w).toBeCloseTo(146 * 0.72, 1);
+    expect(first[0].h).toBeCloseTo(35.2, 1);
+    expect(second[0].x).toBeCloseTo(first[0].x, 1);
+    expect(second[0].h).toBeCloseTo(52.8, 1);
+    expect(second[0].y + second[0].h).toBeCloseTo(first[0].y, 1);
+    expect(labels(svg)).toEqual(["0", "25", "50", "75", "100", "Q1", "Q2", "Q3", "Q4", "25", "45", "65", "85"]);
+    expect(labels(chartOf({ series: SERIES, stacked: true, showValues: false }))).toHaveLength(9);
+  });
+
+  it("lays the pieces of a stacked bar chart end to end", () => {
+    const svg = chartOf({ chart: "bar", series: SERIES, stacked: true });
+    const first = boxes(svg, "#aa0000");
+    const second = boxes(svg, "#0000aa");
+    expect(first[0].x).toBeCloseTo(48, 1);
+    expect(first[0].w).toBeCloseTo(58.4, 1);
+    expect(second[0].x).toBeCloseTo(48 + 58.4, 1);
+    expect(second[0].w).toBeCloseTo(87.6, 1);
+    expect(second[0].y).toBeCloseTo(first[0].y, 1);
+    expect(labels(svg).slice(-4)).toEqual(["25", "45", "65", "85"]);
+  });
+
+  it("leaves out pieces of no size and sums of nothing, and stacks nothing for a single series", () => {
+    const svg = chartOf({ stacked: true, labels: ["a", "b"], series: [{ name: "A", values: [10, 0] }, { name: "B", values: [0, -2] }] }); // prettier-ignore
+    expect(bars(svg)).toBe(1);
+    expect(labels(svg).slice(-1)).toEqual(["10"]);
+    expect(chartOf({ stacked: true })).toBe(chartOf());
+  });
+
+  it("writes the titles of the axes: one under the plot, one turned a quarter on its left", () => {
+    const svg = chartOf({ valueAxisTitle: "Units <sold>", categoryAxisTitle: "Quarter" });
+    expect(labels(svg)).toContain("Quarter");
+    expect(labels(svg)).toContain("Units &lt;sold&gt;");
+    // the title on the left is half its room from the edge, at the middle of a plot that is one room shorter
+    const turned = svg.match(/<g transform="rotate\(-90 ([\d.]+) ([\d.]+)\)"><text [^>]*>Units &lt;sold&gt;<\/text><\/g>/)!;
+    expect(turned).not.toBeNull();
+    expect(+turned[1]).toBeCloseTo(12.8, 1);
+    expect(+turned[2]).toBeCloseTo(12.8 + (352 - 25.6) / 2, 1);
+    // the plot has moved: the first bar begins one room further right
+    expect(boxes(svg, "#7c3aed")[0].x).toBeCloseTo(48 + 25.6 + ((584 - 25.6) / 4) * 0.14, 1);
+    // a bar chart writes them the other way round
+    expect(chartOf({ chart: "bar", valueAxisTitle: "Units", categoryAxisTitle: "Quarter" })).toMatch(/rotate\(-90 [^)]*\)"><text [^>]*>Quarter</);
+  });
+
+  it("writes no title that is empty, and none on a pie", () => {
+    expect(chartOf({ valueAxisTitle: " ", categoryAxisTitle: "" })).toBe(chartOf());
+    expect(chartOf({ chart: "pie", valueAxisTitle: "Units", categoryAxisTitle: "Quarter" })).toBe(chartOf({ chart: "pie" }));
+    expect(chartOf({ categoryAxisTitle: "Quarter" })).not.toContain("rotate(");
+  });
+});

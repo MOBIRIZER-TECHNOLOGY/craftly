@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTable } from "./factory";
-import { tableCellAt } from "./tableCells";
+import { mergeTableCells, tableCellAt, tableCellStyle, tableLayout, unmergeTableCells } from "./tableCells";
 
 describe("the cell of a table under a point of the page", () => {
   const table = () => createTable({ x: 100, y: 200, width: 600, height: 240 });
@@ -47,5 +47,34 @@ describe("the cell of a table under a point of the page", () => {
   it("gives nothing for a table without cells or without a size", () => {
     expect(tableCellAt(createTable({ cells: [], colWidths: [], rowHeights: [] }), { x: 10, y: 10 })).toBeNull();
     expect(tableCellAt(createTable({ x: 0, y: 0, width: 0, height: 0 }), { x: 0, y: 0 })).toBeNull();
+  });
+});
+
+describe("merged cells and styles", () => {
+  it("lays out one root cell, sends hits there and hides covered cells", () => {
+    const t = createTable({ x: 100, y: 200, width: 600, height: 240 });
+    mergeTableCells(t, { row: 0, col: 0 }, 2, 2);
+    const root = tableLayout(t).find((cell) => cell.row === 0 && cell.col === 0)!;
+    expect([root.x, root.y, root.width, root.height]).toEqual([0, 0, 400, 160]);
+    expect(tableLayout(t)).toHaveLength(6);
+    expect(tableCellAt(t, { x: 350, y: 300 })).toEqual({ row: 0, col: 0 });
+    expect(t.cells[0][1]).toBe("");
+    unmergeTableCells(t, { row: 0, col: 0 });
+    expect(tableLayout(t)).toHaveLength(9);
+    expect(t.merges).toBeUndefined();
+  });
+
+  it("resolves a cell's own style over the header and table defaults", () => {
+    const t = createTable({ cellStyles: { "0:0": { fill: "#112233", color: "#fefefe", bold: false, align: "right" } } });
+    expect(tableCellStyle(t, { row: 0, col: 0 })).toEqual({ fill: "#112233", color: "#fefefe", bold: false, align: "right" });
+    expect(tableCellStyle(t, { row: 0, col: 1 })).toEqual({ fill: "#7c3aed", color: "#ffffff", bold: true, align: "left" });
+  });
+
+  it("clamps merge spans and replaces overlapping old merges", () => {
+    const t = createTable();
+    mergeTableCells(t, { row: 0, col: 0 }, 2, 2);
+    mergeTableCells(t, { row: 1, col: 1 }, 99, 99);
+    expect(t.merges).toEqual([{ row: 1, col: 1, rowSpan: 2, colSpan: 2 }]);
+    expect(tableLayout(t).find((cell) => cell.row === 1 && cell.col === 1)).toMatchObject({ width: 400, height: 160 });
   });
 });

@@ -26,6 +26,28 @@ export function normalizeTable(t: TableElement): void {
 
 export const tableSize = (t: Pick<TableElement, "cells">) => ({ rows: t.cells.length, cols: t.cells[0]?.length ?? 0 });
 
+function shiftTableMeta(t: TableElement, axis: "row" | "col", at: number, delta: number): void {
+  if (t.merges) {
+    for (const merge of t.merges) if (merge[axis] >= at) merge[axis] += delta;
+    t.merges = t.merges.filter((merge) => merge.row >= 0 && merge.col >= 0 && merge.row < t.cells.length && merge.col < (t.cells[0]?.length ?? 0));
+    for (const merge of t.merges) {
+      merge.rowSpan = Math.max(1, Math.min(merge.rowSpan, t.cells.length - merge.row));
+      merge.colSpan = Math.max(1, Math.min(merge.colSpan, (t.cells[0]?.length ?? 0) - merge.col));
+    }
+    if (!t.merges.length) delete t.merges;
+  }
+  if (!t.cellStyles) return;
+  const styles: typeof t.cellStyles = {};
+  for (const [key, style] of Object.entries(t.cellStyles)) {
+    const cell = key.split(":").map(Number);
+    const index = axis === "row" ? cell[0] : cell[1];
+    if (index === at && delta < 0) continue;
+    const shifted = index >= at ? index + delta : index;
+    if (shifted >= 0) styles[axis === "row" ? `${shifted}:${cell[1]}` : `${cell[0]}:${shifted}`] = style;
+  }
+  t.cellStyles = styles;
+}
+
 export function addTableRow(t: TableElement, at = t.cells.length): void {
   const { cols } = tableSize(t);
   const index = Math.max(0, Math.min(t.cells.length, at));
@@ -35,6 +57,7 @@ export function addTableRow(t: TableElement, at = t.cells.length): void {
     Array.from({ length: cols }, () => ""),
   );
   t.rowHeights.splice(index, 0, sum(t.rowHeights) / Math.max(1, t.rowHeights.length));
+  shiftTableMeta(t, "row", index, 1);
   normalizeTable(t);
 }
 
@@ -42,6 +65,7 @@ export function removeTableRow(t: TableElement, at: number): void {
   if (t.cells.length <= 1 || at < 0 || at >= t.cells.length) return;
   t.cells.splice(at, 1);
   t.rowHeights.splice(at, 1);
+  shiftTableMeta(t, "row", at, -1);
   normalizeTable(t);
 }
 
@@ -50,6 +74,7 @@ export function addTableColumn(t: TableElement, at = tableSize(t).cols): void {
   const index = Math.max(0, Math.min(cols, at));
   t.cells.forEach((row, r) => row.splice(index, 0, r === 0 && t.headerRow ? `Heading ${index + 1}` : ""));
   t.colWidths.splice(index, 0, sum(t.colWidths) / Math.max(1, t.colWidths.length));
+  shiftTableMeta(t, "col", index, 1);
   normalizeTable(t);
 }
 
@@ -57,6 +82,7 @@ export function removeTableColumn(t: TableElement, at: number): void {
   if (tableSize(t).cols <= 1 || at < 0 || at >= tableSize(t).cols) return;
   t.cells.forEach((row) => row.splice(at, 1));
   t.colWidths.splice(at, 1);
+  shiftTableMeta(t, "col", at, -1);
   normalizeTable(t);
 }
 
@@ -76,6 +102,8 @@ function fitTableToRows(t: TableElement): void {
 export function replaceTableCells(t: TableElement, rows: string[][]): void {
   if (!rows.length || !rows[0].length) return;
   t.cells = rows.map((row) => row.map(oneLine));
+  delete t.merges;
+  delete t.cellStyles;
   fitTableToRows(t);
 }
 

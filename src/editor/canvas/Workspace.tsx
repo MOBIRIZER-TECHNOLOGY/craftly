@@ -7,8 +7,9 @@ import { PathEditOverlay } from "./PathEditOverlay";
 import { GestureHud, GesturePreview, SelectionOverlay, SnapGuides } from "./SelectionOverlay";
 import { PageView } from "./PageView";
 import { usePreview } from "./preview";
-import { Guides, Rulers } from "./Rulers";
+import { Grid, Guides, Margins, Rulers } from "./Rulers";
 import { TextEditorOverlay } from "./TextEditorOverlay";
+import { TableCellEditor } from "./TableCellEditor";
 import { PresenceOverlay } from "../live/PresenceOverlay";
 import { CommentsOverlay } from "../comments/CommentsOverlay";
 import { layoutFor, screenToDesign, takeZoomAnchor, useView } from "./viewStore";
@@ -111,6 +112,8 @@ export function Workspace({ children }: { children?: ReactNode }) {
             <PageView />
           </div>
           <div className="cf-pageframe" style={{ left: pageLeft, top: pageTop, width: pageW, height: pageH }}>
+            <Margins />
+            <Grid />
             <Guides />
             <SnapGuides />
             <SelectionOverlay />
@@ -118,6 +121,7 @@ export function Workspace({ children }: { children?: ReactNode }) {
             <CropOverlay />
             <PathEditOverlay />
             <TextEditorOverlay />
+            <TableCellEditor />
             <PresenceOverlay />
             <CommentsOverlay />
           </div>

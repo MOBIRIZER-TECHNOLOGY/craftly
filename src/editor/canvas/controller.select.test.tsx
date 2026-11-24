@@ -9,6 +9,7 @@ import { getActions, useEditor } from "@/core/store";
 import { canvasDesign, mountWorkspace, selectIds } from "@/test/canvasUtils";
 import { setContextMenuHandler, takePendingCaret } from "./controller";
 import { useGesture } from "./gestureStore";
+import { useTableCellEditor } from "./tableCellEditing";
 import { stopPathEdit, usePathEdit } from "./pathEditStore";
 
 // the machine may be busy: give waitFor more than its default second
@@ -401,6 +402,39 @@ describe("hovering", () => {
   });
 });
 
+describe("drawing a connector", () => {
+  it("drags from a shape's anchor to another element and shows a preview", async () => {
+    const rig = await mountWorkspace(canvasDesign(shapes()));
+    rig.move(200, 150);
+    await waitFor(() => expect(rig.handle("connect:a:right")).toBeTruthy());
+    rig.down(300, 150, { target: rig.handle("connect:a:right") });
+    rig.move(500, 150);
+    expect(useGesture.getState().connector).toEqual({ start: { x: 300, y: 150 }, end: { x: 500, y: 150 } });
+    expect(rig.container.querySelector("[data-cf-connector-preview]")).toBeTruthy();
+    rig.up(500, 150);
+    const line = useEditor.getState().design!.pages[0].elements.find((el) => el.type === "line");
+    expect(line?.type).toBe("line");
+    if (line?.type !== "line") throw new Error("connector was not created");
+    expect(line.start).toEqual({ elementId: "a", anchor: "right" });
+    expect(line.end).toEqual({ elementId: "b", anchor: "auto" });
+    expect(useEditor.getState().selection).toEqual([line.id]);
+    expect(useGesture.getState().connector).toBeNull();
+    expect(useEditor.getState().past).toHaveLength(1);
+  });
+
+  it("creates nothing when the drag is cancelled or ends on empty canvas", async () => {
+    const rig = await mountWorkspace(canvasDesign(shapes()));
+    rig.move(200, 150);
+    await waitFor(() => expect(rig.handle("connect:a:right")).toBeTruthy());
+    rig.down(300, 150, { target: rig.handle("connect:a:right") });
+    rig.move(300, 250);
+    rig.up(300, 250);
+    expect(useEditor.getState().design!.pages[0].elements.some((el) => el.type === "line")).toBe(false);
+    expect(useEditor.getState().past).toHaveLength(0);
+    expect(useGesture.getState().connector).toBeNull();
+  });
+});
+
 describe("double click", () => {
   const text = () => createText({ id: "t", text: "Hello there", x: 100, y: 400, width: 300, fontSize: 40 });
   const photo = () => createImage({ id: "img", src: "https://example.test/p.jpg", x: 500, y: 300, width: 200, height: 150, naturalWidth: 400, naturalHeight: 300 });
@@ -453,6 +487,20 @@ describe("double click", () => {
     expect(sel()).toEqual(["tb"]);
     expect(useEditor.getState().context).toEqual({ kind: "data", cell: { row: 1, col: 1 } });
     expect(useEditor.getState().editingTextId).toBeNull();
+  });
+
+  it("types in a cell on the page, tabs to the next cell and closes with Escape", async () => {
+    const rig = await mountWorkspace(canvasDesign([createTable({ id: "tb", x: 100, y: 400, width: 600, height: 240 })]));
+    rig.dblclick(350, 500);
+    expect(useTableCellEditor.getState().editing).toEqual({ id: "tb", row: 1, col: 1 });
+    const field = rig.container.querySelector<HTMLTextAreaElement>("[data-cf-table-editor]")!;
+    fireEvent.change(field, { target: { value: "Edited on page" } });
+    const table = useEditor.getState().design!.pages[0].elements[0];
+    expect(table.type === "table" && table.cells[1][1]).toBe("Edited on page");
+    fireEvent.keyDown(field, { key: "Tab" });
+    expect(useTableCellEditor.getState().editing).toEqual({ id: "tb", row: 1, col: 2 });
+    fireEvent.keyDown(rig.container.querySelector("[data-cf-table-editor]")!, { key: "Escape" });
+    expect(useTableCellEditor.getState().editing).toBeNull();
   });
 
   it("opens the numbers of a chart", async () => {
@@ -512,20 +560,26 @@ describe("double click", () => {
     expect(usePathEdit.getState().id).toBeNull();
   });
 
-  it("edits the text inside a group while the group stays the selection", async () => {
+  it("enters a group and edits the selected child text", async () => {
     const rig = await mountWorkspace(canvasDesign([grouped()]));
     rig.dblclick(150, 530);
     expect(useEditor.getState().editingTextId).toBe("inner");
-    expect(sel()).toEqual(["grp"]);
+    expect(useEditor.getState().focusGroupId).toBe("grp");
+    expect(sel()).toEqual(["inner"]);
   });
 
-  it("edits the text inside a group within a group", async () => {
+  it("enters one group at a time before editing deeply nested text", async () => {
     const inner = createGroup([createText({ id: "deep", text: "Deep", x: 5, y: 5, width: 200, fontSize: 30 })], { id: "inner", x: 10, y: 10, width: 220, height: 60 });
     const outer = createGroup([inner, createShape("rect", { id: "bar", x: 10, y: 120, width: 200, height: 20 })], { id: "outer", x: 100, y: 400, width: 240, height: 150 });
     const rig = await mountWorkspace(canvasDesign([outer]));
     rig.dblclick(150, 430);
+    expect(useEditor.getState().editingTextId).toBeNull();
+    expect(useEditor.getState().focusGroupId).toBe("outer");
+    expect(sel()).toEqual(["inner"]);
+    rig.dblclick(150, 430);
     expect(useEditor.getState().editingTextId).toBe("deep");
-    expect(sel()).toEqual(["outer"]);
+    expect(useEditor.getState().focusGroupId).toBe("inner");
+    expect(sel()).toEqual(["deep"]);
   });
 
   it("does nothing on a non-text element inside a group", async () => {

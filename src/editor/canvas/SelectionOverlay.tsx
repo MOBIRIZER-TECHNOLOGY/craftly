@@ -1,9 +1,12 @@
-import { Move, RotateCw } from "lucide-react";
+import { Link as LinkIcon, Move, RotateCw } from "lucide-react";
 import type { CSSProperties } from "react";
+import { boxBounds, unionRects } from "@/core/geometry";
+import { linePath } from "@/core/lineRoute";
+import { findElement } from "@/core/ops";
 import { getActivePage, useEditor, useSelectedElements } from "@/core/store";
-import type { DesignElement } from "@/core/types";
+import type { DesignElement, Page } from "@/core/types";
 import { m } from "@/i18n";
-import { handlesFor, inkBox, selectionFrame } from "./frame";
+import { handlesFor, inkBox, worldBox } from "./frame";
 import { useGesture } from "./gestureStore";
 import { usePathEdit } from "./pathEditStore";
 import { PenCursor } from "./PenCursor";
@@ -29,9 +32,18 @@ const CURSOR: Record<Handle, string> = {
   w: "ew-resize",
 };
 
+function pageFrame(page: Page | null, els: DesignElement[]) {
+  if (!page || !els.length) return null;
+  if (els.length === 1) return { ...worldBox(page, els[0].id)!, multi: false };
+  const boxes = els.map((el) => worldBox(page, el.id)).filter((box): box is NonNullable<typeof box> => !!box);
+  const bounds = unionRects(boxes.map(boxBounds));
+  return bounds ? { x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h, rotation: 0, multi: true } : null;
+}
+
 /** Outline, resize / rotate / move handles of the current selection, plus hover outline. */
 export function SelectionOverlay() {
   const zoom = useEditor((s) => s.zoom);
+  const page = useEditor((s) => getActivePage(s));
   const els = useSelectedElements();
   const editing = useEditor((s) => s.editingTextId);
   const cropping = useEditor((s) => s.croppingId);
@@ -42,24 +54,25 @@ export function SelectionOverlay() {
   const active = useGesture((s) => s.active);
   const hover = useEditor((s) => {
     const page = getActivePage(s);
-    return page && s.hoverId ? (page.elements.find((e) => e.id === s.hoverId) ?? null) : null;
+    return page && s.hoverId ? findElement(page, s.hoverId) : null;
   });
   void hoverId;
   if (mode === "view") return null;
 
   const single = els.length === 1 ? els[0] : null;
   // a text's frame holds the ink that reaches past its box (a Devanagari letter in a fallback font)
-  const box = selectionFrame(els);
+  const box = pageFrame(page, els);
   const frame = box && single ? inkBox(box, single) : box;
   const locked = els.some((e) => e.locked);
   const handles = !cropping && !pathEditing && !editing && tool === "select" ? handlesFor(els) : [];
   const isLine = single?.type === "line";
+  const route = single?.type === "line" ? linePath(single) : [];
 
   return (
     <>
-      {hover && !active && hover.type !== "line" && <div className="cf-outline cf-outline--hover" style={boxStyle(inkBox(hover, hover), zoom)} />}
+      {hover && !active && hover.type !== "line" && <div className="cf-outline cf-outline--hover" style={boxStyle(inkBox(worldBox(page, hover.id) ?? hover, hover), zoom)} />}
 
-      {els.length > 1 && els.map((e) => <div key={e.id} className="cf-outline cf-outline--item" style={boxStyle(e, zoom)} />)}
+      {els.length > 1 && els.map((e) => <div key={e.id} className="cf-outline cf-outline--item" style={boxStyle(worldBox(page, e.id) ?? e, zoom)} />)}
 
       {frame && !isLine && !cropping && !pathEditing && (
         <div className={`cf-sel${locked ? " cf-sel--locked" : ""}${editing ? " cf-sel--editing" : ""}`} style={boxStyle(frame, zoom)}>
@@ -89,16 +102,50 @@ export function SelectionOverlay() {
         </div>
       )}
 
-      {single && isLine && !locked && <LineHandles el={single} zoom={zoom} />}
+      {single && isLine && !locked && frame && <LineHandles box={frame} zoom={zoom} path={route} />}
+      {single?.link?.trim() && frame ? (
+        <span className="cf-linkmark" data-cf-linkmark title={single.link} aria-label={single.link} style={{ left: frame.x * zoom - 11, top: frame.y * zoom - 11 }}>
+          <LinkIcon size={12} aria-hidden="true" />
+        </span>
+      ) : null}
+      {!active && <ConnectorAnchors page={page} hover={hover} zoom={zoom} />}
     </>
   );
 }
 
-function LineHandles({ el, zoom }: { el: DesignElement; zoom: number }) {
+function LineHandles({ box, zoom, path }: { box: { x: number; y: number; width: number; height: number; rotation: number }; zoom: number; path: { x: number; y: number }[] }) {
+  const first = path[0];
+  const last = path[path.length - 1];
   return (
-    <div className="cf-sel cf-sel--line" style={boxStyle(el, zoom)}>
-      <div className="cf-handle cf-handle--corner" data-cf-handle="line:0" style={{ left: 0, top: 0, cursor: "crosshair" }} />
-      <div className="cf-handle cf-handle--corner" data-cf-handle="line:1" style={{ left: "100%", top: 0, cursor: "crosshair" }} />
+    <div className="cf-sel cf-sel--line" style={boxStyle(box, zoom)}>
+      <div className="cf-handle cf-handle--corner" data-cf-handle="line:0" style={{ left: first.x * zoom, top: first.y * zoom, cursor: "crosshair" }} />
+      <div className="cf-handle cf-handle--corner" data-cf-handle="line:1" style={{ left: `${(last.x / box.width) * 100}%`, top: last.y * zoom, cursor: "crosshair" }} />
+    </div>
+  );
+}
+
+function ConnectorAnchors({ page, hover, zoom }: { page: Page | null; hover: DesignElement | null; zoom: number }) {
+  const el = hover;
+  if (!page || !el || el.locked || el.type === "line" || !page.elements.some((item) => item.id === el.id)) return null;
+  const box = worldBox(page, el.id);
+  if (!box) return null;
+  const anchors = [
+    ["top", 50, 0],
+    ["right", 100, 50],
+    ["bottom", 50, 100],
+    ["left", 0, 50],
+  ] as const;
+  return (
+    <div className="cf-sel" style={boxStyle(box, zoom)}>
+      {anchors.map(([side, x, y]) => (
+        <div
+          key={side}
+          className="cf-handle cf-handle--corner"
+          data-cf-handle={`connect:${el.id}:${side}`}
+          title={m.editor.actions.connect}
+          style={{ left: `${x}%`, top: `${y}%`, cursor: "crosshair" }}
+        />
+      ))}
     </div>
   );
 }
@@ -125,6 +172,7 @@ export function GesturePreview() {
   const zoom = useEditor((s) => s.zoom);
   const marquee = useGesture((s) => s.marquee);
   const path = useGesture((s) => s.drawPath);
+  const connector = useGesture((s) => s.connector);
   return (
     <>
       <PenPreview />
@@ -133,6 +181,11 @@ export function GesturePreview() {
       {path && path.length > 1 && (
         <svg className="cf-drawpreview">
           <polyline points={path.map((p) => `${p.x * zoom},${p.y * zoom}`).join(" ")} />
+        </svg>
+      )}
+      {connector && (
+        <svg className="cf-drawpreview" data-cf-connector-preview>
+          <line x1={connector.start.x * zoom} y1={connector.start.y * zoom} x2={connector.end.x * zoom} y2={connector.end.y * zoom} />
         </svg>
       )}
     </>

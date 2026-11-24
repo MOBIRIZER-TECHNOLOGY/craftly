@@ -470,7 +470,17 @@ describe("normalizeParagraphs", () => {
   });
 
   it("tells runs apart by every style property", () => {
-    const differ = [{ bold: true }, { italic: true }, { underline: true }, { strike: true }, { color: "#ff0000" }, { size: 20 }, { font: "Lora" }, { spacing: 10 }];
+    const differ = [
+      { bold: true },
+      { weight: 300 },
+      { italic: true },
+      { underline: true },
+      { strike: true },
+      { color: "#ff0000" },
+      { size: 20 },
+      { font: "Lora" },
+      { spacing: 10 },
+    ];
     for (const style of differ) {
       expect(normalizeParagraphs([{ runs: [{ text: "a" }, { text: "b", ...style }] }])[0].runs, JSON.stringify(style)).toHaveLength(2);
     }

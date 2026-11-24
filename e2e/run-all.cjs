@@ -48,6 +48,14 @@ const journeys = [
     "a print PDF from the Download panel: bleed chosen by keyboard, crop and registration marks, CMYK, read back (boxes, the DeviceCMYK image, the marks, the text layer, the bleed filled)",
   ],
   [
+    "additions.cjs",
+    "what was added on 2026-11-23: Bulk create, stacked charts and axis titles, shape options, font weight, Link, a fixed shape for a crop, a frame shape, margins, spell-check, Check accessibility, the presenter's clock and pointer",
+  ],
+  [
+    "pptx.cjs",
+    "a PowerPoint file from the Download panel, without and with speaker notes, read back: the package, its XML, relationships and content types, slide size, the JPEG of each page",
+  ],
+  [
     "mobile.cjs",
     "a phone (375 x 812, touch) and a tablet, in English and Hindi: no sideways scroll, every tab reached by taps, top bar and toolbars fit, a text added and edited, menus and Share fit, a PNG downloaded, pages, Present",
   ],

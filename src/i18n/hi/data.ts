@@ -611,6 +611,12 @@ export const data: typeof en = {
     vignette: "विनेट",
     blur: "धुंधलापन",
     hue: "ह्यू",
+    highlights: "हाइलाइट",
+    shadows: "छायाएँ",
+    sharpen: "शार्पन",
+    tint: "रंगत",
+    curves: "कर्व",
+    levels: "लेवल",
   },
   palettes: {
     "sunset-market": "सूर्यास्त बाज़ार",

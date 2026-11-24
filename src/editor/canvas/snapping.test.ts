@@ -89,3 +89,45 @@ describe("snapEdges", () => {
     expect(snapMove({ x: 650, y: 10, w: 20, h: 20 }, targets, 6).dx).toBe(0); // none of the three is within 6 px
   });
 });
+
+describe("the margins of the page as snap targets", () => {
+  const xsOf = (margin?: number) => computeTargets(createPage(), 1000, 600, new Set(), undefined, margin).xs.map((l) => l.pos);
+  const ysOf = (margin?: number) => computeTargets(createPage(), 1000, 600, new Set(), undefined, margin).ys.map((l) => l.pos);
+
+  it("adds a line a margin in from every edge, the whole length of the page", () => {
+    const t = computeTargets(createPage(), 1000, 600, new Set(), undefined, 30);
+    expect(t.xs.map((l) => l.pos)).toEqual([0, 500, 1000, 30, 970]);
+    expect(t.ys.map((l) => l.pos)).toEqual([0, 300, 600, 30, 570]);
+    expect(t.xs[3]).toEqual({ pos: 30, from: 0, to: 600, kind: "page" });
+    expect(t.ys[4]).toEqual({ pos: 570, from: 0, to: 1000, kind: "page" });
+  });
+
+  it("adds none without a margin, or for margins that would meet in the middle", () => {
+    expect(xsOf()).toEqual([0, 500, 1000]);
+    expect(xsOf(0)).toEqual([0, 500, 1000]);
+    expect(ysOf(-5)).toEqual([0, 300, 600]);
+    expect(xsOf(300)).toEqual([0, 500, 1000]);
+    expect(ysOf(400)).toEqual([0, 300, 600]);
+  });
+
+  it("lets a moving box snap to a margin", () => {
+    const t = computeTargets(createPage(), 1000, 600, new Set(), undefined, 30);
+    // a box whose left edge is 3 px short of the left margin is pulled onto it
+    const snap = snapMove({ x: 27, y: 200, w: 100, h: 50 }, t, 6);
+    expect(snap.dx).toBe(3);
+  });
+});
+
+describe("grid and equal spacing", () => {
+  it("adds every grid line inside the page", () => {
+    const t = computeTargets(createPage(), 100, 60, new Set(), undefined, 0, 20);
+    expect(t.xs.map((line) => line.pos)).toEqual([0, 50, 100, 20, 40, 60, 80]);
+    expect(t.ys.map((line) => line.pos)).toEqual([0, 30, 60, 20, 40]);
+  });
+
+  it("offers the centres of repeated equal gaps", () => {
+    const boxes = [0, 100, 200].map((x, i) => createShape("rect", { id: `box${i}`, x, y: 100, width: 50, height: 50 }));
+    const t = computeTargets(createPage({ elements: boxes }), 400, 300, new Set());
+    expect(t.xs.filter((line) => line.kind === "spacing").map((line) => line.pos)).toEqual([75, 175]);
+  });
+});

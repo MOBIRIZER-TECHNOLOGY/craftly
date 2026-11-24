@@ -272,6 +272,30 @@ describe("<FileMenu>: page view, rulers and settings", () => {
     expect(checkbox("Snap to guides").getAttribute("aria-checked")).toBe("true");
     await user.click(checkbox("Snap to guides"));
     expect(useEditor.getState().snapEnabled).toBe(false);
+
+    await openMenu(user);
+    await user.click(item(/^Rulers and guides/));
+    expect(checkbox("Show margins").getAttribute("aria-checked")).toBe("false");
+    await user.click(checkbox("Show margins"));
+    expect(useEditor.getState().showMargins).toBe(true);
+  });
+
+  it("switches the browser's spell-check on and off, says who checks, and remembers the choice on this device", async () => {
+    window.localStorage.removeItem("craftly.spellcheck");
+    await mount();
+    const user = userEvent.setup({ delay: null });
+    await openMenu(user);
+    expect(checkbox("Check spelling while typing").getAttribute("aria-checked")).toBe("false");
+    await user.click(checkbox("Check spelling while typing"));
+    expect(useEditor.getState().spellCheck).toBe(true);
+    expect(window.localStorage.getItem("craftly.spellcheck")).toBe("1");
+    expect(await screen.findByText("Your browser now marks misspelt words while you type in a text box, in the languages it is set to.")).toBeTruthy();
+
+    await openMenu(user);
+    expect(checkbox("Check spelling while typing").getAttribute("aria-checked")).toBe("true");
+    await user.click(checkbox("Check spelling while typing"));
+    expect(useEditor.getState().spellCheck).toBe(false);
+    expect(window.localStorage.getItem("craftly.spellcheck")).toBeNull();
   });
 
   it("keeps the page, the selection and the zoom for the reload into another language (B12)", async () => {

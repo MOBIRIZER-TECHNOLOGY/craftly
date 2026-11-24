@@ -18,6 +18,10 @@ let shotN = 0;
 const PHONE = { width: 375, height: 812 };
 const TABLET = { width: 768, height: 1024 };
 const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्ते" };
+const CATALOGS = {
+  en: { file: "File", addTextBox: "Add a text box", shareDownload: "Download", download: "Download" },
+  hi: { file: "फ़ाइल", addTextBox: "टेक्स्ट बॉक्स जोड़ें", shareDownload: "डाउनलोड करें", download: "डाउनलोड करें" },
+};
 
 (async () => {
   const browser = await launch();
@@ -53,18 +57,20 @@ const TEXT = { en: "Hello from a phone", hi: "फ़ोन से नमस्�
     return ctx;
   };
 
-  /** the catalog of `lang`, as the dev server serves it */
+  /** the catalog of `lang`, as the dev server serves it; the small fallback keeps the production journey off the source tree */
   const catalog = (lang) =>
-    page.evaluate(async (l) => {
-      const mod = await import(`/src/i18n/${l}/index.ts`);
-      const c = mod[l];
-      return {
-        file: c.editorChrome.fileMenu.file,
-        addTextBox: c.panelsTabs.text.addTextBox,
-        shareDownload: c.editorChrome.share.download,
-        download: c.exporting.panel.download,
-      };
-    }, lang);
+    process.env.OFFLINE
+      ? CATALOGS[lang]
+      : page.evaluate(async (l) => {
+          const mod = await import(`/src/i18n/${l}/index.ts`);
+          const c = mod[l];
+          return {
+            file: c.editorChrome.fileMenu.file,
+            addTextBox: c.panelsTabs.text.addTextBox,
+            shareDownload: c.editorChrome.share.download,
+            download: c.exporting.panel.download,
+          };
+        }, lang);
 
   /** throws when the page scrolls sideways */
   const noSidewaysScroll = async (where) => {

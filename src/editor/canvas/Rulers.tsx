@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { pageMargin } from "@/core/geometry";
 import { useEditor } from "@/core/store";
 import { m } from "@/i18n";
 import { useDragEnd } from "./dragEnd";
@@ -156,6 +157,28 @@ function DraftGuide({ axis, pos }: { axis: "v" | "h"; pos: number }) {
       </div>
     </>
   );
+}
+
+/** The margins of the page, when they are shown. Not drawn into any export. */
+export function Margins() {
+  const width = useEditor((s) => s.design?.width ?? 0);
+  const height = useEditor((s) => s.design?.height ?? 0);
+  const customMargin = useEditor((s) => s.design?.margin);
+  const zoom = useEditor((s) => s.zoom);
+  const shown = useEditor((s) => s.showMargins);
+  const margin = pageMargin(width, height, customMargin);
+  if (!shown || margin <= 0 || margin * 2 >= Math.min(width, height)) return null;
+  return <div className="cf-margins" data-cf-margins aria-hidden="true" style={{ inset: margin * zoom }} />;
+}
+
+/** The design's grid, shown while grid snapping is on. Not drawn into any export. */
+export function Grid() {
+  const size = useEditor((s) => s.design?.gridSize ?? 20);
+  const zoom = useEditor((s) => s.zoom);
+  const shown = useEditor((s) => s.snapToGrid);
+  if (!shown) return null;
+  const step = size * zoom;
+  return <div className="cf-grid" data-cf-grid aria-hidden="true" style={{ backgroundSize: `${step}px ${step}px` }} />;
 }
 
 /** Persisted guides, drawn across the whole workspace; drag to move, drop onto a ruler to delete. */

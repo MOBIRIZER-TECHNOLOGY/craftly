@@ -1,3 +1,4 @@
+import { lineSegments } from "./lineRoute";
 import type { DesignElement, Point, Rect } from "./types";
 
 export const DEG = Math.PI / 180;
@@ -17,6 +18,10 @@ export function normalizeDeg(deg: number): number {
   if (d <= -180) d += 360;
   return d;
 }
+
+/** The chosen margin of a page, or a twentieth of its shorter side by default. What is inside it is safe from the edge. */
+export const pageMargin = (width: number, height: number, margin?: number): number =>
+  Math.max(0, Math.min(Math.min(width, height) / 2, Math.round(margin ?? Math.min(width, height) * 0.05)));
 
 export function rotatePoint(p: Point, center: Point, deg: number): Point {
   if (!deg) return { x: p.x, y: p.y };
@@ -126,7 +131,8 @@ export function hitTestElement(el: DesignElement, p: Point, slop = 0): boolean {
   const l = toLocalPoint(el, p);
   if (el.type === "line") {
     const w = el.stroke.width / 2 + slop + 3;
-    return distToSegment(l, { x: 0, y: el.height / 2 }, { x: el.width, y: el.height / 2 }) <= w;
+    const path = lineSegments(el);
+    return path.slice(1).some((point, i) => distToSegment(l, path[i], point) <= w);
   }
   return l.x >= -slop && l.y >= -slop && l.x <= el.width + slop && l.y <= el.height + slop;
 }

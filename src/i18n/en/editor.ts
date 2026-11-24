@@ -82,6 +82,8 @@ export const editor = {
     hide: "Hide",
     replaceImage: "Replace image",
     altText: "Alternative text",
+    link: "Link",
+    editLink: "Edit link",
   },
 
   /** the toolbars (src/editor/toolbar) */
@@ -167,12 +169,22 @@ export const editor = {
   shapeBar: {
     editPoints: "Edit points",
     editPointsTip: "Move, add and delete the points of this path",
+    useAsFrame: "Use as picture frame",
     combine: "Combine",
     combineTip: "Join the selected shapes into one, or cut one out of another",
+    shapeOptions: "Shape options",
+    shapeOptionsTip: "Sides, points and other numbers of this shape",
+    /** a control whose value is a percentage */
+    percent: (label: string) => `${label} (%)`,
+    params: { sides: "Sides", points: "Points", inner: "Inner size", lobes: "Lobes", amp: "Depth of the lobes", hole: "Size of the hole" },
     lineColor: "Line color",
     lineWeight: "Line weight",
     weight: "Weight",
     lineStyle: "Line style",
+    routing: "Connector route",
+    routes: { straight: "Straight", elbow: "Elbow", curved: "Curved" },
+    lineLabel: "Line label",
+    lineLabelTip: "Text drawn at the middle of the line",
     startArrowhead: "Start arrowhead",
     start: "Start",
     endArrowhead: "End arrowhead",
@@ -200,9 +212,17 @@ export const editor = {
     uploadTip: "Upload a picture into this frame",
     zoom: "Zoom",
     cropZoom: "Crop zoom",
+    straighten: "Straighten",
     resetCrop: "Reset crop",
     resetCropTip: "Restore the original crop",
     finishCropTip: "Finish cropping",
+    ratio: "Shape of the crop",
+    ratioTip: "Give the frame a fixed shape",
+    ratioFree: "Free",
+    ratioOriginal: "Original",
+    frameShape: "Frame shape",
+    frameShapeTip: "Cut the picture to a shape",
+    frameNone: "No frame",
   },
 
   /** MiscBars.tsx: group, table and chart, locked selection, page */
@@ -238,6 +258,16 @@ export const editor = {
     colorN: (n: number) => `Color ${num(n)}`,
     colorNOf: (n: number, total: number) => `Color ${num(n)} of ${num(total)}`,
     strokeWidth: "Stroke width",
+  },
+
+  /** LinkDialog.tsx */
+  link: {
+    title: "Link",
+    hint: "A click on this element opens the address: in the presenter, in a PDF and in an SVG download.",
+    address: "Address",
+    placeholder: "example.com, or an address that starts with mailto: or tel:",
+    invalid: "This is not an address a link can lead to. Use a web address such as example.com, or one that starts with https://, mailto: or tel:.",
+    remove: "Remove link",
   },
 
   /** AltTextDialog.tsx */

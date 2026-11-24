@@ -223,3 +223,87 @@ describe("Font panel", () => {
     for (const sample of ["Inter", "Playfair Display", "Bebas Neue", "Pacifico", "Caveat", "JetBrains Mono"]) expect(ensureFont).toHaveBeenCalledWith(sample, 400);
   });
 });
+
+describe("Font panel: the weight of a family", () => {
+  const weight = () => screen.getByRole("combobox", { name: "Weight" });
+
+  it("offers every weight of a family that has more than regular and bold, and names the one in use", async () => {
+    const t = text({ fontFamily: "Inter", fontWeight: 400 });
+    openElements([t], { selected: [t] });
+    await openFont();
+    expect(weight().textContent).toContain("Regular (400)");
+    const user = userEvent.setup();
+    await user.click(weight());
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Thin (100)",
+      "Extra light (200)",
+      "Light (300)",
+      "Regular (400)",
+      "Medium (500)",
+      "Semibold (600)",
+      "Bold (700)",
+      "Extra bold (800)",
+      "Black (900)",
+    ]);
+  });
+
+  it("sets the weight of every selected text box as one step of undo, after the face was asked for", async () => {
+    const a = text({ fontWeight: 400, italic: true });
+    const b = text({ fontWeight: 400, y: 300 });
+    openElements([a, b], { selected: [a, b] });
+    await openFont();
+    const user = userEvent.setup();
+    await user.click(weight());
+    await user.click(screen.getByRole("option", { name: "Light (300)" }));
+    await waitFor(() => expect(live<TextElement>(a).fontWeight).toBe(300));
+    expect(live<TextElement>(b).fontWeight).toBe(300);
+    expect(ensureFont).toHaveBeenCalledWith("Inter", 300, true);
+    expect(weight().textContent).toContain("Light (300)");
+    act(() => store().actions.undo());
+    expect([live<TextElement>(a).fontWeight, live<TextElement>(b).fontWeight]).toEqual([400, 400]);
+  });
+
+  it("sets the weight of only the selected characters when a range is open", async () => {
+    const t = text({ fontWeight: 400 });
+    const applyInline = vi.fn(() => true);
+    registerTextEditor({ applyInline, hasSelection: () => true, focus: vi.fn() });
+    useTextSelectionStyle.setState({ active: true, collapsed: false, style: { font: "Inter", weight: 400, italic: false } });
+    openElements([t], { selected: [t] });
+    await openFont();
+    const user = userEvent.setup();
+    await user.click(weight());
+    await user.click(screen.getByRole("option", { name: "Light (300)" }));
+    await waitFor(() => expect(applyInline).toHaveBeenCalledWith({ weight: 300 }));
+    expect(live<TextElement>(t).fontWeight).toBe(400);
+    expect(ensureFont).toHaveBeenCalledWith("Inter", 300, false);
+  });
+
+  it("says Several weights when the boxes differ", async () => {
+    const a = text({ fontWeight: 300 });
+    const b = text({ fontWeight: 800, y: 300 });
+    openElements([a, b], { selected: [a, b] });
+    await openFont();
+    expect(weight().textContent).toContain("Several weights");
+  });
+
+  it("is not offered for a family with one or two weights, for boxes of different families, or for a table", async () => {
+    const two = FONT_CATALOG.find((f) => f.weights.length <= 2)!;
+    const t = text({ fontFamily: two.family });
+    openElements([t], { selected: [t] });
+    const first = await openFont();
+    expect(screen.queryByRole("combobox", { name: "Weight" })).toBeNull();
+    first.unmount();
+
+    const a = text({ fontFamily: "Inter" });
+    const b = text({ fontFamily: "Montserrat", y: 300 });
+    openElements([a, b], { selected: [a, b] });
+    const second = await openFont();
+    expect(screen.queryByRole("combobox", { name: "Weight" })).toBeNull();
+    second.unmount();
+
+    const table = createTable();
+    openElements([table], { selected: [table] });
+    await openFont();
+    expect(screen.queryByRole("combobox", { name: "Weight" })).toBeNull();
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { measureWidth } from "@/core/textMetrics";
-import { categoryStep, chartNumber, fitText, legendLayout, legendTop, plotLeft, valuesFit } from "./chartText";
+import { axisTitles, categoryStep, chartNumber, fitText, isStacked, legendLayout, legendTop, percentSeries, plotLeft, stackPieces, stackTotals, valuesFit } from "./chartText";
 
 // without a browser a character is 0.55 of the font size wide: 5.5 px at 10 px
 const FONT = "500 10px Inter";
@@ -127,5 +127,59 @@ describe("the room beside and under the plot", () => {
     expect(valuesFit(50, 40)).toBe(true);
     expect(valuesFit(51, 40)).toBe(false);
     expect(valuesFit(14, 2)).toBe(false);
+  });
+});
+
+describe("a stacked chart", () => {
+  const two = [
+    { name: "A", values: [10, 0, 30] },
+    { name: "B", values: [5, 20, -4, 7] },
+  ];
+
+  it("is a bar or column chart that was asked to stack and has more than one series", () => {
+    expect(isStacked({ chart: "column", series: two, stacked: true })).toBe(true);
+    expect(isStacked({ chart: "bar", series: two, stacked: true })).toBe(true);
+    expect(isStacked({ chart: "column", series: two })).toBe(false);
+    expect(isStacked({ chart: "column", series: two, stacked: false })).toBe(false);
+    expect(isStacked({ chart: "column", series: [two[0]], stacked: true })).toBe(false);
+    expect(isStacked({ chart: "area", series: two, stacked: true })).toBe(true);
+    for (const chart of ["line", "pie", "donut"] as const) expect(isStacked({ chart, series: two, stacked: true })).toBe(false);
+  });
+
+  it("is as tall as the sum of each category, where a negative or missing value adds nothing", () => {
+    expect(stackTotals(two)).toEqual([15, 20, 30, 7]);
+    expect(stackTotals([])).toEqual([]);
+    expect(stackTotals([{ name: "N", values: [Number.NaN, Number.POSITIVE_INFINITY, 3] }])).toEqual([0, 0, 3]);
+  });
+
+  it("has a piece for every value above nothing, each beginning where the one before ended, and marks the last of every stack", () => {
+    expect(stackPieces(two)).toEqual([
+      { series: 0, category: 0, from: 0, value: 10, last: false },
+      { series: 1, category: 0, from: 10, value: 5, last: true },
+      { series: 1, category: 1, from: 0, value: 20, last: true },
+      { series: 0, category: 2, from: 0, value: 30, last: true },
+      { series: 1, category: 3, from: 0, value: 7, last: true },
+    ]);
+    expect(stackPieces([{ name: "Z", values: [0, -1] }])).toEqual([]);
+  });
+
+  it("turns each category into shares of 100%, with zero for an empty or negative stack", () => {
+    const [a, b] = percentSeries(two);
+    expect(a.values).toEqual([(10 / 15) * 100, 0, 100]);
+    expect(b.values).toEqual([(5 / 15) * 100, 100, 0, 100]);
+  });
+});
+
+describe("the titles of a chart's axes", () => {
+  it("puts the categories under the plot and the values on its left, and the other way round for a bar chart", () => {
+    const titles = { valueAxisTitle: "Units sold", categoryAxisTitle: "Quarter" };
+    expect(axisTitles({ chart: "column", ...titles })).toEqual({ bottom: "Quarter", left: "Units sold" });
+    expect(axisTitles({ chart: "line", ...titles })).toEqual({ bottom: "Quarter", left: "Units sold" });
+    expect(axisTitles({ chart: "bar", ...titles })).toEqual({ bottom: "Units sold", left: "Quarter" });
+  });
+
+  it("has none for a title that is absent or only spaces, and writes a title of several lines on one", () => {
+    expect(axisTitles({ chart: "column" })).toEqual({ bottom: "", left: "" });
+    expect(axisTitles({ chart: "column", valueAxisTitle: "   ", categoryAxisTitle: " Sales\n per  month " })).toEqual({ bottom: "Sales per month", left: "" });
   });
 });
