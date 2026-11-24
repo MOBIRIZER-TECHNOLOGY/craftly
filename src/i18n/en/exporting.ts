@@ -32,7 +32,7 @@ export const exporting = {
       videoMp4: "Video (MP4)",
       videoHint: "Smooth, small files",
       /** a video made frame by frame (WebCodecs), with the clips' sound */
-      videoSoundHint: "Smooth, with the clips' sound",
+      videoSoundHint: "Smooth, with sound",
       videoUnsupported: "Not supported in this browser",
       sizes: "Several sizes",
       sizesHint: "One ZIP, a file per size",

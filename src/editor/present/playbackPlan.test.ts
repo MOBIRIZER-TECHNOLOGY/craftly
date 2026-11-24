@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { pageHasAnimation } from "@/core/animation";
-import { createPage, createShape } from "@/core/factory";
+import { createPage, createShape, createVideo } from "@/core/factory";
 import type { AnimDirection, ElementAnimations, Page, PageTransition } from "@/core/types";
 import { autoplayAt, isAnimating, pageProgress, planAutoplay, planTransition, reverseDirection, stripExits } from "./playbackPlan";
 
 const tr = (kind: string, duration = 0.6, direction?: AnimDirection): PageTransition => ({ kind, duration, ...(direction ? { direction } : {}) });
 const withAnim = (animation: ElementAnimations, init: Parameters<typeof createShape>[1] = {}) => createShape("rect", { x: 0, y: 0, width: 100, height: 100, animation, ...init });
 const fade = (delay = 0, duration = 1) => ({ kind: "fade", duration, delay });
+
+describe("auto-play with a clip", () => {
+  it("gives a page with a clip the clip's length, with reduced motion too", () => {
+    const clip = createVideo({ src: "asset:c", duration: 8, naturalWidth: 64, naturalHeight: 36 });
+    const pages = [createPage({ elements: [clip] }), createPage({ transition: tr("slide", 1) })];
+    expect(planAutoplay(pages, 1).offset).toBe(9);
+    // the transition is left out, but the first page still lasts as long as its clip
+    expect(planAutoplay(pages, 1, true).offset).toBe(8);
+    expect(planAutoplay(pages, 0, true).timeline.total).toBe(13);
+  });
+});
 
 describe("reverseDirection", () => {
   it("swaps left with right and up with down", () => {

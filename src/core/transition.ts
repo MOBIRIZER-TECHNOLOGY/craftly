@@ -130,7 +130,7 @@ export function transitionSeconds(page: Pick<Page, "transition">, hasPrevious: b
 }
 
 /** Pages play one after another: [transition into the page][the page for its duration]. */
-export function buildTimeline(pages: readonly Pick<Page, "duration" | "transition">[]): Timeline {
+export function buildTimeline(pages: readonly (Pick<Page, "duration" | "transition"> & { elements?: Page["elements"] })[]): Timeline {
   const segments: TimelineSegment[] = [];
   let at = 0;
   pages.forEach((page, i) => {

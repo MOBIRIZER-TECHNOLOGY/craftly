@@ -101,8 +101,9 @@ export interface AutoplayPlan {
  * Follows the design's own timeline from the start of page `from`. With reduced motion the transitions are left
  * out of the timeline, so the pages simply follow one another for their durations.
  */
-export function planAutoplay(pages: readonly Pick<Page, "duration" | "transition">[], from: number, reduceMotion = false): AutoplayPlan {
-  const timeline = buildTimeline(reduceMotion ? pages.map((p) => ({ duration: p.duration })) : pages);
+export function planAutoplay(pages: readonly (Pick<Page, "duration" | "transition"> & { elements?: Page["elements"] })[], from: number, reduceMotion = false): AutoplayPlan {
+  // with reduced motion the transitions go, but a page still lasts as long as its clip: its elements stay
+  const timeline = buildTimeline(reduceMotion ? pages.map((p) => ({ duration: p.duration, elements: p.elements })) : pages);
   const seg = timeline.segments[Math.min(Math.max(0, from), timeline.segments.length - 1)];
   return { timeline, offset: seg ? seg.playStart : 0 };
 }

@@ -11,6 +11,7 @@
  *
  * A clip is only ever one of this browser's uploads ("asset:<id>"): a design never plays anything from the web.
  */
+import { clipPlayingLength } from "@/core/animation";
 import { getAssetUrl } from "@/core/assets";
 import type { DesignElement, VideoElement } from "@/core/types";
 
@@ -33,9 +34,7 @@ export function trimmedLength(el: Pick<VideoElement, "trimStart" | "trimEnd">): 
 }
 
 /** How long the part that plays takes to play once, in seconds of the page, at the element's speed. */
-export function playingLength(el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed">): number {
-  return trimmedLength(el) / (el.speed > 0 ? el.speed : 1);
-}
+export const playingLength = clipPlayingLength;
 
 /** The place in the clip, in seconds, that `time` seconds of the page stand for: from `trimStart`, at `speed`, over again at `trimEnd`. */
 export function clipTime(el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed">, time: number): number {

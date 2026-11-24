@@ -64,6 +64,10 @@ export const panelsContext = {
     pageTimingHint: "in a presentation or an exported animation",
     pageDuration: "Page duration",
     pageSeconds: (v: number) => `${num(Math.round(v * 10) / 10)} s`,
+    /** a page with a clip and no length of its own: "Lasts as long as its clip: 2.4 s" */
+    followsClip: (seconds: string) => `Lasts as long as its clip: ${seconds}`,
+    /** gives a page with a clip its automatic length back */
+    matchClip: (seconds: string) => `Match the clip (${seconds})`,
     transition: "Transition",
     transitionHint: "into this page",
     firstPage: "The first page has nothing to arrive from. Pick another page to set how the presentation moves to it.",

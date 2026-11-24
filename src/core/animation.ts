@@ -9,7 +9,7 @@
  *   emphasis   repeats every `duration` for as long as the page is shown
  */
 import { m } from "@/i18n";
-import type { AnimDirection, DesignElement, ElementAnimation, ElementAnimations, Page } from "./types";
+import type { AnimDirection, DesignElement, ElementAnimation, ElementAnimations, Page, VideoElement } from "./types";
 
 export type AnimPhase = "in" | "out" | "loop";
 
@@ -21,9 +21,36 @@ export const MAX_ANIMATION_DELAY = 10;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** Seconds a page stays on screen when played or exported. */
-export const pageDuration = (page: Pick<Page, "duration">): number =>
-  clamp(Number.isFinite(page.duration) ? (page.duration as number) : DEFAULT_PAGE_DURATION, MIN_PAGE_DURATION, MAX_PAGE_DURATION);
+/**
+ * The longest a page can last by following its clip (a page timed by hand stops at MAX_PAGE_DURATION): ten minutes, as long as a
+ * video download can be.
+ */
+export const MAX_CLIP_PAGE_DURATION = 600;
+
+/** Seconds a clip takes to play once on its page: its trimmed part at its speed (never 0). */
+export const clipPlayingLength = (el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed">): number => Math.max(0.05, el.trimEnd - el.trimStart) / (el.speed > 0 ? el.speed : 1);
+
+/** How long the longest clip on the page takes to play once (groups looked into, hidden ones left out); null without a clip. */
+export function pageClipLength(page: { elements?: readonly DesignElement[] }): number | null {
+  let longest: number | null = null;
+  const visit = (el: DesignElement) => {
+    if (el.hidden) return;
+    if (el.type === "video") longest = Math.max(longest ?? 0, clipPlayingLength(el));
+    else if (el.type === "group") el.children.forEach(visit);
+  };
+  page.elements?.forEach(visit);
+  return longest;
+}
+
+/**
+ * Seconds a page stays on screen when played or exported: the length set for it; without one, as long as its longest clip takes to
+ * play once (as Canva does: a page with an 11 s clip plays 11 s); and 5 s for a page with no clip.
+ */
+export const pageDuration = (page: Pick<Page, "duration"> & { elements?: readonly DesignElement[] }): number => {
+  if (Number.isFinite(page.duration)) return clamp(page.duration as number, MIN_PAGE_DURATION, MAX_PAGE_DURATION);
+  const clip = pageClipLength(page);
+  return clip === null ? DEFAULT_PAGE_DURATION : clamp(clip, MIN_PAGE_DURATION, MAX_CLIP_PAGE_DURATION);
+};
 
 /* ------------------------------------------------------------------ */
 /* easing                                                              */

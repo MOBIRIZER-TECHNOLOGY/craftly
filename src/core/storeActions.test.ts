@@ -255,6 +255,20 @@ describe("page timing", () => {
     expect(page().duration).toBe(60);
   });
 
+  it("takes the length away again, from one page or all, so a page with a clip follows its clip", () => {
+    const second = a().addPage();
+    a().setPageDuration(3, "all");
+    const steps = s().past.length;
+    a().resetPageDuration("page", second);
+    expect(s().design!.pages.map((p) => p.duration)).toEqual([3, undefined]);
+    expect(s().past.length).toBe(steps + 1);
+    a().resetPageDuration("all");
+    expect(s().design!.pages.map((p) => "duration" in p)).toEqual([false, false]);
+    // nothing to take away: no step of undo
+    a().resetPageDuration("all");
+    expect(s().past.length).toBe(steps + 2);
+  });
+
   it("sets it on one page by id, or on all pages", () => {
     const second = a().addPage();
     a().setPageDuration(3, "page", "p1");

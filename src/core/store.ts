@@ -225,6 +225,8 @@ export interface EditorActions {
   setPageTransition(transition: PageTransition | null, scope?: "page" | "all", pageId?: ID): void;
   /** seconds the page stays on screen when played or exported */
   setPageDuration(seconds: number, scope?: "page" | "all", pageId?: ID): void;
+  /** Takes the length set for the page (or every page) away: it lasts as long as its longest clip again, or 5 s without one. */
+  resetPageDuration(scope?: "page" | "all", pageId?: ID): void;
   /** put a template page's content on the active page (replace) or as a new page (add) */
   applyTemplatePage(page: Page, mode: "replace" | "add"): void;
 
@@ -916,6 +918,14 @@ export const useEditor = create<EditorState>()((set, get) => {
         },
         { coalesce: `pdur:${scope === "all" ? "all" : id}` },
       );
+    },
+    resetPageDuration(scope = "page", pageId) {
+      const id = pageId ?? get().activePageId;
+      const s = get();
+      if (!s.design?.pages.some((page) => (scope === "all" || page.id === id) && page.duration !== undefined)) return;
+      commit((d) => {
+        for (const page of d.pages) if (scope === "all" || page.id === id) delete page.duration;
+      });
     },
     applyTemplatePage(page, mode) {
       const s = get();

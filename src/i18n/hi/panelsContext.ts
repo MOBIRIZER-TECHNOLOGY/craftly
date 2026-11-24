@@ -61,6 +61,8 @@ export const panelsContext: typeof en = {
     pageTimingHint: "प्रेज़ेंटेशन या एक्सपोर्ट किए गए एनिमेशन में",
     pageDuration: "पेज की अवधि",
     pageSeconds: (v: number) => `${num(Math.round(v * 10) / 10)} s`,
+    followsClip: (seconds: string) => `अपनी क्लिप जितना चलता है: ${seconds}`,
+    matchClip: (seconds: string) => `क्लिप के बराबर करें (${seconds})`,
     transition: "ट्रांज़िशन",
     transitionHint: "इस पेज में आते समय",
     firstPage: "पहले पेज से पहले कुछ नहीं है। प्रेज़ेंटेशन किसी पेज पर कैसे जाए, यह सेट करने के लिए कोई दूसरा पेज चुनें।",

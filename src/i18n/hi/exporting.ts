@@ -20,7 +20,7 @@ export const exporting: typeof en = {
       video: "वीडियो (WebM)",
       videoMp4: "वीडियो (MP4)",
       videoHint: "स्मूद, छोटी फ़ाइलें",
-      videoSoundHint: "स्मूद, क्लिप की आवाज़ के साथ",
+      videoSoundHint: "स्मूद, आवाज़ के साथ",
       videoUnsupported: "इस ब्राउज़र में काम नहीं करता",
       sizes: "कई साइज़",
       sizesHint: "एक ZIP, हर साइज़ की एक फ़ाइल",

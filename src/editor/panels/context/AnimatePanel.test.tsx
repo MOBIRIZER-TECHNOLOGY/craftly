@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createGroup, createPage, createShape, createText } from "@/core/factory";
+import { createGroup, createPage, createShape, createText, createVideo } from "@/core/factory";
 import { stopPreview, usePreview } from "@/editor/canvas/preview";
 import { contextOf } from "@/test/canvasMock";
 import { live, openElements, selectElements, showPanel, store } from "@/test/ctxUtils";
@@ -235,6 +235,31 @@ describe("Animate panel: page animations", () => {
     const [p1, p2] = store().design!.pages;
     expect(p2.duration).toBe(p1.duration);
     expect(p1.duration).toBeGreaterThan(first);
+  });
+
+  it("says a page with a clip lasts as long as the clip, and gives it that length back after one was set", async () => {
+    const user = userEvent.setup();
+    openElements([box(), createVideo({ src: "asset:c", duration: 12, naturalWidth: 64, naturalHeight: 36, trimStart: 2, trimEnd: 11.5, speed: 1 })]);
+    openAnimate("page");
+    expect(slider("Page duration").getAttribute("aria-valuetext")).toBe("9.5 s");
+    expect(screen.getByRole("status").textContent).toBe("Lasts as long as its clip: 9.5 s");
+    expect(screen.queryByRole("button", { name: /Match the clip/ })).toBeNull();
+
+    slider("Page duration").focus();
+    await user.keyboard("{ArrowRight}");
+    expect(store().design!.pages[0].duration).toBeGreaterThan(9.5);
+    expect(screen.queryByText(/Lasts as long as its clip/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Match the clip (9.5 s)" }));
+    expect("duration" in store().design!.pages[0]).toBe(false);
+    expect(slider("Page duration").getAttribute("aria-valuetext")).toBe("9.5 s");
+    expect(screen.getByText("Lasts as long as its clip: 9.5 s")).toBeTruthy();
+  });
+
+  it("says nothing about a clip on a page without one", () => {
+    openElements([box()]);
+    openAnimate("page");
+    expect(screen.queryByText(/its clip/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Match the clip/ })).toBeNull();
   });
 
   it("says that the first page has no transition", () => {
