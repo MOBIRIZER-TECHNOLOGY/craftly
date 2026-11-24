@@ -12,7 +12,7 @@
  *   auto        following the design's timeline: exits and transitions play, pages move on by themselves
  *   frozen      auto-play ran out of pages: its last frame stays
  */
-import { pageDuration, pageHasAnimation } from "@/core/animation";
+import { pageDuration, pageHasAnimation, playsClip } from "@/core/animation";
 import type { TimelineFrame } from "@/core/transition";
 import type { Design, Page } from "@/core/types";
 import { onFontsChange } from "@/render/fonts";
@@ -257,7 +257,9 @@ export class PresentPlayer {
   /** Whether the page on screen has anything moving (exits never count: a held page stays). */
   private animated(i: number): boolean {
     const page = this.design?.pages[i];
-    return !!page && !this.reduced && pageHasAnimation(stripExits(page));
+    if (!page) return false;
+    // with reduced motion nothing is animated, but a clip still plays: it is what the page shows, not a way of showing it
+    return this.reduced ? page.elements.some(playsClip) : pageHasAnimation(stripExits(page));
   }
 
   private arrive(from: number, to: number, plan: PlannedTransition | null): void {
@@ -437,12 +439,13 @@ export class PresentPlayer {
 
   private framePage(now: number, mode: Holding): boolean {
     const page = stripExits(this.design!.pages[this.index]);
-    if (this.reduced || !pageHasAnimation(page)) return false; // a still page is drawn from its bitmap, not frame by frame
+    // a still page is drawn from its bitmap, not frame by frame; with reduced motion only a page with a clip is painted again
+    if (this.reduced ? !page.elements.some(playsClip) : !pageHasAnimation(page)) return false;
     const t = Math.max(0, (now - mode.startedAt) / 1000);
     this.fit();
-    const complete = this.renderer!.renderPageAt(this.ctx!, page, t);
+    const complete = this.reduced ? this.paintReduced(this.ctx!, page, t) : this.renderer!.renderPageAt(this.ctx!, page, t);
     this.clearFailed();
-    return this.after(complete, isAnimating(page, t));
+    return this.after(complete, this.reduced || isAnimating(page, t));
   }
 
   /* ---- a transition the presenter started ---- */
@@ -530,14 +533,20 @@ export class PresentPlayer {
     const design = this.design!;
     const page = design.pages[i];
     // a page nothing moves on is the same picture frame after frame: paint it once
-    const moving = !this.reduced && isAnimating(page, time);
+    const moving = this.reduced ? page.elements.some(playsClip) : isAnimating(page, time);
     if (!moving && this.stillPage === i && !this.incomplete) return;
     this.fit();
     const ctx = this.ctx!;
-    const complete = this.reduced ? renderPage(ctx, design, page, { scale: ctx.canvas.width / design.width }) : this.renderer!.renderPageAt(ctx, page, time);
+    const complete = this.reduced ? this.paintReduced(ctx, page, time) : this.renderer!.renderPageAt(ctx, page, time);
     this.stillPage = moving ? null : i;
     this.incomplete = !complete;
     this.clearFailed();
+  }
+
+  /** With reduced motion: the page at rest, with its clips playing `time` seconds in (and their sound). */
+  private paintReduced(ctx: CanvasRenderingContext2D, page: Page, time: number): boolean {
+    const design = this.design!;
+    return renderPage(ctx, design, page, { scale: ctx.canvas.width / design.width, playVideos: { sound: true, time } });
   }
 
   private paintAutoTransition(frame: Extract<TimelineFrame, { kind: "transition" }>): void {

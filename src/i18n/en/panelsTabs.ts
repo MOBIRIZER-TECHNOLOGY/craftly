@@ -510,8 +510,8 @@ export const panelsTabs = {
     noneTitle: "No uploads found",
     noneText: (query: string) => `No upload name contains "${query}".`,
     dropToUpload: "Drop to upload",
-    dropHere: "Drop images here",
-    /** follows "Drop images here", in smaller type */
+    dropHere: "Drop images or videos here",
+    /** follows "Drop images or videos here", in smaller type */
     orBrowse: " or click to browse",
     introTitle: "Upload, store and organize",
     introText: "Add your own photos and logos. They stay in this browser, ready for any design.",

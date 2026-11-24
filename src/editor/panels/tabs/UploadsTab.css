@@ -249,11 +249,11 @@
   pointer-events: none;
 }
 
-/* the length of a clip, over the corner of its card */
+/* the length of a clip, over the top corner of its card (the name shows along the bottom on hover) */
 .cf-uploads__badge {
   position: absolute;
+  top: 6px;
   left: 6px;
-  bottom: 6px;
   padding: 1px 6px;
   border-radius: 999px;
   background: rgba(14, 19, 24, 0.72);

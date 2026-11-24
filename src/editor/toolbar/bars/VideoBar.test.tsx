@@ -150,7 +150,7 @@ describe("video toolbar: trim", () => {
 
   it("says that the whole clip plays and has nothing to reset while it is not trimmed", async () => {
     const { dialog } = await openTrim(clip());
-    expect(within(dialog).getByRole("status").textContent).toBe("Plays 0:10 of 0:10");
+    expect(within(dialog).getByRole("status").textContent).toBe("Plays 10 s of 10 s");
     expect(reset(dialog).disabled).toBe(true);
     const start = within(dialog).getByRole("slider", { name: "Start (seconds)" });
     expect([start.getAttribute("aria-valuemin"), start.getAttribute("aria-valuemax"), start.getAttribute("aria-valuenow")]).toEqual(["0", "10", "0"]);
@@ -164,8 +164,15 @@ describe("video toolbar: trim", () => {
     expect(live<VideoElement>(el)).toMatchObject({ trimStart: 2.5, trimEnd: 10 });
     await typeNumber(user, field(dialog, "End"), "6");
     expect(live<VideoElement>(el)).toMatchObject({ trimStart: 2.5, trimEnd: 6 });
-    expect(within(dialog).getByRole("status").textContent).toBe("Plays 0:03.5 of 0:10");
+    expect(within(dialog).getByRole("status").textContent).toBe("Plays 3.5 s of 10 s");
     expect(reset(dialog).disabled).toBe(false);
+  });
+
+  it("rounds the length in its hint as the fields round theirs", async () => {
+    // a browser's own recording: 2.385 s reads 2.38 in the End field, and the hint must not say 2.39
+    const { dialog } = await openTrim(clip({ duration: 2.385, trimStart: 1.3, trimEnd: 2.385 }));
+    expect((field(dialog, "End") as HTMLInputElement).value).toBe("2.38");
+    expect(within(dialog).getByRole("status").textContent).toBe("Plays 1.08 s of 2.38 s");
   });
 
   it("moves the start out of the way of an end set before it", async () => {
@@ -195,7 +202,7 @@ describe("video toolbar: trim", () => {
   it("plays the whole clip again", async () => {
     const el = clip({ trimStart: 1, trimEnd: 4 });
     const { user, dialog } = await openTrim(el);
-    expect(within(dialog).getByRole("status").textContent).toBe("Plays 0:03.0 of 0:10");
+    expect(within(dialog).getByRole("status").textContent).toBe("Plays 3 s of 10 s");
     await user.click(reset(dialog));
     expect(live<VideoElement>(el)).toMatchObject({ trimStart: 0, trimEnd: 10 });
     expect(reset(dialog).disabled).toBe(true);

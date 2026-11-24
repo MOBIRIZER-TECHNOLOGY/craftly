@@ -35,9 +35,10 @@ export interface RenderOptions {
   /**
    * Play the clips of video elements at `animation.time` (src/render/videos.ts), with their sound when `sound` is set: for what
    * plays in real time (Present, the animation preview, a video recorded as it plays). Without it a clip is its first frame, which
-   * is what every still download and a GIF (painted faster or slower than real time) hold.
+   * is what every still download and a GIF (painted faster or slower than real time) hold. `time` plays them that many seconds into the
+   * page without animating anything else (Present with reduced motion); without it they play at `animation.time`.
    */
-  playVideos?: { sound?: boolean };
+  playVideos?: { sound?: boolean; time?: number };
   /**
    * Design pixels to paint beyond every edge of the page (a print export with bleed). The canvas then starts `bleed`
    * above and left of the page, and `clip` is measured from that corner; the background is stretched over the larger
@@ -648,8 +649,9 @@ function drawAnimated(ctx: Ctx, el: DesignElement, env: Env, st: AnimState, unit
 export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, page: Page, opts: RenderOptions): boolean {
   const { scale, clip } = opts;
   const env: Env = { scale, hide: opts.hide, pending: false, depth: 0 };
-  if (opts.playVideos && opts.animation) {
-    env.videoTime = opts.animation.time;
+  const videoTime = opts.playVideos?.time ?? opts.animation?.time;
+  if (opts.playVideos && videoTime !== undefined) {
+    env.videoTime = videoTime;
     env.videoSound = !!opts.playVideos.sound;
   }
   ctx.save();

@@ -4,7 +4,7 @@ import type { VideoElement } from "@/core/types";
 import { startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
 import { ShapePreview } from "@/editor/panels/shared/ShapePreview";
 import { m } from "@/i18n";
-import { clampTrim, clipClock, MIN_TRIM, playingLength, trimmedLength } from "@/render/videos";
+import { clampTrim, MIN_TRIM, playingLength } from "@/render/videos";
 import { Button, Divider, IconCut, IconFrame, IconMuted, IconPause, IconPlay, IconSound, IconSpeed, type MenuEntry } from "@/ui";
 import { AnimateButton, BorderPopover, CopyStyleButton, FlipMenu, MoreButton, MultiActions, PositionButton, RadiusPopover, TransparencyButton, type BarProps } from "../common";
 import { MenuButton, PopoverButton, SliderField, TBIcon } from "../kit";
@@ -102,6 +102,12 @@ export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Ext
 }
 
 /** Where the clip starts and stops playing, in seconds of the clip, with how much of it is left. */
+/**
+ * Seconds to hundredths, as the Start and End fields round them: the hint beside them then agrees with them
+ * (a clip of 2.385 s reads 2.38 in the field; formatting it alone would say 2.39).
+ */
+const hundredths = (seconds: number) => Math.round(seconds * 100) / 100;
+
 function TrimPopover({ el }: { el: VideoElement }) {
   const length = Math.max(MIN_TRIM, el.duration);
   const trimmed = el.trimStart > 0 || el.trimEnd < el.duration;
@@ -131,7 +137,7 @@ function TrimPopover({ el }: { el: VideoElement }) {
           <SliderField label={m.editor.videoBar.trimStart} value={el.trimStart} min={0} max={length} step={0.1} numberStep={0.01} onChange={(v) => set({ start: v })} />
           <SliderField label={m.editor.videoBar.trimEnd} value={el.trimEnd} min={0} max={length} step={0.1} numberStep={0.01} onChange={(v) => set({ end: v })} />
           <p className="cf-tbpop__hint" role="status">
-            {m.editor.videoBar.trimLength(clipClock(trimmedLength(el), true), clipClock(el.duration, true))}
+            {m.editor.videoBar.trimLength(hundredths(el.trimEnd - el.trimStart), hundredths(el.duration))}
           </p>
           <Button variant="secondary" size="sm" disabled={!trimmed} onClick={reset}>
             {m.editor.videoBar.resetTrim}

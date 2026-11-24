@@ -235,7 +235,8 @@ export const editor = {
     trimTip: "Choose the part of the clip that plays",
     trimStart: "Start (seconds)",
     trimEnd: "End (seconds)",
-    trimLength: (shown: string, whole: string) => `Plays ${shown} of ${whole}`,
+    /** in seconds, as the two fields above it are */
+    trimLength: (shown: number, whole: number) => `Plays ${num(shown, { maximumFractionDigits: 2 })} s of ${num(whole, { maximumFractionDigits: 2 })} s`,
     resetTrim: "Play the whole clip",
     speed: "Speed",
     speedTip: "How fast the clip plays",

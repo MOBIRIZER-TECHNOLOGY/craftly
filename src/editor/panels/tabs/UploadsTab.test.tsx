@@ -54,7 +54,7 @@ describe("Uploads tab", () => {
       expect(screen.getByText("Add your own photos and logos. They stay in this browser, ready for any design.")).toBeTruthy();
       expect(zone().classList.contains("is-empty")).toBe(true);
       const click = vi.spyOn(HTMLInputElement.prototype, "click");
-      await user.click(screen.getByRole("button", { name: /Drop images here/ }));
+      await user.click(screen.getByRole("button", { name: /Drop images or videos here/ }));
       expect(click.mock.contexts).toContain(fileInput());
       expect(screen.queryByText("No uploads found")).toBeNull();
     });
@@ -68,7 +68,7 @@ describe("Uploads tab", () => {
       expect(columns).toEqual([["new", "old"], ["middle"]]);
       expect(zone().classList.contains("is-empty")).toBe(false);
       expect(screen.queryByText("Upload, store and organize")).toBeNull();
-      expect(screen.getByRole("button", { name: /Drop images here/ })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Drop images or videos here/ })).toBeTruthy();
     });
 
     it("keeps each picture's proportions", async () => {
@@ -110,7 +110,7 @@ describe("Uploads tab", () => {
     it("opens the file chooser from the strip above the list too", async () => {
       const user = await openUploads("existing.png");
       const click = vi.spyOn(HTMLInputElement.prototype, "click");
-      await user.click(screen.getByRole("button", { name: /Drop images here/ }));
+      await user.click(screen.getByRole("button", { name: /Drop images or videos here/ }));
       expect(click.mock.contexts).toContain(fileInput());
     });
 
@@ -219,7 +219,7 @@ describe("Uploads tab", () => {
       expect(zone().classList.contains("is-over")).toBe(true);
       fireEvent.dragLeave(zone());
       expect(zone().classList.contains("is-over")).toBe(false);
-      expect(within(zone()).getByText("Drop images here")).toBeTruthy();
+      expect(within(zone()).getByText("Drop images or videos here")).toBeTruthy();
     });
 
     it("also shows it in the empty library", async () => {

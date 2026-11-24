@@ -214,7 +214,7 @@ export const editor: typeof en = {
     trimTip: "क्लिप का वह हिस्सा चुनें जो चलता है",
     trimStart: "शुरुआत (सेकंड)",
     trimEnd: "अंत (सेकंड)",
-    trimLength: (shown: string, whole: string) => `${whole} में से ${shown} चलता है`,
+    trimLength: (shown: number, whole: number) => `${num(whole, { maximumFractionDigits: 2 })} सेकंड में से ${num(shown, { maximumFractionDigits: 2 })} सेकंड चलता है`,
     resetTrim: "पूरी क्लिप चलाएँ",
     speed: "गति",
     speedTip: "क्लिप कितनी तेज़ चलती है",
