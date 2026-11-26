@@ -86,6 +86,14 @@ describe("trimming", () => {
     expect(clampTrim({ duration: 5, trimStart: 7, trimEnd: 9 }, {})).toEqual({ trimStart: 4.9, trimEnd: 5 });
   });
 
+  it("rounds to the hundredth but never past the end of a clip whose length is not on the hundredth", () => {
+    const odd = { duration: 2.918, trimStart: 0, trimEnd: 2.918 };
+    expect(clampTrim(odd, { end: 5 })).toEqual({ trimStart: 0, trimEnd: 2.918 });
+    expect(clampTrim(odd, { start: 2.9 })).toEqual({ trimStart: 2.918 - MIN_TRIM, trimEnd: 2.918 });
+    expect(clampTrim(odd, { start: 1.234 })).toEqual({ trimStart: 1.23, trimEnd: 2.918 });
+    expect(clampTrim({ duration: 2.918, trimStart: 2.85, trimEnd: 2.918 }, { end: 2.9 })).toEqual({ trimStart: 2.8, trimEnd: 2.9 });
+  });
+
   it("treats a clip of no length as one of the shortest part", () => {
     expect(clampTrim({ duration: 0, trimStart: 0, trimEnd: 0 }, { start: 1 })).toEqual({ trimStart: 0, trimEnd: MIN_TRIM });
   });

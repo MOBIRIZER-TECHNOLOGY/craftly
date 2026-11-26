@@ -66,13 +66,14 @@ export const MIN_TRIM = 0.1;
  */
 export function clampTrim(el: Pick<VideoElement, "duration" | "trimStart" | "trimEnd">, next: { start?: number; end?: number }): { trimStart: number; trimEnd: number } {
   const length = Math.max(MIN_TRIM, el.duration);
-  const round = (v: number) => Math.round(v * 100) / 100;
+  // to the hundredth, but never past `most`: a clip of 2.918 s ends at 2.918, not at 2.92, after its last frame
+  const round = (v: number, most: number) => Math.min(Math.round(v * 100) / 100, most);
   if (next.start !== undefined) {
-    const start = round(Math.min(Math.max(0, next.start), length - MIN_TRIM));
-    return { trimStart: start, trimEnd: round(Math.max(Math.min(el.trimEnd, length), start + MIN_TRIM)) };
+    const start = round(Math.min(Math.max(0, next.start), length - MIN_TRIM), length - MIN_TRIM);
+    return { trimStart: start, trimEnd: round(Math.max(Math.min(el.trimEnd, length), start + MIN_TRIM), length) };
   }
-  const end = round(Math.max(Math.min(length, next.end ?? el.trimEnd), MIN_TRIM));
-  return { trimStart: round(Math.min(Math.max(0, el.trimStart), end - MIN_TRIM)), trimEnd: end };
+  const end = round(Math.max(Math.min(length, next.end ?? el.trimEnd), MIN_TRIM), length);
+  return { trimStart: round(Math.min(Math.max(0, el.trimStart), end - MIN_TRIM), end - MIN_TRIM), trimEnd: end };
 }
 
 /** 0:07, 1:30, 12:05: a length or a place in a clip, to the second (tenths under ten seconds when `tenths`: 2.5 s is 0:02.5). */
