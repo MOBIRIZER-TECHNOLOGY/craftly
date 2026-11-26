@@ -2,7 +2,8 @@
  * The timeline under the page (Timeline.tsx): every page as a block as long as it lasts, the transitions between them, and a
  * playhead that can be parked, dragged and played across the pages. This module holds its state and the pure maths; the moment
  * the playhead stands for is shown on the page canvas through the preview store (src/editor/canvas/preview.ts): held still while
- * the playhead is parked or dragged, playing (with the clips' sound) while it runs.
+ * the playhead is parked or dragged, playing (with the clips' sound) while it runs, and the design's own sounds with it
+ * (src/render/soundTracks.ts).
  *
  * Nothing here is saved with the design: the playhead is a way of looking at it, like the zoom.
  */
@@ -12,6 +13,7 @@ import { useEditor } from "@/core/store";
 import { buildTimeline, type Timeline } from "@/core/transition";
 import type { Page } from "@/core/types";
 import { holdPreview, previewTime, startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
+import { playSoundsAt, stopSounds } from "@/render/soundTracks";
 
 /** The fewest and the most pixels a second of the timeline takes. */
 export const MIN_PX_PER_SECOND = 6;
@@ -134,11 +136,14 @@ function tick(): void {
     // the end: the playhead stays there and the page is shown at rest
     clock = null;
     useTimeline.setState({ time: timeline.total, playing: false });
+    stopSounds();
     stopPreview();
     return;
   }
   useTimeline.setState({ time: t });
   showRunning(timeline, t);
+  // the sounds of the design follow the playhead across the pages
+  playSoundsAt(useEditor.getState().design?.audio, t, timeline.total);
   raf = requestAnimationFrame(tick);
 }
 
@@ -161,6 +166,7 @@ export function pauseTimeline(): void {
   clock = null;
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
+  stopSounds();
   const total = buildTimeline(pagesOf()).total;
   const at = Math.min(Math.max(0, t), total);
   useTimeline.setState({ playing: false, time: at });
@@ -186,6 +192,7 @@ export function setTimelineOpen(open: boolean): void {
     clock = null;
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
+    stopSounds();
     useTimeline.setState({ playing: false });
     stopPreview();
   }
@@ -202,6 +209,7 @@ usePreview.subscribe((s, prev) => {
     clock = null;
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
+    stopSounds();
     useTimeline.setState({ playing: false });
   }
 });
@@ -226,6 +234,7 @@ useEditor.subscribe((s, prev) => {
 /** For tests: the clock and the state as at start-up. */
 export function resetTimeline(): void {
   clock = null;
+  stopSounds();
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
   turning = false;

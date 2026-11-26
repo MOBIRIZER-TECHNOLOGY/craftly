@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPage, createVideo } from "@/core/factory";
-import type { VideoElement } from "@/core/types";
+import type { AudioTrack, VideoElement } from "@/core/types";
 import { buildTimeline } from "@/core/transition";
 import { ExportError, isCancelled } from "../errors";
 
@@ -818,5 +818,50 @@ describe("a clip's volume and fades in the mix", () => {
     await mixClipSound([page([clip(), clip(), clip({ volume: 0.2 })])], buildTimeline([page([])]), 3);
     expect(windows()[0].pieces).toHaveLength(3);
     expect(mb.inputsDisposed).toBe(2);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe("mixing the sounds of the design", () => {
+  const sound = (over: Partial<AudioTrack> = {}): AudioTrack => ({ id: "au", src: "asset:a", duration: 2, trimStart: 0, trimEnd: 2, startAt: 0, ...over });
+  const pages = [createPage({ duration: 3 })];
+  const placed = () => windows().flatMap((w, k) => w.pieces.map((p) => [k, Math.round(p.start * 1000) / 1000, p.buffer.length]));
+
+  it("plays a sound once from the second of the design it starts at, on pages without a clip", async () => {
+    const mix = await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound({ startAt: 0.5 })], offset: 0 });
+    expect(mix).not.toBeNull();
+    // 0.5 s to 2.5 s: half a second in the first window, a whole one in the second, half in the third
+    expect(placed()).toEqual([
+      [0, 0.5, 500],
+      [1, 0, 1000],
+      [2, 0, 500],
+    ]);
+  });
+
+  it("plays one over and over to the end of the design, across its pages", async () => {
+    const two = [createPage({ duration: 2 }), createPage({ duration: 2 })];
+    await mixClipSound(two, buildTimeline(two), 4, undefined, { tracks: [sound({ loop: true, trimEnd: 1.5 })], offset: 0 });
+    expect(placed().map(([w]) => w)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("is part-way through for a download that starts later in the design, and left out when it has played by then", async () => {
+    await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound()], offset: 1 });
+    // a second of it is left: the first window only
+    expect(placed()).toEqual([[0, 0, 1000]]);
+    windows().length = 0;
+    expect(await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound()], offset: 2.5 })).toBeNull();
+    expect(await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound({ startAt: 5 })], offset: 0 })).toBeNull();
+  });
+
+  it("is left out when its file is gone or cannot be decoded, and goes with a clip's sound in one mix", async () => {
+    expect(await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound({ src: "asset:gone" })], offset: 0 })).toBeNull();
+    const withClip = [createPage({ duration: 3, elements: [clip({ once: true })] })];
+    await mixClipSound(withClip, buildTimeline(withClip), 3, undefined, { tracks: [sound({ startAt: 2 })], offset: 0 });
+    expect(placed().map(([w, at]) => [w, at])).toEqual([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ]);
   });
 });

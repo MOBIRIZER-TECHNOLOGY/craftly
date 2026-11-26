@@ -13,12 +13,13 @@
  *   frozen      auto-play ran out of pages: its last frame stays
  */
 import { pageDuration, pageHasAnimation, playsClip } from "@/core/animation";
-import type { TimelineFrame } from "@/core/transition";
+import { buildTimeline, type TimelineFrame } from "@/core/transition";
 import type { Design, Page } from "@/core/types";
 import { onFontsChange } from "@/render/fonts";
 import { onImagesChange } from "@/render/images";
 import { drawTransition, PlaybackRenderer } from "@/render/playback";
 import { preparePage, renderPage, renderPageToCanvas } from "@/render/renderPage";
+import { playSoundsAt, stopSounds } from "@/render/soundTracks";
 import { pauseVideos } from "@/render/videos";
 import { autoplayAt, isAnimating, pageProgress, planAutoplay, planTransition, stripExits, type AutoplayPlan, type PlannedTransition } from "./playbackPlan";
 
@@ -144,6 +145,15 @@ export class PresentPlayer {
   private readonly ctx: CanvasRenderingContext2D | null;
   private readonly unsubscribe: Array<() => void> = [];
   private disposed = false;
+  /**
+   * The clock of the design's sounds (`Design.audio`), in seconds of the design's timeline: at `soundAt` (performance.now()) it was
+   * `soundFrom`. Auto-play follows the design's timeline; a presenter who goes on to the next page by hand lets the sounds play on,
+   * and one who goes back or jumps puts them at the start of that page. They are looked at a few times a second (`soundTimer`),
+   * apart from the frames, which a still page does not have.
+   */
+  private soundFrom = 0;
+  private soundAt = 0;
+  private soundTimer = 0;
 
   constructor(
     private readonly host: PlayerHost,
@@ -179,6 +189,7 @@ export class PresentPlayer {
     const last = view.design.pages.length - 1;
     if (this.index > last) this.setIndex(last);
     if (!this.mode) {
+      this.startSounds(this.pageStart(this.index));
       this.arrive(this.index, this.index, null);
     } else if (designChanged || reducedChanged || !sameSize(before, this.size)) {
       // the motion preference changed under a running show: hand it back to the presenter, at rest
@@ -201,6 +212,8 @@ export class PresentPlayer {
     this.leaveAuto();
     this.settle();
     const from = this.index;
+    // on to the next page: the sounds play on; back, or a jump: they go to where that page starts in the design
+    if (target !== from + 1) this.startSounds(this.pageStart(target));
     this.setIndex(target);
     this.arrive(from, target, this.reduced ? null : planTransition(design.pages, from, target));
   }
@@ -227,6 +240,9 @@ export class PresentPlayer {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     pauseVideos(); // the show is over: its clips (and their sound) stop at once
+    window.clearInterval(this.soundTimer);
+    this.soundTimer = 0;
+    stopSounds();
     this.quiet();
     this.cancelWarm();
     this.unsubscribe.splice(0).forEach((off) => off());
@@ -244,6 +260,38 @@ export class PresentPlayer {
   /* ------------------------------------------------------------------ */
   /* arriving at a page                                                  */
   /* ------------------------------------------------------------------ */
+
+  /** Where page `i` starts its own time in the design's timeline, in seconds. */
+  private pageStart(i: number): number {
+    return this.design ? (buildTimeline(this.design.pages).segments[i]?.playStart ?? 0) : 0;
+  }
+
+  /** The sounds' clock, in seconds of the design, now. */
+  private soundTime(now: number): number {
+    const mode = this.mode;
+    if (mode?.kind === "auto") return mode.plan.offset + (now - mode.startedAt) / 1000;
+    return this.soundFrom + (now - this.soundAt) / 1000;
+  }
+
+  /** Puts the sounds' clock at `time` seconds of the design and keeps the sounds following it, while the design has any. */
+  private startSounds(time: number): void {
+    this.soundFrom = time;
+    this.soundAt = performance.now();
+    if (!this.soundTimer && this.design?.audio?.length) this.soundTimer = window.setInterval(() => this.tickSounds(), 100);
+    this.tickSounds();
+  }
+
+  private tickSounds(): void {
+    const design = this.design;
+    if (this.disposed || !design) return;
+    if (!design.audio?.length) {
+      window.clearInterval(this.soundTimer);
+      this.soundTimer = 0;
+      stopSounds();
+      return;
+    }
+    playSoundsAt(design.audio, this.soundTime(performance.now()), buildTimeline(design.pages).total);
+  }
 
   private setIndex(index: number): void {
     this.index = index;
@@ -496,6 +544,8 @@ export class PresentPlayer {
   private leaveAuto(): void {
     const mode = this.mode;
     if (mode?.kind === "auto") {
+      // the sounds go on from where auto-play had got to
+      this.startSounds(mode.plan.offset + (performance.now() - mode.startedAt) / 1000);
       this.mode = { kind: "page", startedAt: performance.now() - this.autoTime * 1000 };
       this.host.onAutoplay(false);
     } else if (mode?.kind === "frozen") {
@@ -518,7 +568,8 @@ export class PresentPlayer {
     }
     this.host.onProgress(pageProgress(frame, pages));
     if (!done) return true;
-    // out of pages: stay on the final frame
+    // out of pages: stay on the final frame; the sounds end with the design
+    this.startSounds(Number.POSITIVE_INFINITY);
     this.mode = frame.kind === "page" ? { kind: "frozen", page: frame.page, time: frame.time } : { kind: "frozen", page: frame.to, time: 0 };
     this.host.onAutoplay(false);
     return false;

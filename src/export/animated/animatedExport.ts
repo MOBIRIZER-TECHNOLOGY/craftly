@@ -13,6 +13,7 @@
  * Pictures are flattened onto white: neither format has an alpha channel worth using, and a page with a
  * see-through background would otherwise come out black in the video.
  */
+import { buildTimeline } from "@/core/transition";
 import type { Design } from "@/core/types";
 import { m } from "@/i18n";
 import { fontsEpoch } from "@/render/fonts";
@@ -234,12 +235,16 @@ async function exportEncoded(design: Design, plan: AnimationPlan, onProgress: Ex
   const [{ chooseEncoding, encodeFrames }, { SOUND_RATE, mixClipSound }, { ClipFrames }] = await Promise.all([import("./encode"), import("./clipSound"), import("./clipFrames")]);
   const pages = plan.pages.map((i) => design.pages[i]);
   const bitrate = videoBitrate(plan.width, plan.height);
-  const withSound = pages.some((page) => soundingClips(page.elements).length > 0);
+  // a sound track when a clip makes a sound or the design has sounds of its own (a sound that plays outside the chosen pages leaves the mix silent)
+  const withSound = pages.some((page) => soundingClips(page.elements).length > 0) || !!design.audio?.length;
   const encoding = await chooseEncoding(plan.width, plan.height, bitrate, SOUND_RATE, withSound);
   if (!encoding) return null;
   onProgress?.(0, plan.frames);
   await loadPlanResources(design, plan, signal);
-  const sound = encoding.audio ? await mixClipSound(pages, plan.timeline, plan.total, signal) : null;
+  // the design's own sounds, from where the first chosen page starts in the design's time
+  const first = plan.pages[0] ?? 0;
+  const offset = (buildTimeline(design.pages).segments[first]?.playStart ?? 0) - (plan.timeline.segments[0]?.playStart ?? 0);
+  const sound = encoding.audio ? await mixClipSound(pages, plan.timeline, plan.total, signal, { tracks: design.audio ?? [], offset }) : null;
 
   const timing = planFrames(plan.total, VIDEO_FPS);
   const clips = new ClipFrames();

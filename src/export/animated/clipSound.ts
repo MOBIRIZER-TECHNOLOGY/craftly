@@ -3,14 +3,19 @@
  * its speed, as it does in Present. Pages are laid out on the export's timeline (`buildTimeline`): a clip sounds from the moment its
  * page starts (after the transition into it) to the moment the page ends; a transition, which shows the pages still, is silent.
  *
+ * The sounds of the design (`Design.audio`) are mixed in too, each from the second of the design it starts at, once or over and over
+ * to the end, with its volume and fades; `sounds.offset` is where the export starts in the design's time (a download of some pages
+ * has the sounds that play under those pages).
+ *
  * Each clip's audio is read from its stored file with Mediabunny, only the trimmed part, stretched to its speed at the same pitch
  * (stretch.ts), and the timeline is mixed at 48 kHz stereo a second at a time (`ClipSoundMix.read`), as the encoder needs it.
  */
 import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from "mediabunny";
 import { getAsset } from "@/core/assets";
+import { trackLength, trackStartAt } from "@/core/audioTracks";
 import { clipFades, clipGainAt, clipLoopFrom, clipStartAt, clipVolume } from "@/core/animation";
 import type { Timeline } from "@/core/transition";
-import type { Page, VideoElement } from "@/core/types";
+import type { AudioTrack, Page, VideoElement } from "@/core/types";
 import { trimmedLength } from "@/render/videos";
 import { throwIfAborted } from "../errors";
 import { soundingClips } from "./frames";
@@ -22,7 +27,7 @@ const FADE_SECONDS = 0.005;
 const PAGE_FADE_SECONDS = 0.01;
 
 /** Gives one play of a clip its volume and its fades (clipGainAt, the same curve Present follows). */
-function shapeLoud(channels: Float32Array[], sampleRate: number, el: VideoElement): void {
+function shapeLoud(channels: Float32Array[], sampleRate: number, el: Playable): void {
   const volume = clipVolume(el);
   const { fadeIn, fadeOut } = clipFades(el);
   if (volume === 1 && fadeIn === 0 && fadeOut === 0) return;
@@ -35,8 +40,14 @@ interface Loop {
   sampleRate: number;
 }
 
-/** The trimmed part of a clip's sound, at its speed; null when the clip has no sound or this browser cannot decode it. */
-async function readLoop(el: VideoElement): Promise<Loop | null> {
+/** What of a clip or a sound of the design `readLoop` reads: its file, its trim, its speed, its volume and fades. */
+type Playable = Pick<VideoElement, "src" | "trimStart" | "trimEnd" | "speed" | "volume" | "fadeIn" | "fadeOut">;
+
+/** A sound of the design as a clip that `readLoop` can read: at speed 1. */
+const playableOf = (t: AudioTrack): Playable => ({ src: t.src, trimStart: t.trimStart, trimEnd: t.trimEnd, speed: 1, volume: t.volume, fadeIn: t.fadeIn, fadeOut: t.fadeOut });
+
+/** The trimmed part of a clip's sound (or a sound's), at its speed; null when it has no sound or this browser cannot decode it. */
+async function readLoop(el: Playable): Promise<Loop | null> {
   const asset = await getAsset(el.src.slice(6));
   if (!asset) return null;
   const input = new Input({ source: new BlobSource(asset.blob), formats: ALL_FORMATS });
@@ -104,9 +115,15 @@ export interface ClipSoundMix {
  * The mixed sound of the playback described by `timeline` over `pages` (the chosen pages, in playing order), `total` seconds long;
  * null when no clip on them makes a sound, so the video gets no sound track at all.
  */
-export async function mixClipSound(pages: readonly Page[], timeline: Timeline, total: number, signal?: AbortSignal): Promise<ClipSoundMix | null> {
+export async function mixClipSound(
+  pages: readonly Page[],
+  timeline: Timeline,
+  total: number,
+  signal?: AbortSignal,
+  sounds: { tracks: readonly AudioTrack[]; offset: number } = { tracks: [], offset: 0 },
+): Promise<ClipSoundMix | null> {
   const loops = new Map<string, Promise<Loop | null>>();
-  const loopOf = (el: VideoElement) => {
+  const loopOf = (el: Playable) => {
     // one read per clip, trim, speed, volume and fades: two copies of a clip alike sound the same
     const key = `${el.src}|${el.trimStart}|${el.trimEnd}|${el.speed}|${clipVolume(el)}|${el.fadeIn ?? 0}|${el.fadeOut ?? 0}`;
     let loop = loops.get(key);
@@ -130,6 +147,16 @@ export async function mixClipSound(pages: readonly Page[], timeline: Timeline, t
       const loop = await loopOf(el);
       if (loop) plays.push({ loop, begin, until, looping: !el.once, phase: clipLoopFrom(el) });
     }
+  }
+  // the sounds of the design, in the export's time: a sound that began before the export did is part-way through it at its start
+  for (const track of sounds.tracks) {
+    throwIfAborted(signal);
+    const at = trackStartAt(track) - sounds.offset;
+    const begin = Math.max(0, at);
+    const phase = begin - at;
+    if (begin >= total || (!track.loop && phase >= trackLength(track))) continue;
+    const loop = await loopOf(playableOf(track));
+    if (loop) plays.push({ loop, begin, until: total, looping: !!track.loop, phase });
   }
   if (!plays.length) return null;
 
