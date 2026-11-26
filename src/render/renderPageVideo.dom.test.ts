@@ -187,6 +187,29 @@ describe("a clip's captions", () => {
     expect(drawn.join(" ").startsWith("word0 word1")).toBe(true);
   });
 
+  it("follow their style: place, size, letters, colour, and a light band or an outline in place of the dark band", () => {
+    frames.playing = canvas();
+    const at = { scale: 1, animation: { time: 0.5 }, playVideos: {} };
+    const plain = paint([clip({ captions: lines, trimEnd: 4 })], at).spy.to("fillText")[0];
+    const top = paint([clip({ captions: lines, trimEnd: 4, captionStyle: { place: "top" } })], at).spy.to("fillText")[0];
+    const middle = paint([clip({ captions: lines, trimEnd: 4, captionStyle: { place: "middle" } })], at).spy.to("fillText")[0];
+    expect(top.args[2] as number).toBeLessThan(middle.args[2] as number);
+    expect(middle.args[2] as number).toBeLessThan(plain.args[2] as number);
+    const sizeOf = (f: unknown) => Number(/(\d+(\.\d+)?)px/.exec(String(f))![1]);
+    const large = paint([clip({ captions: lines, trimEnd: 4, captionStyle: { size: "l", font: "serif" } })], at).spy.to("fillText")[0];
+    expect(sizeOf(large.state.font)).toBeGreaterThan(sizeOf(plain.state.font));
+    expect(String(large.state.font)).toContain("Georgia");
+    const light = paint([clip({ captions: lines, trimEnd: 4, captionStyle: { band: "light", color: "#000000" } })], at).spy;
+    expect(light.to("fill").some((c) => c.state.fillStyle === "rgba(255, 255, 255, 0.85)")).toBe(true);
+    expect(light.to("fillText")[0].state.fillStyle).toBe("#000000");
+    const outlined = paint([clip({ captions: lines, trimEnd: 4, captionStyle: { band: "none", color: "#facc15" } })], at).spy;
+    expect(outlined.to("fill").some((c) => c.state.fillStyle === "rgba(0, 0, 0, 0.66)")).toBe(false);
+    expect(outlined.to("strokeText")[0].state.strokeStyle).toBe("rgba(0, 0, 0, 0.85)");
+    expect(outlined.to("fillText")[0].state.fillStyle).toBe("#facc15");
+    const darkWords = paint([clip({ captions: lines, trimEnd: 4, captionStyle: { band: "none", color: "#000000" } })], at).spy;
+    expect(darkWords.to("strokeText")[0].state.strokeStyle).toBe("rgba(255, 255, 255, 0.9)");
+  });
+
   it("are drawn in a video download too, which hands the clip's frames over itself", () => {
     const { spy } = paint([clip({ captions: lines, trimEnd: 4 })], { scale: 1, animation: { time: 0.2 }, playVideos: { frame: () => canvas() } });
     expect(texts(spy)).toEqual(["First words"]);

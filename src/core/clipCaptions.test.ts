@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_CAPTIONS, MAX_CAPTION_LENGTH, captionAt, clipCaptions } from "./animation";
+import { MAX_CAPTIONS, MAX_CAPTION_LENGTH, captionAt, captionOutlineIsDark, clipCaptionStyle, clipCaptions } from "./animation";
 
 /* A clip's captions as they can be shown: whatever a file or a shared design brings is cleaned where it is read. */
 
@@ -50,5 +50,31 @@ describe("the caption of a moment", () => {
   it("is none at the end of a line or outside them", () => {
     expect(captionAt(lines, 3)).toBeNull();
     expect(captionAt([], 1)).toBeNull();
+  });
+});
+
+describe("how a clip's captions look", () => {
+  it("is white words on a dark band over the bottom, medium, sans-serif, without a style", () => {
+    expect(clipCaptionStyle({})).toEqual({ place: "bottom", size: "m", font: "sans", color: "#ffffff", band: "dark" });
+    expect(clipCaptionStyle({ captionStyle: null as never })).toEqual(clipCaptionStyle({}));
+  });
+
+  it("keeps what was chosen, and puts the default in place of anything that is not a choice", () => {
+    expect(clipCaptionStyle({ captionStyle: { place: "top", size: "l", font: "mono", color: "#FACC15", band: "none" } })).toEqual({
+      place: "top",
+      size: "l",
+      font: "mono",
+      color: "#facc15",
+      band: "none",
+    });
+    const odd = { place: "left", size: 3, font: "comic", color: "red", band: true } as never;
+    expect(clipCaptionStyle({ captionStyle: odd })).toEqual(clipCaptionStyle({}));
+  });
+
+  it("outlines words in dark when they are light, and in white when they are dark", () => {
+    expect(captionOutlineIsDark("#ffffff")).toBe(true);
+    expect(captionOutlineIsDark("#facc15")).toBe(true);
+    expect(captionOutlineIsDark("#000000")).toBe(false);
+    expect(captionOutlineIsDark("#1e3a8a")).toBe(false);
   });
 });

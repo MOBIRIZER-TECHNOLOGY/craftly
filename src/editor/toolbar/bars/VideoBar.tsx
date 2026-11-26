@@ -37,6 +37,7 @@ import { AnimateButton, BorderPopover, CopyStyleButton, FlipMenu, MoreButton, Mu
 import { MenuButton, PopoverButton, SliderField, TBIcon } from "../kit";
 import { editElements, only, uniform } from "../selection";
 import { FRAME_SHAPES } from "./ImageBar";
+import { CaptionStyleFields } from "./CaptionStyleFields";
 import "./VideoBar.css";
 
 type Extra = { copyEnabled: boolean };
@@ -340,6 +341,7 @@ function CaptionsPopover({ el }: { el: VideoElement }) {
               {note}
             </p>
           ) : null}
+          <CaptionStyleFields el={el} />
           <p className="cf-tbpop__hint">{words.captionsHint}</p>
         </div>
       )}

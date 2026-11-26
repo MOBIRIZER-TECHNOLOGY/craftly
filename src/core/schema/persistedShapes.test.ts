@@ -188,10 +188,19 @@ const CLIP_CAPTIONS = [
   "$.pages[].elements[].captions[].text: string",
   "$.pages[].elements[].captions[]: object",
 ];
+/** How a clip's captions look (2026-11-26): optional, cleaned where it is read (clipCaptionStyle in src/core/animation.ts). */
+const CLIP_CAPTION_STYLE = [
+  "$.pages[].elements[].captionStyle: object",
+  "$.pages[].elements[].captionStyle.band: string",
+  "$.pages[].elements[].captionStyle.color: string",
+  "$.pages[].elements[].captionStyle.font: string",
+  "$.pages[].elements[].captionStyle.place: string",
+  "$.pages[].elements[].captionStyle.size: string",
+];
 
 const ADDED: Record<string, string[]> = {
   // in the order the shapes are listed: by path
-  design: [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START, ...CLIP_CAPTIONS].sort(),
+  design: [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START, ...CLIP_CAPTIONS, ...CLIP_CAPTION_STYLE].sort(),
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

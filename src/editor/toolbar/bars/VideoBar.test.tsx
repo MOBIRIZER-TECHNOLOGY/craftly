@@ -261,6 +261,43 @@ describe("video toolbar: captions", () => {
     mount([clip(), clip({ x: 500 })]);
     expect(screen.queryByRole("button", { name: "Captions" })).toBeNull();
   });
+
+  it("sets how the captions look, one step of undo each, keeping only what differs from the defaults", async () => {
+    const el = clip({ captions: [{ start: 0, end: 2, text: "Hi" }] });
+    const { user, dialog } = await openCaptions(el);
+    const group = (name: string) => within(dialog).getByRole("radiogroup", { name });
+    const before = store().past.length;
+    await user.click(within(group("Where")).getByRole("radio", { name: "Top" }));
+    expect(live<VideoElement>(el).captionStyle).toEqual({ place: "top" });
+    await user.click(within(group("Size")).getByRole("radio", { name: "Large" }));
+    await user.click(within(group("Letters")).getByRole("radio", { name: "Serif" }));
+    await user.click(within(dialog).getByRole("button", { name: "Yellow" }));
+    expect(live<VideoElement>(el).captionStyle).toEqual({ place: "top", size: "l", font: "serif", color: "#facc15" });
+    expect(store().past.length).toBe(before + 4);
+    expect(within(dialog).getByRole("button", { name: "Yellow" }).getAttribute("aria-pressed")).toBe("true");
+    // back to the defaults: nothing is kept
+    await user.click(within(group("Where")).getByRole("radio", { name: "Bottom" }));
+    await user.click(within(group("Size")).getByRole("radio", { name: "Medium" }));
+    await user.click(within(group("Letters")).getByRole("radio", { name: "Sans" }));
+    await user.click(within(dialog).getByRole("button", { name: "White" }));
+    expect(live<VideoElement>(el).captionStyle).toBeUndefined();
+  });
+
+  it("changes white words to black on a light band, and black ones to white on a dark band", async () => {
+    const el = clip({ captions: [{ start: 0, end: 2, text: "Hi" }] });
+    const { user, dialog } = await openCaptions(el);
+    const band = within(dialog).getByRole("radiogroup", { name: "Behind the words" });
+    await user.click(within(band).getByRole("radio", { name: "Light band" }));
+    expect(live<VideoElement>(el).captionStyle).toEqual({ band: "light", color: "#000000" });
+    await user.click(within(band).getByRole("radio", { name: "Outline" }));
+    expect(live<VideoElement>(el).captionStyle).toEqual({ band: "none", color: "#000000" });
+    await user.click(within(band).getByRole("radio", { name: "Dark band" }));
+    expect(live<VideoElement>(el).captionStyle).toBeUndefined();
+    // a colour that reads on both stays
+    await user.click(within(dialog).getByRole("button", { name: "Yellow" }));
+    await user.click(within(band).getByRole("radio", { name: "Light band" }));
+    expect(live<VideoElement>(el).captionStyle).toEqual({ band: "light", color: "#facc15" });
+  });
 });
 
 describe("video toolbar: audio", () => {

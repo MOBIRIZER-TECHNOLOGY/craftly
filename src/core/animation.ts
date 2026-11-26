@@ -9,7 +9,8 @@
  *   emphasis   repeats every `duration` for as long as the page is shown
  */
 import { m } from "@/i18n";
-import type { AnimDirection, ClipCaption, DesignElement, ElementAnimation, ElementAnimations, Page, VideoElement } from "./types";
+import { contrastRatio } from "./color";
+import type { AnimDirection, CaptionStyle, ClipCaption, DesignElement, ElementAnimation, ElementAnimations, Page, VideoElement } from "./types";
 
 export type AnimPhase = "in" | "out" | "loop";
 
@@ -61,6 +62,30 @@ export function clipCaptions(el: Pick<VideoElement, "captions">): ClipCaption[] 
     out.push({ start, end, text: text.trim().slice(0, MAX_CAPTION_LENGTH) });
   }
   return out.sort((a, b) => a.start - b.start);
+}
+
+export const CAPTION_PLACES = ["bottom", "middle", "top"] as const;
+export const CAPTION_SIZES = ["s", "m", "l"] as const;
+export const CAPTION_FONTS = ["sans", "serif", "mono"] as const;
+export const CAPTION_BANDS = ["dark", "light", "none"] as const;
+
+const oneOf = <T extends string>(list: readonly T[], v: unknown, fallback: T): T => (list.includes(v as T) ? (v as T) : fallback);
+
+/** How a clip's captions look, every part filled in; anything that is not one of the choices (from a file or a shared design) is the default. */
+export function clipCaptionStyle(el: Pick<VideoElement, "captionStyle">): Required<CaptionStyle> {
+  const s: Record<string, unknown> = typeof el.captionStyle === "object" && el.captionStyle !== null ? (el.captionStyle as Record<string, unknown>) : {};
+  return {
+    place: oneOf(CAPTION_PLACES, s.place, "bottom"),
+    size: oneOf(CAPTION_SIZES, s.size, "m"),
+    font: oneOf(CAPTION_FONTS, s.font, "sans"),
+    color: typeof s.color === "string" && /^#[0-9a-f]{6}$/i.test(s.color) ? s.color.toLowerCase() : "#ffffff",
+    band: oneOf(CAPTION_BANDS, s.band, "dark"),
+  };
+}
+
+/** True when words of `color` (a "#rrggbb") are outlined in dark to stand out, for captions with no band behind them. */
+export function captionOutlineIsDark(color: string): boolean {
+  return contrastRatio(color, "#000000") >= contrastRatio(color, "#ffffff");
 }
 
 /** The caption line showing `t` seconds into one play of a clip (the last one to start, when two overlap), or null. */

@@ -3,12 +3,38 @@
  * template previews all go through `renderPage`, so what you see is what you
  * export.
  */
-import { captionAt, clipCaptions, clipLocalTime, clipPlayingLength, evaluateAnimation, isHidden, pageDuration, type AnimState } from "@/core/animation";
+import {
+  captionAt,
+  captionOutlineIsDark,
+  clipCaptions,
+  clipCaptionStyle,
+  clipLocalTime,
+  clipPlayingLength,
+  evaluateAnimation,
+  isHidden,
+  pageDuration,
+  type AnimState,
+} from "@/core/animation";
 import { blendOf } from "@/core/blend";
 import { DEG } from "@/core/geometry";
 import { lineLabelPoint, linePath, lineRouteAngles } from "@/core/lineRoute";
 import { recolorSvg, setSvgStrokeWidth } from "@/core/svg";
-import type { BlendMode, Design, DesignElement, Fill, GraphicElement, ID, ImageElement, LineElement, Page, Rect, ShapeElement, Stroke, VideoElement } from "@/core/types";
+import type {
+  BlendMode,
+  CaptionStyle,
+  Design,
+  DesignElement,
+  Fill,
+  GraphicElement,
+  ID,
+  ImageElement,
+  LineElement,
+  Page,
+  Rect,
+  ShapeElement,
+  Stroke,
+  VideoElement,
+} from "@/core/types";
 import { drawChart, drawTable } from "./drawBlocks";
 import { drawTextElement } from "./drawText";
 import { ensureFont, isFontReady } from "./fonts";
@@ -410,11 +436,22 @@ function wrapCaption(ctx: Ctx, text: string, max: number): string[] {
   return kept;
 }
 
-/** A caption over the bottom of a clip `w` x `h`: white words on a dark band, centred, sized to the clip. */
-function drawCaption(ctx: Ctx, text: string, w: number, h: number): void {
-  const size = Math.max(6, Math.min(h * 0.075, w * 0.06));
+const CAPTION_FONTS: Record<CaptionStyle["font"] & string, string> = {
+  sans: 'Inter, "Segoe UI", system-ui, sans-serif',
+  serif: 'Georgia, "Times New Roman", serif',
+  mono: 'ui-monospace, Consolas, "Courier New", monospace',
+};
+const CAPTION_SIZES: Record<CaptionStyle["size"] & string, number> = { s: 0.75, m: 1, l: 1.35 };
+
+/**
+ * A caption over a clip `w` x `h`, centred and sized to the clip, as its style says (clipCaptionStyle): over its bottom, middle or
+ * top; small, medium or large; on a dark band, a light band, or on nothing, the words then outlined in the colour that stands out
+ * against theirs.
+ */
+export function drawCaption(ctx: Ctx, text: string, w: number, h: number, style: Required<CaptionStyle> = clipCaptionStyle({})): void {
+  const size = Math.max(6, Math.min(h * 0.075, w * 0.06) * CAPTION_SIZES[style.size]);
   ctx.save();
-  ctx.font = `600 ${size}px Inter, "Segoe UI", system-ui, sans-serif`;
+  ctx.font = `600 ${size}px ${CAPTION_FONTS[style.font]}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const lines = wrapCaption(ctx, text, w * 0.86);
@@ -422,14 +459,22 @@ function drawCaption(ctx: Ctx, text: string, w: number, h: number): void {
   const pad = size * 0.45;
   const width = Math.min(w * 0.94, Math.max(...lines.map((l) => ctx.measureText(l).width)) + pad * 2);
   const height = lines.length * lineHeight + pad;
-  const top = h - h * 0.06 - height;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.66)";
-  ctx.beginPath();
-  // a browser without roundRect (Safari before 16) gets square corners
-  if (typeof ctx.roundRect === "function") ctx.roundRect((w - width) / 2, top, width, height, size * 0.3);
-  else ctx.rect((w - width) / 2, top, width, height);
-  ctx.fill();
-  ctx.fillStyle = "#ffffff";
+  const margin = h * 0.06;
+  const top = style.place === "top" ? margin : style.place === "middle" ? (h - height) / 2 : h - margin - height;
+  if (style.band !== "none") {
+    ctx.fillStyle = style.band === "light" ? "rgba(255, 255, 255, 0.85)" : "rgba(0, 0, 0, 0.66)";
+    ctx.beginPath();
+    // a browser without roundRect (Safari before 16) gets square corners
+    if (typeof ctx.roundRect === "function") ctx.roundRect((w - width) / 2, top, width, height, size * 0.3);
+    else ctx.rect((w - width) / 2, top, width, height);
+    ctx.fill();
+  } else {
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(1, size * 0.18);
+    ctx.strokeStyle = captionOutlineIsDark(style.color) ? "rgba(0, 0, 0, 0.85)" : "rgba(255, 255, 255, 0.9)";
+    lines.forEach((l, i) => ctx.strokeText(l, w / 2, top + pad / 2 + lineHeight * (i + 0.5)));
+  }
+  ctx.fillStyle = style.color;
   lines.forEach((l, i) => ctx.fillText(l, w / 2, top + pad / 2 + lineHeight * (i + 0.5)));
   ctx.restore();
 }
@@ -473,7 +518,7 @@ function drawVideoElement(ctx: Ctx, el: VideoElement, env: Env): void {
   // captions show while the clip plays (Present, the editor's Play, a video download); at rest it is its first frame, without them
   if (env.videoTime !== undefined) {
     const text = captionNow(el, env.videoTime);
-    if (text) drawCaption(ctx, text, w, h);
+    if (text) drawCaption(ctx, text, w, h, clipCaptionStyle(el));
   }
   ctx.restore();
   if (el.stroke && el.stroke.width > 0) {
