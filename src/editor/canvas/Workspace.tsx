@@ -7,6 +7,7 @@ import { PathEditOverlay } from "./PathEditOverlay";
 import { GestureHud, GesturePreview, SelectionOverlay, SnapGuides } from "./SelectionOverlay";
 import { PageView } from "./PageView";
 import { stopPreview, usePreview } from "./preview";
+import { TransitionOverlay } from "@/editor/timeline/TransitionOverlay";
 import { Grid, Guides, Margins, Rulers } from "./Rulers";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { TableCellEditor } from "./TableCellEditor";
@@ -115,6 +116,7 @@ export function Workspace({ children }: { children?: ReactNode }) {
           <div className="cf-sticky">
             <PageView />
           </div>
+          <TransitionOverlay left={pageLeft} top={pageTop} width={pageW} height={pageH} />
           <div className="cf-pageframe" style={{ left: pageLeft, top: pageTop, width: pageW, height: pageH }}>
             <Margins />
             <Grid />

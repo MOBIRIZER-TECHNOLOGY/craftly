@@ -413,6 +413,8 @@ export const editorChrome = {
     pageLength: (page: number) => `How long page ${num(page)} lasts`,
     handleTip: "Drag to change how long the page lasts. Double-click to let it follow its clip again.",
     transition: (length: string) => `Transition, ${length}`,
+    transitionInto: (page: number, name: string, length: string) => `Transition into page ${num(page)}: ${name}, ${length}`,
+    addTransition: (page: number) => `Add a transition into page ${num(page)}`,
     split: "Split",
     splitTip: "Split the page at the playhead: the clips on the new page go on from there (S)",
     clip: "Clip",

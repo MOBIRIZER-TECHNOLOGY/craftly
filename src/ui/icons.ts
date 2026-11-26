@@ -276,6 +276,7 @@ export {
   Gauge as IconSpeed,
   Captions as IconCaptions,
   Film as IconTimeline,
+  ArrowLeftRight as IconTransition,
   SquareSplitHorizontal as IconSplit,
   Monitor as IconDesktop,
   Smartphone as IconPhone,

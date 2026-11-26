@@ -272,3 +272,64 @@ button.cf-tl__clipbody {
   right: 0;
   border-radius: 0 4px 4px 0;
 }
+
+/* the join between two pages: names the transition into the second, or offers one */
+.cf-tl__join {
+  position: absolute;
+  z-index: 1;
+  top: 21px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  padding: 0;
+  border: 1px solid var(--c-line-strong);
+  border-radius: 50%;
+  background: var(--c-bg);
+  color: var(--c-ink-2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.cf-tl__join svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* an empty join shows when the timeline is hovered or it has the keyboard; one with a transition always shows */
+.cf-tl:hover .cf-tl__join,
+.cf-tl__join:focus-visible,
+.cf-tl__join.has-transition {
+  opacity: 1;
+}
+
+.cf-tl__join.has-transition {
+  border-color: var(--c-primary-line);
+  color: var(--c-primary);
+}
+
+.cf-tl__join:focus-visible {
+  outline: 2px solid var(--c-ring);
+  outline-offset: 1px;
+}
+
+@media (hover: none) {
+  .cf-tl__join {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-tl__join {
+    transition: none;
+  }
+}
+
+/* the page area while the playhead is inside a transition (TransitionOverlay) */
+.cf-tl-overlay {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}

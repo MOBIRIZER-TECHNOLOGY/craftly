@@ -408,6 +408,8 @@ export const editorChrome: typeof en = {
     pageLength: (page: number) => `पेज ${num(page)} कितनी देर चलता है`,
     handleTip: "पेज की अवधि बदलने के लिए खींचें। उसे फिर से अपनी क्लिप के अनुसार चलाने के लिए डबल-क्लिक करें।",
     transition: (length: string) => `ट्रांज़िशन, ${length}`,
+    transitionInto: (page: number, name: string, length: string) => `पेज ${num(page)} में ट्रांज़िशन: ${name}, ${length}`,
+    addTransition: (page: number) => `पेज ${num(page)} में ट्रांज़िशन जोड़ें`,
     split: "बाँटें",
     splitTip: "पेज को प्लेहेड पर बाँटें: नए पेज की क्लिप वहीं से आगे चलती हैं (S)",
     clip: "क्लिप",

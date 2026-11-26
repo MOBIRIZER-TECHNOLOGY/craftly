@@ -7,6 +7,7 @@ import type { Design, Page } from "@/core/types";
 import { m } from "@/i18n";
 import { clipClock } from "@/render/videos";
 import { Button, IconButton, IconPause, IconPlay, IconSplit, cx } from "@/ui";
+import { TransitionJoin } from "./TransitionJoin";
 import { splitMoment } from "@/core/splitPage";
 import { CLIP_TOP_PX, ClipBar, MAX_ROWS, ROW_GAP, ROW_H, clipRows, pageClips } from "./ClipBar";
 import { pauseTimeline, placeAt, playTimeline, pxPerSecond, seekTimeline, useTimeline } from "./timelineStore";
@@ -243,6 +244,9 @@ export function Timeline() {
           {timeline.segments.map((seg, i) => (
             <Block key={pages[i].id} design={design} page={pages[i]} index={i} seg={seg} pps={pps} active={pages[i].id === activePageId} readOnly={readOnly} />
           ))}
+          {timeline.segments.map((seg, i) =>
+            i > 0 ? <TransitionJoin key={`join-${pages[i].id}`} page={pages[i]} index={i} seg={seg} x={PAD + (seg.start + seg.transition / 2) * pps} readOnly={readOnly} /> : null,
+          )}
           {timeline.segments.map((seg, i) =>
             pageClips(pages[i]).map((el, n) => (
               <ClipBar
