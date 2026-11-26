@@ -12,7 +12,7 @@ export const CLIP_TOP_PX = 62;
 /** Height of a clip's row and the gap above it, in pixels. */
 export const ROW_H = 26;
 export const ROW_GAP = 4;
-/** The most rows of clips the timeline makes room for (more clips on one page share the last row). */
+/** The most rows of clips the timeline makes room for (clips that play at once past these share a row: clipLanes). */
 export const MAX_ROWS = 3;
 /** About this many pixels of a bar for each picture of the clip. */
 const TILE_W = 44;
@@ -29,8 +29,38 @@ export function pageClips(page: Pick<Page, "elements">): VideoElement[] {
   return out;
 }
 
-/** How many rows of clips the timeline of `pages` needs (0 without a clip). */
-export const clipRows = (pages: readonly Pick<Page, "elements">[]): number => Math.min(MAX_ROWS, Math.max(0, ...pages.map((p) => pageClips(p).length)));
+/**
+ * Seconds of its page from which to which a clip's bar runs: from when it starts to when it stops, or to the end of the page for a
+ * clip that plays over and over; nothing of it past the page's end.
+ */
+export function clipSpan(el: VideoElement, pageLength: number): { start: number; end: number } {
+  const start = Math.min(clipStartAt(el), pageLength);
+  return { start, end: el.once ? Math.min(pageLength, start + clipPlayingLength(el)) : pageLength };
+}
+
+/**
+ * The row of each clip of a page (by its id) and how many rows they take: in the order they start (paint order between two that
+ * start together), each on the first row that is free by then, so that clips that play one after another share a row and only
+ * clips that play at once need rows of their own. Past MAX_ROWS a clip goes on the row that is free soonest.
+ */
+export function clipLanes(page: Pick<Page, "elements">, pageLength: number): { rows: number; row: Record<string, number> } {
+  const spans = pageClips(page).map((el, order) => ({ id: el.id, order, ...clipSpan(el, pageLength) }));
+  spans.sort((a, b) => a.start - b.start || a.order - b.order);
+  const ends: number[] = [];
+  const row: Record<string, number> = {};
+  for (const s of spans) {
+    let r = ends.findIndex((end) => end <= s.start + 1e-6);
+    if (r < 0 && ends.length < MAX_ROWS) r = ends.length;
+    if (r < 0) r = ends.indexOf(Math.min(...ends));
+    ends[r] = Math.max(ends[r] ?? 0, s.end);
+    row[s.id] = r;
+  }
+  return { rows: ends.length, row };
+}
+
+/** How many rows of clips the timeline of `pages` needs (0 without a clip); `lengths` are how long each page lasts (without, every clip counts as playing to the end). */
+export const clipRows = (pages: readonly Pick<Page, "elements">[], lengths: readonly number[] = []): number =>
+  Math.max(0, ...pages.map((p, i) => clipLanes(p, lengths[i] ?? Infinity).rows));
 
 const r3 = (s: number) => Math.round(s * 1000) / 1000;
 
@@ -75,9 +105,10 @@ interface ClipBarProps {
 export const ClipBar = memo(function ClipBar({ el, page, pageStart, pageLength, row, top, pps, pad, selected, readOnly }: ClipBarProps) {
   const words = m.editorChrome.timeline;
   const start = clipStartAt(el);
+  const span = clipSpan(el, pageLength);
   const once = clipPlayingLength(el);
-  const shown = Math.max(0, Math.min(el.once ? once : pageLength - start, pageLength - start));
-  const left = pad + (pageStart + Math.min(start, pageLength)) * pps;
+  const shown = Math.max(0, span.end - span.start);
+  const left = pad + (pageStart + span.start) * pps;
   const width = Math.max(6, shown * pps);
   const tiles = tileMoments(el.trimStart, el.trimEnd, Math.min(10, Math.max(1, Math.round(Math.min(width, once * pps) / TILE_W))));
   const pictures = useClipFrames(el.src, tiles);

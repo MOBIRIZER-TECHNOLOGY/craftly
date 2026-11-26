@@ -9,7 +9,7 @@ import type { VideoElement } from "@/core/types";
 import { stopPreview } from "@/editor/canvas/preview";
 import { renderChrome } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor } from "@/test/helpers";
-import { MAX_ROWS, clipRows, dragClip, pageClips } from "./ClipBar";
+import { MAX_ROWS, clipLanes, clipRows, clipSpan, dragClip, pageClips } from "./ClipBar";
 import { clearClipFrames, tileMoments } from "./clipFrames";
 import { Timeline } from "./Timeline";
 import { resetTimeline, seekTimeline } from "./timelineStore";
@@ -54,6 +54,48 @@ describe("the maths of a clip's row", () => {
     expect(clipRows([createPage({ elements: [video("1"), video("2"), video("3"), video("4")] })])).toBe(MAX_ROWS);
   });
 
+  it("gives the span of a clip on its page: once, over and over to the page's end, past the end cut off", () => {
+    expect(clipSpan(video("a", { trimEnd: 2, once: true, startAt: 1 }), 5)).toEqual({ start: 1, end: 3 });
+    expect(clipSpan(video("a", { trimEnd: 2, startAt: 1 }), 5)).toEqual({ start: 1, end: 5 });
+    expect(clipSpan(video("a", { trimEnd: 4, speed: 2, once: true }), 5)).toEqual({ start: 0, end: 2 });
+    expect(clipSpan(video("a", { once: true, startAt: 4 }), 5)).toEqual({ start: 4, end: 5 });
+    expect(clipSpan(video("a", { once: true, startAt: 7 }), 5)).toEqual({ start: 5, end: 5 });
+  });
+
+  it("puts clips that play one after another on one row, and clips that play at once on rows of their own", () => {
+    const once = (id: string, startAt: number, trimEnd = 1) => video(id, { trimEnd, once: true, startAt });
+    // a 0-1, b 1-2 (just after a), c 0.5-1.5 (over both): a and b share the first row, c has the second
+    const page = createPage({ elements: [once("c", 0.5), once("b", 1), once("a", 0)] });
+    expect(clipLanes(page, 5)).toEqual({ rows: 2, row: { a: 0, c: 1, b: 0 } });
+    // one after another, all on the first row, whatever their paint order
+    expect(clipLanes(createPage({ elements: [once("x", 2), once("y", 0), once("z", 1)] }), 5)).toEqual({ rows: 1, row: { y: 0, z: 0, x: 0 } });
+    // a clip that plays over and over takes its row to the page's end
+    expect(clipLanes(createPage({ elements: [video("loop", { trimEnd: 1 }), once("after", 3)] }), 5).rows).toBe(2);
+    expect(clipLanes(createPage({}), 5)).toEqual({ rows: 0, row: {} });
+  });
+
+  it("makes room for at most MAX_ROWS rows: a further clip goes on the row that is free soonest", () => {
+    const page = createPage({
+      elements: [
+        video("a", { trimEnd: 4, once: true }),
+        video("b", { trimEnd: 1, once: true }),
+        video("c", { trimEnd: 3, once: true }),
+        video("d", { trimEnd: 1, once: true, startAt: 0.5 }),
+      ],
+    });
+    // a 0-4, b 0-1, c 0-3 take the three rows; d (0.5-1.5) goes where b ends, the soonest
+    expect(clipLanes(page, 5)).toEqual({ rows: MAX_ROWS, row: { a: 0, b: 1, c: 2, d: 1 } });
+  });
+
+  it("counts the rows of the busiest page", () => {
+    const pages = [
+      createPage({ elements: [video("a", { trimEnd: 1, once: true }), video("b", { trimEnd: 1, once: true, startAt: 1 })] }),
+      createPage({ elements: [video("c"), video("d")] }),
+    ];
+    expect(clipRows(pages, [5, 5])).toBe(2);
+    expect(clipRows(pages.slice(0, 1), [5])).toBe(1);
+  });
+
   it("spreads the pictures over the trimmed part", () => {
     expect(tileMoments(0, 4, 4)).toEqual([0.5, 1.5, 2.5, 3.5]);
     expect(tileMoments(1, 1, 2)).toEqual([1, 1]);
@@ -89,6 +131,21 @@ describe("<Timeline>: the clips", () => {
     expect(two.style.top).not.toBe(one.style.top);
     // the band grows for the rows
     expect((container.querySelector(".cf-tl") as HTMLElement).style.height).toContain("60px");
+  });
+
+  it("draws clips that play one after another on one row, and the band grows for that one row only", async () => {
+    const after = createDesign({
+      title: "After",
+      width: 400,
+      height: 300,
+      pages: [createPage({ id: "p1", duration: 5, elements: [video("late", { trimEnd: 2, once: true, startAt: 2 }), video("early", { trimEnd: 2, once: true })] })],
+    });
+    const { container } = await renderChrome(<Timeline />, after);
+    const [late, early] = bars(container);
+    expect(late.style.top).toBe(early.style.top);
+    expect(early.style.left).toBe("16px");
+    expect(late.style.left).toBe(`${16 + 2 * 60}px`);
+    expect((container.querySelector(".cf-tl") as HTMLElement).style.height).toContain("30px");
   });
 
   it("begins the first play of a loop carried on from a split page part-way, before the bar does", async () => {

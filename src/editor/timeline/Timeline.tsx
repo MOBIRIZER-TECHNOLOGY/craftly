@@ -9,7 +9,7 @@ import { clipClock } from "@/render/videos";
 import { Button, IconButton, IconPause, IconPlay, IconSplit, cx } from "@/ui";
 import { TransitionJoin } from "./TransitionJoin";
 import { splitMoment } from "@/core/splitPage";
-import { CLIP_TOP_PX, ClipBar, MAX_ROWS, ROW_GAP, ROW_H, clipRows, pageClips } from "./ClipBar";
+import { CLIP_TOP_PX, ClipBar, ROW_GAP, ROW_H, clipLanes, pageClips } from "./ClipBar";
 import { pauseTimeline, placeAt, playTimeline, pxPerSecond, seekTimeline, useTimeline } from "./timelineStore";
 import "./timeline.css";
 
@@ -153,7 +153,8 @@ export function Timeline() {
   const pps = pxPerSecond(total, width - PAD * 2);
   const at = Math.min(time, total);
   const place = placeAt(timeline, at);
-  const rows = clipRows(pages);
+  const lanes = timeline.segments.map((seg, i) => clipLanes(pages[i], seg.end - seg.playStart));
+  const rows = Math.max(0, ...lanes.map((l) => l.rows));
   const here = pages[place.page];
   const canSplit = !readOnly && !playing && !!here && !place.waiting && splitMoment(here, place.time) !== null;
   const split = () => {
@@ -248,14 +249,14 @@ export function Timeline() {
             i > 0 ? <TransitionJoin key={`join-${pages[i].id}`} page={pages[i]} index={i} seg={seg} x={PAD + (seg.start + seg.transition / 2) * pps} readOnly={readOnly} /> : null,
           )}
           {timeline.segments.map((seg, i) =>
-            pageClips(pages[i]).map((el, n) => (
+            pageClips(pages[i]).map((el) => (
               <ClipBar
                 key={el.id}
                 el={el}
                 page={pages[i]}
                 pageStart={seg.playStart}
                 pageLength={seg.end - seg.playStart}
-                row={Math.min(n, MAX_ROWS - 1)}
+                row={lanes[i].row[el.id] ?? 0}
                 top={CLIP_TOP}
                 pps={pps}
                 pad={PAD}
