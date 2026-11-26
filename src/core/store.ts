@@ -1227,7 +1227,7 @@ export const useEditor = create<EditorState>()((set, get) => {
       const s = get();
       const page = pageOf(s.design, s.activePageId);
       const el = page && ops.findElement(page, id);
-      if (!el || el.type !== "image" || !el.src || el.locked) return;
+      if (!el || (el.type !== "image" && el.type !== "video") || !el.src || el.locked) return;
       set({ croppingId: id, selection: [id], editingTextId: null });
     },
     endCrop() {

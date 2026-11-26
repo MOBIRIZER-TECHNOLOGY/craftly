@@ -1,7 +1,7 @@
 /** Contextual toolbars of images, empty frames and the crop mode. */
 import { getActions } from "@/core/store";
 import type { ImageElement } from "@/core/types";
-import { CROP_RATIOS, cropRatioOf, currentCropRatio, getCropScale, resetCrop, setCropRatio, setCropRotation, setCropScale } from "@/editor/canvas/CropOverlay";
+import { CROP_RATIOS, type CropTarget, cropRatioOf, currentCropRatio, getCropScale, resetCrop, setCropRatio, setCropRotation, setCropScale } from "@/editor/canvas/CropOverlay";
 import { m } from "@/i18n";
 import { SHAPES } from "@/render/shapePaths";
 import { ShapePreview } from "@/editor/panels/shared/ShapePreview";
@@ -96,7 +96,7 @@ export function FrameBar({ el }: { el: ImageElement }) {
 }
 
 /** While cropping: the shape of the frame, zoom slider, reset and the purple Done button. */
-export function CropBar({ el }: { el: ImageElement }) {
+export function CropBar({ el }: { el: CropTarget }) {
   const scale = getCropScale(el);
   const current = currentCropRatio(el);
   const ratioItems = (): MenuEntry[] =>

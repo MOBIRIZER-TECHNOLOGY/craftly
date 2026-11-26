@@ -189,6 +189,47 @@ let shotN = 0;
     return colour;
   });
 
+  await step("Filters: Mono turns the red clip grey on the page, and None takes the colour back", async () => {
+    await toolbar.getByRole("button", { name: "Filters", exact: true }).click();
+    const presets = page.getByRole("group", { name: "Filter presets" });
+    await presets.getByRole("button", { name: "Mono", exact: true }).click();
+    const el = await clip();
+    if (el.filter?.preset !== "mono") throw new Error("filter " + JSON.stringify(el.filter));
+    let colour = "";
+    for (let i = 0; i < 30 && !colour.startsWith("other"); i++) {
+      colour = await colourAt(await middleOfSelection());
+      if (!colour.startsWith("other")) await wait(200);
+    }
+    await shot("mono");
+    if (!colour.startsWith("other")) throw new Error("with Mono the clip is " + colour);
+    await presets.getByRole("button", { name: "None", exact: true }).click();
+    let back = "";
+    for (let i = 0; i < 30 && back !== "red"; i++) {
+      back = await colourAt(await middleOfSelection());
+      if (back !== "red") await wait(200);
+    }
+    if (back !== "red") throw new Error("without a filter the clip is " + back);
+    await toolbar.getByRole("button", { name: "Filters", exact: true }).click();
+    return `${colour}, then ${back}`;
+  });
+
+  await step("Crop: the clip's first frame shows in the crop, a 1:1 frame makes the clip square, and undo takes it back", async () => {
+    const before = await clip();
+    await toolbar.getByRole("button", { name: "Crop", exact: true }).click();
+    await page.waitForFunction(() => /^data:image\//.test(document.querySelector(".cf-crop__live")?.getAttribute("src") ?? ""), null, { timeout: 10000 });
+    await page.getByRole("button", { name: "Shape of the crop" }).first().click();
+    await page.getByRole("menuitemcheckbox", { name: "1:1", exact: true }).click();
+    const square = await clip();
+    if (Math.abs(square.width - square.height) > 0.5) throw new Error(`frame ${square.width} x ${square.height}`);
+    await shot("crop-square");
+    await page.getByRole("button", { name: "Done", exact: true }).first().click();
+    await page.waitForFunction(() => !document.querySelector("[data-cf-crop]"), null, { timeout: 5000 });
+    await page.keyboard.press("Control+z");
+    const undone = await clip();
+    if (Math.abs(undone.width - before.width) > 0.5) throw new Error("undo left " + undone.width);
+    return `${Math.round(square.width)} x ${Math.round(square.height)}, then ${Math.round(undone.width)} x ${Math.round(undone.height)}`;
+  });
+
   await step("the toolbar of a clip: Play, Trim, Speed, Sound and Frame shape", async () => {
     for (const name of ["Play", "Trim", "Speed", "Sound", "Frame shape"]) await toolbar.getByRole("button", { name, exact: true }).waitFor({ timeout: 5000 });
     return "five controls";

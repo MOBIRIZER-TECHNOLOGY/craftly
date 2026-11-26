@@ -1,6 +1,6 @@
 /** A video element in an SVG download: a still picture, the clip's frame at the start of its trim, framed as a picture is. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGroup, createPage, createVideo } from "@/core/factory";
+import { createGroup, createPage, createVideo, defaultFilter } from "@/core/factory";
 import type { DesignElement, VideoElement } from "@/core/types";
 import { designPageToSvg } from "./svg";
 
@@ -34,6 +34,15 @@ afterEach(() => {
 });
 
 describe("a clip in an SVG", () => {
+  it("bakes the clip's filter into its frame, as a filtered picture's is", async () => {
+    const { svg, warnings } = await toSvg([clip({ filter: { ...defaultFilter(), brightness: 30 } })]);
+    expect(warnings).toEqual([]);
+    expect(posters.asked).toContain("video:asset:clip@0");
+    // the filtered raster is drawn in the box, not a <use> of the plain frame
+    expect(svg).not.toContain("<use ");
+    expect(svg).toContain('<image width="160" height="90" preserveAspectRatio="none" xlink:href="data:image/');
+  });
+
   it("is its frame at the start of the trim, saved once as a JPEG and placed like a picture", async () => {
     const { svg, warnings } = await toSvg([clip({ trimStart: 2.5, trimEnd: 6 }), clip({ x: 200, trimStart: 2.5, trimEnd: 6 })]);
     expect(warnings).toEqual([]);

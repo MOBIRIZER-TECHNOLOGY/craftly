@@ -206,6 +206,9 @@ export const editor: typeof en = {
   },
 
   videoBar: {
+    filters: "फ़िल्टर",
+    filtersTip: "क्लिप के फ़िल्टर और एडजस्टमेंट",
+    crop: "क्रॉप करें",
     play: "चलाएँ",
     playTip: "क्लिप को पेज पर चलाएँ",
     stop: "रोकें",

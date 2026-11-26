@@ -16,6 +16,7 @@ import {
   type AnimState,
 } from "@/core/animation";
 import { blendOf } from "@/core/blend";
+import { clipFilter } from "@/core/factory";
 import { DEG } from "@/core/geometry";
 import { lineLabelPoint, linePath, lineRouteAngles } from "@/core/lineRoute";
 import { recolorSvg, setSvgStrokeWidth } from "@/core/svg";
@@ -479,7 +480,7 @@ export function drawCaption(ctx: Ctx, text: string, w: number, h: number, style:
   ctx.restore();
 }
 
-/** A clip: the frame that plays now, or its first frame, drawn as a picture is (crop, frame shape, shadow, outline); no filter. */
+/** A clip: the frame that plays now, or its first frame, drawn as a picture is (crop, filter, frame shape, shadow, outline). */
 function drawVideoElement(ctx: Ctx, el: VideoElement, env: Env): void {
   const w = el.width;
   const h = el.height;
@@ -513,7 +514,25 @@ function drawVideoElement(ctx: Ctx, el: VideoElement, env: Env): void {
       ctx.rotate(el.crop.rotation * DEG);
       ctx.translate(-w / 2, -h / 2);
     }
-    ctx.drawImage(frame, el.crop.x * w, el.crop.y * h, el.crop.w * w, el.crop.h * h);
+    const filter = clipFilter(el);
+    if (isNeutral(filter)) ctx.drawImage(frame, el.crop.x * w, el.crop.y * h, el.crop.w * w, el.crop.h * h);
+    else {
+      const key = playing ? `play:${el.id}` : videoPosterKey(el);
+      const out = renderFiltered({
+        key,
+        img: frame as Drawable | HTMLVideoElement,
+        dx: el.crop.x * w,
+        dy: el.crop.y * h,
+        dw: el.crop.w * w,
+        dh: el.crop.h * h,
+        boxW: w,
+        boxH: h,
+        filter,
+        scale: env.scale,
+        live: !!playing,
+      });
+      ctx.drawImage(out, 0, 0, w, h);
+    }
   }
   // captions show while the clip plays (Present, the editor's Play, a video download); at rest it is its first frame, without them
   if (env.videoTime !== undefined) {

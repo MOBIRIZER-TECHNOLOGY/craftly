@@ -53,6 +53,12 @@ export const defaultFilter = (): ImageFilter => ({
   duotone: null,
 });
 
+/** A clip's filter: its own, filled out with the defaults, or none (defaultFilter) when it has none or a stored one is not an object. */
+export function clipFilter(el: { filter?: ImageFilter | null }): ImageFilter {
+  const f = el.filter;
+  return f && typeof f === "object" ? { ...defaultFilter(), ...f } : defaultFilter();
+}
+
 export const defaultEffect = (): TextEffect => ({ kind: "none" });
 
 export const solid = (color: string): Fill => ({ type: "solid", color });

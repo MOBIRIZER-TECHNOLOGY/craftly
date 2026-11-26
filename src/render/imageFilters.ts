@@ -150,7 +150,8 @@ const cache = new Map<string, HTMLCanvasElement>();
 
 export interface FilteredDraw {
   key: string;
-  img: Drawable;
+  /** the picture, or a clip's video element at the frame it shows */
+  img: Drawable | HTMLVideoElement;
   /** destination of the full source image inside the element box, px */
   dx: number;
   dy: number;
@@ -162,7 +163,14 @@ export interface FilteredDraw {
   filter: ImageFilter;
   /** canvas px per design px */
   scale: number;
+  /**
+   * A picture that changes under the same key (a clip's frame while it plays): it is filtered afresh every time, into a canvas kept
+   * for the key and size rather than into the cache.
+   */
+  live?: boolean;
 }
+
+const liveCanvases = new Map<string, HTMLCanvasElement>();
 
 /**
  * Renders the visible part of an image through its filter into an off-screen
@@ -174,9 +182,10 @@ export function renderFiltered(d: FilteredDraw): HTMLCanvasElement {
   const pw = Math.max(1, Math.round(d.boxW * s));
   const ph = Math.max(1, Math.round(d.boxH * s));
   const key = `${d.key}|${pw}x${ph}|${d.dx.toFixed(1)},${d.dy.toFixed(1)},${d.dw.toFixed(1)},${d.dh.toFixed(1)}|${filterKey(d.filter)}`;
-  const hit = cache.get(key);
+  const liveKey = `${d.key}|${pw}x${ph}`;
+  const hit = d.live ? null : cache.get(key);
   if (hit) return hit;
-  const c = document.createElement("canvas");
+  const c = (d.live && liveCanvases.get(liveKey)) || document.createElement("canvas");
   c.width = pw;
   c.height = ph;
   const ctx = c.getContext("2d")!;
@@ -186,6 +195,11 @@ export function renderFiltered(d: FilteredDraw): HTMLCanvasElement {
   ctx.filter = "none";
   paintPixelAdjustments(ctx, pw, ph, e);
   paintOverlays(ctx, pw, ph, e);
+  if (d.live) {
+    if (!liveCanvases.has(liveKey) && liveCanvases.size >= 8) liveCanvases.delete(liveCanvases.keys().next().value as string);
+    liveCanvases.set(liveKey, c);
+    return c;
+  }
   if (cache.size > 40) cache.delete(cache.keys().next().value as string);
   cache.set(key, c);
   return c;

@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFrame, createImage, createShape } from "@/core/factory";
-import type { ImageElement } from "@/core/types";
+import { createFrame, createImage, createShape, createVideo } from "@/core/factory";
+import type { ImageElement, VideoElement } from "@/core/types";
 import { FILTER_PRESETS } from "@/data/filters";
 import { contextOf } from "@/test/canvasMock";
 import { live, openElements, selectElements, showPanel, store } from "@/test/ctxUtils";
@@ -250,5 +250,43 @@ describe("Filters panel: edge cases", () => {
     const canvases = Array.from(container.querySelectorAll("canvas"));
     expect(canvases).toHaveLength(FILTER_PRESETS.length);
     expect(canvases.every((c) => (contextOf(c)?.callsTo("drawImage").length ?? 0) === 0)).toBe(true);
+  });
+});
+
+describe("Filters panel: clips", () => {
+  const clip = (extra: Partial<VideoElement> = {}) => createVideo({ src: "asset:clip", x: 50, y: 300, width: 320, height: 180, duration: 10, ...extra });
+
+  it("filters a clip: a clip without a filter has none, and a preset gives it one at full strength", async () => {
+    const user = userEvent.setup();
+    const c = clip();
+    openElements([c], { selected: [c] });
+    openFilters();
+    expect(live<VideoElement>(c).filter).toBeUndefined();
+    expect(presets().getByRole("button", { name: "None" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(presets().getByRole("button", { name: "Vivid" }));
+    expect(live<VideoElement>(c).filter).toMatchObject({ preset: "vivid", intensity: 100, brightness: 0 });
+    slider("Intensity").focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(live<VideoElement>(c).filter?.intensity).toBe(99);
+  });
+
+  it("adjusts a photo and a clip together", async () => {
+    const user = userEvent.setup();
+    const [p, c] = [photo(), clip()];
+    openElements([p, c], { selected: [p, c] });
+    openFilters("adjust");
+    slider("Brightness").focus();
+    await user.keyboard("{ArrowRight}{ArrowRight}");
+    expect(live<ImageElement>(p).filter.brightness).toBe(2);
+    expect(live<VideoElement>(c).filter?.brightness).toBe(2);
+    await user.click(screen.getByRole("button", { name: "Reset all" }));
+    expect(live<VideoElement>(c).filter?.brightness).toBe(0);
+  });
+
+  it("offers the photo tools for photos only", () => {
+    const c = clip();
+    openElements([c], { selected: [c] });
+    showPanel({ kind: "filters", tab: "tools" });
+    expect(screen.getByText("The photo tools work on photos, not on clips. Select a photo to use them.")).toBeTruthy();
   });
 });

@@ -1045,7 +1045,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     if (hit.type === "text") {
       pendingCaret = { x: e.clientX, y: e.clientY };
       act().startTextEdit(hit.id);
-    } else if (hit.type === "image" && hit.src) {
+    } else if ((hit.type === "image" || hit.type === "video") && hit.src) {
       act().startCrop(hit.id);
     } else if (hit.type === "shape" && elementPath(hit)) {
       startPathEdit(hit.id);

@@ -17,7 +17,7 @@
  */
 import { getAsset } from "@/core/assets";
 import { blendOf } from "@/core/blend";
-import { defaultFilter } from "@/core/factory";
+import { clipFilter } from "@/core/factory";
 import { lineLabelPoint, linePath, lineRouteAngles } from "@/core/lineRoute";
 import { svgProblem } from "@/core/svgSafety";
 import type { Design, DesignElement, Fill, GraphicElement, ImageElement, LineElement, Page, ShapeElement, Stroke, TableElement } from "@/core/types";
@@ -261,7 +261,7 @@ class PageBuilder {
     const visit = (el: DesignElement) => {
       if (el.hidden) return;
       if (el.type === "image" && el.src) (isNeutral(el.filter) ? plain : filtered).add(el.src);
-      else if (el.type === "video") plain.add(videoPosterKey(el));
+      else if (el.type === "video") (isNeutral(clipFilter(el)) ? plain : filtered).add(videoPosterKey(el));
       else if (el.type === "group") el.children.forEach(visit);
     };
     this.page.elements.forEach(visit);
@@ -381,7 +381,7 @@ class PageBuilder {
         break;
       case "video":
         // an SVG is a still picture: the clip's first frame, framed as a picture is
-        inner = this.image({ ...el, type: "image", src: videoPosterKey(el), filter: defaultFilter() }, matrix, a);
+        inner = this.image({ ...el, type: "image", src: videoPosterKey(el), filter: clipFilter(el) }, matrix, a);
         break;
       case "graphic":
         inner = this.graphic(el, matrix, a);

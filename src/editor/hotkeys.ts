@@ -177,7 +177,7 @@ function onKeyDown(e: KeyboardEvent) {
     if (el?.type === "text") {
       e.preventDefault();
       a.startTextEdit(el.id);
-    } else if (el?.type === "image" && el.src) {
+    } else if ((el?.type === "image" || el?.type === "video") && el.src) {
       e.preventDefault();
       a.startCrop(el.id);
     } else if (el?.type === "shape" && elementPath(el)) {

@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import { clamp, DEG, fromLocalPoint } from "@/core/geometry";
 import { findElement } from "@/core/ops";
 import { getActions, getActivePage, useEditor } from "@/core/store";
-import type { ImageCrop, ImageElement } from "@/core/types";
+import type { DesignElement, ImageCrop, ImageElement, VideoElement } from "@/core/types";
 import { m } from "@/i18n";
-import { imageUrl } from "@/render/images";
+import { imageUrl, loadImage, videoPosterKey } from "@/render/images";
 import { useDragEnd } from "./dragEnd";
 import { HANDLE_VEC, type Handle } from "./resize";
 
 /* ------------------------------------------------------------------ */
 /* crop maths (exported for the toolbar's zoom slider)                 */
 /* ------------------------------------------------------------------ */
+
+/** What can be cropped: a picture, or a clip (all its frames are cropped alike). */
+export type CropTarget = ImageElement | VideoElement;
+export const isCropTarget = (el: DesignElement | null | undefined): el is CropTarget => !!el && (el.type === "image" || el.type === "video");
 
 /** Keeps the picture covering the whole frame. */
 export function clampCrop(c: ImageCrop): ImageCrop {
@@ -20,21 +24,21 @@ export function clampCrop(c: ImageCrop): ImageCrop {
 }
 
 /** Width of the picture that exactly covers the frame, in design px. */
-const coverWidth = (el: ImageElement) => Math.max(el.width, (el.height * el.naturalWidth) / el.naturalHeight);
+const coverWidth = (el: CropTarget) => Math.max(el.width, (el.height * el.naturalWidth) / el.naturalHeight);
 
 /** 1 = the picture just covers the frame; larger values zoom into it. */
-export const getCropScale = (el: ImageElement) => (el.crop.w * el.width) / coverWidth(el);
+export const getCropScale = (el: CropTarget) => (el.crop.w * el.width) / coverWidth(el);
 
 /** Zooms the picture inside its frame, keeping the visible centre. */
 export function setCropScale(id: string, scale: number): void {
   const page = getActivePage(useEditor.getState());
   const el = page && findElement(page, id);
-  if (!el || el.type !== "image") return;
+  if (!isCropTarget(el)) return;
   const s = Math.max(1, Math.min(8, scale));
   getActions().updateElements(
     [id],
     (d) => {
-      if (d.type !== "image") return;
+      if (!isCropTarget(d)) return;
       const cx = (0.5 - d.crop.x) / d.crop.w;
       const cy = (0.5 - d.crop.y) / d.crop.h;
       const iw = coverWidth(d) * s;
@@ -51,7 +55,7 @@ export function setCropScale(id: string, scale: number): void {
 export function resetCrop(id: string): void {
   setCropScale(id, 1);
   getActions().updateElements([id], (d) => {
-    if (d.type === "image") d.crop = clampCrop({ x: (1 - d.crop.w) / 2, y: (1 - d.crop.h) / 2, w: d.crop.w, h: d.crop.h });
+    if (isCropTarget(d)) d.crop = clampCrop({ x: (1 - d.crop.w) / 2, y: (1 - d.crop.h) / 2, w: d.crop.w, h: d.crop.h });
   });
 }
 
@@ -59,7 +63,7 @@ export function setCropRotation(id: string, rotation: number): void {
   getActions().updateElements(
     [id],
     (d) => {
-      if (d.type === "image") d.crop = { ...d.crop, rotation: Math.max(-45, Math.min(45, rotation)) };
+      if (isCropTarget(d)) d.crop = { ...d.crop, rotation: Math.max(-45, Math.min(45, rotation)) };
     },
     { coalesce: `crop-rotate:${id}` },
   );
@@ -80,10 +84,10 @@ export const CROP_RATIOS = [
 export type CropRatioId = (typeof CROP_RATIOS)[number]["id"];
 
 /** Width over height of a ratio of the list, for this picture. */
-export const cropRatioOf = (el: ImageElement, id: CropRatioId): number => CROP_RATIOS.find((r) => r.id === id)?.ratio ?? el.naturalWidth / el.naturalHeight;
+export const cropRatioOf = (el: CropTarget, id: CropRatioId): number => CROP_RATIOS.find((r) => r.id === id)?.ratio ?? el.naturalWidth / el.naturalHeight;
 
 /** The ratio of the list that the frame has now (within half a pixel on its longer side), or null when it has a shape of its own. */
-export function currentCropRatio(el: ImageElement): CropRatioId | null {
+export function currentCropRatio(el: CropTarget): CropRatioId | null {
   const fits = (ratio: number) => Math.abs(el.width - el.height * ratio) <= 0.5 || Math.abs(el.height - el.width / ratio) <= 0.5;
   // a named ratio before "original", so that a square picture in a square frame reads 1:1
   const named = CROP_RATIOS.find((r) => r.ratio !== null && fits(r.ratio));
@@ -99,7 +103,7 @@ export function currentCropRatio(el: ImageElement): CropRatioId | null {
 export function setCropRatio(id: string, ratio: number): void {
   const page = getActivePage(useEditor.getState());
   const el = page && findElement(page, id);
-  if (!el || el.type !== "image" || !(ratio > 0) || !Number.isFinite(ratio)) return;
+  if (!isCropTarget(el) || !(ratio > 0) || !Number.isFinite(ratio)) return;
   // the picture in the frame's own space, in design px
   const ix = el.crop.x * el.width;
   const iy = el.crop.y * el.height;
@@ -111,7 +115,7 @@ export function setCropRatio(id: string, ratio: number): void {
   const top = clamp(el.height / 2 - h / 2, iy, iy + ih - h);
   const c = fromLocalPoint(el, { x: left + w / 2, y: top + h / 2 });
   getActions().updateElements([id], (n) => {
-    if (n.type !== "image") return;
+    if (!isCropTarget(n)) return;
     n.x = c.x - w / 2;
     n.y = c.y - h / 2;
     n.width = w;
@@ -128,22 +132,37 @@ export function CropOverlay() {
   const zoom = useEditor((s) => s.zoom);
   if (!id || !page) return null;
   const el = findElement(page, id);
-  if (!el || el.type !== "image" || !el.src) return null;
+  if (!isCropTarget(el) || !el.src) return null;
   return <Crop el={el} zoom={zoom} />;
+}
+
+/** The picture the crop shows: a photo's own (`key` is its src), or a clip's frame where it starts playing (`key` is its poster). */
+async function cropPicture(key: string, clip: boolean): Promise<string | null> {
+  if (!clip) return imageUrl(key);
+  const frame = await loadImage(key);
+  if (!frame) return null;
+  if (frame instanceof HTMLCanvasElement) return frame.toDataURL("image/jpeg", 0.9);
+  const c = document.createElement("canvas");
+  c.width = frame.width;
+  c.height = frame.height;
+  c.getContext("2d")?.drawImage(frame, 0, 0);
+  return c.toDataURL("image/jpeg", 0.9);
 }
 
 const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
-function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
+function Crop({ el, zoom }: { el: CropTarget; zoom: number }) {
   const [url, setUrl] = useState<string | null>(null);
   const dragEnd = useDragEnd();
+  const isClip = el.type === "video";
+  const picture = isClip ? videoPosterKey(el) : (el.src as string);
   useEffect(() => {
     let live = true;
-    void imageUrl(el.src as string).then((u) => live && setUrl(u));
+    void cropPicture(picture, isClip).then((u) => live && setUrl(u));
     return () => {
       live = false;
     };
-  }, [el.src]);
+  }, [picture, isClip]);
 
   const W = el.width * zoom;
   const H = el.height * zoom;
@@ -190,7 +209,7 @@ function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
     const o = el.crop;
     track(e, (d) =>
       actions.updateElements([el.id], (n) => {
-        if (n.type === "image") n.crop = clampCrop({ ...o, x: o.x + d.x / el.width, y: o.y + d.y / el.height });
+        if (isCropTarget(n)) n.crop = clampCrop({ ...o, x: o.x + d.x / el.width, y: o.y + d.y / el.height });
       }),
     );
   };
@@ -218,7 +237,7 @@ function Crop({ el, zoom }: { el: ImageElement; zoom: number }) {
       const h = bottom - top;
       const c = fromLocalPoint(o, { x: left + w / 2, y: top + h / 2 });
       actions.updateElements([el.id], (n) => {
-        if (n.type !== "image") return;
+        if (!isCropTarget(n)) return;
         n.x = c.x - w / 2;
         n.y = c.y - h / 2;
         n.width = w;

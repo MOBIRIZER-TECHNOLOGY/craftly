@@ -5,7 +5,7 @@
  */
 import { configure, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createChart, createDesign, createGroup, createImage, createPage, createShape, createTable, createText } from "@/core/factory";
+import { createChart, createDesign, createGroup, createImage, createPage, createShape, createTable, createText, createVideo } from "@/core/factory";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { DesignElement, TableElement } from "@/core/types";
 import { resetEditor } from "@/test/helpers";
@@ -443,6 +443,13 @@ describe("Delete, arrows, Enter and Tab", () => {
     actions().select(["frame"]);
     expect(press("Enter")).toBe(false);
     expect(state().croppingId).toBeNull();
+  });
+
+  it("Enter opens the selected clip for cropping", () => {
+    open([createVideo({ id: "clip", src: "asset:c", duration: 4 })]);
+    actions().select(["clip"]);
+    expect(press("Enter")).toBe(true);
+    expect(state().croppingId).toBe("clip");
   });
 
   it("Enter does nothing for a shape or for several elements", () => {

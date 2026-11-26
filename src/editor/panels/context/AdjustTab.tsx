@@ -1,12 +1,13 @@
 import { defaultFilter } from "@/core/factory";
 import { getActions } from "@/core/store";
-import type { ImageElement, ImageFilter } from "@/core/types";
+import type { ImageFilter } from "@/core/types";
 import { ADJUSTMENTS, getFilterPreset, type AdjustmentDef } from "@/data/filters";
 import { m } from "@/i18n";
 import { effectiveFilter } from "@/render/imageFilters";
 import { Button, IconButton, IconRotateLeft, Slider, Switch } from "@/ui";
 import { ColorField } from "./ColorField";
 import { FieldLabel, Section } from "./PanelShell";
+import { filterOf, setFilter, type FilterTarget } from "./filterTarget";
 import { useBatch } from "./useBatch";
 import "./AdjustTab.css";
 
@@ -14,16 +15,13 @@ const DEFAULT_DUOTONE = { dark: "#0b1f4b", light: "#7ee8e0" };
 
 const signed = (v: number) => (v > 0 ? `+${Math.round(v)}` : String(Math.round(v)));
 
-/** Writes a new filter to every selected photo. */
+/** Writes a new filter to every selected photo and clip. */
 function patchFilters(make: (filter: ImageFilter) => ImageFilter): void {
-  getActions().updateSelection((el) => {
-    if (el.type === "image") el.filter = make(el.filter);
-  });
+  getActions().updateSelection((el) => setFilter(el, make));
 }
 
-export function AdjustTab({ photos }: { photos: ImageElement[] }) {
-  const first = photos[0];
-  const f = first.filter;
+export function AdjustTab({ photos }: { photos: FilterTarget[] }) {
+  const f = filterOf(photos[0]);
   const batch = useBatch();
   const effective = effectiveFilter(f).duotone ?? null;
   const presetOwnsDuotone = !!getFilterPreset(f.preset)?.patch.duotone && f.intensity > 1;

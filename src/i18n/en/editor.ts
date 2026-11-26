@@ -227,6 +227,9 @@ export const editor = {
 
   /** VideoBar.tsx: a clip on the page */
   videoBar: {
+    filters: "Filters",
+    filtersTip: "Filters and adjustments for the clip",
+    crop: "Crop",
     play: "Play",
     playTip: "Play the clip on the page",
     stop: "Stop",

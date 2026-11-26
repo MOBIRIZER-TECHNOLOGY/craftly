@@ -79,6 +79,8 @@ describe("video toolbar", () => {
     expect(names()).toEqual([
       "Play",
       "Trim",
+      "Filters",
+      "Crop",
       "Speed",
       "Sound",
       "Audio",
@@ -101,6 +103,26 @@ describe("video toolbar", () => {
     expect(has("Trim")).toBe(false);
     expect(has("Align")).toBe(true);
     expect(has("Group")).toBe(true);
+  });
+
+  it("opens the filters of the clip, and crops it", async () => {
+    const user = userEvent.setup();
+    const a = clip();
+    mount([a]);
+    await user.click(btn("Filters"));
+    expect(store().context).toEqual({ kind: "filters", tab: "filters" });
+    expect(screen.getByRole("group", { name: "Filter presets" })).toBeTruthy();
+    await user.click(btn("Filters"));
+    expect(store().context).toBeNull();
+    await user.click(btn("Crop"));
+    expect(store().croppingId).toBe(a.id);
+    expect(kind()).toBe("crop");
+  });
+
+  it("leaves out the crop for several clips, but not their filters", () => {
+    mount([clip(), clip({ x: 500 })]);
+    expect(has("Crop")).toBe(false);
+    expect(has("Filters")).toBe(true);
   });
 
   it("does not offer to align a single clip", () => {

@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from "react";
 import { getActions, useSelectedElements } from "@/core/store";
 import type { ImageElement } from "@/core/types";
+import { filterOf, pictureKey, setFilter, type FilterTarget } from "./filterTarget";
 import { FILTER_PRESETS } from "@/data/filters";
 import { m } from "@/i18n";
 import { renderFiltered } from "@/render/imageFilters";
@@ -21,9 +22,9 @@ const TABS = [
 
 const TITLES = m.panelsContext.filters.titles;
 
-/** Photos of the selection that have a picture (an empty frame has nothing to filter). */
-function useSelectedPhotos(): ImageElement[] {
-  return useSelectedElements().filter((e): e is ImageElement => e.type === "image" && !!e.src);
+/** Photos and clips of the selection that have a picture (an empty frame has nothing to filter). */
+function useSelectedPhotos(): FilterTarget[] {
+  return useSelectedElements().filter((e): e is FilterTarget => (e.type === "image" || e.type === "video") && !!e.src);
 }
 
 /** Filters (preset grid with live previews), Adjust (sliders, duotone) and Tools (on-device AI tools) for the selected photos. */
@@ -50,8 +51,10 @@ export function FiltersPanel({ tab }: { tab: "filters" | "adjust" | "tools" }) {
           <FiltersTab photos={photos} />
         ) : tab === "adjust" ? (
           <AdjustTab photos={photos} />
+        ) : photos.some((p) => p.type === "image") ? (
+          <ToolsTab photos={photos.filter((p): p is ImageElement => p.type === "image")} />
         ) : (
-          <ToolsTab photos={photos} />
+          <PanelEmpty icon={<IconImage />} title={m.panelsContext.filters.titles.tools} text={m.panelsContext.filters.clipsOnly} />
         )}
       </div>
     </PanelShell>
@@ -65,22 +68,23 @@ function usePicture(src: string) {
   return getImage(src);
 }
 
-function FiltersTab({ photos }: { photos: ImageElement[] }) {
+function FiltersTab({ photos }: { photos: FilterTarget[] }) {
   const first = photos[0];
   const actions = getActions();
   const batch = useBatch();
-  const picture = usePicture(first.src as string);
-  const presetId = photos.every((p) => p.filter.preset === first.filter.preset) ? first.filter.preset || "none" : null;
+  const key = pictureKey(first);
+  const picture = usePicture(key);
+  const filter = filterOf(first);
+  const presetId = photos.every((p) => filterOf(p).preset === filter.preset) ? filter.preset || "none" : null;
 
   const setPreset = (id: string) =>
-    actions.updateSelection((el) => {
-      if (el.type !== "image") return;
+    actions.updateSelection((el) =>
       // a different preset starts at full strength
-      el.filter = { ...el.filter, preset: id, intensity: el.filter.preset === id ? el.filter.intensity : 100 };
-    });
+      setFilter(el, (f) => ({ ...f, preset: id, intensity: f.preset === id ? f.intensity : 100 })),
+    );
 
   // what a tile shows depends on everything but the preset: the picture, its crop and the user's own sliders
-  const look = JSON.stringify([first.src, first.width, first.height, first.crop, { ...first.filter, preset: "", intensity: first.filter.intensity }, !!picture]);
+  const look = JSON.stringify([key, first.width, first.height, first.crop, { ...filter, preset: "", intensity: filter.intensity }, !!picture]);
 
   return (
     <>
@@ -93,15 +97,9 @@ function FiltersTab({ photos }: { photos: ImageElement[] }) {
             min={0}
             max={100}
             step={1}
-            value={first.filter.intensity}
+            value={filter.intensity}
             format={(v) => `${Math.round(v)}%`}
-            onChange={(v) =>
-              batch.run(() =>
-                actions.updateSelection((el) => {
-                  if (el.type === "image") el.filter = { ...el.filter, intensity: v };
-                }),
-              )
-            }
+            onChange={(v) => batch.run(() => actions.updateSelection((el) => setFilter(el, (f) => ({ ...f, intensity: v }))))}
             onChangeEnd={() => batch.end()}
           />
         </div>
@@ -132,7 +130,7 @@ function FiltersTab({ photos }: { photos: ImageElement[] }) {
                     // the visible part of the photo (its crop) through the preset, then "cover" fitted into the square tile
                     const scale = Math.min(t / Math.min(boxW, boxH), 512 / Math.max(boxW, boxH));
                     const out = renderFiltered({
-                      key: first.src as string,
+                      key,
                       img: picture,
                       dx: first.crop.x * boxW,
                       dy: first.crop.y * boxH,
@@ -140,7 +138,7 @@ function FiltersTab({ photos }: { photos: ImageElement[] }) {
                       dh: first.crop.h * boxH,
                       boxW,
                       boxH,
-                      filter: { ...first.filter, preset: p.id },
+                      filter: { ...filter, preset: p.id },
                       scale,
                     });
                     const k = Math.max(t / out.width, t / out.height);

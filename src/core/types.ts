@@ -531,6 +531,8 @@ export interface VideoElement extends ElementBase {
   fadeIn?: number;
   fadeOut?: number;
   crop: ImageCrop;
+  /** a picture's filter and adjustments, on every frame (none when absent): see clipFilter in core/factory.ts */
+  filter?: ImageFilter;
   /** frame shape from the shape catalogue ("rect" = none) */
   mask: ShapeKind;
   maskPath?: string;

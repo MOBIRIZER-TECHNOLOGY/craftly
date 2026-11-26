@@ -56,7 +56,7 @@ interface Resolved {
 /** Decides which toolbar the current selection / mode needs. */
 function resolveBar(page: Page, targets: DesignElement[], selection: string[], cropId: string | null, pathEditId: string | null): Resolved {
   const crop = cropId ? findElement(page, cropId) : null;
-  if (crop?.type === "image" && crop.src) return { label: m.editor.toolbar.bars.crop, kind: "crop", content: <CropBar el={crop} /> };
+  if ((crop?.type === "image" || crop?.type === "video") && crop.src) return { label: m.editor.toolbar.bars.crop, kind: "crop", content: <CropBar el={crop} /> };
   const editing = pathEditId ? findElement(page, pathEditId) : null;
   if (editing?.type === "shape" && elementPath(editing)) return { label: m.editor.toolbar.bars.path, kind: "path", content: <PathBar el={editing} /> };
 

@@ -3,10 +3,16 @@
  * its frame, the frame is trimmed with the eight handles, the wheel zooms and Done leaves crop mode.
  */
 import { act, configure, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { createImage, createShape } from "@/core/factory";
+import { describe, expect, it, vi } from "vitest";
+
+// a clip's first frame: this browser plays no clips, so the frame is a canvas made here
+vi.mock(import("@/render/videos"), async (original) => ({
+  ...(await original()),
+  loadPoster: async () => Object.assign(document.createElement("canvas"), { width: 64, height: 36 }),
+}));
+import { createImage, createShape, createVideo } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
-import type { ImageElement } from "@/core/types";
+import type { ImageElement, VideoElement } from "@/core/types";
 import { canvasDesign, elementOf, mountWorkspace, type CanvasRig } from "@/test/canvasUtils";
 import { CROP_RATIOS, clampCrop, cropRatioOf, currentCropRatio, getCropScale, resetCrop, setCropRatio, setCropRotation, setCropScale } from "./CropOverlay";
 
@@ -437,5 +443,39 @@ describe("straightening", () => {
     expect(img().crop.rotation).toBe(45);
     act(() => resetCrop("img"));
     expect(img().crop.rotation).toBeUndefined();
+  });
+});
+
+describe("cropping a clip", () => {
+  const clip = (extra: Partial<VideoElement> = {}) =>
+    createVideo({ id: "clip", src: "asset:c", x: 500, y: 300, width: 320, height: 180, naturalWidth: 640, naturalHeight: 360, duration: 8, ...extra });
+
+  it("shows the clip's first frame in the crop, and pans it like a picture", async () => {
+    const rig = await mountWorkspace(canvasDesign([clip()]));
+    act(() => setCropScale("clip", 2));
+    act(() => getActions().startCrop("clip"));
+    await waitFor(() => expect(rig.container.querySelector(".cf-crop__live")?.getAttribute("src")).toMatch(/^data:/));
+    dragBy(windowOf(rig), 40, 0, rig);
+    const crop = elementOf<VideoElement>("clip").crop;
+    expect(crop.w).toBeCloseTo(2);
+    expect(crop.x).toBeCloseTo(-0.5 + 40 / 320);
+  });
+
+  it("gives the clip a frame of another shape, and takes the crop back", async () => {
+    await mountWorkspace(canvasDesign([clip()]));
+    act(() => setCropRatio("clip", 1));
+    const square = elementOf<VideoElement>("clip");
+    expect([square.width, square.height]).toEqual([180, 180]);
+    expect(currentCropRatio(square)).toBe("1:1");
+    act(() => setCropRotation("clip", 12));
+    expect(elementOf<VideoElement>("clip").crop.rotation).toBe(12);
+    act(() => resetCrop("clip"));
+    expect(getCropScale(elementOf<VideoElement>("clip"))).toBeCloseTo(1);
+  });
+
+  it("does not start for a locked clip", async () => {
+    await mountWorkspace(canvasDesign([clip({ locked: true })]));
+    act(() => getActions().startCrop("clip"));
+    expect(state().croppingId).toBeNull();
   });
 });

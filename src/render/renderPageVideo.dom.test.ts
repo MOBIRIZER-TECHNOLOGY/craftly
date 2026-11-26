@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createGroup, createPage, createVideo } from "@/core/factory";
+import { createGroup, createPage, createVideo, defaultFilter } from "@/core/factory";
 import type { Design, DesignElement, Page, VideoElement } from "@/core/types";
 import { buildTimeline } from "@/core/transition";
+import { contextOf } from "@/test/canvasMock";
 import { spyContext } from "@/test/logicPaint";
 
 const frames = vi.hoisted(() => ({ playing: null as unknown, poster: null as unknown, posters: [] as Array<[string, number]> }));
@@ -116,6 +117,44 @@ describe("a clip that plays", () => {
     paint([clip()], { scale: 1, playVideos: { sound: true } });
     paint([clip()], { scale: 1, animation: { time: 1 } });
     expect(playingFrame).not.toHaveBeenCalled();
+  });
+});
+
+describe("a filtered clip", () => {
+  const vivid = { ...defaultFilter(), preset: "vivid" };
+
+  it("is drawn through its filter at rest, as a picture is, filtered once for its first frame", async () => {
+    const el = clip({ filter: vivid });
+    await loadImage(videoPosterKey(el));
+    const once = paint([el]).spy.to("drawImage")[0].args;
+    const again = paint([el]).spy.to("drawImage")[0].args;
+    // the filtered canvas fills the clip's box; the same one comes back from the cache
+    expect(once[0]).toBeInstanceOf(HTMLCanvasElement);
+    expect(once[0]).not.toBe(frames.poster);
+    expect(once.slice(1)).toEqual([0, 0, 200, 100]);
+    expect(again[0]).toBe(once[0]);
+  });
+
+  it("is filtered afresh at every frame while it plays, into a canvas that is kept for it", () => {
+    const el = clip({ filter: vivid });
+    frames.playing = canvas(32, 18);
+    const a = paint([el], { scale: 1, animation: { time: 1 }, playVideos: {} }).spy.to("drawImage")[0].args[0] as HTMLCanvasElement;
+    const before = contextOf(a)?.callsTo("drawImage").length ?? 0;
+    const b = paint([el], { scale: 1, animation: { time: 1.1 }, playVideos: {} }).spy.to("drawImage")[0].args[0];
+    expect(b).toBe(a);
+    const draws = contextOf(a)?.callsTo("drawImage") ?? [];
+    expect(draws.length).toBe(before + 1);
+    expect(draws[draws.length - 1][0]).toBe(frames.playing);
+  });
+
+  it("without a filter, or with one that changes nothing, is the frame itself", async () => {
+    const el = clip({ filter: defaultFilter() });
+    await loadImage(videoPosterKey(el));
+    expect(paint([el]).spy.to("drawImage")[0].args[0]).toBe(frames.poster);
+    // a stored filter that is not an object is no filter
+    const odd = clip({ filter: "vivid" as never });
+    await loadImage(videoPosterKey(odd));
+    expect(paint([odd]).spy.to("drawImage")[0].args[0]).toBe(frames.poster);
   });
 });
 

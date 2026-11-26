@@ -296,6 +296,7 @@ function completeElements(): Complete<DesignElement>[] {
       fadeIn: 1,
       fadeOut: 2.5,
       crop: { x: -0.1, y: 0, w: 1.2, h: 1, rotation: 3 },
+      filter,
       mask: "hexagon",
       maskPath: "M0 0 L100 0 L50 100 Z",
       radius: 12,

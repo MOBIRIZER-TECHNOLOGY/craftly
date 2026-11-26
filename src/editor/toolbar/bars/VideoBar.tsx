@@ -6,6 +6,7 @@ import { downloadBlob } from "@/export/download";
 import { safeFileName } from "@/export/options";
 import { useRef, useState } from "react";
 import { VIDEO_SPEED_MAX, VIDEO_SPEED_MIN } from "@/core/factory";
+import { getActions } from "@/core/store";
 import type { VideoElement } from "@/core/types";
 import { startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
 import { ShapePreview } from "@/editor/panels/shared/ShapePreview";
@@ -24,6 +25,7 @@ import {
   IconUpload,
   NumberField,
   TextField,
+  IconCrop,
   IconCut,
   IconFrame,
   IconMuted,
@@ -34,7 +36,7 @@ import {
   type MenuEntry,
 } from "@/ui";
 import { AnimateButton, BorderPopover, CopyStyleButton, FlipMenu, MoreButton, MultiActions, PositionButton, RadiusPopover, TransparencyButton, type BarProps } from "../common";
-import { MenuButton, PopoverButton, SliderField, TBIcon } from "../kit";
+import { MenuButton, PopoverButton, SliderField, TBIcon, TBText, toggleContext, useContextActive } from "../kit";
 import { editElements, only, uniform } from "../selection";
 import { FRAME_SHAPES } from "./ImageBar";
 import { CaptionStyleFields } from "./CaptionStyleFields";
@@ -47,6 +49,7 @@ export const VIDEO_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].filter((x) 
 
 export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Extra) {
   const single = els.length === 1 ? els[0] : null;
+  const filtersOpen = useContextActive({ kind: "filters", tab: "filters" });
   const playing = usePreview((s) => s.preview !== null && !s.preview.paused);
   const rounded = els.every((e) => (e.mask || "rect") === "rect");
   const mask = uniform(els, (e) => e.mask || "rect");
@@ -93,6 +96,10 @@ export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Ext
         onClick={() => (playing ? stopPreview() : startPreview(0, longest, { sound: true }))}
       />
       {single && <TrimPopover el={single} />}
+      <TBText tip={m.editor.videoBar.filtersTip} active={filtersOpen} onClick={() => toggleContext({ kind: "filters", tab: "filters" })}>
+        {m.editor.videoBar.filters}
+      </TBText>
+      {single && <TBIcon label={m.editor.videoBar.crop} tip={m.editor.videoBar.crop} shortcut="Enter" icon={<IconCrop />} onClick={() => getActions().startCrop(single.id)} />}
       <MenuButton
         label={m.editor.videoBar.speed}
         tip={m.editor.videoBar.speedTip}
