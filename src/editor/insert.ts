@@ -3,7 +3,7 @@
  * paste and the controller. Panels should call these instead of building
  * elements by hand.
  */
-import { addAssetFromFile, assetSrc, isAcceptedImage, isAcceptedVideo, videoInfo } from "@/core/assets";
+import { addAssetFromFile, assetSrc, isAcceptedAudio, isAcceptedImage, isAcceptedVideo, videoInfo } from "@/core/assets";
 import { createImage, createVideo } from "@/core/factory";
 import { isRemoteImage } from "@/core/imageSources";
 import { getActions, getActivePage, useEditor } from "@/core/store";
@@ -137,12 +137,21 @@ export function insertImage(src: string, naturalWidth: number, naturalHeight: nu
   return actions.addElement(imageElementFor(s.design, src, naturalWidth, naturalHeight), at ? { at } : undefined);
 }
 
-/** Stores dropped / chosen files as assets and places them on the page. Returns the new element ids. */
+/**
+ * Stores dropped / chosen files as assets and places them on the page; a sound goes on the timeline instead (it has no place on a
+ * page). Returns the new element ids.
+ */
 export async function insertImageFiles(files: File[], at?: Point): Promise<ID[]> {
   const ids: ID[] = [];
   let offset = 0;
-  for (const file of files.filter((f) => isAcceptedImage(f) || isAcceptedVideo(f))) {
+  for (const file of files.filter((f) => isAcceptedImage(f) || isAcceptedVideo(f) || isAcceptedAudio(f))) {
     const asset = await addAssetFromFile(file);
+    if (asset.kind === "audio") {
+      // loaded when it is needed: the timeline is not part of what places things on a page
+      const { addSoundToDesign } = await import("@/editor/timeline/addSound");
+      await addSoundToDesign(asset);
+      continue;
+    }
     const p = at ? { x: at.x + offset, y: at.y + offset } : undefined;
     if (asset.kind === "video") {
       const info = await videoInfo(asset.blob);

@@ -334,3 +334,57 @@ button.cf-tl__clipbody {
   z-index: 1;
   pointer-events: none;
 }
+
+/* a sound of the design: a bar of its own colour with a wave drawn in it, a play after a play when it plays over and over */
+.cf-tl__sound {
+  background: var(--c-primary-soft);
+}
+
+.cf-tl__wave {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 2px,
+    color-mix(in srgb, var(--c-primary) 35%, transparent) 2px 4px,
+    transparent 4px 5px,
+    color-mix(in srgb, var(--c-primary) 20%, transparent) 5px 7px
+  );
+  background-size: 7px 60%;
+  background-position: 0 50%;
+  background-repeat: repeat-x;
+}
+
+.cf-tl__sound .cf-tl__clipbody {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cf-tl__soundicon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-left: 8px;
+  color: var(--c-ink);
+}
+
+/* the chosen sound's controls in the timeline's bar */
+.cf-tl__soundbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.cf-tl__soundname {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--c-ink-2);
+}
+
+.cf-tl__soundbar .is-active {
+  background: var(--c-primary-soft);
+}

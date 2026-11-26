@@ -169,3 +169,16 @@
     display: block;
   }
 }
+
+/* a sound: no picture, its icon on a tinted ground */
+.cf-icard__sound {
+  display: grid;
+  place-items: center;
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+
+.cf-icard__sound > svg {
+  width: 32px;
+  height: 32px;
+}

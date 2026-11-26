@@ -275,3 +275,28 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* a sound: no picture, an icon on a tinted box, and a click puts it on the timeline */
+.cf-uploads__sounditem {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  text-align: inherit;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.cf-uploads__sound {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+
+.cf-uploads__sound > svg {
+  width: 28px;
+  height: 28px;
+}

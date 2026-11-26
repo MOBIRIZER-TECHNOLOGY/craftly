@@ -501,9 +501,12 @@ export const panelsTabs = {
   /* Uploads                                                            */
   /* ---------------------------------------------------------------- */
   uploads: {
-    notImages: "Only images and videos can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP, SVG, MP4, WebM or Ogg.",
+    notImages: "Only images, videos and sounds can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP, SVG, MP4, WebM, Ogg, MP3, M4A, WAV or FLAC.",
     skipped: (n: number) =>
-      plural(n, { one: `${num(n)} file was skipped because it is not an image or a video.`, other: `${num(n)} files were skipped because they are not images or videos.` }),
+      plural(n, {
+        one: `${num(n)} file was skipped because it is not an image, a video or a sound.`,
+        other: `${num(n)} files were skipped because they are not images, videos or sounds.`,
+      }),
     failed: (n: number) => plural(n, { one: `${num(n)} upload failed. Try a smaller image.`, other: `${num(n)} uploads failed. Try a smaller image.` }),
     search: "Search uploads by name",
     uploadFiles: "Upload files",
@@ -512,8 +515,8 @@ export const panelsTabs = {
     noneTitle: "No uploads found",
     noneText: (query: string) => `No upload name contains "${query}".`,
     dropToUpload: "Drop to upload",
-    dropHere: "Drop images or videos here",
-    /** follows "Drop images or videos here", in smaller type */
+    dropHere: "Drop images, videos or sounds here",
+    /** follows "Drop images, videos or sounds here", in smaller type */
     orBrowse: " or click to browse",
     introTitle: "Upload, store and organize",
     introText: "Add your own photos and logos. They stay in this browser, ready for any design.",
@@ -521,6 +524,11 @@ export const panelsTabs = {
     deleteText: "Designs that use this image will show an empty frame in its place. This cannot be undone.",
     deleteVideoText: "Designs that use this video will show an empty box in its place. This cannot be undone.",
     video: "Video",
+    sound: "Sound",
+    deleteSoundText: "Designs that use this sound will be silent where it played. This cannot be undone.",
+    addToTimeline: (name: string) => `Add ${name} to the timeline`,
+    soundAdded: (name: string) => `${name} was added to the timeline`,
+    tooManySounds: (n: number) => `A design holds at most ${num(n)} sounds. Remove one on the timeline first.`,
     deleted: "Upload deleted",
     addToPage: (name: string) => `Add ${name} to the page`,
     name: "Upload name",

@@ -103,7 +103,10 @@ export function folderMenuItems(folder: Folder, designCount: number): MenuEntry[
 
 export function assetMenuItems(asset: Asset): MenuEntry[] {
   return [
-    { id: "use", label: m.dashboard.shared.useInNewDesign, icon: <IconImagePlus aria-hidden="true" />, onSelect: () => void createFromAsset(asset) },
+    // a sound is no picture to start a design from: it is added to a design's timeline in the editor
+    ...(asset.kind === "audio"
+      ? []
+      : [{ id: "use", label: m.dashboard.shared.useInNewDesign, icon: <IconImagePlus aria-hidden="true" />, onSelect: () => void createFromAsset(asset) }]),
     { id: "rename", label: m.dashboard.shared.rename, icon: <IconPen aria-hidden="true" />, onSelect: () => void renameAssetAction(asset) },
     { type: "divider" },
     { id: "delete", label: m.common.delete, icon: <IconTrash aria-hidden="true" />, danger: true, onSelect: () => void deleteAssetAction(asset) },

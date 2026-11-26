@@ -1,5 +1,5 @@
 import { memo, useEffect, useId, useState } from "react";
-import { Button, IconButton, IconMore, MenuPopover, Skeleton, cx, openContextMenu, type MenuEntry } from "@/ui";
+import { Button, IconAudio, IconButton, IconMore, MenuPopover, Skeleton, cx, openContextMenu, type MenuEntry } from "@/ui";
 import { getAssetUrl } from "@/core/assets";
 import type { Asset } from "@/core/types";
 import { m } from "@/i18n";
@@ -18,7 +18,9 @@ export interface ImageCardProps {
 
 /** "PNG image", "SVG image" ... from the mime type. */
 const kindLabel = (mime: string): string =>
-  (mime.startsWith("video/") ? m.dashboard.cards.videoKind : m.dashboard.cards.imageKind)((mime.split("/")[1] ?? "image").replace(/\+.*$/, "").toUpperCase());
+  (mime.startsWith("video/") ? m.dashboard.cards.videoKind : mime.startsWith("audio/") ? m.dashboard.cards.soundKind : m.dashboard.cards.imageKind)(
+    (mime.split("/")[1] ?? "image").replace(/\+.*$/, "").toUpperCase(),
+  );
 
 /** An uploaded image: preview on a checkerboard, name, size, "Use in new design" and a "..." menu. */
 export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }: ImageCardProps) {
@@ -36,7 +38,9 @@ export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }
     };
   }, [asset.id, asset.blob]);
 
-  const sizeText = `${m.dashboard.shared.pxSize(asset.width, asset.height)} · ${formatBytes(asset.size)}`;
+  const sound = asset.kind === "audio";
+  // a sound has no size in pixels
+  const sizeText = sound ? formatBytes(asset.size) : `${m.dashboard.shared.pxSize(asset.width, asset.height)} · ${formatBytes(asset.size)}`;
 
   return (
     <article
@@ -48,18 +52,24 @@ export const ImageCard = memo(function ImageCard({ asset, now, layout = "grid" }
       }}
     >
       <div className="cf-icard__stage">
-        {!url ? (
+        {sound ? (
+          <span className="cf-icard__img cf-icard__sound" aria-hidden="true">
+            <IconAudio />
+          </span>
+        ) : !url ? (
           <Skeleton width="100%" height="100%" radius={0} />
         ) : asset.kind === "video" ? (
           <video className="cf-icard__img" src={url} muted preload="metadata" playsInline draggable={false} />
         ) : (
           <img className="cf-icard__img" src={url} alt="" loading="lazy" decoding="async" draggable={false} />
         )}
-        <div className="cf-icard__use">
-          <Button size="sm" variant="secondary" onClick={() => void createFromAsset(asset)}>
-            {m.dashboard.shared.useInNewDesign}
-          </Button>
-        </div>
+        {sound ? null : (
+          <div className="cf-icard__use">
+            <Button size="sm" variant="secondary" onClick={() => void createFromAsset(asset)}>
+              {m.dashboard.shared.useInNewDesign}
+            </Button>
+          </div>
+        )}
       </div>
       <div className="cf-icard__body">
         <p id={titleId} className="cf-icard__title" title={asset.name}>

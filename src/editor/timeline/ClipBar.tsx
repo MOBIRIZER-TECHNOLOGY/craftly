@@ -39,16 +39,15 @@ export function clipSpan(el: VideoElement, pageLength: number): { start: number;
 }
 
 /**
- * The row of each clip of a page (by its id) and how many rows they take: in the order they start (paint order between two that
- * start together), each on the first row that is free by then, so that clips that play one after another share a row and only
- * clips that play at once need rows of their own. Past MAX_ROWS a clip goes on the row that is free soonest.
+ * The row of each of `spans` (by its id) and how many rows they take: in the order they start (the order given between two that
+ * start together), each on the first row that is free by then, so that what plays one after another shares a row and only what
+ * plays at once needs a row of its own. Past MAX_ROWS one goes on the row that is free soonest. For clips and for sounds alike.
  */
-export function clipLanes(page: Pick<Page, "elements">, pageLength: number): { rows: number; row: Record<string, number> } {
-  const spans = pageClips(page).map((el, order) => ({ id: el.id, order, ...clipSpan(el, pageLength) }));
-  spans.sort((a, b) => a.start - b.start || a.order - b.order);
+export function packRows(spans: readonly { id: string; start: number; end: number }[]): { rows: number; row: Record<string, number> } {
+  const order = spans.map((s, i) => ({ ...s, i })).sort((a, b) => a.start - b.start || a.i - b.i);
   const ends: number[] = [];
   const row: Record<string, number> = {};
-  for (const s of spans) {
+  for (const s of order) {
     let r = ends.findIndex((end) => end <= s.start + 1e-6);
     if (r < 0 && ends.length < MAX_ROWS) r = ends.length;
     if (r < 0) r = ends.indexOf(Math.min(...ends));
@@ -57,6 +56,10 @@ export function clipLanes(page: Pick<Page, "elements">, pageLength: number): { r
   }
   return { rows: ends.length, row };
 }
+
+/** The row of each clip of a page and how many rows they take (packRows), its page lasting `pageLength` seconds. */
+export const clipLanes = (page: Pick<Page, "elements">, pageLength: number): { rows: number; row: Record<string, number> } =>
+  packRows(pageClips(page).map((el) => ({ id: el.id, ...clipSpan(el, pageLength) })));
 
 /** How many rows of clips the timeline of `pages` needs (0 without a clip); `lengths` are how long each page lasts (without, every clip counts as playing to the end). */
 export const clipRows = (pages: readonly Pick<Page, "elements">[], lengths: readonly number[] = []): number =>

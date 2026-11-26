@@ -7,7 +7,7 @@
  * components; this file only reads/writes the stores.
  */
 import { tableCellAt } from "@/core/tableCells";
-import { isAcceptedImage, isAcceptedVideo } from "@/core/assets";
+import { isAcceptedAudio, isAcceptedImage, isAcceptedVideo } from "@/core/assets";
 import { createLine, createShape, createText } from "@/core/factory";
 import {
   boundsOfElements,
@@ -1111,7 +1111,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const s = st();
     if (!s.design || s.mode === "view") return;
     const pt = toDesign(e);
-    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => isAcceptedImage(f) || isAcceptedVideo(f));
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => isAcceptedImage(f) || isAcceptedVideo(f) || isAcceptedAudio(f));
     if (files.length) {
       await insertImageFiles(files, pt);
       return;

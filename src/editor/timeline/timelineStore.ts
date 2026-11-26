@@ -56,9 +56,17 @@ export interface TimelineState {
   /** the playhead, in seconds of the whole timeline */
   time: number;
   playing: boolean;
+  /** the sound of the design chosen on the timeline (its controls show), or null */
+  track: string | null;
 }
 
-export const useTimeline = create<TimelineState>(() => ({ open: false, time: 0, playing: false }));
+export const useTimeline = create<TimelineState>(() => ({ open: false, time: 0, playing: false, track: null }));
+
+/** Chooses a sound of the design on the timeline (null: none). A chosen sound and chosen elements exclude each other. */
+export function chooseTrack(id: string | null): void {
+  if (id && useEditor.getState().selection.length) useEditor.getState().actions.select([]);
+  useTimeline.setState({ track: id });
+}
 
 const pagesOf = (): readonly Page[] => useEditor.getState().design?.pages ?? [];
 
@@ -198,6 +206,13 @@ usePreview.subscribe((s, prev) => {
   }
 });
 
+/** Choosing an element lets go of a chosen sound, and so does the sound leaving the design (undo, a removal). */
+useEditor.subscribe((s, prev) => {
+  const { track } = useTimeline.getState();
+  if (!track) return;
+  if ((s.selection.length && s.selection !== prev.selection) || !s.design?.audio?.some((t) => t.id === track)) useTimeline.setState({ track: null });
+});
+
 /** A page chosen elsewhere (the page strip, the keyboard, a link) moves a parked playhead to its start. */
 useEditor.subscribe((s, prev) => {
   if (turning || clock || s.activePageId === prev.activePageId || !s.design) return;
@@ -214,5 +229,5 @@ export function resetTimeline(): void {
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
   turning = false;
-  useTimeline.setState({ open: false, time: 0, playing: false });
+  useTimeline.setState({ open: false, time: 0, playing: false, track: null });
 }

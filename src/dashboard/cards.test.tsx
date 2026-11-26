@@ -470,6 +470,33 @@ describe("<ImageCard>", () => {
     });
   });
 
+  describe("a sound upload", () => {
+    it("shows its icon and its weight, calls it a sound, and offers no design to start from it", async () => {
+      const asset: Asset = {
+        id: "a-song",
+        name: "theme",
+        kind: "audio",
+        mime: "audio/mpeg",
+        size: 2048,
+        width: 0,
+        height: 0,
+        createdAt: NOON,
+        blob: new Blob(["mp3"], { type: "audio/mpeg" }),
+      };
+      await restoreAssets([asset]);
+      render(<ImageCard asset={asset} now={NOON} />);
+      expect(card().querySelector(".cf-icard__sound svg")).toBeTruthy();
+      expect(card().querySelector("img, video")).toBeNull();
+      expect(card().textContent).toContain("MPEG sound");
+      expect(card().textContent).toContain("2.0 KB");
+      expect(card().textContent).not.toContain("px");
+      expect(within(card()).queryByRole("button", { name: "Use in new design" })).toBeNull();
+      fireEvent.contextMenu(card());
+      expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeTruthy();
+      expect(screen.queryByRole("menuitem", { name: "Use in new design" })).toBeNull();
+    });
+  });
+
   it("does not show a picture that arrives after the card is gone", async () => {
     const asset = await addAssetFromFile(imageFile("late.png"));
     const { unmount } = render(<ImageCard asset={asset} now={asset.createdAt} />);

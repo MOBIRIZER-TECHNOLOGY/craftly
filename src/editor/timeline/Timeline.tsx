@@ -11,6 +11,7 @@ import { TransitionJoin } from "./TransitionJoin";
 import { splitMoment } from "@/core/splitPage";
 import { CLIP_TOP_PX, ClipBar, ROW_GAP, ROW_H, clipLanes, pageClips } from "./ClipBar";
 import { pauseTimeline, placeAt, playTimeline, pxPerSecond, seekTimeline, useTimeline } from "./timelineStore";
+import { TrackBar, TrackControls, soundLanes } from "./TrackBar";
 import "./timeline.css";
 
 /** Room left and right of the blocks, in pixels. */
@@ -132,6 +133,7 @@ export function Timeline() {
   const selection = useEditor((s) => s.selection);
   const time = useTimeline((s) => s.time);
   const playing = useTimeline((s) => s.playing);
+  const chosenTrack = useTimeline((s) => s.track);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(800);
   const scrub = useRef(false);
@@ -154,7 +156,12 @@ export function Timeline() {
   const at = Math.min(time, total);
   const place = placeAt(timeline, at);
   const lanes = timeline.segments.map((seg, i) => clipLanes(pages[i], seg.end - seg.playStart));
-  const rows = Math.max(0, ...lanes.map((l) => l.rows));
+  const clipRowCount = Math.max(0, ...lanes.map((l) => l.rows));
+  // the sounds of the design: rows of their own under the clips
+  const tracks = design?.audio ?? [];
+  const sounds = soundLanes(tracks, total);
+  const rows = clipRowCount + sounds.rows;
+  const chosen = tracks.find((t) => t.id === chosenTrack);
   const here = pages[place.page];
   const canSplit = !readOnly && !playing && !!here && !place.waiting && splitMoment(here, place.time) !== null;
   const split = () => {
@@ -223,6 +230,7 @@ export function Timeline() {
             {words.split}
           </Button>
         )}
+        {chosen && !readOnly ? <TrackControls track={chosen} /> : null}
       </div>
       <div ref={scrollRef} className="cf-tl__scroll">
         <div className="cf-tl__lane" style={{ width: Math.max(laneWidth, width) }}>
@@ -265,6 +273,19 @@ export function Timeline() {
               />
             )),
           )}
+          {tracks.map((t) => (
+            <TrackBar
+              key={t.id}
+              track={t}
+              total={total}
+              row={sounds.row[t.id] ?? 0}
+              top={CLIP_TOP + clipRowCount * (ROW_H + ROW_GAP)}
+              pps={pps}
+              pad={PAD}
+              chosen={t.id === chosenTrack}
+              readOnly={readOnly}
+            />
+          ))}
           <div className="cf-tl__head" style={{ transform: `translateX(${PAD + at * pps}px)` }} aria-hidden="true" />
         </div>
       </div>

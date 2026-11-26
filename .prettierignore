@@ -18,3 +18,6 @@ public
 
 # the catalogues (templates, illustrations, shapes, photos) are laid out by hand, one record to a line
 src/data
+
+# frozen documents: never written again, not even by a formatter (src/test/fixtures/schema/README.md)
+src/test/fixtures

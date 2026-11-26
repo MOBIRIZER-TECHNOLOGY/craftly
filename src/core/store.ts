@@ -26,7 +26,9 @@ import { uid } from "./ids";
 import * as ops from "./ops";
 import { splitPageAt } from "./splitPage";
 import { carryComments, cleanCommentText, COMMENT_COORD_MAX, MAX_COMMENTS, MAX_REPLIES, settleComments } from "./comments";
+import { MAX_TRACKS } from "./audioTracks";
 import type {
+  AudioTrack,
   Anchor,
   CommentAnchor,
   CommentAuthor,
@@ -251,6 +253,11 @@ export interface EditorActions {
   updateSelection(patch: Partial<DesignElement> | ((el: DesignElement) => void), opts?: UpdateOptions): void;
   /** Like `updateElements` for a page that may not be the open one: a slow job finishing after the person turned the page. */
   updateElementsOnPage(pageId: ID, ids: ID[], patch: Partial<DesignElement> | ((el: DesignElement) => void), opts?: UpdateOptions): void;
+  /** Adds a sound to the design (its timeline row): false when the design holds the most it may (MAX_TRACKS). */
+  addAudioTrack(track: AudioTrack): boolean;
+  /** Changes a sound of the design; `coalesce` makes a drag one step of undo. */
+  updateAudioTrack(id: ID, recipe: (track: AudioTrack) => void, opts?: UpdateOptions): void;
+  removeAudioTrack(id: ID): void;
   deleteElements(ids?: ID[]): void;
   duplicateSelection(): void;
   groupSelection(): void;
@@ -1017,6 +1024,26 @@ export const useEditor = create<EditorState>()((set, get) => {
         const page = d.pages.find((p) => p.id === pageId);
         if (page) ops.patchElements(page as Page, ids, patch as never);
       }, opts);
+    },
+    addAudioTrack(track) {
+      if ((get().design?.audio?.length ?? 0) >= MAX_TRACKS) return false;
+      return commit((d) => {
+        d.audio = [...(d.audio ?? []), track];
+      });
+    },
+    updateAudioTrack(id, recipe, opts) {
+      commit((d) => {
+        const track = d.audio?.find((t) => t.id === id);
+        if (track) recipe(track as AudioTrack);
+      }, opts);
+    },
+    removeAudioTrack(id) {
+      commit((d) => {
+        if (!d.audio?.some((t) => t.id === id)) return;
+        const rest = d.audio.filter((t) => t.id !== id);
+        if (rest.length) d.audio = rest;
+        else delete d.audio;
+      });
     },
     deleteElements(ids) {
       const target = ids ?? get().selection;

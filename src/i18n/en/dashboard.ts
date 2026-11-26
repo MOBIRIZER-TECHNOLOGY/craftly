@@ -436,6 +436,7 @@ export const dashboard = {
     actionsForFolder: (name: string) => `Actions for folder ${name}`,
     imageKind: (format: string) => `${format} image`,
     videoKind: (format: string) => `${format} video`,
+    soundKind: (format: string) => `${format} sound`,
     previewTemplate: (name: string) => `Preview template ${name}`,
     actionsForTemplate: (name: string) => `Actions for template ${name}`,
   },

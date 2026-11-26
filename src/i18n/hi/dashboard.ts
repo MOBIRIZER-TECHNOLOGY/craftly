@@ -418,6 +418,7 @@ export const dashboard: typeof en = {
     actionsForFolder: (name: string) => `फ़ोल्डर ${name} के विकल्प`,
     imageKind: (format: string) => `${format} इमेज`,
     videoKind: (format: string) => `${format} वीडियो`,
+    soundKind: (format: string) => `${format} आवाज़`,
     previewTemplate: (name: string) => `टेम्पलेट का प्रीव्यू: ${name}`,
     actionsForTemplate: (name: string) => `टेम्पलेट ${name} के विकल्प`,
   },

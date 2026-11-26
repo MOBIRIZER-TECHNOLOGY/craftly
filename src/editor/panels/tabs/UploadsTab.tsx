@@ -1,11 +1,41 @@
-import { useMemo, useRef, useState, type DragEvent } from "react";
-import { ACCEPTED_VIDEO_TYPES, addAssetFromFile, assetSrc, deleteAsset, isAcceptedImage, isAcceptedVideo, renameAsset, videoInfo } from "@/core/assets";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  ACCEPTED_AUDIO_TYPES,
+  ACCEPTED_VIDEO_TYPES,
+  addAssetFromFile,
+  assetSrc,
+  audioInfo,
+  deleteAsset,
+  isAcceptedAudio,
+  isAcceptedImage,
+  isAcceptedVideo,
+  renameAsset,
+  videoInfo,
+} from "@/core/assets";
 import type { Asset } from "@/core/types";
 import { insertImage, insertVideo } from "@/editor/insert";
 import { clipClock } from "@/render/videos";
 import { m } from "@/i18n";
 import { RecordDialog } from "@/editor/record/RecordDialog";
-import { Button, IconButton, IconCloudUpload, IconCopy, IconMore, IconRecord, IconSearch, IconTrash, IconUpload, MenuPopover, Skeleton, TextField, confirm, cx, toast } from "@/ui";
+import { addSoundToDesign } from "@/editor/timeline/addSound";
+import {
+  Button,
+  IconAudio,
+  IconButton,
+  IconCloudUpload,
+  IconCopy,
+  IconMore,
+  IconRecord,
+  IconSearch,
+  IconTrash,
+  IconUpload,
+  MenuPopover,
+  Skeleton,
+  TextField,
+  confirm,
+  cx,
+  toast,
+} from "@/ui";
 import { DraggableItem } from "../shared/DraggableItem";
 import { EmptyHint } from "../shared/EmptyHint";
 import { useAssetUrl, useAssets, useDebounced } from "../shared/hooks";
@@ -32,7 +62,7 @@ export default function UploadsTab() {
   const shown = useMemo(() => (assets ?? []).filter((a) => !q || a.name.toLowerCase().includes(q)), [assets, q]);
 
   const upload = async (files: File[]) => {
-    const images = files.filter((file) => isAcceptedImage(file) || isAcceptedVideo(file));
+    const images = files.filter((file) => isAcceptedImage(file) || isAcceptedVideo(file) || isAcceptedAudio(file));
     if (files.length && !images.length) {
       toast.error(m.panelsTabs.uploads.notImages);
       return;
@@ -44,8 +74,8 @@ export default function UploadsTab() {
       try {
         await addAssetFromFile(file);
       } catch (error) {
-        // a video that is too big or cannot be played here says so itself; a picture that failed is counted
-        if (isAcceptedVideo(file) && error instanceof Error) toast.error(error.message);
+        // a video or a sound that is too big or cannot be played here says so itself; a picture that failed is counted
+        if ((isAcceptedVideo(file) || isAcceptedAudio(file)) && error instanceof Error) toast.error(error.message);
         else failed++;
       } finally {
         setUploading((n) => n - 1);
@@ -80,7 +110,7 @@ export default function UploadsTab() {
         <input
           ref={fileRef}
           type="file"
-          accept={["image/*", ...ACCEPTED_VIDEO_TYPES].join(",")}
+          accept={["image/*", ...ACCEPTED_VIDEO_TYPES, ...ACCEPTED_AUDIO_TYPES, ".mp3", ".m4a", ".wav", ".ogg", ".flac"].join(",")}
           multiple
           hidden
           onChange={(e) => {
@@ -199,14 +229,25 @@ function UploadCard({ asset }: { asset: Asset }) {
   const menuRef = useRef<HTMLButtonElement>(null);
 
   const clip = asset.kind === "video";
+  const sound = asset.kind === "audio";
   // the length of a clip, read from the card's own <video> once it knows it (0 until then)
   const [duration, setDuration] = useState(0);
   // a clip recorded in a browser does not say its length until it has been read to the end: videoInfo finds it then
+  // the length of a sound, read once from its first bytes
+  useEffect(() => {
+    if (!sound) return;
+    let live = true;
+    void audioInfo(asset.blob).then((info) => live && setDuration(knownLength(info?.duration ?? 0)));
+    return () => {
+      live = false;
+    };
+  }, [sound, asset.blob]);
   const lengthFrom = (seconds: number) => {
     if (knownLength(seconds)) setDuration(seconds);
     else void videoInfo(asset.blob).then((info) => setDuration(knownLength(info?.duration ?? 0)));
   };
   const insert = () => {
+    if (sound) return void addSoundToDesign(asset, duration);
     if (!clip) return void insertImage(assetSrc(asset.id), asset.width, asset.height);
     if (duration > 0) return void insertVideo(assetSrc(asset.id), asset.width, asset.height, duration, undefined, asset.name);
     void videoInfo(asset.blob).then((info) => insertVideo(assetSrc(asset.id), asset.width, asset.height, info?.duration || 1, undefined, asset.name));
@@ -222,7 +263,7 @@ function UploadCard({ asset }: { asset: Asset }) {
   const remove = async () => {
     const ok = await confirm({
       title: m.panelsTabs.uploads.deleteTitle(asset.name),
-      message: clip ? m.panelsTabs.uploads.deleteVideoText : m.panelsTabs.uploads.deleteText,
+      message: sound ? m.panelsTabs.uploads.deleteSoundText : clip ? m.panelsTabs.uploads.deleteVideoText : m.panelsTabs.uploads.deleteText,
       confirmLabel: m.common.delete,
       danger: true,
     });
@@ -234,33 +275,44 @@ function UploadCard({ asset }: { asset: Asset }) {
 
   return (
     <div className="cf-uploads__card">
-      <DraggableItem
-        label={m.panelsTabs.uploads.addToPage(asset.name)}
-        onInsert={insert}
-        getPayload={() =>
-          clip
-            ? { type: "video", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, duration: duration || 1, name: asset.name }
-            : { type: "image", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, name: asset.name }
-        }
-        className="cf-uploads__item"
-        tooltip={false}
-      >
-        <div className="cf-uploads__thumb" style={{ aspectRatio: `${asset.width} / ${asset.height}` }}>
-          {!url ? (
-            <Skeleton width="100%" height="100%" radius={0} className="cf-uploads__shimmer" />
-          ) : clip ? (
-            <>
-              <video src={url} muted preload="metadata" playsInline draggable={false} onLoadedMetadata={(e) => lengthFrom(e.currentTarget.duration)} />
-              <span className="cf-uploads__badge" aria-label={m.panelsTabs.uploads.video}>
-                {duration > 0 ? clipClock(duration) : m.panelsTabs.uploads.video}
-              </span>
-            </>
-          ) : (
-            <img src={url} alt="" draggable={false} />
-          )}
-        </div>
-        {renaming ? null : <span className="cf-uploads__name">{asset.name}</span>}
-      </DraggableItem>
+      {sound ? (
+        // a sound has no place on the page: a click puts it on the timeline
+        <button type="button" className="cf-uploads__item cf-uploads__sounditem" aria-label={m.panelsTabs.uploads.addToTimeline(asset.name)} onClick={insert}>
+          <span className="cf-uploads__thumb cf-uploads__sound">
+            <IconAudio aria-hidden="true" />
+            <span className="cf-uploads__badge">{duration > 0 ? clipClock(duration) : m.panelsTabs.uploads.sound}</span>
+          </span>
+          {renaming ? null : <span className="cf-uploads__name">{asset.name}</span>}
+        </button>
+      ) : (
+        <DraggableItem
+          label={m.panelsTabs.uploads.addToPage(asset.name)}
+          onInsert={insert}
+          getPayload={() =>
+            clip
+              ? { type: "video", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, duration: duration || 1, name: asset.name }
+              : { type: "image", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, name: asset.name }
+          }
+          className="cf-uploads__item"
+          tooltip={false}
+        >
+          <div className="cf-uploads__thumb" style={{ aspectRatio: `${asset.width} / ${asset.height}` }}>
+            {!url ? (
+              <Skeleton width="100%" height="100%" radius={0} className="cf-uploads__shimmer" />
+            ) : clip ? (
+              <>
+                <video src={url} muted preload="metadata" playsInline draggable={false} onLoadedMetadata={(e) => lengthFrom(e.currentTarget.duration)} />
+                <span className="cf-uploads__badge" aria-label={m.panelsTabs.uploads.video}>
+                  {duration > 0 ? clipClock(duration) : m.panelsTabs.uploads.video}
+                </span>
+              </>
+            ) : (
+              <img src={url} alt="" draggable={false} />
+            )}
+          </div>
+          {renaming ? null : <span className="cf-uploads__name">{asset.name}</span>}
+        </DraggableItem>
+      )}
       {renaming ? (
         <div className="cf-uploads__rename">
           <TextField
@@ -298,7 +350,12 @@ function UploadCard({ asset }: { asset: Asset }) {
         placement="bottom-end"
         aria-label={m.panelsTabs.uploads.actions(asset.name)}
         items={[
-          { id: "insert", label: m.panelsTabs.uploads.insert, icon: <IconCopy />, onSelect: insert },
+          {
+            id: "insert",
+            label: sound ? m.panelsTabs.uploads.addToTimeline(asset.name) : m.panelsTabs.uploads.insert,
+            icon: sound ? <IconAudio /> : <IconCopy />,
+            onSelect: insert,
+          },
           {
             id: "rename",
             label: m.panelsTabs.uploads.rename,
