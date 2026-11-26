@@ -14,7 +14,7 @@
  *
  * Pure: no store, no DOM. The second page has the same element ids as the first; the store gives it fresh ones.
  */
-import { MIN_PAGE_DURATION, clipCaptions, clipPlayingLength, clipStartAt, pageClipLength, pageDuration } from "./animation";
+import { MIN_PAGE_DURATION, clipCaptions, clipLoopFrom, clipPlayingLength, clipStartAt, pageClipLength, pageDuration } from "./animation";
 import { cloneDeep } from "./clone";
 import type { DesignElement, Page, VideoElement } from "./types";
 
@@ -46,7 +46,13 @@ function goOn(el: VideoElement, at: number): void {
   delete el.startAt;
   const length = clipPlayingLength(el);
   const played = at - start;
-  if (!el.once) return; // a loop starts again from its beginning (see above)
+  if (!el.once) {
+    // a loop goes on part-way through the play it was in
+    const from = milli((clipLoopFrom(el) + played) % length);
+    if (from > 0 && from < length) el.loopFrom = from;
+    else delete el.loopFrom;
+    return;
+  }
   const speed = el.speed > 0 ? el.speed : 1;
   if (played >= length - MIN_CLIP / speed) {
     // it had played and holds its last frame: a last tenth of it, silent, held

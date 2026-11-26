@@ -1,5 +1,16 @@
 /** The contextual toolbar of video elements: play, trim, speed, sound, and the frame they are cut to. */
-import { MAX_CAPTIONS, MAX_CAPTION_LENGTH, MAX_CLIP_FADE, MAX_CLIP_START, MAX_PAGE_DURATION, clipCaptions, clipFades, clipStartAt, clipVolume } from "@/core/animation";
+import {
+  MAX_CAPTIONS,
+  MAX_CAPTION_LENGTH,
+  MAX_CLIP_FADE,
+  MAX_CLIP_START,
+  MAX_PAGE_DURATION,
+  clipCaptions,
+  clipFades,
+  clipFirstPlayLength,
+  clipStartAt,
+  clipVolume,
+} from "@/core/animation";
 import { readSrt, writeSrt } from "@/core/srt";
 import type { ClipCaption } from "@/core/types";
 import { downloadBlob } from "@/export/download";
@@ -11,7 +22,7 @@ import type { VideoElement } from "@/core/types";
 import { startPreview, stopPreview, usePreview } from "@/editor/canvas/preview";
 import { ShapePreview } from "@/editor/panels/shared/ShapePreview";
 import { m } from "@/i18n";
-import { clampTrim, MIN_TRIM, playingLength } from "@/render/videos";
+import { clampTrim, MIN_TRIM } from "@/render/videos";
 import {
   Button,
   Checkbox,
@@ -56,7 +67,7 @@ export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Ext
   const speed = uniform(els, (e) => e.speed);
   const muted = els.every((e) => !!e.muted);
   // the preview plays the page from its start until the last of these clips has played once from its start time
-  const longest = Math.max(1, ...els.map((e) => clipStartAt(e) + playingLength(e)));
+  const longest = Math.max(1, ...els.map((e) => clipStartAt(e) + clipFirstPlayLength(e)));
 
   const frameItems = (): MenuEntry[] =>
     FRAME_SHAPES.map((shape) => ({

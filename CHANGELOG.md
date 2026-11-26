@@ -4,6 +4,9 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **A loop goes on after a Split (2026-11-26).** Splitting a page in the middle of a clip that plays over and over now carries the loop on: on the new page the clip begins part-way through the play it was in, and goes round from there. Before, it started again from its beginning. Its picture, its captions, its sound in Present and in a video download, its first frame at rest, and its bar on the timeline (the first play begins before the bar does) all follow. A page that follows its clips lasts until that first, shorter play ends, so a page split from one that followed its clips goes on following them. Stored as an optional `loopFrom` on the clip, read only for a loop and cleaned where it is read (`clipLoopFrom`, `clipPlayTime` and `clipFirstPlayLength` in `src/core/animation.ts`).
+  - **Checked in the browser** (`e2e/video.cjs`, 18 of 18 steps): a 5 s page with the red-then-blue 2.4 s clip split at 1.8 s; the new page's clip carried on at 1.8 s, and the page read blue at its very start.
+
 - **The parked playhead shows each clip at its moment (2026-11-26).** While the timeline's playhead is parked or dragged, a clip on the page is shown still and silent at the frame of that moment (its trim, speed, start time and loops counted), and so are the clips of both pages while it is inside a transition; before, a clip showed its first frame until Play. The clip's player is paused and sought to the frame, and the page is painted again when the frame has come (`heldFrame` in `src/render/videos.ts`).
   - **Checked in the browser** (`e2e/video.cjs`, 17 of 17 steps): with the playhead at 1.8 s the red-then-blue clip read blue on the page.
 

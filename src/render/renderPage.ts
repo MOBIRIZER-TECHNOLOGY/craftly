@@ -8,7 +8,7 @@ import {
   captionOutlineIsDark,
   clipCaptions,
   clipCaptionStyle,
-  clipLocalTime,
+  clipPlayTime,
   clipPlayingLength,
   evaluateAnimation,
   isHidden,
@@ -413,7 +413,7 @@ function drawImageElement(ctx: Ctx, el: ImageElement, env: Env): void {
 export function captionNow(el: VideoElement, time: number): string | null {
   const lines = clipCaptions(el);
   if (!lines.length || clipWaiting(el, time) || clipFinished(el, time)) return null;
-  return captionAt(lines, clipLocalTime(el, time) % clipPlayingLength(el))?.text ?? null;
+  return captionAt(lines, clipPlayTime(el, time) % clipPlayingLength(el))?.text ?? null;
 }
 
 /** Most lines a caption is wrapped to; what does not fit ends in an ellipsis. */

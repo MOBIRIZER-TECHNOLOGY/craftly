@@ -45,6 +45,9 @@ describe("a clip at rest", () => {
     const el = clip({ trimStart: 1.234 });
     expect(videoPosterKey(el)).toBe(`video:${el.src}@1.23`);
     expect(videoPosterKey({ src: "asset:x", trimStart: -2 })).toBe("video:asset:x@0");
+    // a loop carried on from a split page starts part-way into its play, at its speed: its first frame is there
+    expect(videoPosterKey(clip({ src: "asset:y", trimStart: 1, trimEnd: 5, speed: 2, loopFrom: 0.5 }))).toBe("video:asset:y@2");
+    expect(videoPosterKey(clip({ src: "asset:y", trimStart: 1, trimEnd: 5, loopFrom: 0.5, once: true }))).toBe("video:asset:y@1");
     expect([...collectResources(createPage({ elements: [el, createGroup([clip({ id: "v_in" })])] })).images]).toHaveLength(2);
     expect(collectResources(createPage({ elements: [clip({ hidden: true })] })).images.size).toBe(0);
   });
@@ -192,6 +195,13 @@ describe("a clip's captions", () => {
     { start: 1, end: 2, text: "Second words" },
   ];
   const texts = (spy: ReturnType<typeof paint>["spy"]) => spy.to("fillText").map((c) => c.args[0]);
+
+  it("follow a loop carried on from a split page: its first play begins part-way, at the line of that moment", () => {
+    frames.playing = canvas();
+    const at = (time: number) => texts(paint([clip({ captions: lines, trimEnd: 4, loopFrom: 1.5 })], { scale: 1, animation: { time }, playVideos: {} }).spy);
+    expect(at(0)).toEqual(["Second words"]);
+    expect(at(2.6)).toEqual(["First words"]);
+  });
 
   it("show the line of the moment over a playing clip, white on a dark band", () => {
     frames.playing = canvas();

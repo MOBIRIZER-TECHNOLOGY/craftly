@@ -91,6 +91,23 @@ describe("<Timeline>: the clips", () => {
     expect((container.querySelector(".cf-tl") as HTMLElement).style.height).toContain("60px");
   });
 
+  it("begins the first play of a loop carried on from a split page part-way, before the bar does", async () => {
+    const carried = createDesign({
+      title: "Carried",
+      width: 400,
+      height: 300,
+      pages: [createPage({ id: "p1", duration: 3, elements: [video("loop", { trimEnd: 2, loopFrom: 1.5 })] })],
+    });
+    const { container } = await renderChrome(<Timeline />, carried);
+    const plays = [...bars(container)[0].querySelectorAll<HTMLElement>(".cf-tl__play")];
+    // 3 s of a 2 s loop from 1.5 s into it: the end of one play, a whole one, and the start of a third
+    expect(plays.map((p) => [p.style.left, p.style.width])).toEqual([
+      ["-90px", "120px"],
+      ["30px", "120px"],
+      ["150px", "30px"],
+    ]);
+  });
+
   it("trims a clip's ends and moves it with the keys, a tenth of a second at a time (Shift: a hundredth)", async () => {
     await renderChrome(<Timeline />, design());
     fireEvent.keyDown(screen.getByRole("slider", { name: "End of one" }), { key: "ArrowLeft" });

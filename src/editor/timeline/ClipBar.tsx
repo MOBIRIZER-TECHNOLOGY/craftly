@@ -1,5 +1,5 @@
 import { memo, useRef, type KeyboardEvent, type PointerEvent } from "react";
-import { MAX_CLIP_START, clipPlayingLength, clipStartAt } from "@/core/animation";
+import { MAX_CLIP_START, clipLoopFrom, clipPlayingLength, clipStartAt } from "@/core/animation";
 import { useEditor } from "@/core/store";
 import type { DesignElement, Page, VideoElement } from "@/core/types";
 import { m } from "@/i18n";
@@ -136,13 +136,15 @@ export const ClipBar = memo(function ClipBar({ el, page, pageStart, pageLength, 
     onKeyDown: key(part),
   });
   const playLength = Math.max(0.1, once);
-  const repeats = el.once ? 0 : Math.max(0, Math.ceil(shown / playLength) - 1);
+  // a loop carried on from a split page begins part-way through its first play: that play starts before the bar does
+  const phase = clipLoopFrom(el);
+  const repeats = el.once ? 0 : Math.max(0, Math.ceil((shown + phase) / playLength) - 1);
 
   return (
     <div className={cx("cf-tl__clip", selected && "is-selected")} style={{ left, width, top: top + row * (ROW_H + ROW_GAP), height: ROW_H }}>
       <div className="cf-tl__frames" aria-hidden="true">
         {Array.from({ length: repeats + 1 }, (_, n) => (
-          <div key={n} className="cf-tl__play" style={{ left: n * playLength * pps, width: Math.min(playLength, shown - n * playLength) * pps }}>
+          <div key={n} className="cf-tl__play" style={{ left: (n * playLength - phase) * pps, width: Math.min(playLength, shown + phase - n * playLength) * pps }}>
             {pictures.map((src, i) => (src ? <img key={i} src={src} alt="" draggable={false} /> : <span key={i} />))}
           </div>
         ))}

@@ -8,7 +8,7 @@
  */
 import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from "mediabunny";
 import { getAsset } from "@/core/assets";
-import { clipFades, clipGainAt, clipStartAt, clipVolume } from "@/core/animation";
+import { clipFades, clipGainAt, clipLoopFrom, clipStartAt, clipVolume } from "@/core/animation";
 import type { Timeline } from "@/core/transition";
 import type { Page, VideoElement } from "@/core/types";
 import { trimmedLength } from "@/render/videos";
@@ -75,12 +75,13 @@ async function readLoop(el: VideoElement): Promise<Loop | null> {
   }
 }
 
-/** One play of a clip's sound on the export's timeline: from `begin` to `until` seconds, looping or not. */
+/** One play of a clip's sound on the export's timeline: from `begin` to `until` seconds, looping or not, `phase` seconds into its loop at `begin`. */
 interface Play {
   loop: Loop;
   begin: number;
   until: number;
   looping: boolean;
+  phase: number;
 }
 
 /** How much of the mix is rendered at once, in seconds: a long video never holds its whole sound. */
@@ -127,7 +128,7 @@ export async function mixClipSound(pages: readonly Page[], timeline: Timeline, t
       const begin = seg.playStart + clipStartAt(el);
       if (begin >= until) continue;
       const loop = await loopOf(el);
-      if (loop) plays.push({ loop, begin, until, looping: !el.once });
+      if (loop) plays.push({ loop, begin, until, looping: !el.once, phase: clipLoopFrom(el) });
     }
   }
   if (!plays.length) return null;
@@ -172,7 +173,7 @@ async function renderWindow(plays: readonly Play[], from: number, to: number, ga
     const start = Math.max(play.begin, w0);
     const end = Math.min(play.until, w1);
     if (end <= start) continue;
-    const piece = pieceOf(play, start - play.begin, end - start);
+    const piece = pieceOf(play, start - play.begin + play.phase, end - start);
     if (!piece) continue;
     const source = ctx.createBufferSource();
     source.buffer = piece;

@@ -586,6 +586,15 @@ describe("mixing the clips' sound", () => {
     ]);
   });
 
+  it("goes on part-way through its loop for a clip carried on from a split page", async () => {
+    // a 2 s loop, 0.5 s into its play when the page begins: each window starts half a second further on in the loop
+    const pages = [page([clip({ loopFrom: 0.5 })], 3)];
+    await mixClipSound(pages, buildTimeline(pages), 3);
+    // (the fake clip's samples count their place in the clip after 0.1: the sample at 0.5 s is 0.1 + 500 / 1e9)
+    const firstSample = windows().map((w) => Math.round((w.pieces[0].buffer.getChannelData(0)[0] - 0.1) * 1e9));
+    expect(firstSample.map((n) => Math.round(n / 10) * 10)).toEqual([500, 1500, 500]);
+  });
+
   it("fades out over the last 10 ms of its page, in the window where the page ends", async () => {
     const pages = [page([clip()], 2.5)];
     await mixClipSound(pages, buildTimeline(pages), 2.5);

@@ -4,7 +4,10 @@ import {
   MAX_CLIP_PAGE_DURATION,
   MAX_CLIP_START,
   MAX_PAGE_DURATION,
+  clipFirstPlayLength,
   clipLocalTime,
+  clipLoopFrom,
+  clipPlayTime,
   clipPlayingLength,
   clipStartAt,
   pageClipLength,
@@ -93,5 +96,28 @@ describe("the length of a page with a clip", () => {
       [12, 17],
     ]);
     expect(timeline.total).toBe(17);
+  });
+});
+
+describe("a loop carried on from a split page", () => {
+  const loop = { trimStart: 1, trimEnd: 5, speed: 2 }; // 2 s a play
+
+  it("begins its first play part-way, and only when it plays over and over", () => {
+    expect(clipLoopFrom({ ...loop, loopFrom: 0.5 })).toBe(0.5);
+    expect(clipLoopFrom({ ...loop, loopFrom: 0.5, once: true })).toBe(0);
+    // nothing outside one play, nor anything that is not a number
+    for (const odd of [0, -1, 2, 3, Number.NaN, "1" as never, undefined]) expect(clipLoopFrom({ ...loop, loopFrom: odd })).toBe(0);
+  });
+
+  it("is that far into its plays, and its first play is that much shorter", () => {
+    const el = { ...loop, loopFrom: 0.5, startAt: 1 };
+    expect(clipPlayTime(el, 0)).toBe(0.5);
+    expect(clipPlayTime(el, 2)).toBe(1.5);
+    expect(clipFirstPlayLength(el)).toBe(1.5);
+    expect(clipFirstPlayLength(loop)).toBe(2);
+  });
+
+  it("makes a page that follows it last until its first play ends", () => {
+    expect(pageClipLength(createPage({ elements: [clip({ trimEnd: 4, loopFrom: 1.5, startAt: 1 })] }))).toBe(3.5);
   });
 });

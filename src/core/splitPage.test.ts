@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { pageDuration } from "./animation";
 import { createGroup, createPage, createShape, createVideo } from "./factory";
 import { splitMoment, splitPageAt } from "./splitPage";
 import type { Page, VideoElement } from "./types";
@@ -105,19 +106,36 @@ describe("splitting a page", () => {
     expect(videos(splitPageAt(page, 3)!.second)[0].captions).toBeUndefined();
   });
 
-  it("starts a clip that plays over and over again from its beginning", () => {
+  it("goes on with a clip that plays over and over part-way through the play it was in", () => {
+    // 2 s a play at its own speed; 5 s in it is 1 s into its third play
     const loop = clip({ trimStart: 1, trimEnd: 3 });
     const page = createPage({ duration: 8, elements: [loop] });
     const after = videos(splitPageAt(page, 5)!.second)[0];
-    expect(after.trimStart).toBe(1);
+    expect(after).toMatchObject({ trimStart: 1, trimEnd: 3, loopFrom: 1 });
     expect(after.startAt).toBeUndefined();
+    // split again 1.5 s into that page: it was 1 s in, and 0.5 s into the next play now
+    const again = videos(splitPageAt({ ...splitPageAt(page, 5)!.second, duration: 3 }, 1.5)!.second)[0];
+    expect(again.loopFrom).toBe(0.5);
+    // at the very start of a play there is nothing to carry on
+    expect(videos(splitPageAt(page, 4)!.second)[0].loopFrom).toBeUndefined();
+    // a loop that had not started yet starts sooner, from its beginning
+    const later = videos(splitPageAt(createPage({ duration: 8, elements: [clip({ trimEnd: 2, startAt: 3 })] }), 2)!.second)[0];
+    expect(later).toMatchObject({ startAt: 1 });
+    expect(later.loopFrom).toBeUndefined();
   });
 
-  it("gives the second part the rest of the time when its page followed a clip that no longer says how long it is", () => {
-    // a looping clip (4 s) and a later one that ends first: after the cut, the loop alone would make the page 4 s
+  it("counts a loop's speed in where it goes on", () => {
+    // 4 s of clip at twice the speed: 2 s a play; 3 s in it is 1 s into its second play
+    const after = videos(splitPageAt(createPage({ duration: 8, elements: [clip({ trimEnd: 4, speed: 2 })] }), 3)!.second)[0];
+    expect(after.loopFrom).toBe(1);
+  });
+
+  it("goes on following its clips when they still say how long it is", () => {
+    // a looping clip (4 s) and a later one that plays once and ends the page at 5 s: both go on, and say 3 s are left
     const page = createPage({ elements: [clip({ trimEnd: 4 }), clip({ trimEnd: 2, once: true, startAt: 3 })] });
     const { second } = splitPageAt(page, 2)!;
-    expect(second.duration).toBe(3);
+    expect(second.duration).toBeUndefined();
+    expect(pageDuration(second)).toBe(3);
     // a page that was 5 s by default keeps the rest of those
     expect(splitPageAt(createPage({}), 2)!.second.duration).toBe(3);
   });

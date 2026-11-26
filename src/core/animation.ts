@@ -100,6 +100,23 @@ export const MAX_CLIP_FADE = 5;
 
 const finiteOr = (v: unknown, fallback: number): number => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 
+/**
+ * Seconds into one play at which a clip that plays over and over begins its first play (VideoElement.loopFrom): 0 to just under one
+ * play; 0 for a clip that plays once, and for a value from outside that is not a number or lies outside one play.
+ */
+export function clipLoopFrom(el: Pick<VideoElement, "loopFrom" | "once" | "trimStart" | "trimEnd" | "speed">): number {
+  if (el.once) return 0;
+  const v = finiteOr(el.loopFrom, 0);
+  return v > 0 && v < clipPlayingLength(el) ? v : 0;
+}
+
+/** Seconds into its plays a clip is when its page has been shown for `time` seconds: its own time, from where its first play begins. */
+export const clipPlayTime = (el: Pick<VideoElement, "startAt" | "loopFrom" | "once" | "trimStart" | "trimEnd" | "speed">, time: number): number =>
+  clipLocalTime(el, time) + clipLoopFrom(el);
+
+/** How long a clip's first play lasts on its page: one play, less the part a loop carried on from a split page has already played. */
+export const clipFirstPlayLength = (el: Pick<VideoElement, "loopFrom" | "once" | "trimStart" | "trimEnd" | "speed">): number => clipPlayingLength(el) - clipLoopFrom(el);
+
 /** How loud a clip plays, 0 to 1 (a value from outside that is not a number counts as 1). */
 export const clipVolume = (el: Pick<VideoElement, "volume">): number => clamp(finiteOr(el.volume, 1), 0, 1);
 
@@ -142,7 +159,7 @@ export function pageClipLength(page: { elements?: readonly DesignElement[] }): n
   let longest: number | null = null;
   const visit = (el: DesignElement) => {
     if (el.hidden) return;
-    if (el.type === "video") longest = Math.max(longest ?? 0, clipStartAt(el) + clipPlayingLength(el));
+    if (el.type === "video") longest = Math.max(longest ?? 0, clipStartAt(el) + clipFirstPlayLength(el));
     else if (el.type === "group") el.children.forEach(visit);
   };
   page.elements?.forEach(visit);

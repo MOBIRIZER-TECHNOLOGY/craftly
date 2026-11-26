@@ -11,7 +11,7 @@
  *
  * A clip is only ever one of this browser's uploads ("asset:<id>"): a design never plays anything from the web.
  */
-import { clipGainAt, clipLocalTime, clipPlayingLength, clipStartAt } from "@/core/animation";
+import { clipGainAt, clipLocalTime, clipPlayTime, clipPlayingLength, clipStartAt } from "@/core/animation";
 import { getAssetUrl } from "@/core/assets";
 import type { DesignElement, VideoElement } from "@/core/types";
 
@@ -43,9 +43,9 @@ export const LAST_FRAME_BEFORE_END = 0.04;
  * The place in the clip, in seconds, that `time` seconds of the page stand for: from `trimStart`, at `speed`, over again at
  * `trimEnd`; a clip that plays once stays on its last frame after that.
  */
-export function clipTime(el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed" | "once" | "startAt">, time: number): number {
+export function clipTime(el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed" | "once" | "startAt" | "loopFrom">, time: number): number {
   const span = trimmedLength(el);
-  const played = clipLocalTime(el, time) * (el.speed > 0 ? el.speed : 1);
+  const played = clipPlayTime(el, time) * (el.speed > 0 ? el.speed : 1);
   if (el.once) return el.trimStart + Math.min(played, Math.max(0, span - LAST_FRAME_BEFORE_END));
   return el.trimStart + (played % span);
 }
@@ -242,7 +242,7 @@ export function playingFrame(el: VideoElement, time: number, sound = false): HTM
   const still = clipFinished(el, time) || clipWaiting(el, time);
   if (!muted) {
     // its volume, and its fades at the start and the end of every play of it (silent once a clip that plays once has played)
-    const volume = still ? 0 : clipGainAt(el, clipLocalTime(el, time) % playingLength(el));
+    const volume = still ? 0 : clipGainAt(el, clipPlayTime(el, time) % playingLength(el));
     if (Math.abs(video.volume - volume) > 0.001) video.volume = volume;
   }
   if (video.readyState < 1) return null;

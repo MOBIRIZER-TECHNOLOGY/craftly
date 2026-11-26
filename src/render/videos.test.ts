@@ -4,6 +4,18 @@ import { clampTrim, clipClock, clipFinished, clipTime, clipWaiting, isVideoSourc
 
 const clip = (over: Partial<Parameters<typeof createVideo>[0]> = {}) => createVideo({ src: "asset:a_clip", naturalWidth: 640, naturalHeight: 360, duration: 10, ...over });
 
+describe("a loop carried on from a split page", () => {
+  it("stands part-way through its play from the start, and goes round from there", () => {
+    // 4 s of clip from 1 s, at twice the speed, 0.5 s of the page (1 s of clip) into its play
+    const el = { trimStart: 1, trimEnd: 5, speed: 2, loopFrom: 0.5 };
+    expect(clipTime(el, 0)).toBe(2);
+    expect(clipTime(el, 1)).toBe(4);
+    expect(clipTime(el, 1.5)).toBe(1);
+    // a clip that plays once does not read it
+    expect(clipTime({ ...el, once: true }, 0)).toBe(1);
+  });
+});
+
 describe("a clip that starts later on its page", () => {
   it("stays at its trim until then, and plays from there", () => {
     const el = { trimStart: 1, trimEnd: 5, speed: 1, startAt: 2 };

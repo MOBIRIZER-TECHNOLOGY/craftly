@@ -417,6 +417,42 @@ let shotN = 0;
     return colour;
   });
 
+  await step("Split a 5 s page at 1.8 s on the timeline: on the new page the loop goes on blue, part-way through its play, not red from its start", async () => {
+    const before = await clip();
+    if (before.once) throw new Error("the clip plays once");
+    // a page of 5 s, on which the 2.4 s clip plays over and over (each part of a split must last a second)
+    await page.evaluate(() => window.__editor.getState().actions.setPageDuration(5));
+    await page.getByRole("button", { name: "Timeline", exact: true }).click();
+    const head = page.getByRole("slider", { name: "Playhead" });
+    await head.waitFor({ timeout: 5000 });
+    await head.focus();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowRight");
+    for (let i = 0; i < 8; i++) await page.keyboard.press("Shift+ArrowRight");
+    await page.getByRole("button", { name: "Split", exact: true }).click();
+    await page.waitForFunction(() => window.__editor.getState().design.pages.length === 2, null, { timeout: 5000 });
+    const second = await design(`(s) => s.design.pages[1].elements.find((e) => e.type === "video")`);
+    if (!(Math.abs((second.loopFrom ?? 0) - 1.8) < 0.01)) throw new Error("the loop on the new page begins at " + second.loopFrom);
+    // the playhead at the very start of the new page: the clip there is blue
+    await page.keyboard.press("Home");
+    await page.keyboard.press("PageDown");
+    const zoom = await design(`(s) => s.zoom`);
+    const frame = await page.evaluate(() => {
+      const f = document.querySelector(".cf-pageframe").getBoundingClientRect();
+      return { x: f.x, y: f.y };
+    });
+    const middle = { x: frame.x + (second.x + second.width / 2) * zoom, y: frame.y + (second.y + second.height * 0.7) * zoom };
+    let colour = "";
+    for (let i = 0; i < 30 && colour !== "blue"; i++) {
+      colour = await colourAt(middle);
+      if (colour !== "blue") await wait(200);
+    }
+    await shot("split-loop");
+    if (colour !== "blue") throw new Error("at the start of the new page the clip is " + colour);
+    await page.getByRole("button", { name: "Timeline", exact: true }).click();
+    return `loopFrom ${second.loopFrom}, ${colour}`;
+  });
+
   await step("no errors reached the console", async () => {
     if (logs.length) throw new Error(logs.slice(0, 4).join(" | "));
     return "clean";

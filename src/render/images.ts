@@ -3,6 +3,7 @@
  * cached bitmap, or null while it loads and notifies subscribers when ready) so
  * the painter never awaits; `loadImage` is the awaitable twin used by export.
  */
+import { clipLoopFrom } from "@/core/animation";
 import { getAssetUrl } from "@/core/assets";
 import { isRemoteImage } from "@/core/imageSources";
 import { svgToDataUrl } from "@/core/svg";
@@ -103,10 +104,15 @@ export function getImage(src: string): Drawable | null {
 }
 
 /**
- * The key of a clip's poster, its frame at `trimStart` (src/render/videos.ts), in this cache: it is loaded, waited for and counted as
- * missing like a picture (`getImage`, `loadImage`, the exports' checks), and is no address for anything else.
+ * The key of a clip's poster, its frame where it starts playing (src/render/videos.ts): at `trimStart`, or part-way into its play for
+ * a loop carried on from a split page (clipLoopFrom). In this cache it is loaded, waited for and counted as missing like a picture
+ * (`getImage`, `loadImage`, the exports' checks), and is no address for anything else.
  */
-export const videoPosterKey = (el: Pick<VideoElement, "src" | "trimStart">) => `video:${el.src}@${Math.max(0, Math.round(el.trimStart * 100) / 100)}`;
+export function videoPosterKey(el: Pick<VideoElement, "src" | "trimStart"> & Partial<Pick<VideoElement, "trimEnd" | "speed" | "loopFrom" | "once">>): string {
+  const speed = el.speed !== undefined && el.speed > 0 ? el.speed : 1;
+  const into = el.trimEnd === undefined ? 0 : clipLoopFrom({ trimStart: el.trimStart, trimEnd: el.trimEnd, speed, loopFrom: el.loopFrom, once: el.once }) * speed;
+  return `video:${el.src}@${Math.max(0, Math.round((el.trimStart + into) * 100) / 100)}`;
+}
 
 /* ---------------- SVG graphics ---------------- */
 

@@ -188,6 +188,7 @@
 .cf-tl__frames {
   position: absolute;
   inset: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 

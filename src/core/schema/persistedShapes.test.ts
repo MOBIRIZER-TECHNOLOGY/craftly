@@ -197,10 +197,12 @@ const CLIP_CAPTION_STYLE = [
   "$.pages[].elements[].captionStyle.place: string",
   "$.pages[].elements[].captionStyle.size: string",
 ];
+/** Where a loop carried on from a split page begins its first play (2026-11-26): optional, cleaned where it is read (clipLoopFrom). */
+const CLIP_LOOP_FROM = ["$.pages[].elements[].loopFrom: number"];
 
 const ADDED: Record<string, string[]> = {
   // in the order the shapes are listed: by path
-  design: [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START, ...CLIP_CAPTIONS, ...CLIP_CAPTION_STYLE].sort(),
+  design: [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START, ...CLIP_CAPTIONS, ...CLIP_CAPTION_STYLE, ...CLIP_LOOP_FROM].sort(),
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

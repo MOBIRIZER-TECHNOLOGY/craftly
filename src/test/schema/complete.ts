@@ -289,6 +289,7 @@ function completeElements(): Complete<DesignElement>[] {
       speed: 1.5,
       muted: true,
       once: true,
+      loopFrom: 0.4,
       startAt: 0.5,
       captions: [{ start: 0, end: 2.5, text: "Hello" }],
       captionStyle: { place: "top", size: "l", font: "serif", color: "#facc15", band: "none" },
