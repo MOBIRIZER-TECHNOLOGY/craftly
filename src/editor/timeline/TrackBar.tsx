@@ -9,7 +9,7 @@ import { useEditor } from "@/core/store";
 import type { AudioTrack } from "@/core/types";
 import { m } from "@/i18n";
 import { clipClock } from "@/render/videos";
-import { Button, IconAudio, IconButton, IconTrash, cx, toast } from "@/ui";
+import { Button, IconAudio, IconButton, IconRepeat, IconTrash, cx, toast } from "@/ui";
 import { PopoverButton, SliderField } from "../toolbar/kit";
 import { MAX_ROWS, ROW_GAP, ROW_H, packRows } from "./ClipBar";
 import { chooseTrack, useTimeline } from "./timelineStore";
@@ -222,21 +222,18 @@ export function TrackControls({ track }: { track: AudioTrack }) {
           </div>
         )}
       </PopoverButton>
-      <Button
+      <IconButton
         size="sm"
-        variant="ghost"
-        aria-pressed={!!track.loop}
-        className={cx(track.loop && "is-active")}
-        title={words.loopTip}
+        label={words.loop}
+        icon={<IconRepeat aria-hidden="true" />}
+        active={!!track.loop}
         onClick={() =>
           set((t) => {
             if (t.loop) delete t.loop;
             else t.loop = true;
           }, "loop")
         }
-      >
-        {words.loop}
-      </Button>
+      />
       <IconButton size="sm" label={words.removeSound} icon={<IconTrash aria-hidden="true" />} onClick={() => removeTrack(track.id)} />
       <Button size="sm" variant="ghost" onClick={() => chooseTrack(null)}>
         {words.soundDone}

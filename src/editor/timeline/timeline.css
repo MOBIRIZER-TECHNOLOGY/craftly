@@ -385,6 +385,9 @@ button.cf-tl__clipbody {
   color: var(--c-ink-2);
 }
 
-.cf-tl__soundbar .is-active {
-  background: var(--c-primary-soft);
+/* on a narrow screen the bar of the sound says its name: the controls keep the room */
+@media (max-width: 600px) {
+  .cf-tl__soundname {
+    display: none;
+  }
 }

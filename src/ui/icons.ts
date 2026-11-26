@@ -279,6 +279,7 @@ export {
   Webcam as IconCamera,
   CircleDot as IconRecord,
   Square as IconStop,
+  Repeat as IconRepeat,
   ArrowLeftRight as IconTransition,
   SquareSplitHorizontal as IconSplit,
   Monitor as IconDesktop,

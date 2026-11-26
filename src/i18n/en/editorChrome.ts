@@ -432,7 +432,6 @@ export const editorChrome = {
     soundSettingsTip: "How loud the sound plays, and how it fades in and out",
     fadeHint: "The fades come at the start and the end of every play of the sound.",
     loop: "Over and over",
-    loopTip: "Play the sound again from its start until the end of the design",
     removeSound: "Remove the sound",
     soundRemoved: "Sound removed",
     soundDone: "Done",

@@ -427,7 +427,6 @@ export const editorChrome: typeof en = {
     soundSettingsTip: "आवाज़ कितनी तेज़ चले, और कैसे धीरे-धीरे शुरू और ख़त्म हो",
     fadeHint: "फ़ेड आवाज़ के हर बार चलने की शुरुआत और अंत में आते हैं।",
     loop: "बार-बार",
-    loopTip: "डिज़ाइन के अंत तक आवाज़ को शुरू से फिर चलाएँ",
     removeSound: "आवाज़ हटाएँ",
     soundRemoved: "आवाज़ हटा दी गई",
     soundDone: "हो गया",
