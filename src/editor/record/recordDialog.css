@@ -1,0 +1,75 @@
+/* The Record dialog (RecordDialog.tsx): what to record, the live picture or the recording, and the clock. */
+.cf-record__choices {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cf-record__stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  background: #11151c;
+}
+
+.cf-record__live,
+.cf-record__take {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* the camera is shown as a mirror, as people expect to see themselves; what is recorded is not turned */
+.cf-record__stage.is-mirrored .cf-record__live {
+  transform: scaleX(-1);
+}
+
+.cf-record__clock {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cf-record__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c-danger);
+  animation: cf-record-blink 1s steps(2, start) infinite;
+}
+
+@keyframes cf-record-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-record__dot {
+    animation: none;
+  }
+}
+
+.cf-record__hint {
+  margin: 10px 0 0;
+  color: var(--c-ink-3);
+  font-size: 13px;
+}
+
+.cf-record__problem {
+  margin: 10px 0 0;
+  color: var(--c-danger-ink);
+  font-size: 13px;
+}

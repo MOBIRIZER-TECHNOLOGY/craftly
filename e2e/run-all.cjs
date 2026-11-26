@@ -64,6 +64,10 @@ const journeys = [
     "video.cjs",
     "the video element: a WebM recorded in the page uploaded, placed, its first frame drawn, Trim, Speed and Sound, Play on the page, Present and an MP4 download read back from its pixels and the pitch of its sound, a reload",
   ],
+  [
+    "record.cjs",
+    "Record in Uploads with Chrome's fake camera, microphone and screen: the live picture and the clock, Stop and the recording to watch, Add to the page as a clip as long as it, Record again, the screen without sound, closing while it records stops the camera, a phone in Hindi",
+  ],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
   ["animated-export.cjs", "animated GIF and MP4 video downloads: structure, length, loop, decoded by the browser, cancel"],
   ["a11y.cjs", "keyboard and screen reader basics: the first Tab reaches a control, the canvas is a stop, focus goes back after a dialog, headings and landmarks"],

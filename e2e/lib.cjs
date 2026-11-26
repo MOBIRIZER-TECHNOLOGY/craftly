@@ -35,10 +35,10 @@ function engine() {
   return isChromium ? pw.chromium : pw[ENGINE];
 }
 
-/** Launches the browser; set HEADED=1 to watch it. */
-async function launch() {
+/** Launches the browser; set HEADED=1 to watch it. `args` are further switches for Chrome (record.cjs gives it a fake camera). */
+async function launch({ args = [] } = {}) {
   // a page may make sound before anybody clicks (video.cjs records a clip with a tone): Chrome would otherwise keep its audio suspended
-  return engine().launch({ ...(isChromium ? { executablePath: findChrome(), args: ["--autoplay-policy=no-user-gesture-required"] } : {}), headless: !process.env.HEADED });
+  return engine().launch({ ...(isChromium ? { executablePath: findChrome(), args: ["--autoplay-policy=no-user-gesture-required", ...args] } : {}), headless: !process.env.HEADED });
 }
 
 /** Launches the browser with a profile folder that survives between runs (used when something big is worth keeping, like a downloaded model). */

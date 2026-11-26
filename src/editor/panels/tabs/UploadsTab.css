@@ -264,3 +264,14 @@
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
+
+/* Upload files and Record, side by side */
+.cf-uploads__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cf-uploads__actions > .cf-btn--block {
+  flex: 1 1 auto;
+  min-width: 0;
+}

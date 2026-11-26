@@ -4,7 +4,8 @@ import type { Asset } from "@/core/types";
 import { insertImage, insertVideo } from "@/editor/insert";
 import { clipClock } from "@/render/videos";
 import { m } from "@/i18n";
-import { Button, IconButton, IconCloudUpload, IconCopy, IconMore, IconSearch, IconTrash, IconUpload, MenuPopover, Skeleton, TextField, confirm, cx, toast } from "@/ui";
+import { RecordDialog } from "@/editor/record/RecordDialog";
+import { Button, IconButton, IconCloudUpload, IconCopy, IconMore, IconRecord, IconSearch, IconTrash, IconUpload, MenuPopover, Skeleton, TextField, confirm, cx, toast } from "@/ui";
 import { DraggableItem } from "../shared/DraggableItem";
 import { EmptyHint } from "../shared/EmptyHint";
 import { useAssetUrl, useAssets, useDebounced } from "../shared/hooks";
@@ -23,6 +24,7 @@ export default function UploadsTab() {
   const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(0);
+  const [recording, setRecording] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const depth = useRef(0);
   const q = useDebounced(query, 120).trim().toLowerCase();
@@ -66,9 +68,15 @@ export default function UploadsTab() {
     <Panel>
       <PanelTop>
         <PanelSearch value={query} onChange={setQuery} placeholder={m.panelsTabs.uploads.search} />
-        <Button variant="primary" size="lg" block icon={<IconUpload />} loading={uploading > 0} onClick={() => fileRef.current?.click()}>
-          {m.panelsTabs.uploads.uploadFiles}
-        </Button>
+        <div className="cf-uploads__actions">
+          <Button variant="primary" size="lg" block icon={<IconUpload />} loading={uploading > 0} onClick={() => fileRef.current?.click()}>
+            {m.panelsTabs.uploads.uploadFiles}
+          </Button>
+          <Button variant="secondary" size="lg" icon={<IconRecord />} title={m.panelsTabs.uploads.recordTip} onClick={() => setRecording(true)}>
+            {m.panelsTabs.uploads.record}
+          </Button>
+        </div>
+        <RecordDialog open={recording} onClose={() => setRecording(false)} />
         <input
           ref={fileRef}
           type="file"
