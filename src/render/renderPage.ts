@@ -38,7 +38,7 @@ import type {
 } from "@/core/types";
 import { drawChart, drawTable } from "./drawBlocks";
 import { drawTextElement } from "./drawText";
-import { ensureFont, isFontReady } from "./fonts";
+import { cssFontFamily, ensureFont, isFontReady } from "./fonts";
 import { cssFilter, filterKey, isNeutral, renderFiltered, supportsCtxFilter } from "./imageFilters";
 import { getImage, getSvgImage, loadImage, loadSvgImage, type Drawable, drawableSize, videoPosterKey } from "./images";
 import { paintFor } from "./paint";
@@ -442,6 +442,10 @@ const CAPTION_FONTS: Record<CaptionStyle["font"] & string, string> = {
   serif: 'Georgia, "Times New Roman", serif',
   mono: 'ui-monospace, Consolas, "Courier New", monospace',
 };
+/** The CSS font of a caption style: its own font of the app's, before the browser's of its kind. */
+export const captionFontCss = (style: Pick<Required<CaptionStyle>, "font" | "family">): string =>
+  style.family ? `${cssFontFamily(style.family).replace(/, [a-z-]+$/, "")}, ${CAPTION_FONTS[style.font]}` : CAPTION_FONTS[style.font];
+
 const CAPTION_SIZES: Record<CaptionStyle["size"] & string, number> = { s: 0.75, m: 1, l: 1.35 };
 
 /**
@@ -452,7 +456,7 @@ const CAPTION_SIZES: Record<CaptionStyle["size"] & string, number> = { s: 0.75, 
 export function drawCaption(ctx: Ctx, text: string, w: number, h: number, style: Required<CaptionStyle> = clipCaptionStyle({})): void {
   const size = Math.max(6, Math.min(h * 0.075, w * 0.06) * CAPTION_SIZES[style.size]);
   ctx.save();
-  ctx.font = `600 ${size}px ${CAPTION_FONTS[style.font]}`;
+  ctx.font = `600 ${size}px ${captionFontCss(style)}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const lines = wrapCaption(ctx, text, w * 0.86);
@@ -537,7 +541,15 @@ function drawVideoElement(ctx: Ctx, el: VideoElement, env: Env): void {
   // captions show while the clip plays (Present, the editor's Play, a video download); at rest it is its first frame, without them
   if (env.videoTime !== undefined) {
     const text = captionNow(el, env.videoTime);
-    if (text) drawCaption(ctx, text, w, h, clipCaptionStyle(el));
+    if (text) {
+      const style = clipCaptionStyle(el);
+      // a font of the app's own is loaded first: the page is painted again when it has come
+      if (style.family && !isFontReady(style.family, 600)) {
+        void ensureFont(style.family, 600);
+        env.pending = true;
+      }
+      drawCaption(ctx, text, w, h, style);
+    }
   }
   ctx.restore();
   if (el.stroke && el.stroke.width > 0) {
@@ -830,8 +842,12 @@ export function collectResources(page: Page): Resources {
   const visit = (el: DesignElement) => {
     if (el.hidden) return;
     if (el.type === "image" && el.src) r.images.add(el.src);
-    else if (el.type === "video") r.images.add(videoPosterKey(el));
-    else if (el.type === "graphic") r.svgs.add(graphicMarkup(el));
+    else if (el.type === "video") {
+      r.images.add(videoPosterKey(el));
+      // a download waits for the font of its captions
+      const { family } = clipCaptionStyle(el);
+      if (family && clipCaptions(el).length) r.fonts.set(`${family}|600|false`, { family, weight: 600, italic: false });
+    } else if (el.type === "graphic") r.svgs.add(graphicMarkup(el));
     else if (el.type === "group") el.children.forEach(visit);
     else if (el.type === "text") {
       for (const p of el.paragraphs) {

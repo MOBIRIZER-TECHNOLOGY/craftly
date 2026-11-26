@@ -193,6 +193,7 @@ const CLIP_CAPTION_STYLE = [
   "$.pages[].elements[].captionStyle: object",
   "$.pages[].elements[].captionStyle.band: string",
   "$.pages[].elements[].captionStyle.color: string",
+  "$.pages[].elements[].captionStyle.family: string",
   "$.pages[].elements[].captionStyle.font: string",
   "$.pages[].elements[].captionStyle.place: string",
   "$.pages[].elements[].captionStyle.size: string",

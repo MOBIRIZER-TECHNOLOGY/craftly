@@ -1,24 +1,26 @@
-import type { CSSProperties } from "react";
+import { useEffect, useReducer, type CSSProperties } from "react";
 import { captionOutlineIsDark, clipCaptionStyle } from "@/core/animation";
 import type { CaptionStyle, VideoElement } from "@/core/types";
+import { ColorField } from "@/editor/panels/context/ColorField";
 import { m } from "@/i18n";
-import { ColorSwatch, Segmented } from "@/ui";
+import { FONT_CATALOG, customFontDefs, ensureFont, onFontsChange } from "@/render/fonts";
+import { captionFontCss } from "@/render/renderPage";
+import { ColorSwatch, Segmented, Select } from "@/ui";
 import { editElements, only } from "../selection";
 
 /** The colours offered for the words: white, yellow, black, and a few that stand out on most footage. */
 export const CAPTION_COLORS = ["#ffffff", "#facc15", "#000000", "#22d3ee", "#f472b6", "#4ade80"] as const;
 
-const FONT_CSS: Record<Required<CaptionStyle>["font"], string> = {
-  sans: 'Inter, "Segoe UI", system-ui, sans-serif',
-  serif: 'Georgia, "Times New Roman", serif',
-  mono: 'ui-monospace, Consolas, "Courier New", monospace',
-};
+/** The fonts of the app's own a caption can use: its list, and those uploaded to the brand kit on this device, by name. */
+function captionFamilies(): string[] {
+  return [...new Set([...FONT_CATALOG, ...customFontDefs()].map((f) => f.family))].sort((a, b) => a.localeCompare(b));
+}
 
 /** A sample line in the style, beside the controls: captions are drawn only while the clip plays, so this is where a change shows. */
 function sampleStyle(style: Required<CaptionStyle>): CSSProperties {
   const outline = captionOutlineIsDark(style.color) ? "#000" : "#fff";
   return {
-    fontFamily: FONT_CSS[style.font],
+    fontFamily: captionFontCss(style),
     fontSize: style.size === "s" ? 11 : style.size === "l" ? 16 : 13,
     color: style.color,
     background: style.band === "dark" ? "rgba(0, 0, 0, 0.66)" : style.band === "light" ? "rgba(255, 255, 255, 0.85)" : "transparent",
@@ -31,6 +33,18 @@ function sampleStyle(style: Required<CaptionStyle>): CSSProperties {
 export function CaptionStyleFields({ el }: { el: VideoElement }) {
   const words = m.editor.videoBar;
   const style = clipCaptionStyle(el);
+  // the sample line is drawn again once the chosen font has come, and the list follows fonts uploaded meanwhile
+  const [, fontsCame] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => onFontsChange(fontsCame), []);
+  useEffect(() => {
+    if (style.family) void ensureFont(style.family, 600);
+  }, [style.family]);
+  const families = captionFamilies();
+  const fontValue = style.family ? `family:${style.family}` : `kind:${style.font}`;
+  const setFont = (value: string) => {
+    if (value.startsWith("family:")) set({ family: value.slice(7) }, "caption-font");
+    else set({ font: value.slice(5) as Required<CaptionStyle>["font"], family: "" }, "caption-font");
+  };
   const set = (patch: CaptionStyle, tag: string) =>
     editElements(
       [el.id],
@@ -80,16 +94,17 @@ export function CaptionStyleFields({ el }: { el: VideoElement }) {
           { value: "l", label: words.captionLarge },
         ]}
       />
-      <Segmented
+      <Select
         size="sm"
-        fullWidth
         aria-label={words.captionFont}
-        value={style.font}
-        onChange={(font) => set({ font }, "caption-font")}
+        value={fontValue}
+        onChange={setFont}
         options={[
-          { value: "sans", label: words.captionSans },
-          { value: "serif", label: words.captionSerif },
-          { value: "mono", label: words.captionMono },
+          { value: "kind:sans", label: words.captionSans },
+          { value: "kind:serif", label: words.captionSerif },
+          { value: "kind:mono", label: words.captionMono },
+          // a font no longer on this device (from a shared design) stays chosen, by its name
+          ...(style.family && !families.includes(style.family) ? [style.family] : []).concat(families).map((family) => ({ value: `family:${family}`, label: family })),
         ]}
       />
       <Segmented
@@ -108,6 +123,14 @@ export function CaptionStyleFields({ el }: { el: VideoElement }) {
         {CAPTION_COLORS.map((c) => (
           <ColorSwatch key={c} color={c} size={22} selected={style.color === c} title={words.captionColorName(c)} onClick={() => set({ color: c }, "caption-color")} />
         ))}
+        <ColorField
+          label={words.captionOtherColor}
+          size={22}
+          shape="circle"
+          value={style.color}
+          className={(CAPTION_COLORS as readonly string[]).includes(style.color) ? undefined : "is-custom"}
+          onChange={(color) => /^#[0-9a-f]{6}$/i.test(color) && set({ color: color.toLowerCase() }, "caption-color-pick")}
+        />
       </div>
     </fieldset>
   );

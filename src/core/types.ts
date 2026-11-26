@@ -486,6 +486,8 @@ export interface CaptionStyle {
   size?: "s" | "m" | "l";
   /** the kind of letters: sans-serif (the default), serif or monospaced; the browser's own fonts of that kind */
   font?: "sans" | "serif" | "mono";
+  /** a font of the app's own (its list, or one uploaded to the brand kit) in place of the browser's: its kind follows it when it is missing */
+  family?: string;
   /** colour of the words, "#rrggbb" (white by default) */
   color?: string;
   /** what is behind the words: a dark band (the default), a light one, or none, the words then outlined to stay readable */

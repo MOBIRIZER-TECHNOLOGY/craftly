@@ -292,7 +292,7 @@ function completeElements(): Complete<DesignElement>[] {
       loopFrom: 0.4,
       startAt: 0.5,
       captions: [{ start: 0, end: 2.5, text: "Hello" }],
-      captionStyle: { place: "top", size: "l", font: "serif", color: "#facc15", band: "none" },
+      captionStyle: { place: "top", size: "l", font: "serif", family: "Inter", color: "#facc15", band: "none" },
       volume: 0.6,
       fadeIn: 1,
       fadeOut: 2.5,

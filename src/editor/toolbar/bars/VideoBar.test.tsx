@@ -292,7 +292,9 @@ describe("video toolbar: captions", () => {
     await user.click(within(group("Where")).getByRole("radio", { name: "Top" }));
     expect(live<VideoElement>(el).captionStyle).toEqual({ place: "top" });
     await user.click(within(group("Size")).getByRole("radio", { name: "Large" }));
-    await user.click(within(group("Letters")).getByRole("radio", { name: "Serif" }));
+    const letters = () => within(dialog).getByRole("combobox", { name: "Letters" });
+    await user.click(letters());
+    await user.click(screen.getByRole("option", { name: "Serif (the browser's)" }));
     await user.click(within(dialog).getByRole("button", { name: "Yellow" }));
     expect(live<VideoElement>(el).captionStyle).toEqual({ place: "top", size: "l", font: "serif", color: "#facc15" });
     expect(store().past.length).toBe(before + 4);
@@ -300,9 +302,39 @@ describe("video toolbar: captions", () => {
     // back to the defaults: nothing is kept
     await user.click(within(group("Where")).getByRole("radio", { name: "Bottom" }));
     await user.click(within(group("Size")).getByRole("radio", { name: "Medium" }));
-    await user.click(within(group("Letters")).getByRole("radio", { name: "Sans" }));
+    await user.click(letters());
+    await user.click(screen.getByRole("option", { name: "Sans-serif (the browser's)" }));
     await user.click(within(dialog).getByRole("button", { name: "White" }));
     expect(live<VideoElement>(el).captionStyle).toBeUndefined();
+  });
+
+  it("uses a font of the app's own for the captions, and goes back to the browser's", async () => {
+    const el = clip({ captions: [{ start: 0, end: 2, text: "Hi" }] });
+    const { user, dialog } = await openCaptions(el);
+    const letters = () => within(dialog).getByRole("combobox", { name: "Letters" });
+    await user.click(letters());
+    await user.click(screen.getByRole("option", { name: "Lora" }));
+    expect(live<VideoElement>(el).captionStyle).toEqual({ family: "Lora" });
+    expect(letters().textContent).toContain("Lora");
+    await user.click(letters());
+    await user.click(screen.getByRole("option", { name: "Monospaced (the browser's)" }));
+    expect(live<VideoElement>(el).captionStyle).toEqual({ font: "mono" });
+  });
+
+  it("keeps a font that is not on this device chosen, by its name", async () => {
+    const el = clip({ captions: [{ start: 0, end: 2, text: "Hi" }], captionStyle: { family: "Not Here Sans" } });
+    const { dialog } = await openCaptions(el);
+    expect(within(dialog).getByRole("combobox", { name: "Letters" }).textContent).toContain("Not Here Sans");
+  });
+
+  it("gives the words any colour from the picker", async () => {
+    const el = clip({ captions: [{ start: 0, end: 2, text: "Hi" }] });
+    const { user, dialog } = await openCaptions(el);
+    await user.click(within(dialog).getByRole("button", { name: "Another colour" }));
+    const hex = screen.getByRole("textbox", { name: /hex/i });
+    await user.clear(hex);
+    await user.type(hex, "7c3aed{Enter}");
+    expect(live<VideoElement>(el).captionStyle).toEqual({ color: "#7c3aed" });
   });
 
   it("changes white words to black on a light band, and black ones to white on a dark band", async () => {

@@ -258,6 +258,37 @@ let shotN = 0;
     return `${at} s: ${colour}`;
   });
 
+  await step("Captions: a font of the app's own (Lora) and a colour from the picker, chosen inside the popover", async () => {
+    await toolbar.getByRole("button", { name: "Captions", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Captions" });
+    await dialog.waitFor({ timeout: 5000 });
+    await dialog.getByRole("combobox", { name: "Letters" }).click();
+    await page.getByRole("option", { name: "Lora", exact: true }).click();
+    // the list closed, the popover stayed open
+    await dialog.waitFor({ timeout: 2000 });
+    await dialog.getByRole("button", { name: "Another colour" }).click();
+    const hex = page.getByRole("textbox", { name: /hex/i });
+    await hex.fill("7c3aed");
+    await hex.press("Enter");
+    const el = await clip();
+    const style = JSON.stringify(el.captionStyle ?? null);
+    if (el.captionStyle?.family !== "Lora" || el.captionStyle?.color !== "#7c3aed") throw new Error("style " + style);
+    if (!(await dialog.isVisible())) throw new Error("the Captions popover closed");
+    await shot("caption-look");
+    await page.keyboard.press("Escape");
+    if (
+      await page
+        .getByRole("textbox", { name: /hex/i })
+        .isVisible()
+        .catch(() => false)
+    )
+      await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    // back to the plain look for the steps after
+    await page.evaluate((id) => window.__editor.getState().actions.updateElements([id], (d) => void delete d.captionStyle), el.id);
+    return style;
+  });
+
   await step("the toolbar of a clip: Play, Trim, Speed, Sound and Frame shape", async () => {
     for (const name of ["Play", "Trim", "Speed", "Sound", "Frame shape"]) await toolbar.getByRole("button", { name, exact: true }).waitFor({ timeout: 5000 });
     return "five controls";

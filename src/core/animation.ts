@@ -69,6 +69,9 @@ export const CAPTION_SIZES = ["s", "m", "l"] as const;
 export const CAPTION_FONTS = ["sans", "serif", "mono"] as const;
 export const CAPTION_BANDS = ["dark", "light", "none"] as const;
 
+/** The longest font name a caption style keeps. */
+export const MAX_CAPTION_FAMILY = 100;
+
 const oneOf = <T extends string>(list: readonly T[], v: unknown, fallback: T): T => (list.includes(v as T) ? (v as T) : fallback);
 
 /** How a clip's captions look, every part filled in; anything that is not one of the choices (from a file or a shared design) is the default. */
@@ -78,6 +81,7 @@ export function clipCaptionStyle(el: Pick<VideoElement, "captionStyle">): Requir
     place: oneOf(CAPTION_PLACES, s.place, "bottom"),
     size: oneOf(CAPTION_SIZES, s.size, "m"),
     font: oneOf(CAPTION_FONTS, s.font, "sans"),
+    family: typeof s.family === "string" ? s.family.trim().slice(0, MAX_CAPTION_FAMILY) : "",
     color: typeof s.color === "string" && /^#[0-9a-f]{6}$/i.test(s.color) ? s.color.toLowerCase() : "#ffffff",
     band: oneOf(CAPTION_BANDS, s.band, "dark"),
   };

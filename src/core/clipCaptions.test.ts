@@ -55,19 +55,22 @@ describe("the caption of a moment", () => {
 
 describe("how a clip's captions look", () => {
   it("is white words on a dark band over the bottom, medium, sans-serif, without a style", () => {
-    expect(clipCaptionStyle({})).toEqual({ place: "bottom", size: "m", font: "sans", color: "#ffffff", band: "dark" });
+    expect(clipCaptionStyle({})).toEqual({ place: "bottom", size: "m", font: "sans", family: "", color: "#ffffff", band: "dark" });
     expect(clipCaptionStyle({ captionStyle: null as never })).toEqual(clipCaptionStyle({}));
   });
 
   it("keeps what was chosen, and puts the default in place of anything that is not a choice", () => {
-    expect(clipCaptionStyle({ captionStyle: { place: "top", size: "l", font: "mono", color: "#FACC15", band: "none" } })).toEqual({
+    expect(clipCaptionStyle({ captionStyle: { place: "top", size: "l", font: "mono", family: " Lora ", color: "#FACC15", band: "none" } })).toEqual({
       place: "top",
       size: "l",
       font: "mono",
+      family: "Lora",
       color: "#facc15",
       band: "none",
     });
-    const odd = { place: "left", size: 3, font: "comic", color: "red", band: true } as never;
+    // a font name is kept to a hundred letters
+    expect(clipCaptionStyle({ captionStyle: { family: "x".repeat(150) } }).family).toHaveLength(100);
+    const odd = { place: "left", size: 3, font: "comic", family: 7, color: "red", band: true } as never;
     expect(clipCaptionStyle({ captionStyle: odd })).toEqual(clipCaptionStyle({}));
   });
 
