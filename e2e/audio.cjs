@@ -13,7 +13,7 @@
  *   download   the MP4 holds 440 Hz at 0.5 s, 880 Hz at 3 s and silence at the end
  *   reload     the sounds are still there
  *
- * It reads the app's own module for the players (src/render/soundTracks.ts), which only the dev server serves.
+ * The sound players are the <audio> elements the page makes, written down as they are made.
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -52,6 +52,16 @@ function tone(file, hz, seconds) {
   const browser = await launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
   const page = await ctx.newPage();
+  // the <audio> elements the app makes for the sounds are never put in the page: they are written down as they are made
+  await page.addInitScript(() => {
+    const make = Document.prototype.createElement;
+    window.__audios = [];
+    Document.prototype.createElement = function (tag, options) {
+      const el = make.call(this, tag, options);
+      if (String(tag).toLowerCase() === "audio") window.__audios.push(el);
+      return el;
+    };
+  });
   page.on("console", (m) => {
     if (m.type() === "error") logs.push("console.error: " + m.text().slice(0, 240));
   });
@@ -69,15 +79,12 @@ function tone(file, hz, seconds) {
   };
   const wait = (ms) => page.waitForTimeout(ms);
   const audio = () => page.evaluate(() => window.__editor.getState().design.audio ?? []);
-  /** The <audio> of each sound, as the app's own module has it: paused, where, how loud. */
+  /** Every <audio> the page has made that has a sound in it: paused, where, how loud (the app's sound players: src/render/soundTracks.ts). */
   const players = () =>
-    page.evaluate(async () => {
-      const { soundPlayerOf } = await import("/src/render/soundTracks.ts");
-      return (window.__editor.getState().design.audio ?? []).map((t) => {
-        const a = soundPlayerOf(t.id);
-        return a ? { name: t.name, paused: a.paused, at: Math.round(a.currentTime * 10) / 10, volume: Math.round(a.volume * 100) / 100 } : { name: t.name, none: true };
-      });
-    });
+    page.evaluate(() =>
+      (window.__audios ?? []).filter((a) => a.src).map((a) => ({ paused: a.paused, at: Math.round(a.currentTime * 10) / 10, volume: Math.round(a.volume * 100) / 100 })),
+    );
+  const playing = async () => (await players()).filter((p) => !p.paused);
   const bar = (name) => page.locator(".cf-tl__sound", { hasText: name });
 
   await step("setup: a new presentation, the Uploads tab", async () => {
@@ -153,27 +160,26 @@ function tone(file, hz, seconds) {
   await step("play: the timeline's Play plays the first sound at the playhead's moment, the second not yet", async () => {
     await page.getByRole("button", { name: "Play from the playhead" }).click();
     await wait(900);
-    const now = await players();
+    const now = await playing();
     await page.getByRole("button", { name: "Pause" }).click();
-    const [first, second] = now;
-    if (first.paused || !(first.at > 0.4 && first.at < 1.4)) throw new Error(JSON.stringify(now));
-    if (!second.none && !second.paused) throw new Error("the second plays before its time: " + JSON.stringify(second));
-    const after = await players();
-    if (after.some((p) => !p.none && !p.paused)) throw new Error("still playing after Pause: " + JSON.stringify(after));
-    return `Tone 440 at ${first.at} s, Tone 880 waiting; Pause stops both`;
+    // one sound playing (the second starts at 2.5 s), at about 0.9 s into it
+    if (now.length !== 1 || !(now[0].at > 0.4 && now[0].at < 1.4)) throw new Error(JSON.stringify(now));
+    const after = await playing();
+    if (after.length) throw new Error("still playing after Pause: " + JSON.stringify(after));
+    return `one sound at ${now[0].at} s; Pause stops it`;
   });
 
   await step("present: the show plays the first sound from the first page's start, and leaving stops it", async () => {
     await page.getByRole("button", { name: "Present", exact: true }).click();
     await page.locator(".cf-present").waitFor({ timeout: 10000 });
     await wait(800);
-    const [first] = await players();
-    if (first.none || first.paused || !(first.at > 0.3 && first.at < 1.5)) throw new Error(JSON.stringify(first));
+    const now = await playing();
+    if (now.length !== 1 || !(now[0].at > 0.3 && now[0].at < 1.5)) throw new Error(JSON.stringify(now));
     await page.keyboard.press("Escape");
     await page.locator(".cf-present").waitFor({ state: "detached", timeout: 5000 });
-    const after = await players();
-    if (after.some((p) => !p.none && !p.paused)) throw new Error("still playing after the show: " + JSON.stringify(after));
-    return `Tone 440 at ${first.at} s in the show`;
+    const after = await playing();
+    if (after.length) throw new Error("still playing after the show: " + JSON.stringify(after));
+    return `one sound at ${now[0].at} s in the show; stopped on leaving`;
   });
 
   await step("download: the MP4 holds 440 Hz at 0.5 s, 880 Hz at 3 s and silence at the end", async () => {

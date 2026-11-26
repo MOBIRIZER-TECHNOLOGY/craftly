@@ -68,6 +68,10 @@ const journeys = [
     "record.cjs",
     "Record in Uploads with Chrome's fake camera, microphone and screen: the live picture and the clock, Stop and the recording to watch, Add to the page as a clip as long as it, Record again, the screen without sound, closing while it records stops the camera, a phone in Hindi",
   ],
+  [
+    "audio.cjs",
+    "the sounds of a design: two tones uploaded and put on the timeline, rows by when they play, volume, over and over, Delete and Undo, heard in the timeline's Play and in Present, an MP4 download read back by pitch and loudness, a reload",
+  ],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
   ["animated-export.cjs", "animated GIF and MP4 video downloads: structure, length, loop, decoded by the browser, cancel"],
   ["a11y.cjs", "keyboard and screen reader basics: the first Tab reaches a control, the canvas is a stop, focus goes back after a dialog, headings and landmarks"],
@@ -78,10 +82,6 @@ const journeys = [
 ];
 if (!process.env.OFFLINE) {
   // these read the app's modules and catalogs in src/, which only the dev server serves
-  journeys.push([
-    "audio.cjs",
-    "the sounds of a design: two tones uploaded and put on the timeline, rows by when they play, volume, over and over, Delete and Undo, heard in the timeline's Play and in Present, an MP4 download read back by pitch and loudness, a reload (dev server only: it reads the app's sound players)",
-  ]);
   journeys.push([
     "accounts.cjs",
     "accounts, sync and teams against the real server with accounts on: nothing new without an account, sign up and move designs in, a second device, a conflict, a team, an invite, roles, editing live without a link, removal, signing out, the server stopped, Hindi (dev server only)",
