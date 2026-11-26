@@ -20,8 +20,9 @@ const unused = ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", cau
 // only handlers of the pointer count for the two rules below.
 const pointerHandlers = ["onClick", "onMouseDown", "onMouseUp"];
 
+// `.claude/` holds other checkouts of this repository (worktrees of other branches): they are linted in their own checkout.
 export default defineConfig([
-  globalIgnores(["dist/", "dist-*/", "coverage/", "node_modules/", "reports/", "research_notes/", "docs/images/"]),
+  globalIgnores(["dist/", "dist-*/", "coverage/", "node_modules/", "reports/", "research_notes/", "docs/images/", ".claude/"]),
 
   js.configs.recommended,
   {
