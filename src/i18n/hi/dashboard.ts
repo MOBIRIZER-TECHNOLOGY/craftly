@@ -82,6 +82,11 @@ export const dashboard: typeof en = {
         one: `फ़ाइल की ${num(n)} टिप्पणी पढ़ी नहीं जा सकी और छोड़ दी गई।`,
         other: `फ़ाइल की ${num(n)} टिप्पणियाँ पढ़ी नहीं जा सकीं और छोड़ दी गईं।`,
       }),
+    audio: (n: number) =>
+      plural(n, {
+        one: `फ़ाइल की ${num(n)} आवाज़ पढ़ी नहीं जा सकी और छोड़ दी गई।`,
+        other: `फ़ाइल की ${num(n)} आवाज़ें पढ़ी नहीं जा सकीं और छोड़ दी गईं।`,
+      }),
     withNotes: (title: string, notes: string) => `“${title}” आयात हो गया। ${notes}`,
     done: (title: string) => `“${title}” आयात हो गया`,
   },

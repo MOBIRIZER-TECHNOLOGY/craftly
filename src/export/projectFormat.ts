@@ -9,6 +9,7 @@ import { backgroundWithoutRemoteImage, withoutRemoteImages } from "@/core/imageS
 import { pageDuration } from "@/core/animation";
 import { CURRENT_DESIGN_VERSION, migrateDesign } from "@/core/schema/design";
 import { createMigrator, MigrationError, type MigrationStep } from "@/core/schema/migrator";
+import { readAudioTracks } from "@/core/audioTracks";
 import { isUsableElement } from "@/core/usableElement";
 import { usableComments } from "@/core/comments";
 import { MAX_TRANSITION_DURATION } from "@/core/transition";
@@ -81,8 +82,11 @@ function forEachElementSource(elements: DesignElement[], visit: (src: string) =>
   }
 }
 
-/** Unique ids of the uploads a design uses (page backgrounds, image elements, image fills, clips), in first-use order. */
-export function collectAssetIds(design: Pick<Design, "pages">, options: { clips?: boolean } = {}): string[] {
+/**
+ * Unique ids of the uploads a design uses (page backgrounds, image elements, image fills, clips, the sounds of the design), in
+ * first-use order. `clips: false` leaves out clips and sounds, which account servers and shared designs do not carry.
+ */
+export function collectAssetIds(design: Pick<Design, "pages" | "audio">, options: { clips?: boolean } = {}): string[] {
   const ids = new Set<string>();
   const add = (src: string | null | undefined) => {
     if (isAssetSrc(src)) ids.add(assetIdOf(src));
@@ -91,11 +95,12 @@ export function collectAssetIds(design: Pick<Design, "pages">, options: { clips?
     add(fillSrc(page.background));
     forEachElementSource(page.elements, add, options.clips ?? true);
   }
+  if (options.clips ?? true) for (const track of design.audio ?? []) add(track.src);
   return [...ids];
 }
 
 /** A copy of the design where every `asset:<old>` reference found in `idMap` points at the new id. */
-export function remapAssetSources<T extends Pick<Design, "pages">>(design: T, idMap: Readonly<Record<string, string>>): T {
+export function remapAssetSources<T extends Pick<Design, "pages" | "audio">>(design: T, idMap: Readonly<Record<string, string>>): T {
   const rewrite = (src: string): string => {
     if (!isAssetSrc(src)) return src;
     const next = idMap[assetIdOf(src)];
@@ -116,7 +121,7 @@ export function remapAssetSources<T extends Pick<Design, "pages">>(design: T, id
     background: page.background.type === "image" ? { ...page.background, src: rewrite(page.background.src) } : page.background,
     elements: page.elements.map(mapElement),
   }));
-  return { ...design, pages };
+  return { ...design, pages, ...(design.audio ? { audio: design.audio.map((t) => ({ ...t, src: rewrite(t.src) })) } : {}) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -157,6 +162,8 @@ export interface ImportReport {
   skipped: number;
   /** pictures that pointed to the web and were taken out: a photo is an empty frame now, a fill or background plain (src/core/imageSources.ts) */
   remote?: number;
+  /** sounds of the design that could not be used (damaged, from the web, an id twice, too many: src/core/audioTracks.ts) */
+  audio?: number;
   /** comments that could not be used (damaged, on a page that is not there, an id twice, too many: src/core/comments.ts) */
   comments?: number;
 }
@@ -257,11 +264,15 @@ function sanitizeDesign(stored: Record<string, unknown>, keepLibraryData = false
   });
   const now = Date.now();
   // the comments, checked as strictly as on the wire (src/core/comments.ts): what is not usable is left out and counted
-  const { comments: rawComments, ...rest } = raw;
+  const { comments: rawComments, audio: rawAudio, ...rest } = raw;
   const comments = usableComments(rawComments, new Set(pages.map((p) => p.id)), report);
+  // the sounds, each a sound of the uploads with its numbers in range (src/core/audioTracks.ts): what is not one is left out and counted
+  const { tracks: audio, skipped: skippedAudio } = readAudioTracks(rawAudio);
+  if (skippedAudio) report.audio = (report.audio ?? 0) + skippedAudio;
   return {
     ...portableDesign(rest as unknown as Design),
     ...(comments.length ? { comments } : {}),
+    ...(audio.length ? { audio } : {}),
     id: typeof raw.id === "string" && raw.id ? raw.id : `d_${now.toString(36)}`,
     title: typeof raw.title === "string" && raw.title.trim() ? raw.title.slice(0, MAX_TITLE_LENGTH) : "Untitled design",
     typeId: typeof raw.typeId === "string" ? raw.typeId : "custom",
@@ -376,6 +387,13 @@ const EXTENSIONS: Record<string, string> = {
   "video/mp4": "mp4",
   "video/webm": "webm",
   "video/ogg": "ogv",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "audio/wav": "wav",
+  "audio/ogg": "ogg",
+  "audio/webm": "weba",
+  "audio/flac": "flac",
 };
 
 /** File extension for an image mime type (used when re-creating an uploaded file). */

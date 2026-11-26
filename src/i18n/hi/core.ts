@@ -44,6 +44,8 @@ export const core: typeof en = {
   },
   unplayableVideo: "यह ब्राउज़र इस वीडियो को नहीं चला सकता। कोई MP4 (H.264) या WebM फ़ाइल आज़माएँ।",
   videoTooBig: (mb: number) => `यह वीडियो ${mb} MB से बड़ा है, जितना Craftly रखता है। कोई छोटी फ़ाइल आज़माएँ।`,
+  unplayableAudio: "यह ब्राउज़र यह आवाज़ नहीं चला सकता। MP3, M4A (AAC), WAV या Ogg फ़ाइल आज़माएँ।",
+  audioTooBig: (mb: number) => `यह आवाज़ ${mb} MB से बड़ी है, जितना Craftly अधिकतम रखता है। छोटी फ़ाइल आज़माएँ।`,
   undrawableSvg: "इस SVG में ऐसे हिस्से हैं जिन्हें Craftly नहीं रखता, और इसे तस्वीर के रूप में बनाया नहीं जा सका। कोई दूसरी फ़ाइल आज़माएँ।",
   sharedImageNotSent: "शेयर की गई तस्वीर भेजी नहीं जा सकी।",
   problems: {

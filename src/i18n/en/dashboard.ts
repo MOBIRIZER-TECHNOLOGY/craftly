@@ -88,6 +88,11 @@ export const dashboard = {
         one: `${num(n)} comment in the file could not be read and was left out.`,
         other: `${num(n)} comments in the file could not be read and were left out.`,
       }),
+    audio: (n: number) =>
+      plural(n, {
+        one: `${num(n)} sound in the file could not be read and was left out.`,
+        other: `${num(n)} sounds in the file could not be read and were left out.`,
+      }),
     withNotes: (title: string, notes: string) => `Imported “${title}”. ${notes}`,
     done: (title: string) => `Imported “${title}”`,
   },

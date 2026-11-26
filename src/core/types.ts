@@ -660,11 +660,40 @@ export interface Design {
   live?: LiveLink;
   /** notes pinned to places of the pages; none is the same as an empty list (an older design has none) */
   comments?: DesignComment[];
+  /** sounds that play across the pages, on the timeline's own row (design version 3); none is the same as an empty list */
+  audio?: AudioTrack[];
   /**
    * The format of this document (src/core/schema/design.ts): CURRENT_DESIGN_VERSION when this build wrote it. A design read
    * from storage or a file passes through `migrateDesign` first, so the editor only ever holds the current version.
    */
   version: number;
+}
+
+/**
+ * A sound that belongs to the whole design (design version 3): music or a voice on the timeline's own row, placed at a second of
+ * the design's time and playing on across its pages, in the timeline's Play, in Present and in a video download. Read with
+ * defaults where it is used (src/core/audioTracks.ts), so a field that is absent is never a problem.
+ */
+export interface AudioTrack {
+  id: ID;
+  /** "asset:<id>": a sound stored in this browser's uploads (no other scheme: a design never plays a sound from the web) */
+  src: string;
+  /** shown on the timeline (the upload's name when it was added) */
+  name?: string;
+  /** seconds: the length of the whole sound */
+  duration: number;
+  /** seconds into the sound where it starts and stops playing (0 <= trimStart < trimEnd <= duration) */
+  trimStart: number;
+  trimEnd: number;
+  /** seconds into the design at which it starts playing, 0 to MAX_TRACK_START */
+  startAt: number;
+  /** plays over and over to the end of the design (it plays once when absent) */
+  loop?: boolean;
+  /** how loud it plays, from 0 to 1 (1 when absent) */
+  volume?: number;
+  /** seconds over which it rises at the start of every play of it, and falls at the end (0 to 5, 0 when absent) */
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 /** Light-weight record used by the dashboard (no page content). */
@@ -732,7 +761,7 @@ export interface SyncRecord {
 export interface Asset {
   id: ID;
   name: string;
-  kind: "image" | "svg" | "video";
+  kind: "image" | "svg" | "video" | "audio";
   mime: string;
   size: number;
   width: number;

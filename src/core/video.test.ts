@@ -75,10 +75,12 @@ describe("a video element that comes in from outside", () => {
 
 describe("version 2 of the design format", () => {
   it("came with the video element, in one step that changes nothing but the number", () => {
-    expect(DESIGN_MIGRATIONS).toHaveLength(1);
     expect(DESIGN_MIGRATIONS[0]).toMatchObject({ from: 1, about: "video elements" });
+    const doc = structuredClone(v1);
+    expect(DESIGN_MIGRATIONS[0].up(doc)).toEqual(v1);
+    // and from there on to the current version, with nothing changed but the number (version 3 changes nothing either)
     const { design, from, migrated } = migrateDesign(v1);
-    expect([from, migrated, design.version]).toEqual([1, true, 2]);
+    expect([from, migrated, design.version]).toEqual([1, true, 3]);
     expect({ ...design, version: 1 }).toEqual(v1);
   });
 });

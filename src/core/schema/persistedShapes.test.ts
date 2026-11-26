@@ -201,9 +201,28 @@ const CLIP_CAPTION_STYLE = [
 /** Where a loop carried on from a split page begins its first play (2026-11-26): optional, cleaned where it is read (clipLoopFrom). */
 const CLIP_LOOP_FROM = ["$.pages[].elements[].loopFrom: number"];
 
+/** The optional fields of clips added to version 2: the frozen designs of version 3 have them all (version 3 came with the sounds). */
+const ADDED_TO_V2 = [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START, ...CLIP_CAPTIONS, ...CLIP_CAPTION_STYLE, ...CLIP_LOOP_FROM].sort();
+/** What the sounds of a design (version 3, AudioTrack in src/core/types.ts) brought. */
+const AUDIO = [
+  "$.audio: array",
+  "$.audio[]: object",
+  "$.audio[].duration: number",
+  "$.audio[].fadeIn: number",
+  "$.audio[].fadeOut: number",
+  "$.audio[].id: string",
+  "$.audio[].loop: boolean",
+  "$.audio[].name: string",
+  "$.audio[].src: string",
+  "$.audio[].startAt: number",
+  "$.audio[].trimEnd: number",
+  "$.audio[].trimStart: number",
+  "$.audio[].volume: number",
+];
+
 const ADDED: Record<string, string[]> = {
   // in the order the shapes are listed: by path
-  design: [...CLIP_SOUND, ...CLIP_ONCE, ...CLIP_START, ...CLIP_CAPTIONS, ...CLIP_CAPTION_STYLE, ...CLIP_LOOP_FROM].sort(),
+  design: [],
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],
@@ -238,6 +257,13 @@ describe("the shape of a design", () => {
     const v2 = fixtures["../../test/fixtures/schema/design-v2-full.json"];
     expect(difference(shapeOf(v2), shapeOf(v1)).sort()).toEqual([...ADDED_TO_V1, ...VIDEO].sort());
     expect(difference(shapeOf(v1), shapeOf(v2))).toEqual([]);
+  });
+
+  it("is at version 3 version 2 with the fields added to its clips and the sounds of the design, and nothing else", () => {
+    const v2 = fixtures["../../test/fixtures/schema/design-v2-full.json"];
+    const v3 = fixtures["../../test/fixtures/schema/design-v3-full.json"];
+    expect(difference(shapeOf(v3), shapeOf(v2)).sort()).toEqual([...ADDED_TO_V2, ...AUDIO].sort());
+    expect(difference(shapeOf(v2), shapeOf(v3))).toEqual([]);
   });
 
   it("covers every kind of element, of page background and of fill", () => {

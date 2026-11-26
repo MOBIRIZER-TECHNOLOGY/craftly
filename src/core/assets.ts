@@ -79,6 +79,88 @@ export function videoInfo(blob: Blob, timeoutMs = 15_000): Promise<{ width: numb
   });
 }
 
+/**
+ * The sounds an upload may be (music or a voice for the timeline: src/core/audioTracks.ts): the formats browsers play. A sound is
+ * stored under one of these types, so that a blob: address of it is a sound and nothing else.
+ */
+export const ACCEPTED_AUDIO_TYPES = ["audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/ogg", "audio/webm", "audio/flac"];
+/** Other names browsers and systems give the same formats. */
+const AUDIO_ALIASES: Record<string, string> = {
+  "audio/mp3": "audio/mpeg",
+  "audio/x-m4a": "audio/mp4",
+  "audio/m4a": "audio/mp4",
+  "audio/x-aac": "audio/aac",
+  "audio/wave": "audio/wav",
+  "audio/x-wav": "audio/wav",
+  "audio/vnd.wave": "audio/wav",
+  "audio/x-flac": "audio/flac",
+  "audio/opus": "audio/ogg",
+};
+const AUDIO_EXTENSIONS: Record<string, string> = {
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  aac: "audio/aac",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  opus: "audio/ogg",
+  weba: "audio/webm",
+  flac: "audio/flac",
+};
+/** The largest sound that is kept, in bytes (as large as a clip). */
+export const MAX_AUDIO_BYTES = MAX_VIDEO_BYTES;
+
+/** The type a sound is stored under, from its own type or (with no type, or a vague one) its name; null for anything that is not one of ACCEPTED_AUDIO_TYPES. */
+export function audioType(blob: Blob, name = ""): string | null {
+  const raw = blob.type.toLowerCase().split(";")[0].trim();
+  const own = AUDIO_ALIASES[raw] ?? raw;
+  if (ACCEPTED_AUDIO_TYPES.includes(own)) return own;
+  if (own && own !== "application/octet-stream") return null;
+  const ext = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? "";
+  return AUDIO_EXTENSIONS[ext] ?? null;
+}
+
+export function isAcceptedAudio(file: File): boolean {
+  return audioType(file, file.name) !== null;
+}
+
+/** The length of a sound in seconds, read by the browser from its first bytes; null when it cannot play it. */
+export function audioInfo(blob: Blob, timeoutMs = 15_000): Promise<{ duration: number } | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const audio = document.createElement("audio");
+    let done = false;
+    const finish = (info: { duration: number } | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      audio.removeAttribute("src");
+      audio.load();
+      URL.revokeObjectURL(url);
+      resolve(info);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    audio.preload = "metadata";
+    audio.onerror = () => finish(null);
+    const read = () => finish(Number.isFinite(audio.duration) && audio.duration > 0 ? { duration: audio.duration } : null);
+    audio.onloadedmetadata = () => {
+      if (Number.isFinite(audio.duration)) return read();
+      // a browser's own recording says Infinity until it has been read to the end (as for a clip, in videoInfo)
+      audio.ondurationchange = () => {
+        if (Number.isFinite(audio.duration)) read();
+      };
+      audio.onseeked = read;
+      audio.currentTime = 1e101;
+    };
+    audio.src = url;
+  });
+}
+
+/** A sound this browser cannot play is refused with these words. */
+export const UNPLAYABLE_AUDIO_MESSAGE = m.core.unplayableAudio;
+/** A sound over MAX_AUDIO_BYTES is refused with these words. */
+export const AUDIO_TOO_BIG_MESSAGE = m.core.audioTooBig(MAX_AUDIO_BYTES / (1024 * 1024));
+
 /** A clip this browser cannot play is refused with these words. */
 export const UNPLAYABLE_VIDEO_MESSAGE = m.core.unplayableVideo;
 /** A clip over MAX_VIDEO_BYTES is refused with these words. */
@@ -164,7 +246,8 @@ const typed = (blob: Blob, mime: string) => (blob.type === mime ? blob : new Blo
  *   - An SVG that is plain drawing (`svgProblem`) is kept as it is.
  *   - Any other SVG (a style sheet, a comment, a script, a link, a picture from the web) is not kept as an SVG: it is drawn and
  *     stored as a PNG, and `subscribeFlattenedSvg` is told. One that cannot be drawn is refused (`UNDRAWABLE_SVG_MESSAGE`).
- *   - A clip of ACCEPTED_VIDEO_TYPES (by its type, or by its name when it has none) is kept under that type.
+ *   - A clip of ACCEPTED_VIDEO_TYPES (by its type, or by its name when it has none) is kept under that type, and so is a sound of
+ *     ACCEPTED_AUDIO_TYPES (under the usual name of its type: "audio/x-wav" is kept as "audio/wav").
  *   - Anything else is stored under its own type only when that is a picture type, and as a PNG otherwise, so that nothing is
  *     ever stored as a page.
  * An SVG is known by its type or by the name it came with. The size of the picture is not measured here.
@@ -172,6 +255,8 @@ const typed = (blob: Blob, mime: string) => (blob.type === mime ? blob : new Blo
 export async function checkUpload(blob: Blob, name = ""): Promise<CheckedUpload> {
   const video = videoType(blob, name);
   if (video) return { blob: typed(blob, video), kind: "video", mime: video };
+  const audio = audioType(blob, name);
+  if (audio) return { blob: typed(blob, audio), kind: "audio", mime: audio };
   if (!/svg/i.test(blob.type) && !/\.svg$/i.test(name)) {
     const mime = blob.type.startsWith("image/") ? blob.type : "image/png";
     return { blob: typed(blob, mime), kind: "image", mime };
@@ -259,6 +344,11 @@ export async function prepareAssetFromFile(file: File, id = uid("a")): Promise<A
     const info = await videoInfo(checked.blob);
     if (!info) throw new Error(UNPLAYABLE_VIDEO_MESSAGE);
     size = info;
+  } else if (checked.kind === "audio") {
+    if (checked.blob.size > MAX_AUDIO_BYTES) throw new Error(AUDIO_TOO_BIG_MESSAGE);
+    if (!(await audioInfo(checked.blob))) throw new Error(UNPLAYABLE_AUDIO_MESSAGE);
+    // a sound has no picture: no size
+    size = { width: 0, height: 0 };
   } else size = checked.drawn ?? (await measure(checked.blob, checked.markup));
   return {
     id,

@@ -28,6 +28,7 @@ export async function importProjectAndOpen(file: File): Promise<void> {
     if (report.skipped) notes.push(m.dashboard.imported.skipped(report.skipped));
     if (report.remote) notes.push(m.dashboard.imported.remote(report.remote));
     if (report.comments) notes.push(m.dashboard.imported.comments(report.comments));
+    if (report.audio) notes.push(m.dashboard.imported.audio(report.audio));
     if (notes.length) toast.info(m.dashboard.imported.withNotes(design.title, notes.join(" ")));
     else toast.success(m.dashboard.imported.done(design.title));
     navigate(designPath(design.id));

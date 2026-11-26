@@ -346,6 +346,7 @@ export function completeDesign(): Complete<Design> {
     margin: 48,
     gridSize: 20,
     live: { server: "https://live.example.test", room: "r_complete", key: "k_complete", role: "edit", ownerKey: "owner-key", viewKey: "v_complete" },
+    audio: [{ id: "au_complete", src: "asset:a_song", name: "Song", duration: 30, trimStart: 2, trimEnd: 26, startAt: 1.5, loop: true, volume: 0.6, fadeIn: 1, fadeOut: 2 }],
     comments: [
       {
         id: "c_complete",
@@ -359,7 +360,7 @@ export function completeDesign(): Complete<Design> {
         replies: [{ id: "r_complete", author: { name: "Bob", colorIndex: 7 }, createdAt: 1_700_000_300_000, editedAt: 1_700_000_400_000, text: "Done" }],
       },
     ],
-    version: 2,
+    version: 3,
   };
 }
 
@@ -473,7 +474,7 @@ export function minimalDesign(): Design {
     folderId: null,
     starred: false,
     trashedAt: null,
-    version: 2,
+    version: 3,
   };
 }
 
