@@ -230,6 +230,34 @@ let shotN = 0;
     return `${Math.round(square.width)} x ${Math.round(square.height)}, then ${Math.round(undone.width)} x ${Math.round(undone.height)}`;
   });
 
+  await step("the timeline's playhead parked at 1.8 s shows the clip at that moment: blue, not its red first frame", async () => {
+    await page.getByRole("button", { name: "Timeline", exact: true }).click();
+    const head = page.getByRole("slider", { name: "Playhead" });
+    await head.waitFor({ timeout: 5000 });
+    await head.focus();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowRight");
+    for (let i = 0; i < 8; i++) await page.keyboard.press("Shift+ArrowRight");
+    const at = await head.getAttribute("aria-valuenow");
+    const el = await clip();
+    const zoom = await design(`(s) => s.zoom`);
+    const view = await page.evaluate(() => {
+      const f = document.querySelector(".cf-pageframe").getBoundingClientRect();
+      return { x: f.x, y: f.y };
+    });
+    const middle = { x: view.x + (el.x + el.width / 2) * zoom, y: view.y + (el.y + el.height * 0.7) * zoom };
+    let colour = "";
+    for (let i = 0; i < 30 && colour !== "blue"; i++) {
+      colour = await colourAt(middle);
+      if (colour !== "blue") await wait(200);
+    }
+    await shot("parked-playhead");
+    if (colour !== "blue") throw new Error(`at ${at} s the clip is ${colour}`);
+    // closing the timeline gives the page back for editing
+    await page.getByRole("button", { name: "Timeline", exact: true }).click();
+    return `${at} s: ${colour}`;
+  });
+
   await step("the toolbar of a clip: Play, Trim, Speed, Sound and Frame shape", async () => {
     for (const name of ["Play", "Trim", "Speed", "Sound", "Frame shape"]) await toolbar.getByRole("button", { name, exact: true }).waitFor({ timeout: 5000 });
     return "five controls";

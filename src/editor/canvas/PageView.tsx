@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { getActivePage, useEditor } from "@/core/store";
 import { onFontsChange } from "@/render/fonts";
 import { onImagesChange } from "@/render/images";
+import { heldFrame } from "@/render/videos";
 import { createDragPainter } from "@/render/dragLayers";
 import { useGesture } from "./gestureStore";
 import { previewTime, stopPreview, usePreview } from "./preview";
@@ -63,8 +64,9 @@ export function PageView() {
           clip: { x: (v.scrollLeft - v.pageLeft) / z, y: (v.scrollTop - v.pageTop) / z, w: v.width / z, h: v.height / z },
           hide,
           animation: playing && time !== null ? { time } : undefined,
-          // the preview plays the page's clips too, with their sound when it was started for them (the clip toolbar's Play)
-          playVideos: playing && !held ? { sound: !!preview.sound } : undefined,
+          // the preview plays the page's clips too, with their sound when it was started for them (the clip toolbar's Play); a held
+          // one shows each clip still at the frame of its moment
+          playVideos: !playing ? undefined : held ? { frame: heldFrame } : { sound: !!preview.sound },
         },
         useGesture.getState().active,
       );

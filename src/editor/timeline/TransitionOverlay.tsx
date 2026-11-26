@@ -4,6 +4,7 @@ import { buildTimeline } from "@/core/transition";
 import { onFontsChange } from "@/render/fonts";
 import { onImagesChange } from "@/render/images";
 import { PlaybackRenderer } from "@/render/playback";
+import { heldFrame } from "@/render/videos";
 import { placeAt, useTimeline } from "./timelineStore";
 
 /** The longest side of the overlay's picture, in device pixels: a page at a high zoom is not painted at its full size. */
@@ -20,7 +21,8 @@ export function TransitionOverlay({ left, top, width, height }: { left: number; 
   const time = useTimeline((s) => s.time);
   const ref = useRef<HTMLCanvasElement>(null);
   const timeline = useMemo(() => (design ? buildTimeline(design.pages) : null), [design]);
-  const renderer = useMemo(() => (design ? new PlaybackRenderer(design) : null), [design]);
+  // the clips of both pages at the frames of that moment, still and silent
+  const renderer = useMemo(() => (design ? new PlaybackRenderer(design, { frame: heldFrame }) : null), [design]);
   useEffect(() => () => renderer?.dispose(), [renderer]);
 
   const showing = !!(open && timeline && placeAt(timeline, time).waiting);

@@ -4,7 +4,7 @@ import type { VideoElement } from "@/core/types";
 
 vi.mock("@/core/assets", () => ({ getAssetUrl: vi.fn(async (id: string) => (id === "missing" ? null : `blob:${id}`)) }));
 
-const { loadPoster, onVideosChange, pauseVideos, playingFrame, prepareClips, readFrame, releaseVideos } = await import("./videos");
+const { heldFrame, loadPoster, onVideosChange, pauseVideos, playingFrame, prepareClips, readFrame, releaseVideos } = await import("./videos");
 
 /** Enough of a <video> for the players: it plays, pauses, seeks (telling `onseeked` when asked) and remembers what was done to it. */
 class FakeVideo {
@@ -362,6 +362,55 @@ describe("a clip that plays", () => {
     playingFrame(clip({ id: "v_2" }), 0);
     pauseVideos();
     expect(made.every((v) => v.paused)).toBe(true);
+  });
+});
+
+describe("a clip held still at a moment (the timeline's parked playhead)", () => {
+  it("stands paused and silent at the frame of the moment, and says when a sought frame has come", async () => {
+    const el = clip({ trimStart: 1, trimEnd: 5, speed: 2 });
+    expect(heldFrame(el, 0)).toBeNull();
+    const video = made[0];
+    await settle();
+    const told = vi.fn();
+    const off = onVideosChange(told);
+    video.readyState = 2;
+    // 1.5 s of the page at twice the speed: 3 s into the part that plays, 4 s into the clip
+    expect(heldFrame(el, 1.5)).toBe(video);
+    expect(video.seeks).toEqual([4]);
+    expect(video.paused).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(video.plays).toBe(0);
+    await settle();
+    expect(told).toHaveBeenCalled();
+    // the same moment again, or one within a frame of it: no seek
+    heldFrame(el, 1.505);
+    expect(video.seeks).toEqual([4]);
+    off();
+  });
+
+  it("pauses and silences a clip that was playing, and does not seek again while a seek is under way", () => {
+    const el = clip();
+    playingFrame(el, 0, true);
+    const video = made[0];
+    video.readyState = 4;
+    video.paused = false;
+    video.muted = false;
+    video.seeking = true;
+    expect(heldFrame(el, 3)).toBe(video);
+    expect(video.paused).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(video.seeks).toEqual([]);
+  });
+
+  it("is nothing for a clip that cannot be played, or before the player knows the clip", async () => {
+    expect(heldFrame(clip({ src: "nope" as never }), 1)).toBeNull();
+    const el = clip({ id: "v_2" });
+    heldFrame(el, 1);
+    const video = made[made.length - 1];
+    video.readyState = 1;
+    // it knows the clip but has no frame yet: it seeks, and the poster stands in
+    expect(heldFrame(el, 1)).toBeNull();
+    expect(video.seeks).toEqual([1]);
   });
 });
 

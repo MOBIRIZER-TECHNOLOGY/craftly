@@ -189,6 +189,8 @@ function playerFor(el: VideoElement): Player | null {
   video.playsInline = true;
   const player: Player = { src: el.src, video, used: performance.now(), broken: false };
   video.onloadeddata = tell;
+  // a frame sought for a moment the page is held at (heldFrame) has come: the page is painted again
+  video.onseeked = tell;
   video.onerror = () => {
     player.broken = true;
     tell();
@@ -251,6 +253,27 @@ export function playingFrame(el: VideoElement, time: number, sound = false): HTM
     if (!video.paused) video.pause();
   } else if (video.paused || video.ended) start(video);
   return video.readyState >= 2 && !off ? video : null;
+}
+
+/** How far from the moment asked for a held clip may stand, in seconds: about a frame. */
+const HELD_TOLERANCE = 0.02;
+
+/**
+ * The <video> to draw for `el` when its page is held still `time` seconds in (the timeline's parked playhead): the clip paused and
+ * silent, sought to the frame of that moment. While it seeks it shows the frame it had, and `onVideosChange` tells when the sought
+ * one has come; null until it has any frame (the poster stands in) or when the clip cannot be played here.
+ */
+export function heldFrame(el: VideoElement, time: number): HTMLVideoElement | null {
+  const player = playerFor(el);
+  if (!player || player.broken) return null;
+  player.used = performance.now();
+  const { video } = player;
+  if (!video.muted) video.muted = true;
+  if (!video.paused) video.pause();
+  if (video.readyState < 1) return null;
+  const want = clipTime(el, time);
+  if (!video.seeking && Math.abs(video.currentTime - want) > HELD_TOLERANCE) video.currentTime = want;
+  return video.readyState >= 2 ? video : null;
 }
 
 /**
