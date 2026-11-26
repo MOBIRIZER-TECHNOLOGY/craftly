@@ -50,7 +50,9 @@ export function PageView() {
       // a running preview paints the page part-way through its animations and keeps asking for the next frame
       const preview = usePreview.getState().preview;
       const time = preview ? previewTime(preview) : null;
-      const playing = preview !== null && time !== null && time < preview.until;
+      // a held preview (the timeline's playhead) shows its moment until something ends it; a running one ends at `until`
+      const held = !!preview?.paused;
+      const playing = preview !== null && time !== null && (held || time < preview.until);
       if (preview && !playing) queueMicrotask(stopPreview);
       const complete = painter.paint(
         ctx,
@@ -62,11 +64,11 @@ export function PageView() {
           hide,
           animation: playing && time !== null ? { time } : undefined,
           // the preview plays the page's clips too, with their sound when it was started for them (the clip toolbar's Play)
-          playVideos: playing ? { sound: !!preview.sound } : undefined,
+          playVideos: playing && !held ? { sound: !!preview.sound } : undefined,
         },
         useGesture.getState().active,
       );
-      if (playing) schedule();
+      if (playing && !held) schedule();
       // something (a font, an image) was still loading: its own event repaints, this is the safety net
       if (!complete && !pendingRetry) {
         pendingRetry = window.setTimeout(() => {

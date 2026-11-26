@@ -6,7 +6,7 @@ import { CropOverlay } from "./CropOverlay";
 import { PathEditOverlay } from "./PathEditOverlay";
 import { GestureHud, GesturePreview, SelectionOverlay, SnapGuides } from "./SelectionOverlay";
 import { PageView } from "./PageView";
-import { usePreview } from "./preview";
+import { stopPreview, usePreview } from "./preview";
 import { Grid, Guides, Margins, Rulers } from "./Rulers";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { TableCellEditor } from "./TableCellEditor";
@@ -101,6 +101,10 @@ export function Workspace({ children }: { children?: ReactNode }) {
       aria-label={m.editor.canvas.label}
       aria-describedby="cf-workspace-hint"
       data-cf-workspace
+      // the page held at the timeline's playhead gives way to editing at the first press on it
+      onPointerDownCapture={() => {
+        if (usePreview.getState().preview?.paused) stopPreview();
+      }}
     >
       <span id="cf-workspace-hint" className="cf-sr-only">
         {m.editor.canvas.hint}

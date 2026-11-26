@@ -275,6 +275,8 @@ export {
   VolumeX as IconMuted,
   Gauge as IconSpeed,
   Captions as IconCaptions,
+  Film as IconTimeline,
+  SquareSplitHorizontal as IconSplit,
   Monitor as IconDesktop,
   Smartphone as IconPhone,
   Tablet as IconTablet,

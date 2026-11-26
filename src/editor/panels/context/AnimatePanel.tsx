@@ -33,7 +33,7 @@ import "./AnimatePanel.css";
  * arrives at it. Choosing or changing something plays the page on the canvas so the effect is seen straight away.
  */
 export function AnimatePanel({ tab }: { tab: "element" | "page" }) {
-  const previewing = usePreview((s) => s.preview !== null);
+  const previewing = usePreview((s) => s.preview !== null && !s.preview.paused);
   const page = useEditor((s) => getActivePage(s));
   const tabs = (
     <Tabs

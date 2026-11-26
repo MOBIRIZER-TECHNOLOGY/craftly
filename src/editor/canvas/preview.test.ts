@@ -6,7 +6,7 @@ vi.mock("@/render/videos", () => ({
     players.paused++;
   },
 }));
-import { previewEntrances, previewRange, previewTime, startPreview, stopPreview, usePreview } from "./preview";
+import { holdPreview, previewEntrances, previewRange, previewTime, startPreview, stopPreview, usePreview } from "./preview";
 
 afterEach(() => {
   stopPreview();
@@ -18,6 +18,16 @@ describe("starting and stopping a preview", () => {
     vi.spyOn(performance, "now").mockReturnValue(5000);
     startPreview(1.5, 4);
     expect(usePreview.getState().preview).toEqual({ startedAt: 5000, from: 1.5, until: 4 });
+  });
+
+  it("holds a page still at a moment: its time does not move on, and nothing below 0 is held", () => {
+    vi.spyOn(performance, "now").mockReturnValue(5000);
+    holdPreview(2.5);
+    const p = usePreview.getState().preview!;
+    expect(p).toEqual({ startedAt: 5000, from: 2.5, until: 2.5, paused: true });
+    expect(previewTime(p, 9000)).toBe(2.5);
+    holdPreview(-1);
+    expect(usePreview.getState().preview?.from).toBe(0);
   });
 
   it("plays the clips' sound only when asked to", () => {

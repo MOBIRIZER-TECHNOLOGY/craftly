@@ -24,6 +24,7 @@ import { createPage, cloneElement, createLine, DEFAULT_INK, solid } from "./fact
 import { boundsOfElements } from "./geometry";
 import { uid } from "./ids";
 import * as ops from "./ops";
+import { splitPageAt } from "./splitPage";
 import { carryComments, cleanCommentText, COMMENT_COORD_MAX, MAX_COMMENTS, MAX_REPLIES, settleComments } from "./comments";
 import type {
   Anchor,
@@ -225,6 +226,12 @@ export interface EditorActions {
   setPageTransition(transition: PageTransition | null, scope?: "page" | "all", pageId?: ID): void;
   /** seconds the page stays on screen when played or exported */
   setPageDuration(seconds: number, scope?: "page" | "all", pageId?: ID): void;
+  /**
+   * Splits a page in two `at` seconds into it (core/splitPage.ts): the first part lasts until then, the second goes on from there,
+   * its clips going on from where they were. One step of Undo. Returns the new page's id, "" when the page cannot be split there
+   * (either part would be shorter than a page may be) or the design is only being viewed. The new page becomes the open one.
+   */
+  splitPage(pageId: ID, at: number): ID;
   /** Takes the length set for the page (or every page) away: it lasts as long as its longest clip again, or 5 s without one. */
   resetPageDuration(scope?: "page" | "all", pageId?: ID): void;
   /** put a template page's content on the active page (replace) or as a new page (add) */
@@ -823,6 +830,22 @@ export const useEditor = create<EditorState>()((set, get) => {
       const index = s.design.pages.findIndex((p) => p.id === pageId) + 1;
       commit((d) => ops.insertPage(d, copy, index));
       set({ activePageId: copy.id, selection: [] });
+    },
+    splitPage(pageId, at) {
+      const s = get();
+      const page = pageOf(s.design, pageId);
+      if (!page || !s.design) return "";
+      const parts = splitPageAt(page, at);
+      if (!parts) return "";
+      const second = ops.clonePageWithIds(parts.second);
+      const index = s.design.pages.findIndex((p) => p.id === pageId);
+      const done = commit((d) => {
+        d.pages[index] = parts.first;
+        ops.insertPage(d, second, index + 1);
+      });
+      if (!done) return "";
+      set({ activePageId: second.id, selection: [] });
+      return second.id;
     },
     deletePage(id) {
       const s = get();

@@ -278,3 +278,34 @@ describe("editor store", () => {
     expect(s().design!.pages).toHaveLength(2);
   });
 });
+
+describe("splitting a page", () => {
+  beforeEach(fresh);
+
+  it("puts the second part after the first with fresh ids, opens it, and is one step of Undo", () => {
+    a().setPageDuration(6);
+    const before = s().design!.pages[0];
+    const id = a().splitPage(before.id, 2);
+    const pages = s().design!.pages;
+    expect(pages).toHaveLength(2);
+    expect(pages[1].id).toBe(id);
+    expect(s().activePageId).toBe(id);
+    expect(s().selection).toEqual([]);
+    expect(pages[0].duration).toBe(2);
+    expect(pages[1].duration).toBe(4);
+    expect(pages[1].elements.map((e) => e.id)).not.toContain("r1");
+    expect(pages[1].elements).toHaveLength(2);
+    a().undo();
+    expect(s().design!.pages).toHaveLength(1);
+    expect(s().design!.pages[0].duration).toBe(6);
+  });
+
+  it("does nothing where a part would be too short, on a page that is not there, or for one who may only look", () => {
+    const id = page().id;
+    expect(a().splitPage(id, 0.4)).toBe("");
+    expect(a().splitPage("nope", 2)).toBe("");
+    a().setMode("view");
+    expect(a().splitPage(id, 2)).toBe("");
+    expect(s().design!.pages).toHaveLength(1);
+  });
+});

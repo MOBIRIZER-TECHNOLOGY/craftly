@@ -46,7 +46,7 @@ export const VIDEO_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].filter((x) 
 
 export function VideoBar({ els, ids, copyEnabled }: BarProps<VideoElement> & Extra) {
   const single = els.length === 1 ? els[0] : null;
-  const playing = usePreview((s) => s.preview !== null);
+  const playing = usePreview((s) => s.preview !== null && !s.preview.paused);
   const rounded = els.every((e) => (e.mask || "rect") === "rect");
   const mask = uniform(els, (e) => e.mask || "rect");
   const speed = uniform(els, (e) => e.speed);

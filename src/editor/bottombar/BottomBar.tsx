@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useEditor } from "@/core/store";
 import { m } from "@/i18n";
-import { Button, IconButton, IconFullscreen, IconGridView, IconHelp, IconKeyboard, IconNotes, IconPageStrip, MenuPopover, Slider, cx, type MenuEntry } from "@/ui";
+import { Button, IconButton, IconFullscreen, IconGridView, IconHelp, IconKeyboard, IconNotes, IconPageStrip, IconTimeline, MenuPopover, Slider, cx, type MenuEntry } from "@/ui";
+import { setTimelineOpen, useTimeline } from "@/editor/timeline/timelineStore";
 import { TimerButton } from "./TimerButton";
 import "./bottombar.css";
 
@@ -82,6 +83,7 @@ export function BottomBar() {
   const gridView = useEditor((s) => s.gridView);
   const notesOpen = useEditor((s) => s.notesOpen);
   const showPageStrip = useEditor((s) => s.showPageStrip);
+  const timelineOpen = useTimeline((s) => s.open);
   const pageCount = useEditor((s) => s.design?.pages.length ?? 0);
   const pageIndex = useEditor((s) => s.design?.pages.findIndex((p) => p.id === s.activePageId) ?? 0);
   const actions = useEditor.getState().actions;
@@ -107,6 +109,16 @@ export function BottomBar() {
               <span className="cf-bottombar__lbl">{m.editorChrome.bottomBar.notes}</span>
             </Button>
             <TimerButton />
+            <Button
+              variant="ghost"
+              className={cx("cf-bottombar__btn", timelineOpen && "is-active")}
+              icon={<IconTimeline aria-hidden="true" />}
+              aria-label={m.editorChrome.bottomBar.timeline}
+              aria-pressed={timelineOpen}
+              onClick={() => setTimelineOpen(!timelineOpen)}
+            >
+              <span className="cf-bottombar__lbl">{m.editorChrome.bottomBar.timeline}</span>
+            </Button>
           </>
         ) : null}
       </div>

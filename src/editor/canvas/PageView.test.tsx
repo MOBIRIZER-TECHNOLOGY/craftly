@@ -2,7 +2,7 @@
  * The page canvas: it paints the active page at the zoom and scroll position of the workspace, repaints when
  * anything it shows changes, hides the element that is being edited, plays previews and retries while pictures load.
  */
-import { act, configure, waitFor } from "@testing-library/react";
+import { act, configure, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesign, createImage, createPage, createShape, createText } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
@@ -10,7 +10,7 @@ import { loadImage } from "@/render/images";
 import { contextOf } from "@/test/canvasMock";
 import { setMedia } from "@/test/media";
 import { canvasDesign, mountWorkspace, type CanvasRig } from "@/test/canvasUtils";
-import { startPreview, usePreview } from "./preview";
+import { holdPreview, startPreview, usePreview } from "./preview";
 import { useView } from "./viewStore";
 
 // the machine may be busy: give waitFor more than its default second
@@ -322,6 +322,34 @@ describe("previews", () => {
     act(() => startPreview(0, 30));
     expect(usePreview.getState().preview).not.toBeNull();
     act(() => getActions().setActivePage("p2"));
+    expect(usePreview.getState().preview).toBeNull();
+  });
+
+  it("holds the page still at the playhead's moment: one paint, no more frames, until something ends it", async () => {
+    const advance = clock();
+    const animated = createShape("rect", { id: "a", x: 100, y: 100, width: 100, height: 100, animation: { in: { kind: "fade", duration: 1, delay: 0 } } });
+    const rig = await mountWorkspace(canvasDesign([animated]));
+    await painted(rig);
+    const ctx = ctxOf(rig);
+    ctx.reset();
+    act(() => holdPreview(0.5));
+    await waitFor(() => expect(ctx.callsTo("clearRect").length).toBeGreaterThan(0));
+    const frames = ctx.callsTo("clearRect").length;
+    advance(5000);
+    await new Promise((r) => setTimeout(r, 120));
+    // nothing runs out: the held moment stays, and no frame follows the first
+    expect(usePreview.getState().preview?.paused).toBe(true);
+    expect(ctx.callsTo("clearRect").length).toBe(frames);
+    expect(rig.host.className).toContain("is-previewing");
+  });
+
+  it("lets go of a held moment at the first press on the page, but not of one that plays", async () => {
+    const rig = await mountWorkspace(canvasDesign([hello()]));
+    act(() => startPreview(0, 30));
+    fireEvent.pointerDown(rig.host);
+    expect(usePreview.getState().preview).not.toBeNull();
+    act(() => holdPreview(1));
+    fireEvent.pointerDown(rig.host);
     expect(usePreview.getState().preview).toBeNull();
   });
 

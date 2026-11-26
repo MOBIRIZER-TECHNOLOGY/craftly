@@ -5,6 +5,7 @@ import { useEditor } from "@/core/store";
 import { chromeDesign, renderChrome } from "@/test/chromeUtils";
 import { clearLibrary, resetEditor, stubLayout } from "@/test/helpers";
 import { BottomBar } from "./BottomBar";
+import { useTimeline } from "@/editor/timeline/timelineStore";
 import { NotesPanel } from "./NotesPanel";
 
 const actions = () => useEditor.getState().actions;
@@ -19,6 +20,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  useTimeline.setState({ open: false, time: 0, playing: false });
   restoreLayout();
   resetEditor();
 });
@@ -30,6 +32,18 @@ const mount = async (title = "Bottom bar") => {
 };
 const button = (name: string | RegExp) => screen.getByRole("button", { name });
 const zoomSlider = () => screen.getByRole("slider", { name: "Zoom" });
+
+describe("<BottomBar>: the timeline", () => {
+  it("opens and closes the timeline, and says whether it is open", async () => {
+    await mount();
+    expect(button("Timeline").getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(button("Timeline"));
+    expect(useTimeline.getState().open).toBe(true);
+    expect(button("Timeline").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(button("Timeline"));
+    expect(useTimeline.getState().open).toBe(false);
+  });
+});
 
 describe("<BottomBar>: the controls", () => {
   it("offers notes, timer, zoom, pages, grid view, full screen and help", async () => {
