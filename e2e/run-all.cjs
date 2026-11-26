@@ -79,6 +79,10 @@ const journeys = [
 if (!process.env.OFFLINE) {
   // these read the app's modules and catalogs in src/, which only the dev server serves
   journeys.push([
+    "audio.cjs",
+    "the sounds of a design: two tones uploaded and put on the timeline, rows by when they play, volume, over and over, Delete and Undo, heard in the timeline's Play and in Present, an MP4 download read back by pitch and loudness, a reload (dev server only: it reads the app's sound players)",
+  ]);
+  journeys.push([
     "accounts.cjs",
     "accounts, sync and teams against the real server with accounts on: nothing new without an account, sign up and move designs in, a second device, a conflict, a team, an invite, roles, editing live without a link, removal, signing out, the server stopped, Hindi (dev server only)",
   ]);
