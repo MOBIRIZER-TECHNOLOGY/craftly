@@ -353,6 +353,17 @@ button.cf-tl__clipbody {
   background-repeat: repeat-x;
 }
 
+/* the shape of the sound, once it has been read: as wide as one play, cut where the play is cut */
+.cf-tl__waveform {
+  overflow: hidden;
+}
+
+.cf-tl__peaks {
+  display: block;
+  height: 100%;
+  fill: color-mix(in srgb, var(--c-primary) 45%, transparent);
+}
+
 .cf-tl__sound .cf-tl__clipbody {
   display: flex;
   align-items: center;

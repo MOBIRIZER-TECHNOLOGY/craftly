@@ -12,6 +12,7 @@ import { clipClock } from "@/render/videos";
 import { Button, IconAudio, IconButton, IconRepeat, IconTrash, cx, toast } from "@/ui";
 import { PopoverButton, SliderField } from "../toolbar/kit";
 import { MAX_ROWS, ROW_GAP, ROW_H, packRows } from "./ClipBar";
+import { peaksBetween, useSoundPeaks } from "./soundPeaks";
 import { chooseTrack, useTimeline } from "./timelineStore";
 
 const r3 = (s: number) => Math.round(s * 1000) / 1000;
@@ -110,13 +111,30 @@ export const TrackBar = memo(function TrackBar({ track, total, row, top, pps, pa
     onKeyDown: key(part),
   });
   const playLength = Math.max(0.1, once);
+  // the shape of the sound, one column for every 3 pixels of a play (each play of it looks the same); stripes until it is read
+  const sound = useSoundPeaks(track.src, track.duration);
+  const columns = Math.min(600, Math.max(1, Math.round((playLength * pps) / 3)));
+  const wave = sound ? (
+    <svg className="cf-tl__peaks" viewBox={`0 0 ${columns} 100`} preserveAspectRatio="none" style={{ width: playLength * pps }}>
+      {peaksBetween(sound, track.trimStart, track.trimEnd, columns).map((v, i) => {
+        const h = Math.max(2, v * 84);
+        return <rect key={i} x={i + 0.15} width={0.7} y={50 - h / 2} height={h} />;
+      })}
+    </svg>
+  ) : null;
   const repeats = track.loop ? Math.max(0, Math.ceil(shown / playLength) - 1) : 0;
 
   return (
     <div className={cx("cf-tl__clip cf-tl__sound", chosen && "is-selected")} style={{ left, width, top: top + row * (ROW_H + ROW_GAP), height: ROW_H }}>
       <div className="cf-tl__frames" aria-hidden="true">
         {Array.from({ length: repeats + 1 }, (_, n) => (
-          <div key={n} className="cf-tl__play cf-tl__wave" style={{ left: n * playLength * pps, width: Math.min(playLength, shown - n * playLength) * pps }} />
+          <div
+            key={n}
+            className={cx("cf-tl__play", wave ? "cf-tl__waveform" : "cf-tl__wave")}
+            style={{ left: n * playLength * pps, width: Math.min(playLength, shown - n * playLength) * pps }}
+          >
+            {wave}
+          </div>
         ))}
       </div>
       {readOnly ? (
