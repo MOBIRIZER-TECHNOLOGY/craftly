@@ -90,6 +90,7 @@ with `Retry-After`.
 | `DELETE /api/spaces/:s/designs/:id` | a tombstone, kept 90 days |
 | `GET …/designs/:id/versions`, `POST …/designs/:id/restore {rev}` | revisions |
 | `PUT` / `GET /api/spaces/:s/assets/:id`, `POST …/assets/missing {ids}` | uploads, with the checks room pictures get and `svgProblem` |
+| `PUT` / `GET` / `HEAD /api/spaces/:s/media/:id` | clips and sounds, as themselves and streamed ("Clips and sounds" below) |
 | `PUT` / `DELETE /api/spaces/:s/folders/:id` | folders |
 | `POST /api/spaces/:s/designs/:id/live` | the live room of a team design, made when needed |
 
@@ -391,6 +392,21 @@ the tab comes into view, 3 s after a save, every 60 s and on Sync now, backing o
   and is pushed as a new design, "Title (edited on Device)". At most 20 such copies a run; past that sync stops and says so.
 - **A design open in the editor** holds the lock `craftly-design-<id>`, and sync leaves it alone meanwhile.
 - **Uploads** are fetched when needed and kept with `cacheSharedAsset`.
+
+**Clips and sounds** (2026-11-27). A space keeps the clips of its designs' video elements and the files of their sounds, apart
+from the pictures: `PUT /api/spaces/:s/media/:id` takes the file itself, streamed, with its type in `Content-Type` (`MEDIA_TYPE`
+in `src/server/http.ts`: the video and audio types the app keeps; anything else `415 type`) and its size in `Content-Length`
+(none `411 length`). The size is weighed before a byte is read: over `maxMediaBytes` (`MAX_MEDIA_MB`, 100 MiB, the same setting
+as for a shared design's) is `413 too-big` with the limit, over what the space may still hold is `413 quota` (clips count towards
+`SPACE_QUOTA_MB` like everything else), and the connection is dropped. The bytes are counted and hashed as they come into
+`spaces/<s>/media/<random>.tmp`, and only a file that came whole is renamed into place (`<sha256(id)>.bin`) in the space's queue,
+where the quota is weighed again; the manifest lists it under `media` (type, size, SHA-256, seq), apart from `assets`, so that a
+browser from before, which fetches every upload of the feed as a picture, never meets one. The same clip again is `200`, another
+under its id `409 exists`. `GET` and `HEAD` give it back with its type, `Content-Disposition: attachment` and `nosniff`. Sync
+(`src/cloud/sync.ts`) sends a design's clips and sounds that are on the device and that the space has not got (`HEAD`, then
+`PUT`) after its pictures and before the design, and fetches those a pulled design uses that the device has not got, checked as
+uploads; a clip the server will not keep stays on the device it was added on, the run says so (or that the space is full), and
+the design goes all the same. Removing a space removes its folder of clips.
 
 **Signing in where there are designs already**: "Move N designs into your account?" with Move all, Choose and Not now. Moving
 sets `space` and pushes with `baseRev: null`; a different design under that id on the server (409 `exists`) is pushed as a copy

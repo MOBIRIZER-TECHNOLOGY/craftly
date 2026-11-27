@@ -88,6 +88,8 @@ function serverThat(instead: (method: string, path: string) => Instead | undefin
     seen.push(`${method} ${path}`);
     if (typeof init?.body === "string") bodies.set(`${method} ${path}`, JSON.parse(init.body));
     const answer = await instead(method, path);
+    // (a Blob of jsdom is not one that Node's fetch sends as bytes: its bytes are sent, as a browser sends its own Blob)
+    if (init?.body instanceof Blob) init = { ...init, body: await init.body.arrayBuffer() };
     if (answer === undefined) return fetch(input, init);
     if (answer === "unreachable") throw new TypeError("fetch failed");
     if (typeof answer === "function") {
@@ -1025,29 +1027,86 @@ describe("sending the pictures of a design", () => {
     expect((await call(b, "GET", `/api/spaces/${space()}/assets/${asset.id}`, { token: other })).status).toBe(200);
   });
 
-  it("sends the picture of a design and never its clip, which stays on this device", async () => {
-    const asset = await localPicture();
-    const elements = [createImage({ src: `asset:${asset.id}` }), createVideo({ src: "asset:a_clip_here" })];
-    const design = await local("Picture and clip", { pages: [createPage({ elements })] });
+  /** A <video> or <audio> that reads a file's metadata at once, as a browser does (jsdom plays no media). */
+  const fakeMedia = () => {
+    const real = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
+      if (tag !== "video" && tag !== "audio") return real(tag);
+      const el = {
+        videoWidth: 320,
+        videoHeight: 180,
+        duration: Number.NaN,
+        onloadedmetadata: null as null | (() => void),
+        removeAttribute() {},
+        load() {},
+        set src(_url: string) {
+          queueMicrotask(() => {
+            el.duration = 2;
+            el.onloadedmetadata?.();
+          });
+        },
+      };
+      return el;
+    }) as typeof document.createElement);
+  };
+  /** A clip or a sound kept on this device under `id`, with its bytes (the fake database cannot keep a Blob). */
+  const localMedia = async (id: string, kind: "video" | "audio", mime: string, text: string) => {
+    const bytes = new TextEncoder().encode(text);
+    await dbPut("assets", { id, name: id, kind, mime, size: bytes.length, width: 0, height: 0, createdAt: 1, blob: { bytes: bytes.buffer, type: mime } });
+  };
+  const mediaAt = (id: string) => `${b.base}/api/spaces/${space()}/media/${id}`;
+
+  it("sends a design's clip and sound as themselves before the design, and leaves out one that is not on this device", async () => {
+    await localMedia("a_clip_here", "video", "video/webm", "webm bytes");
+    await localMedia("a_song_here", "audio", "audio/mpeg", "mp3 bytes");
+    const elements = [createVideo({ src: "asset:a_clip_here" }), createVideo({ src: "asset:a_clip_elsewhere" })];
+    const design = await local("Clip and sound", {
+      pages: [createPage({ elements })],
+      audio: [{ id: "au1", src: "asset:a_song_here", duration: 2, trimStart: 0, trimEnd: 2, startAt: 0 }],
+    });
     const watched = serverThat(() => undefined);
     expect(await run({ fetch: watched.fetch })).toMatchObject({ pushed: 1, problems: [] });
-    // the server is asked only whether it has the picture, and only the picture is sent
-    expect(watched.bodies.get(`POST /api/spaces/${space()}/assets/missing`)).toEqual({ ids: [asset.id] });
-    expect(watched.seen.filter((r) => r.includes("/assets/") && !r.endsWith("/missing"))).toEqual([`PUT /api/spaces/${space()}/assets/${asset.id}`]);
-    // the design itself goes with its video element in it
-    expect((await remote(design.id)).body.design.pages[0].elements[1]).toMatchObject({ type: "video", src: "asset:a_clip_here" });
+    const media = watched.seen.filter((r) => r.includes("/media/"));
+    expect(media).toEqual([
+      `HEAD /api/spaces/${space()}/media/a_clip_here`,
+      `PUT /api/spaces/${space()}/media/a_clip_here`,
+      `HEAD /api/spaces/${space()}/media/a_song_here`,
+      `PUT /api/spaces/${space()}/media/a_song_here`,
+    ]);
+    // before the design
+    expect(watched.seen.indexOf(`PUT /api/spaces/${space()}/media/a_song_here`)).toBeLessThan(watched.seen.indexOf(`PUT ${designAt(design.id)}`));
+    const there = await fetch(mediaAt("a_clip_here"), { headers: { authorization: `Bearer ${other}` } });
+    expect([there.status, there.headers.get("content-type"), await there.text()]).toEqual([200, "video/webm", "webm bytes"]);
+    // the next run asks whether the space has them, and sends nothing again
+    await edit(design.id, (d) => ({ ...d, title: "Again" }));
+    const again = serverThat(() => undefined);
+    await run({ fetch: again.fetch });
+    expect(again.seen.filter((r) => r.startsWith("PUT") && r.includes("/media/"))).toEqual([]);
   });
 
-  it("fetches the picture of a design from the server and never asks for its clip", async () => {
-    await call(b, "PUT", `/api/spaces/${space()}/assets/a_pic_there`, { token: other, body: { mime: "image/png", base64: PNG } });
-    const elements = [createImage({ src: "asset:a_pic_there" }), createVideo({ src: "asset:a_clip_there" })];
-    const made = await fromThePhone("Picture and clip there", { pages: [createPage({ elements })] });
-    const watched = serverThat(() => undefined);
-    // a clip that is not here is no missing upload: nothing is said about it
-    expect(await run({ fetch: watched.fetch })).toMatchObject({ pulled: 1, problems: [] });
-    expect(watched.seen.filter((r) => r.includes("/assets/"))).toEqual([`GET /api/spaces/${space()}/assets/a_pic_there`]);
-    expect((await getAsset("a_pic_there"))?.mime).toBe("image/png");
-    expect(await getAsset("a_clip_there")).toBeNull();
+  it("says that a clip the server will not keep stays on this device, and sends the design all the same", async () => {
+    await localMedia("a_big_clip", "video", "video/mp4", "big");
+    const design = await local("Big clip", { pages: [createPage({ elements: [createVideo({ src: "asset:a_big_clip" })] })] });
+    const refusing = serverThat((method, path) => (method === "PUT" && path.includes("/media/") ? { status: 413, body: { code: "too-big" } } : undefined));
+    const report = await run({ fetch: refusing.fetch });
+    expect(report.problems).toEqual([m.cloud.sync.clipTooBig("a_big_clip")]);
+    expect((await remote(design.id)).status).toBe(200);
+  });
+
+  it("fetches a clip and a sound of a design of the server, checked as uploads, and says nothing of one the space has not got", async () => {
+    fakeMedia();
+    const put = (id: string, mime: string, text: string) => fetch(mediaAt(id), { method: "PUT", headers: { authorization: `Bearer ${other}`, "content-type": mime }, body: text });
+    expect((await put("a_clip_there", "video/webm", "webm")).status).toBe(201);
+    expect((await put("a_song_there", "audio/mpeg", "mp3")).status).toBe(201);
+    const elements = [createVideo({ src: "asset:a_clip_there" }), createVideo({ src: "asset:a_clip_on_the_phone_only" })];
+    const made = await fromThePhone("Clips there", {
+      pages: [createPage({ elements })],
+      audio: [{ id: "au1", src: "asset:a_song_there", duration: 2, trimStart: 0, trimEnd: 2, startAt: 0 }],
+    });
+    expect(await run()).toMatchObject({ pulled: 1, problems: [] });
+    expect(await getAsset("a_clip_there")).toMatchObject({ kind: "video", mime: "video/webm", space: space() });
+    expect(await getAsset("a_song_there")).toMatchObject({ kind: "audio", mime: "audio/mpeg", space: space() });
+    expect(await getAsset("a_clip_on_the_phone_only")).toBeNull();
     expect(await getSummary(made.id)).not.toBeNull();
   });
 });

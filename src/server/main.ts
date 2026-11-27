@@ -29,6 +29,12 @@ const number = (name: string, min: number, max: number) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}: expected an integer between ${min} and ${max}.`);
   return value;
 };
+
+/** A size given in MiB, as bytes; 0 lets no clip or sound be shared. */
+const megabytes = (name: string) => {
+  const value = number(name, 0, 1024 * 1024);
+  return value === undefined ? undefined : value * 1024 * 1024;
+};
 /** A setting that is on or off: 1 or true, 0 or false. Not set is off. */
 const flag = (name: string) => {
   const raw = (env[name] ?? "").trim().toLowerCase();
@@ -77,14 +83,10 @@ const accounts = accountsOn
       // none: no limit on the number of accounts
       maxAccounts: number("MAX_ACCOUNTS", 1, Number.MAX_SAFE_INTEGER),
       spaceQuotaBytes: (number("SPACE_QUOTA_MB", 1, 1024 * 1024) ?? 1024) * 1024 * 1024,
+      // the largest clip or sound of a space: the same setting as for a shared design's
+      maxMediaBytes: megabytes("MAX_MEDIA_MB"),
     }
   : undefined;
-
-/** A size given in MiB, as bytes; 0 lets no clip or sound be shared. */
-const megabytes = (name: string) => {
-  const value = number(name, 0, 1024 * 1024);
-  return value === undefined ? undefined : value * 1024 * 1024;
-};
 
 const server = createLiveServer({
   storage: new FileStorage(dataDir),

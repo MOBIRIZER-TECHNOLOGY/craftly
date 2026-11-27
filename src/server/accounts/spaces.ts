@@ -23,7 +23,7 @@ import { uid } from "@/core/ids";
 import { MigrationError } from "@/core/schema/migrator";
 import { migrateDesign } from "@/core/schema/design";
 import { svgProblem } from "@/core/svgSafety";
-import { ASSET_ID, ASSET_LIMIT, checkAsset, readBody, reply } from "../http";
+import { ASSET_ID, ASSET_LIMIT, MEDIA_TYPE, checkAsset, readBody, reply } from "../http";
 import { badRequest, BodyTooBig, exactly, notFound, readJson, refuse, TOMBSTONE_MS, type Ctx } from "./context";
 import { can, type Action, type TeamRole } from "./roles";
 import { SERVER_ID, type DesignEntry, type Manifest, type StoredDesign, type UserRecord } from "./storage";
@@ -86,11 +86,12 @@ const readId = (raw: string, pattern: RegExp, what: string) => {
 
 const designBytes = (entry: DesignEntry) => entry.bytes + entry.versions.reduce((sum, v) => sum + v.bytes, 0);
 
-/** Everything a space takes: its designs with their kept revisions (tombstones too, until they are purged) and its uploads. */
+/** Everything a space takes: its designs with their kept revisions (tombstones too, until they are purged), its uploads, and its clips and sounds. */
 export function spaceBytes(m: Manifest): number {
   let bytes = 0;
   for (const entry of Object.values(m.designs)) bytes += designBytes(entry);
   for (const asset of Object.values(m.assets)) bytes += asset.bytes;
+  for (const clip of Object.values(m.media ?? {})) bytes += clip.bytes;
   return bytes;
 }
 
@@ -578,6 +579,83 @@ export async function getAsset(ctx: Ctx, req: IncomingMessage, res: ServerRespon
   const asset = Object.hasOwn(m.assets, id) ? await ctx.storage.loadAsset(space, id) : null;
   if (!asset) throw notFound("no such upload");
   reply(res, 200, asset);
+}
+
+/* ---------------- clips and sounds ---------------- */
+
+/** A refusal that also drops the connection once it has been answered: the rest of a big body is still on its way. */
+function refuseUnread(req: IncomingMessage, res: ServerResponse, error: Error): never {
+  res.setHeader("connection", "close");
+  res.once("finish", () => req.socket.destroy());
+  throw error;
+}
+
+/**
+ * A clip or a sound of a space (docs/ACCOUNTS.md, "Clips and sounds"): sent as itself and streamed, as a room's (live.ts), with its
+ * type (MEDIA_TYPE) and its size up front. The size is weighed against `maxMediaBytes` and against what the space may still hold
+ * before a byte is read, the bytes are counted and hashed as they come, and only a clip that came whole is put in place, in the
+ * space's queue, where the space is weighed again. It is listed in `Manifest.media`, apart from the pictures.
+ */
+export async function putMedia(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
+  const { asker } = await access(ctx, req, space, "upload");
+  const id = readId(rawId, ASSET_ID, "a clip");
+  const mime = String(req.headers["content-type"] ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (!MEDIA_TYPE.test(mime)) refuseUnread(req, res, refuse(415, "type", "only clips and sounds are kept this way"));
+  const declared = Number(req.headers["content-length"]);
+  if (!Number.isSafeInteger(declared) || declared <= 0) refuseUnread(req, res, refuse(411, "length", "the size of the clip must be given"));
+  if (declared > ctx.o.maxMediaBytes) refuseUnread(req, res, refuse(413, "too-big", "this clip is too large to keep", { limit: ctx.o.maxMediaBytes }));
+  if (spaceBytes(await ctx.storage.loadManifest(space)) + declared > ctx.o.spaceQuotaBytes) refuseUnread(req, res, quota());
+  const staged = await ctx.storage.stageMedia(space, req, declared);
+  if (!staged) throw new BodyTooBig();
+  let kept = false;
+  try {
+    if (staged.size !== declared) throw badRequest("the clip did not arrive whole");
+    const status = await change(ctx, space, asker, async (m) => {
+      const media = (m.media ??= {});
+      if (Object.hasOwn(media, id)) {
+        if (media[id].sha256 === staged.sha256 && media[id].mime === mime) return { value: 200, changed: false };
+        throw refuse(409, "exists", "there is another clip under this id");
+      }
+      if (spaceBytes(m) + staged.size > ctx.o.spaceQuotaBytes) throw quota();
+      await ctx.storage.commitMedia(space, id, staged);
+      kept = true;
+      m.seq++;
+      media[id] = { mime, bytes: staged.size, sha256: staged.sha256, seq: m.seq, createdAt: ctx.now() };
+      return { value: 201, changed: true };
+    });
+    reply(res, status, { ok: true });
+  } finally {
+    if (!kept) await ctx.storage.dropMedia(staged);
+  }
+}
+
+/** A clip or a sound of a space, streamed back as a download of its type; HEAD says only whether it is there. */
+export async function getMedia(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
+  await access(ctx, req, space, "read");
+  const id = readId(rawId, ASSET_ID, "a clip");
+  const m = await ctx.storage.loadManifest(space);
+  const entry = m.media && Object.hasOwn(m.media, id) ? m.media[id] : undefined;
+  if (!entry) throw notFound("no such clip");
+  res.statusCode = 200;
+  res.setHeader("content-type", entry.mime);
+  res.setHeader("content-length", String(entry.bytes));
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("content-disposition", "attachment");
+  if (req.method === "HEAD") return void res.end();
+  const stream = ctx.storage.mediaStream(space, id);
+  await new Promise<void>((done) => {
+    stream.on("error", (error) => {
+      console.error(`Craftly could not read the clip ${id} of the space ${space}`, error);
+      res.destroy();
+      done();
+    });
+    res.on("close", () => done());
+    stream.pipe(res);
+  });
 }
 
 /** Which of these uploads the space does not hold: what a browser sends before the design that uses them. */

@@ -24,6 +24,8 @@ export interface AccountsOptions {
   maxAccounts?: number;
   /** The most one space may hold, in bytes: designs with their kept revisions, and uploads (as base64). 1 GiB unless set. */
   spaceQuotaBytes?: number;
+  /** The largest clip or sound a space keeps, in bytes (100 MiB unless set); it counts towards `spaceQuotaBytes` too. */
+  maxMediaBytes?: number;
   maxDesignsPerSpace?: number;
   maxFolders?: number;
   maxTeamsPerPerson?: number;
@@ -224,6 +226,7 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
     signup: options.signup ?? "invite",
     maxAccounts: options.maxAccounts ?? 0,
     spaceQuotaBytes: options.spaceQuotaBytes ?? 1024 * MIB,
+    maxMediaBytes: options.maxMediaBytes ?? 100 * MIB,
     maxDesignsPerSpace: options.maxDesignsPerSpace ?? 10_000,
     maxFolders: options.maxFolders ?? 1000,
     maxTeamsPerPerson: options.maxTeamsPerPerson ?? 20,

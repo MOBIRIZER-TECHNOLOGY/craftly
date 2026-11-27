@@ -214,4 +214,50 @@ export const missingAssets = async (conn: Conn, space: string, ids: string[]) =>
 export const putAsset = (conn: Conn, space: string, id: string, mime: string, base64: string) =>
   request(conn, "PUT", `/api/spaces/${at(space, "assets", id)}`, { mime, base64 }, 120_000);
 export const getAsset = async (conn: Conn, space: string, id: string) => readRemoteAsset(await request(conn, "GET", `/api/spaces/${at(space, "assets", id)}`, undefined, 120_000));
+/**
+ * A clip or a sound of a space (docs/ACCOUNTS.md, "Clips and sounds"): it goes as itself, not as JSON, and may take minutes.
+ * Gives the answer, or throws `CloudError` as `request` does (a refusal with its code, or "offline").
+ */
+async function mediaRequest(conn: Conn, method: "HEAD" | "GET" | "PUT", space: string, id: string, body?: Blob): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (conn.token) headers.authorization = `Bearer ${conn.token}`;
+  if (body) headers["content-type"] = body.type;
+  let res: Response;
+  try {
+    res = await (conn.fetch ?? fetch)(`${conn.server}/api/spaces/${at(space, "media", id)}`, {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+      credentials: "omit",
+      signal: AbortSignal.timeout(10 * 60_000),
+    });
+  } catch {
+    throw new CloudError("offline", 0, "the server could not be reached");
+  }
+  if (res.ok || (res.status === 404 && method !== "PUT")) return res;
+  let code = res.status >= 500 ? "server" : "unknown";
+  try {
+    const parsed: unknown = await res.json();
+    if (isObject(parsed) && typeof parsed.code === "string" && /^[a-z-]{1,40}$/.test(parsed.code)) code = parsed.code;
+  } catch {
+    // no JSON: the status says enough
+  }
+  throw new CloudError(code, res.status, `the server answered ${res.status} ${code}`);
+}
+/** Whether the space has this clip or sound. */
+export const hasMedia = async (conn: Conn, space: string, id: string) => (await mediaRequest(conn, "HEAD", space, id)).ok;
+/** Sends a clip or a sound of this device to the space, under its type. */
+export const putMedia = async (conn: Conn, space: string, id: string, blob: Blob): Promise<void> => void (await mediaRequest(conn, "PUT", space, id, blob));
+/** A clip or a sound of the space with its type, or null when the space has none by that id. */
+export async function getMedia(conn: Conn, space: string, id: string): Promise<{ mime: string; blob: Blob } | null> {
+  const res = await mediaRequest(conn, "GET", space, id);
+  if (!res.ok) return null;
+  const mime = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+  try {
+    return { mime, blob: await res.blob() };
+  } catch {
+    throw new CloudError("offline", 0, "the clip did not come whole");
+  }
+}
 export const openLive = async (conn: Conn, space: string, id: string) => readLive(await request(conn, "POST", `/api/spaces/${at(space, "designs", id, "live")}`, {}));

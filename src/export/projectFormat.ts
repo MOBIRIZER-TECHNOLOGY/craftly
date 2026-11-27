@@ -99,6 +99,12 @@ export function collectAssetIds(design: Pick<Design, "pages" | "audio">, options
   return [...ids];
 }
 
+/** The ids of the uploads of a design that are clips or sounds (its pictures left out). */
+export function clipIds(design: Pick<Design, "pages" | "audio">): string[] {
+  const pictures = new Set(collectAssetIds(design, { clips: false }));
+  return collectAssetIds(design).filter((id) => !pictures.has(id));
+}
+
 /** A copy of the design where every `asset:<old>` reference found in `idMap` points at the new id. */
 export function remapAssetSources<T extends Pick<Design, "pages" | "audio">>(design: T, idMap: Readonly<Record<string, string>>): T {
   const rewrite = (src: string): string => {

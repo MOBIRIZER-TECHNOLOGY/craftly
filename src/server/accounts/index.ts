@@ -18,12 +18,14 @@ import {
   deleteDesign,
   deleteFolder,
   getAsset,
+  getMedia,
   getDesign,
   listVersions,
   missingAssets,
   openLive,
   patchMeta,
   putAsset,
+  putMedia,
   putDesign,
   putFolder,
   restoreVersion,
@@ -80,6 +82,10 @@ const ROUTES: Route[] = [
   { path: at("/api/spaces/:p/designs/:p/live"), methods: { POST: (c, q, r, [s, d]) => openLive(c, q, r, s, d) } },
   { path: at("/api/spaces/:p/assets/missing"), methods: { POST: (c, q, r, [s]) => missingAssets(c, q, r, s) } },
   { path: at("/api/spaces/:p/assets/:p"), methods: { GET: (c, q, r, [s, a]) => getAsset(c, q, r, s, a), PUT: (c, q, r, [s, a]) => putAsset(c, q, r, s, a) } },
+  {
+    path: at("/api/spaces/:p/media/:p"),
+    methods: { GET: (c, q, r, [s, a]) => getMedia(c, q, r, s, a), HEAD: (c, q, r, [s, a]) => getMedia(c, q, r, s, a), PUT: (c, q, r, [s, a]) => putMedia(c, q, r, s, a) },
+  },
   { path: at("/api/spaces/:p/folders/:p"), methods: { PUT: (c, q, r, [s, f]) => putFolder(c, q, r, s, f), DELETE: (c, q, r, [s, f]) => deleteFolder(c, q, r, s, f) } },
 ];
 

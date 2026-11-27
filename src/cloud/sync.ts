@@ -9,6 +9,9 @@
  * checks that the design did not change here meanwhile. What the server sends is checked as a hostile room's is (validate.ts);
  * what the server deletes goes to the Trash here; at most 20 conflict copies are made in a run, and then sync stops and says so.
  */
+import { retryAssetImage } from "@/render/images";
+import { retrySound } from "@/render/soundTracks";
+import { retryClip } from "@/render/videos";
 import { m } from "@/i18n";
 import { cacheSharedAsset, getAsset as getLocalAsset, prepareAssetFromFile } from "@/core/assets";
 import { getStoredDesign, getSummary, listDesigns, listFolders, notifyLibrary, subscribeLibrary, summarize, type VersionRecord } from "@/core/library";
@@ -16,7 +19,7 @@ import { uid } from "@/core/ids";
 import { dbDelete, dbGet, dbGetAll, metaGet, metaSet, wrap, writeTransaction } from "@/core/persistence";
 import type { Design, DesignSummary, Folder, SyncRecord, SyncedMeta } from "@/core/types";
 import { blobToDataUrl } from "@/export/encoding";
-import { collectAssetIds, dataUrlToBytes, extensionForMime, portableDesign } from "@/export/projectFormat";
+import { clipIds, collectAssetIds, dataUrlToBytes, extensionForMime, portableDesign } from "@/export/projectFormat";
 import * as api from "./api";
 import { CloudError, type Conn } from "./api";
 import { designLock, heldLocks, SYNC_LOCK, tryLock } from "./locks";
@@ -99,8 +102,8 @@ export async function waitingDesigns(session = useCloud.getState().session): Pro
 /* ---------------- uploads ---------------- */
 
 /**
- * Fetches the uploads a design uses that are not here, checked as any picture from outside is (`checkUpload`). A clip of a video
- * element is not among them: an account server keeps pictures only, so a clip stays on the device it was uploaded on.
+ * Fetches the pictures a design uses that are not here, checked as any picture from outside is (`checkUpload`). Its clips and
+ * sounds come by `fetchClips`.
  */
 async function fetchAssets(conn: Conn, space: string, design: Design, report: SyncReport): Promise<void> {
   for (const id of collectAssetIds(design, { clips: false })) {
@@ -120,7 +123,7 @@ async function fetchAssets(conn: Conn, space: string, design: Design, report: Sy
   }
 }
 
-/** Sends the pictures a design uses that the space does not have, before the design (not its clips: see `fetchAssets`). */
+/** Sends the pictures a design uses that the space does not have, before the design (its clips and sounds: `sendClips`). */
 async function sendAssets(conn: Conn, space: string, design: Design): Promise<void> {
   const ids = collectAssetIds(design, { clips: false });
   if (!ids.length) return;
@@ -135,6 +138,48 @@ async function sendAssets(conn: Conn, space: string, design: Design): Promise<vo
       // another upload under this id, or one the server will not keep: the design goes without it
       if (error instanceof CloudError && (error.code === "exists" || error.code === "bad-request")) continue;
       throw error;
+    }
+  }
+}
+
+/**
+ * Fetches the clips and sounds a design uses that are not here (docs/ACCOUNTS.md, "Clips and sounds"), checked as any upload from
+ * outside is. One the space has not got (it stayed on the device it was added on: too large for the server, or the space full)
+ * is left out, and the design keeps an empty box for it.
+ */
+async function fetchClips(conn: Conn, space: string, design: Design, report: SyncReport): Promise<void> {
+  for (const id of clipIds(design)) {
+    if (await getLocalAsset(id)) continue;
+    try {
+      const got = await api.getMedia(conn, space, id);
+      if (!got) continue;
+      const file = new File([got.blob], `${m.cloud.sync.clipName}.${extensionForMime(got.mime)}`, { type: got.mime });
+      const asset = await prepareAssetFromFile(file, id);
+      await cacheSharedAsset({ ...asset, space });
+      retryAssetImage(id);
+      retryClip(id);
+      retrySound(id);
+    } catch (error) {
+      if (offline(error)) throw error;
+      report.problems.push(m.cloud.sync.clipFailed);
+    }
+  }
+}
+
+/**
+ * Sends the clips and sounds a design uses that the space has not got, before the design, as its pictures go. One the server will
+ * not keep (too large, the space full) stays on this device and the person is told; the design goes all the same.
+ */
+async function sendClips(conn: Conn, space: string, design: Design, report: SyncReport): Promise<void> {
+  for (const id of clipIds(design)) {
+    const asset = await getLocalAsset(id);
+    if (!asset || (await api.hasMedia(conn, space, id))) continue;
+    try {
+      await api.putMedia(conn, space, id, asset.blob);
+    } catch (error) {
+      if (!(error instanceof CloudError) || error.code === "offline" || error.status >= 500) throw error;
+      // another clip under this id is the space's already; a clip the server will not keep stays here
+      if (error.code !== "exists") report.problems.push(error.code === "quota" ? m.cloud.sync.full : m.cloud.sync.clipTooBig(asset.name));
     }
   }
 }
@@ -316,6 +361,7 @@ async function pull(run: SpaceRun, id: string, expected: string | null | undefin
     throw error;
   }
   await fetchAssets(run.conn, run.space, got.design, run.report);
+  await fetchClips(run.conn, run.space, got.design, run.report);
   const written = await tryLock(designLock(id), () => writeServers(run.space, got, expected, keep));
   if (written === "written") run.report.pulled++;
   else {
@@ -337,6 +383,7 @@ async function push(run: SpaceRun, id: string, baseRev: number | null): Promise<
   let rev: number;
   try {
     await sendAssets(run.conn, run.space, design);
+    await sendClips(run.conn, run.space, design, run.report);
     rev = await api.putDesign(run.conn, run.space, design, baseRev, thumbnail);
   } catch (error) {
     if (!(error instanceof CloudError)) throw error;
@@ -402,6 +449,7 @@ async function conflict(run: SpaceRun, id: string, rev: number | null): Promise<
   }
   if (rev !== null && got.rev < rev) return; // the feed is ahead of the design: the next run looks again
   await fetchAssets(run.conn, run.space, got.design, run.report);
+  await fetchClips(run.conn, run.space, got.design, run.report);
   const copyId = uid("d");
   const made = await tryLock(designLock(id), () =>
     writeTransaction(["designs", "summaries", "versions", "sync"], async (tx) => {
@@ -679,6 +727,7 @@ async function claim(run: SpaceRun, id: string, summary: DesignSummary): Promise
     throw error;
   }
   await fetchAssets(run.conn, run.space, got.design, run.report);
+  await fetchClips(run.conn, run.space, got.design, run.report);
   const mine = await getStoredDesign(id);
   // (only a design of this device only is taken as the server's: one of another space stays in it, under a new id)
   const same = !summary.space && !!mine && mine.title === got.design.title && sameContent(mine, got.design);

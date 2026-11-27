@@ -2,7 +2,8 @@
  * Accounts, sync and teams (docs/ACCOUNTS.md) in real browsers against the real server with accounts on (`ACCOUNTS=1 SIGNUP=open`,
  * built and started here as live.cjs does, with a folder of its own, on a port that stays the same when it is stopped and started
  * again). Without an account nothing changes and nothing is asked of the server. Then one person signs up on a laptop with the
- * server typed in and moves the laptop's design in, signs in on a phone (a second browser context) and finds it there, edits the same
+ * server typed in and moves the laptop's design in, signs in on a phone (a second browser context) and finds it there, a clip and a
+ * sound of a design of the laptop reach the phone with it (docs/ACCOUNTS.md, "Clips and sounds"), edits the same
  * design on both while the laptop is offline (a conflict: the server's design stays under its id, the laptop's edit becomes a copy
  * "(edited on …)"), makes a team and invites a second person by link (which names the account server after the #), who makes an
  * account from the invite without typing a server; a team design reaches the second person, who edits it while the owner has it
@@ -182,6 +183,7 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
       window.__journey = {
         lib: await import(loaded("/src/core/library.ts")),
         factory: await import(loaded("/src/core/factory.ts")),
+        assets: await import(loaded("/src/core/assets.ts")),
         // (the account code only once the journey is past the step that checks it is not loaded, and the app has loaded it)
         sync: withAccount ? await import(loaded("/src/cloud/sync.ts")) : null,
       };
@@ -353,6 +355,75 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     if (await phone.page.getByRole("dialog", { name: /into your account/ }).count()) throw new Error("the phone asked to move designs it does not have");
     await shot(phone, "signed-in");
     return "listed on the phone";
+  });
+
+  await step("a clip and a sound in a design of the laptop reach the phone with it, as themselves", async () => {
+    await ready(laptop);
+    const made = await laptop.page.evaluate(async () => {
+      const { lib, factory, assets } = window.__journey;
+      // a red clip of a second, recorded in the page, and a tone of a second as a WAV file
+      const c = document.createElement("canvas");
+      c.width = 160;
+      c.height = 90;
+      const g = c.getContext("2d");
+      const rec = new MediaRecorder(c.captureStream(30), { mimeType: "video/webm;codecs=vp8" });
+      const chunks = [];
+      rec.ondataavailable = (e) => chunks.push(e.data);
+      const start = performance.now();
+      rec.start(100);
+      await new Promise((done) => {
+        const tick = () => {
+          g.fillStyle = "#e11d48";
+          g.fillRect(0, 0, 160, 90);
+          if (performance.now() - start < 1000) requestAnimationFrame(tick);
+          else done();
+        };
+        tick();
+      });
+      await new Promise((r) => {
+        rec.onstop = r;
+        rec.stop();
+      });
+      const clip = await assets.addAssetFromFile(new File(chunks, "Red.webm", { type: "video/webm" }));
+      const rate = 8000;
+      const wav = new DataView(new ArrayBuffer(44 + rate * 2));
+      const text = (o, t) => [...t].forEach((ch, i) => wav.setUint8(o + i, ch.charCodeAt(0)));
+      text(0, "RIFF");
+      wav.setUint32(4, 36 + rate * 2, true);
+      text(8, "WAVEfmt ");
+      wav.setUint32(16, 16, true);
+      wav.setUint16(20, 1, true);
+      wav.setUint16(22, 1, true);
+      wav.setUint32(24, rate, true);
+      wav.setUint32(28, rate * 2, true);
+      wav.setUint16(32, 2, true);
+      wav.setUint16(34, 16, true);
+      text(36, "data");
+      wav.setUint32(40, rate * 2, true);
+      for (let i = 0; i < rate; i++) wav.setInt16(44 + i * 2, Math.sin((2 * Math.PI * 440 * i) / rate) * 9000, true);
+      const sound = await assets.addAssetFromFile(new File([wav.buffer], "Tone.wav", { type: "audio/wav" }));
+      const design = await lib.createBlankDesign({ typeId: "custom", width: 800, height: 600, title: "Clip and sound" });
+      const open = await lib.getDesignForEditing(design.id);
+      open.design.pages[0].elements.push(factory.createVideo({ src: `asset:${clip.id}`, naturalWidth: 160, naturalHeight: 90, duration: 1 }));
+      open.design.audio = [{ id: "au_tone", src: `asset:${sound.id}`, name: "Tone", duration: 1, trimStart: 0, trimEnd: 1, startAt: 0 }];
+      await lib.saveDesign(open.design, undefined, open.revision);
+      return { id: design.id, clip: clip.id, clipSize: clip.size, sound: sound.id, soundSize: sound.size };
+    });
+    const sent = await syncNow(laptop);
+    if (sent.error || sent.problems?.length) throw new Error("the laptop's sync: " + JSON.stringify(sent));
+    await syncNow(phone);
+    await until("the phone has the design", async () => (await designs(phone)).some((d) => d.id === made.id));
+    const got = await phone.page.evaluate(
+      async ([clipId, soundId]) => {
+        const { assets } = window.__journey;
+        const [clip, sound] = [await assets.getAsset(clipId), await assets.getAsset(soundId)];
+        return { clip: clip && { kind: clip.kind, mime: clip.mime, size: clip.size }, sound: sound && { kind: sound.kind, mime: sound.mime, size: sound.size } };
+      },
+      [made.clip, made.sound],
+    );
+    if (got.clip?.kind !== "video" || got.clip.size !== made.clipSize) throw new Error("the phone's clip: " + JSON.stringify(got.clip));
+    if (got.sound?.kind !== "audio" || got.sound.size !== made.soundSize) throw new Error("the phone's sound: " + JSON.stringify(got.sound));
+    return `a ${Math.round(made.clipSize / 1024)} KB clip and a ${Math.round(made.soundSize / 1024)} KB sound on the phone`;
   });
 
   await step("a conflict: the same design edited on the phone and on the laptop while it is offline", async () => {

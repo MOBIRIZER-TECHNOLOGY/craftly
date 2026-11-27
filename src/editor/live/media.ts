@@ -3,7 +3,7 @@ import { cacheSharedAsset, getAsset, prepareAssetFromFile } from "@/core/assets"
 import type { Design, LiveLink } from "@/core/types";
 import { blobToDataUrl } from "@/export/encoding";
 import { m } from "@/i18n";
-import { collectAssetIds, dataUrlToBytes, extensionForMime } from "@/export/projectFormat";
+import { clipIds, collectAssetIds, dataUrlToBytes, extensionForMime } from "@/export/projectFormat";
 import { retryAssetImage } from "@/render/images";
 import { retrySound } from "@/render/soundTracks";
 import { retryClip } from "@/render/videos";
@@ -19,11 +19,7 @@ const assetPath = (link: LiveLink, id: string) => apiUrl(link.server, `/api/room
 const refused = (status: number) => status >= 400 && status < 500 && status !== 408 && status !== 429;
 const imageType = /^image\/(?:png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
 
-/** The ids of the uploads of a design that are clips or sounds (its pictures left out). */
-export function clipIds(design: Pick<Design, "pages" | "audio">): string[] {
-  const pictures = new Set(collectAssetIds(design, { clips: false }));
-  return collectAssetIds(design).filter((id) => !pictures.has(id));
-}
+export { clipIds };
 
 /**
  * The pictures of a shared design, sent to its room and fetched from it (`upload`, `download`), and its clips and sounds
