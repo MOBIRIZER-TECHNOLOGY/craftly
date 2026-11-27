@@ -4,6 +4,9 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **CI builds the server image for amd64 and arm64, and a version tag publishes it (2026-11-28).** A new `image` job in `.github/workflows/ci.yml` builds `Dockerfile.server` for both, runs the amd64 image until Docker calls it healthy, checks it from outside with `scripts/live-check.mjs`, and requires a clean stop. `.github/workflows/release-image.yml` publishes both to `ghcr.io/<owner>/<repository>/live` when a tag `v*` is pushed, with provenance and an SBOM. Its actions are pinned to the commits of their releases, like the rest of CI, and Dependabot now also watches the base image.
+  - **Checked** here: the arm64 image builds in 78 s under emulation and, run under emulation, is healthy, passes `live-check.mjs` and stops with code 0; both workflow files parse. **Not checked**: either workflow on GitHub, which needs the branch pushed.
+
 - **The licences of what Craftly ships go with the site, complete (2026-11-28).** `THIRD-PARTY-NOTICES.md` was in the repository only. The built site now publishes it at `/third-party-notices.txt`, linked from About Craftly as "Open-source licences": the MIT, BSD and font (OFL) licences of the code built into the app's files ask that their notices go with it. The generator (`npm run notices`) also fills three gaps:
   - Seven packages that ship no licence file (fontkit, brotli, dfa, qrcode-generator, guid-typescript, and ONNX Runtime's two) now get the standard text of the licence they declare, with their holder (Microsoft for ONNX Runtime).
   - Mediabunny, the one package under MPL-2.0, is listed with where its unmodified source is, as that licence asks.

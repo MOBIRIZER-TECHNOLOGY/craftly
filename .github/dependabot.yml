@@ -27,3 +27,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+  # the base image of Dockerfile.server (node:22-alpine), for its security updates
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
