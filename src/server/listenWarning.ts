@@ -30,3 +30,24 @@ export function listenWarning(host: string): string | null {
     "or set HOST=127.0.0.1 when the proxy runs on this machine."
   );
 }
+
+/**
+ * The note for a server that anybody who reaches it may make rooms on (no ROOM_CREATE_KEY), or that keeps rooms for ever (no
+ * ROOM_TTL_DAYS); null when it has both. Behind a proxy the server listens on this machine alone and is public all the same,
+ * so this is said whatever HOST is. Each room may hold 500 MiB of clips and 48 MiB of pictures, and one address may make ten
+ * an hour: with neither setting, the disk is the limit (docs/DEPLOY.md, section 2.3).
+ */
+export function openRoomsWarning(settings: { roomCreateKey?: string; roomTtlDays?: number }): string | null {
+  const open = !settings.roomCreateKey;
+  const forever = !settings.roomTtlDays;
+  if (!open && !forever) return null;
+  const what = [
+    open ? "anybody who can reach this server may make rooms on it (ROOM_CREATE_KEY is not set)" : "",
+    forever ? "rooms are kept until their owners stop sharing (ROOM_TTL_DAYS is not set)" : "",
+  ].filter(Boolean);
+  return (
+    `Note: ${what.join(", and ")}. On a server open to the internet, set ` +
+    [open ? "ROOM_CREATE_KEY" : "", forever ? "ROOM_TTL_DAYS (30, say)" : ""].filter(Boolean).join(" and ") +
+    ", so that its disk cannot be filled by rooms nobody needs (docs/DEPLOY.md, section 2.3)."
+  );
+}

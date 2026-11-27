@@ -249,7 +249,8 @@ errs on the large side.
 # Performance: the live server under load
 
 Measured on 2026-11-28 with `scripts/live-load.mjs` against the server's image (`Dockerfile.server`) in Docker Desktop on Windows,
-limited to **one CPU and 512 MB** (`docker run --cpus 1 --memory 512m`), about what a small virtual server has. The load ran
+limited to **one CPU and 512 MB** (`docker run --cpus 1 --memory 512m`), about what a small virtual server has. (To run it again
+now, also set `MAX_CONNECTIONS_PER_ADDRESS` above the number of connections: since these runs, one address may have 200.) The load ran
 on the same machine (an AMD Ryzen 9 9900X), outside the container. Every room has five people. Each of them joins with the edit
 key, adds a shape, then moves it again and again and moves their pointer. An edit is acknowledged only once it is on disk, so
 the time to acknowledge includes the write.

@@ -19,7 +19,7 @@ import { SIGNUP_MODES, type SignupMode } from "./accounts";
 import { FileAccounts } from "./accounts/storage";
 import { closeWithin, createLiveServer } from "./live";
 import { removeLeftovers } from "./leftovers";
-import { listenWarning } from "./listenWarning";
+import { listenWarning, openRoomsWarning } from "./listenWarning";
 import { FileStorage } from "./storage";
 
 const env = process.env;
@@ -101,8 +101,11 @@ const server = createLiveServer({
   // the clips and sounds of shared designs, in MiB: the largest one, and the most one room keeps
   maxMediaBytes: megabytes("MAX_MEDIA_MB"),
   maxRoomMediaBytes: megabytes("MAX_ROOM_MEDIA_MB"),
+  maxStagingBytes: megabytes("MAX_STAGING_MB"),
   maxPeersPerRoom: number("MAX_PEERS_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),
   maxConnections: number("MAX_CONNECTIONS", 1, Number.MAX_SAFE_INTEGER),
+  maxConnectionsPerAddress: number("MAX_CONNECTIONS_PER_ADDRESS", 1, Number.MAX_SAFE_INTEGER),
+  maxTotalBufferedBytes: megabytes("MAX_TOTAL_BUFFERED_MB"),
   maxWaitingPerRoom: number("MAX_WAITING_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),
   // edits that may wait in one room to be saved, and how many one write saves (group commit)
   maxQueuedBatches: number("MAX_QUEUED_BATCHES", 1, Number.MAX_SAFE_INTEGER),
@@ -139,6 +142,9 @@ console.log(`Craftly live server on http://${host}:${address.port} (rooms are ke
 // Reachable from other machines, the server needs a proxy with TLS in front of it, and says so (src/server/listenWarning.ts).
 const warning = listenWarning(host);
 if (warning) console.warn(warning);
+// and whoever may make rooms, and how long they are kept, is said too (also behind a proxy, where HOST is this machine alone)
+const rooms = openRoomsWarning({ roomCreateKey: env.ROOM_CREATE_KEY?.trim() || undefined, roomTtlDays });
+if (rooms) console.warn(rooms);
 
 // Told to stop, the server saves what is at work and closes every connection. That may hang (a disk that does not answer, an
 // upload that never ends) or fail, and a process that then stays for ever is killed by whatever runs it, without a word in the

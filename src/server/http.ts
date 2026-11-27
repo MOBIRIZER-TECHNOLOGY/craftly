@@ -38,6 +38,14 @@ export const replyTooBig = (req: IncomingMessage, res: ServerResponse, body: unk
   res.once("finish", () => req.socket.destroy());
 };
 
+/** Answers 503 with a wait for a request whose body is not read now (the server holds what it may), and drops the connection. */
+export const replyBusy = (req: IncomingMessage, res: ServerResponse, body: unknown, retryAfterSeconds = 30) => {
+  res.setHeader("connection", "close");
+  res.setHeader("retry-after", String(retryAfterSeconds));
+  reply(res, 503, body);
+  res.once("finish", () => req.socket.destroy());
+};
+
 /** The body of a request as text, or null when it is longer than allowed (the request is then dropped). */
 export const readBody = (req: IncomingMessage, limit: number): Promise<string | null> =>
   new Promise((resolve) => {

@@ -581,7 +581,22 @@ export async function putMedia(ctx: Ctx, req: IncomingMessage, res: ServerRespon
   const declared = Number(req.headers["content-length"]);
   if (!Number.isSafeInteger(declared) || declared <= 0) refuseUnread(req, res, refuse(411, "length", "the size of the clip must be given"));
   if (declared > ctx.o.maxMediaBytes) refuseUnread(req, res, refuse(413, "too-big", "this clip is too large to keep", { limit: ctx.o.maxMediaBytes }));
-  if (spaceBytes(await ctx.storage.loadManifest(space)) + declared > ctx.o.spaceQuotaBytes) refuseUnread(req, res, quota());
+  // what the space holds, and what is on its way into it now (src/server/staging.ts)
+  const key = `space:${space}`;
+  if (spaceBytes(await ctx.storage.loadManifest(space)) + ctx.staging.reserved(key) + declared > ctx.o.spaceQuotaBytes) refuseUnread(req, res, quota());
+  if (!ctx.staging.reserve(key, declared)) {
+    res.setHeader("retry-after", "30");
+    refuseUnread(req, res, refuse(503, "busy", "the server is receiving as much as it can now: try again in a moment"));
+  }
+  try {
+    await receiveMedia(ctx, req, res, space, id, mime, declared, asker);
+  } finally {
+    ctx.staging.release(key, declared);
+  }
+}
+
+/** The rest of `putMedia`, once the clip's size is reserved: its bytes, and then its place in the space. */
+async function receiveMedia(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, id: string, mime: string, declared: number, asker: Asker) {
   const staged = await ctx.storage.stageMedia(space, req, declared);
   if (!staged) throw new BodyTooBig();
   let kept = false;
@@ -637,7 +652,18 @@ export async function keepClip(ctx: Ctx, space: string, id: string, mime: string
   if (!ASSET_ID.test(id) || !MEDIA_TYPE.test(mime) || !Number.isSafeInteger(size) || size <= 0 || size > ctx.o.maxMediaBytes) return false;
   const before = await ctx.storage.loadManifest(space);
   if (before.media && Object.hasOwn(before.media, id)) return true;
-  if (spaceBytes(before) + size > ctx.o.spaceQuotaBytes) return false;
+  const key = `space:${space}`;
+  if (spaceBytes(before) + ctx.staging.reserved(key) + size > ctx.o.spaceQuotaBytes) return false;
+  // (with the server receiving all it may, the clip stays the room's for now: the next write-back tries again)
+  if (!ctx.staging.reserve(key, size)) return false;
+  try {
+    return await copyClip(ctx, space, id, mime, size, source);
+  } finally {
+    ctx.staging.release(key, size);
+  }
+}
+
+async function copyClip(ctx: Ctx, space: string, id: string, mime: string, size: number, source: AsyncIterable<Buffer | Uint8Array>): Promise<boolean> {
   const staged = await ctx.storage.stageMedia(space, source, size);
   if (!staged) return false;
   let kept = false;

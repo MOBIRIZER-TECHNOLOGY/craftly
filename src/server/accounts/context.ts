@@ -9,6 +9,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { cleanName } from "@/collab/presence";
 import { clientAddress, hourlyLimit, knownAddresses, type HourlyLimit } from "../address";
 import { readBody, sha256Hex } from "../http";
+import { createStaging, type Staging } from "../staging";
 import { createHasher, DEFAULT_COST, HASH_CONCURRENCY, type Cost, type Hasher } from "./passwords";
 import { SERVER_ID, type AccountStorage, type SessionRecord, type TeamRecord, type UserRecord } from "./storage";
 import type { TeamRole } from "./roles";
@@ -102,6 +103,8 @@ export interface ServerContext {
   maxDesignBytes: number;
   /** The live server's rooms bound to designs; none in a server without rooms (a test of the accounts alone). */
   live?: LiveHooks;
+  /** The clips and sounds on their way in, shared with the rooms (src/server/staging.ts); one of its own when none is given. */
+  staging?: Staging;
 }
 
 /** A request that is refused: its status, a code the client turns into words, a sentence for whoever reads the raw answer. */
@@ -365,6 +368,7 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
     storage,
     now,
     o,
+    staging: server.staging ?? createStaging(Infinity),
     hasher,
     limiters,
     known,

@@ -44,9 +44,14 @@ const LABELLED = {
     values: ["slow_reader", "rate", "join_rate", "size", "silent", "waiting", "queue", "revoked"],
   },
   upgrades_refused_total: {
-    help: "WebSocket connections refused before they were made: too many connections, or a page of an origin that is not allowed.",
+    help: "WebSocket connections refused before they were made: too many connections, too many from one address, or a page of an origin that is not allowed.",
     label: "reason",
-    values: ["connections", "origin"],
+    values: ["connections", "address", "origin"],
+  },
+  uploads_refused_total: {
+    help: "Clips and sounds refused before a byte was read because the server was receiving as much as it may at once (MAX_STAGING_MB).",
+    label: "reason",
+    values: ["busy"],
   },
   http_responses_total: {
     help: "HTTP responses by class of status code (this endpoint included).",
@@ -63,6 +68,8 @@ const GAUGES = {
   connections: "WebSocket connections that are open now.",
   peers_joined: "Connections that have shown a key and are in a room now.",
   bound_rooms_in_memory: "Rooms bound to a design of a space that are in memory now.",
+  send_buffer_bytes: "Bytes waiting in memory to be sent, to all WebSocket connections together (MAX_TOTAL_BUFFERED_MB).",
+  staging_bytes: "Bytes reserved by clips and sounds on their way in, rooms and spaces together (MAX_STAGING_MB).",
 } as const;
 
 export type CounterName = keyof typeof COUNTERS;

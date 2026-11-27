@@ -3,6 +3,7 @@
  * themselves, of the types the app keeps, under the limits of a file and of a room, with the keys of the room, in memory and on disk.
  */
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { request, type ClientRequest, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -165,5 +166,62 @@ describe("the clips of a room on disk", () => {
     expect((await put(b, made, "a_clip", bytes(10, 2))).status).toBe(409);
     expect(readdirSync(join(dir, `${made.room}.media`)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
     expect(await storage.mediaInfo(made.room, "other")).toBeNull();
+  });
+});
+
+/** An upload that has begun and is held half way: its bytes so far are sent, and `finish` sends the rest and gives the answer. */
+async function halfWay(b: Booted, made: Made, id: string, size: number): Promise<{ finish(): Promise<number>; req: ClientRequest }> {
+  let req!: ClientRequest;
+  const answer = new Promise<IncomingMessage>((resolve, reject) => {
+    req = request(at(b, made, id), { method: "PUT", headers: { "x-craftly-key": made.editKey, "content-type": "video/mp4", "content-length": String(size) } }, resolve);
+    req.on("error", reject);
+  });
+  answer.catch(() => undefined);
+  req.write(bytes(Math.floor(size / 2)));
+  // the server has the request, and has reserved its size, once the first bytes are with it
+  await new Promise((r) => setTimeout(r, 150));
+  return {
+    req,
+    finish: async () => {
+      req.end(bytes(size - Math.floor(size / 2)));
+      const res = await answer;
+      res.resume();
+      return res.statusCode ?? 0;
+    },
+  };
+}
+
+describe("what is on its way in", () => {
+  it("counts towards the room's limit: two clips started at once cannot both fill it", async () => {
+    const b = await boot({ maxRoomMediaBytes: 1500 });
+    const made = await makeRoom(b);
+    const first = await halfWay(b, made, "a_first", 1000);
+    // the room is empty on disk, but 1,000 bytes are on their way into it
+    expect((await put(b, made, "a_second", bytes(1000))).status).toBe(413);
+    expect(await first.finish()).toBe(201);
+    expect((await put(b, made, "a_small", bytes(400))).status).toBe(201);
+  });
+
+  it("is limited for the whole server: one more upload is asked to come back later, before a byte of it is read", async () => {
+    const b = await boot({ maxStagingBytes: 1500 });
+    const one = await makeRoom(b);
+    const two = await makeRoom(b);
+    const first = await halfWay(b, one, "a_first", 1000);
+    const busy = await put(b, two, "a_second", bytes(1000));
+    expect(busy.status).toBe(503);
+    expect(busy.headers.get("retry-after")).toBe("30");
+    expect(await first.finish()).toBe(201);
+    // what was reserved is given back once the upload is over, whatever became of it
+    expect((await put(b, two, "a_second", bytes(1000))).status).toBe(201);
+  });
+
+  it("gives back what an upload reserved when its connection is lost half way", async () => {
+    const b = await boot({ maxStagingBytes: 1500 });
+    const made = await makeRoom(b);
+    const lost = await halfWay(b, made, "a_lost", 1000);
+    lost.req.on("error", () => undefined);
+    lost.req.destroy();
+    await new Promise((r) => setTimeout(r, 200));
+    expect((await put(b, made, "a_next", bytes(1000))).status).toBe(201);
   });
 });

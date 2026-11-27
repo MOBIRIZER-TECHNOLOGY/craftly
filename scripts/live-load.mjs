@@ -8,8 +8,8 @@
  * as a browser does while the mouse moves). It reports how long the server took to acknowledge an edit (p50, p95, p99,
  * the slowest), the presence messages that went out to the others, and every refusal and close, by reason.
  *
- * The server must let one address make that many rooms: start it with ROOM_CREATE_PER_HOUR=0 (and without
- * ROOM_CREATE_KEY, or pass --create-key). Run it against a test server, never one people use: it makes and removes rooms.
+ * The server must let one address make that many rooms and open that many connections: start it with
+ * ROOM_CREATE_PER_HOUR=0 and MAX_CONNECTIONS_PER_ADDRESS above rooms x peers (and without ROOM_CREATE_KEY, or pass --create-key). Run it against a test server, never one people use: it makes and removes rooms.
  * The machine that runs this is part of what is measured: on one machine with the server, its own CPU limits it first.
  *
  * Options: --rooms (20), --peers per room (5), --duration in seconds (60), --ramp in seconds over which people arrive (20),
