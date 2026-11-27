@@ -157,13 +157,14 @@ export function clipGainAt(el: Pick<VideoElement, "volume" | "fadeIn" | "fadeOut
 
 /**
  * When the last clip on the page has played once, from the time it starts (groups looked into, hidden ones left out); null without
- * a clip.
+ * a clip. A clip that runs on under the pages after its own (`runsOn`) is not counted.
  */
 export function pageClipLength(page: { elements?: readonly DesignElement[] }): number | null {
   let longest: number | null = null;
   const visit = (el: DesignElement) => {
     if (el.hidden) return;
-    if (el.type === "video") longest = Math.max(longest ?? 0, clipStartAt(el) + clipFirstPlayLength(el));
+    // a clip that runs on under the pages after its own does not hold its page for its length: it goes on on the next one
+    if (el.type === "video" && !(typeof el.runsOn === "number" && el.runsOn >= 1)) longest = Math.max(longest ?? 0, clipStartAt(el) + clipFirstPlayLength(el));
     else if (el.type === "group") el.children.forEach(visit);
   };
   page.elements?.forEach(visit);

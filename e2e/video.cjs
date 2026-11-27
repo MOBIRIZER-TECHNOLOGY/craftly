@@ -448,6 +448,64 @@ let shotN = 0;
     return colour;
   });
 
+  await step("Runs on under the next page (Trim): on a blank page after its 1.2 s page the clip goes on, blue at 0.6 s in, without being one of its elements", async () => {
+    const el = await clip();
+    await page.evaluate((id) => window.__editor.getState().actions.select([id]), el.id);
+    await toolbar.getByRole("button", { name: "Trim", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Trim" });
+    const runs = dialog.getByRole("spinbutton", { name: "Runs on under the next pages value" });
+    await runs.fill("1");
+    await runs.press("Enter");
+    await dialog.getByText(/goes on under the next page,/).waitFor({ timeout: 3000 });
+    await page.keyboard.press("Escape");
+    const first = await design(`(s) => s.design.pages[0].id`);
+    await page.evaluate((id) => {
+      const a = window.__editor.getState().actions;
+      a.setPageDuration(1.2, "page", id);
+      a.addPage({ index: 1, blank: true });
+    }, first);
+    const second = await design(`(s) => s.design.pages[1]`);
+    if (second.elements.length) throw new Error("the clip was put on the next page as an element");
+    // the playhead 1.8 s in: 0.6 s into the second page, 1.8 s into the clip
+    await page.getByRole("button", { name: "Timeline", exact: true }).click();
+    const head = page.getByRole("slider", { name: "Playhead" });
+    await head.waitFor({ timeout: 5000 });
+    await head.focus();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowRight");
+    for (let i = 0; i < 8; i++) await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForFunction((id) => window.__editor.getState().activePageId === id, second.id, { timeout: 5000 });
+    const zoom = await design(`(s) => s.zoom`);
+    const frame = await page.evaluate(() => {
+      const f = document.querySelector(".cf-pageframe").getBoundingClientRect();
+      return { x: f.x, y: f.y };
+    });
+    const middle = { x: frame.x + (el.x + el.width / 2) * zoom, y: frame.y + (el.y + el.height * 0.7) * zoom };
+    let colour = "";
+    for (let i = 0; i < 30 && colour !== "blue"; i++) {
+      colour = await colourAt(middle);
+      if (colour !== "blue") await wait(200);
+    }
+    await shot("runs-on");
+    const bar = await page
+      .locator(".cf-tl__clip")
+      .first()
+      .evaluate((e) => e.style.width);
+    await page.getByRole("button", { name: "Timeline", exact: true }).click();
+    // as it was, for the step after
+    await page.evaluate(
+      ([id, clipId, pageId]) => {
+        const a = window.__editor.getState().actions;
+        a.deletePage(id);
+        a.updateElementsOnPage(pageId, [clipId], (c) => delete c.runsOn);
+        a.setActivePage(pageId);
+      },
+      [second.id, el.id, first],
+    );
+    if (colour !== "blue") throw new Error("on the next page the clip is " + colour);
+    return `blue on the next page, its bar ${bar} wide`;
+  });
+
   await step("Split a 5 s page at 1.8 s on the timeline: on the new page the loop goes on blue, part-way through its play, not red from its start", async () => {
     const before = await clip();
     if (before.once) throw new Error("the clip plays once");

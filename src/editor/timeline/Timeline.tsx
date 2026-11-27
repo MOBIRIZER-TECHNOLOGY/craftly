@@ -9,7 +9,8 @@ import { clipClock } from "@/render/videos";
 import { Button, IconButton, IconPause, IconPlay, IconSplit, cx } from "@/ui";
 import { TransitionJoin } from "./TransitionJoin";
 import { splitMoment } from "@/core/splitPage";
-import { CLIP_TOP_PX, ClipBar, ROW_GAP, ROW_H, clipLanes, pageClips } from "./ClipBar";
+import { runEnd } from "@/core/carriedClips";
+import { CLIP_TOP_PX, ClipBar, ROW_GAP, ROW_H, clipSpan, packRows, pageClips } from "./ClipBar";
 import { pauseTimeline, placeAt, playTimeline, pxPerSecond, seekTimeline, useTimeline } from "./timelineStore";
 import { TrackBar, TrackControls, soundLanes } from "./TrackBar";
 import "./timeline.css";
@@ -155,8 +156,18 @@ export function Timeline() {
   const pps = pxPerSecond(total, width - PAD * 2);
   const at = Math.min(time, total);
   const place = placeAt(timeline, at);
-  const lanes = timeline.segments.map((seg, i) => clipLanes(pages[i], seg.end - seg.playStart));
-  const clipRowCount = Math.max(0, ...lanes.map((l) => l.rows));
+  // every clip's bar, from its start to the end of the last page it runs under (core/carriedClips.ts), on rows shared by the whole
+  // timeline: a clip that runs on can meet the clips of the pages after its own
+  const reach = timeline.segments.map((_seg, i) => Object.fromEntries(pageClips(pages[i]).map((el) => [el.id, runEnd(pages, i, el, timeline)])));
+  const lanes = packRows(
+    timeline.segments.flatMap((seg, i) =>
+      pageClips(pages[i]).map((el) => {
+        const span = clipSpan(el, reach[i][el.id]);
+        return { id: el.id, start: seg.playStart + span.start, end: seg.playStart + span.end };
+      }),
+    ),
+  );
+  const clipRowCount = lanes.rows;
   // the sounds of the design: rows of their own under the clips
   const tracks = design?.audio ?? [];
   const sounds = soundLanes(tracks, total);
@@ -263,8 +274,8 @@ export function Timeline() {
                 el={el}
                 page={pages[i]}
                 pageStart={seg.playStart}
-                pageLength={seg.end - seg.playStart}
-                row={lanes[i].row[el.id] ?? 0}
+                pageLength={reach[i][el.id] ?? seg.end - seg.playStart}
+                row={lanes.row[el.id] ?? 0}
                 top={CLIP_TOP}
                 pps={pps}
                 pad={PAD}

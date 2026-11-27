@@ -16,7 +16,7 @@ vi.mock("./videos", async (original) => ({
 }));
 
 const { getImage, loadImage, videoPosterKey } = await import("./images");
-const { collectResources, renderPage } = await import("./renderPage");
+const { collectResources, preparePage, renderPage } = await import("./renderPage");
 const { PlaybackRenderer } = await import("./playback");
 const { playingFrame } = await import("./videos");
 
@@ -262,5 +262,40 @@ describe("a clip's captions", () => {
   it("are drawn in a video download too, which hands the clip's frames over itself", () => {
     const { spy } = paint([clip({ captions: lines, trimEnd: 4 })], { scale: 1, animation: { time: 0.2 }, playVideos: { frame: () => canvas() } });
     expect(texts(spy)).toEqual(["First words"]);
+  });
+});
+
+describe("a clip that runs on under the pages after its own", () => {
+  it("is painted on them over the background and behind their own elements, playing on from where it got to", () => {
+    const el = clip({ id: "runs", once: true, runsOn: 1 });
+    const own = createPage({ id: "p2", duration: 3, elements: [clip({ id: "own" })] });
+    const pages = [createPage({ id: "p1", duration: 2, elements: [el] }), own];
+    frames.playing = canvas(32, 18);
+    const spy = spyContext({ width: 400, height: 300 });
+    renderPage(spy.ctx, { ...DESIGN, pages }, own, { scale: 1, animation: { time: 1 }, playVideos: {} });
+    // the carried clip first (2 s further on: its 3rd second at the page's 1st), then the page's own
+    const calls = vi.mocked(playingFrame).mock.calls;
+    expect(calls.map(([c]) => c.id)).toEqual(["runs", "own"]);
+    expect(calls[0][0]).toMatchObject({ trimStart: 2 });
+    expect(spy.to("drawImage")).toHaveLength(2);
+  });
+
+  it("is not on its own page twice, nor on a page drawn without its design's pages, nor in a part over the background", () => {
+    const pages = [createPage({ id: "p1", elements: [clip({ id: "runs", runsOn: 1 })] }), createPage({ id: "p2" })];
+    frames.playing = canvas(32, 18);
+    const opts = { scale: 1, animation: { time: 1 }, playVideos: {} };
+    renderPage(spyContext({ width: 400, height: 300 }).ctx, { ...DESIGN, pages }, pages[0], opts);
+    expect(vi.mocked(playingFrame).mock.calls).toHaveLength(1);
+    vi.mocked(playingFrame).mockClear();
+    renderPage(spyContext({ width: 400, height: 300 }).ctx, DESIGN, pages[1], opts);
+    renderPage(spyContext({ width: 400, height: 300 }).ctx, { ...DESIGN, pages }, pages[1], { ...opts, part: { from: 0, to: 0, background: false } });
+    expect(playingFrame).not.toHaveBeenCalled();
+  });
+
+  it("has its frame of that moment waited for by a still download of the later page", async () => {
+    const el = clip({ id: "runs", once: true, runsOn: 1 });
+    const pages = [createPage({ id: "p1", duration: 2, elements: [el] }), createPage({ id: "p2" })];
+    await preparePage(pages[1], pages);
+    expect(frames.posters).toContainEqual([el.src, 2]);
   });
 });

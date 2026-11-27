@@ -12,6 +12,7 @@ import {
   clipVolume,
 } from "@/core/animation";
 import { readSrt, writeSrt } from "@/core/srt";
+import { MAX_RUNS_ON, clipRunsOn } from "@/core/carriedClips";
 import type { ClipCaption } from "@/core/types";
 import { downloadBlob } from "@/export/download";
 import { safeFileName } from "@/export/options";
@@ -441,6 +442,25 @@ function TrimPopover({ el }: { el: VideoElement }) {
             }
           />
           <p className="cf-tbpop__hint">{el.once ? m.editor.videoBar.onceHint : m.editor.videoBar.loopHint}</p>
+          <SliderField
+            label={m.editor.videoBar.runsOn}
+            value={clipRunsOn(el)}
+            min={0}
+            max={MAX_RUNS_ON}
+            step={1}
+            onChange={(v) =>
+              editElements(
+                [el.id],
+                only("video", (clip) => {
+                  const pages = Math.min(MAX_RUNS_ON, Math.max(0, Math.round(v)));
+                  if (pages === 0) delete clip.runsOn;
+                  else clip.runsOn = pages;
+                }),
+                "runs-on",
+              )
+            }
+          />
+          {clipRunsOn(el) > 0 ? <p className="cf-tbpop__hint">{m.editor.videoBar.runsOnHint(clipRunsOn(el))}</p> : null}
         </div>
       )}
     </PopoverButton>

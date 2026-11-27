@@ -45,6 +45,7 @@ import { paintFor } from "./paint";
 import { getPath2D, shapeFillRule } from "./shapePaths";
 import { layoutText, resolveRunStyle } from "./textLayout";
 import { clipFinished, clipWaiting, playingFrame } from "./videos";
+import { carriedClips } from "@/core/carriedClips";
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -783,9 +784,11 @@ function drawAnimated(ctx: Ctx, el: DesignElement, env: Env, st: AnimState, unit
 /**
  * Paints `page` into `ctx`. The context's transform is reset; `opts.scale`
  * maps design px to canvas px and `opts.clip` selects the visible region.
+ * When `design.pages` holds `page`, the clips that run on under it from the pages before (core/carriedClips.ts) are painted over
+ * its background, behind its elements.
  * Returns true when everything (images, fonts) was ready.
  */
-export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, page: Page, opts: RenderOptions): boolean {
+export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height"> & { pages?: readonly Page[] }, page: Page, opts: RenderOptions): boolean {
   const { scale, clip } = opts;
   const env: Env = { scale, hide: opts.hide, pending: false, depth: 0 };
   const videoTime = opts.playVideos?.time ?? opts.animation?.time;
@@ -813,6 +816,8 @@ export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, p
       ctx.restore();
     } else paintBackground(ctx, page.background, design.width, design.height, env);
   }
+  // the clips that run on from the pages before: with the background, under everything of the page's own
+  if (part?.background !== false) for (const el of carriedClips(design.pages, page)) drawElement(ctx, el, env);
   if (part) {
     for (let i = Math.max(0, part.from); i < Math.min(part.to, page.elements.length); i++) drawElement(ctx, page.elements[i], env);
   } else if (opts.animation) {
@@ -865,9 +870,10 @@ export function collectResources(page: Page): Resources {
   return r;
 }
 
-/** Waits until every image, graphic and font the page needs is ready. */
-export async function preparePage(page: Page): Promise<void> {
-  const res = collectResources(page);
+/** Waits until every image, graphic and font the page needs is ready (with the clips that run on under it from `pages`). */
+export async function preparePage(page: Page, pages?: readonly Page[]): Promise<void> {
+  const carried = carriedClips(pages, page);
+  const res = collectResources(carried.length ? { ...page, elements: [...carried, ...page.elements] } : page);
   await Promise.all([
     ...[...res.images].map((s) => loadImage(s)),
     ...[...res.svgs].map((s) => loadSvgImage(s)),
@@ -880,7 +886,7 @@ export async function preparePage(page: Page): Promise<void> {
  * aspect ratio). Waits for fonts and images first - used by thumbnails and export.
  */
 export async function renderPageToCanvas(
-  design: Pick<Design, "width" | "height">,
+  design: Pick<Design, "width" | "height"> & { pages?: readonly Page[] },
   page: Page,
   opts: { width: number; transparent?: boolean; /** seconds into the page's animations */ time?: number },
 ): Promise<HTMLCanvasElement> {
@@ -890,7 +896,7 @@ export async function renderPageToCanvas(
   canvas.height = Math.max(1, Math.round(design.height * scale));
   const ctx = canvas.getContext("2d")!;
   for (let attempt = 0; attempt < 3; attempt++) {
-    await preparePage(page);
+    await preparePage(page, design.pages);
     const complete = renderPage(ctx, design, page, { scale, transparent: opts.transparent, animation: opts.time === undefined ? undefined : { time: opts.time } });
     if (complete) break;
   }

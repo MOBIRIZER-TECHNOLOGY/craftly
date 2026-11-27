@@ -88,7 +88,7 @@ export function dragClip(el: Pick<VideoElement, "trimStart" | "trimEnd" | "durat
 interface ClipBarProps {
   el: VideoElement;
   page: Page;
-  /** second of the whole timeline at which its page's own time begins, and how long the page lasts */
+  /** second of the whole timeline at which its page's own time begins, and how far from there its bar may reach (the end of its page, or of the last page it runs on under) */
   pageStart: number;
   pageLength: number;
   row: number;

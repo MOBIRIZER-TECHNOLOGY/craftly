@@ -74,7 +74,13 @@ describe("the shape of a sound", () => {
   });
 
   it("reads a sound once, a piece at a time, and gives it to every bar of it", async () => {
-    media.sounds.song = { pieces: [[0, [0.5, 0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1, 1]], [1, [0.25]]], rate: 10 };
+    media.sounds.song = {
+      pieces: [
+        [0, [0.5, 0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1, 1]],
+        [1, [0.25]],
+      ],
+      rate: 10,
+    };
     const first = renderHook(() => useSoundPeaks("asset:song", 1.1));
     expect(first.result.current).toBeNull();
     await waitFor(() => expect(first.result.current).not.toBeNull());

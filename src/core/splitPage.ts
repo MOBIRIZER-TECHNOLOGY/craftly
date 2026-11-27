@@ -33,8 +33,8 @@ export function splitMoment(page: Pick<Page, "duration" | "elements">, at: numbe
   return t;
 }
 
-/** A clip as it is on the second page, `at` seconds of its page later. */
-function goOn(el: VideoElement, at: number): void {
+/** A clip as it is on the second page, `at` seconds of its page later (also how a clip that runs on is on the pages after its own). */
+export function goOn(el: VideoElement, at: number): void {
   const start = clipStartAt(el);
   if (at <= start) {
     // it had not started: it starts that much sooner

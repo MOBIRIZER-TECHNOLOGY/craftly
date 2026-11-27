@@ -13,6 +13,7 @@
 import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from "mediabunny";
 import { getAsset } from "@/core/assets";
 import { trackLength, trackStartAt } from "@/core/audioTracks";
+import { carriedClips } from "@/core/carriedClips";
 import { clipFades, clipGainAt, clipLoopFrom, clipStartAt, clipVolume } from "@/core/animation";
 import type { Timeline } from "@/core/transition";
 import type { AudioTrack, Page, VideoElement } from "@/core/types";
@@ -139,8 +140,11 @@ export async function mixClipSound(
     const page = pages[seg.page];
     const until = Math.min(seg.end, total);
     if (!page || until - seg.playStart <= 0) continue;
-    for (const el of soundingClips(page.elements)) {
+    // its own clips, and those that run on under it from the pages before (core/carriedClips.ts)
+    for (const el of soundingClips([...carriedClips(pages, page), ...page.elements])) {
       throwIfAborted(signal);
+      // a clip turned all the way down (one that has played, under a page it runs on under) adds nothing
+      if (clipVolume(el) === 0) continue;
       // a clip that starts later on its page is silent until then
       const begin = seg.playStart + clipStartAt(el);
       if (begin >= until) continue;

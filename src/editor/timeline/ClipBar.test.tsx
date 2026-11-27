@@ -133,6 +133,24 @@ describe("<Timeline>: the clips", () => {
     expect((container.querySelector(".cf-tl") as HTMLElement).style.height).toContain("60px");
   });
 
+  it("reaches across the pages a clip runs on under, and makes clips of those pages take another row", async () => {
+    const runs = createDesign({
+      title: "Runs on",
+      width: 400,
+      height: 300,
+      pages: [
+        createPage({ id: "p1", duration: 2, elements: [video("long", { runsOn: 1 })] }),
+        createPage({ id: "p2", duration: 3, elements: [video("later", { trimEnd: 1, once: true })] }),
+      ],
+    });
+    const { container } = await renderChrome(<Timeline />, runs);
+    const [long, later] = bars(container);
+    // over the 2 s of its page and the 3 s of the next: 5 s at 60 px a second
+    expect(long.style.width).toBe(`${5 * 60}px`);
+    expect(later.style.left).toBe(`${16 + 2 * 60}px`);
+    expect(later.style.top).not.toBe(long.style.top);
+  });
+
   it("draws clips that play one after another on one row, and the band grows for that one row only", async () => {
     const after = createDesign({
       title: "After",

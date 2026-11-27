@@ -93,4 +93,18 @@ describe("a clip in Present", () => {
     player.dispose();
     expect(clips.paused).toBe(1);
   });
+
+  it("plays a clip that runs on under the next page there too, from where it got to", async () => {
+    const design = coloredDesign(2);
+    design.pages[0].elements.push(
+      createVideo({ src: "asset:clip", naturalWidth: 640, naturalHeight: 360, duration: 10, once: true, runsOn: 1, x: 50, y: 50, width: 200, height: 100 }),
+    );
+    const player = new PresentPlayer({ canvas: document.createElement("canvas"), onIndex: vi.fn(), onAutoplay: vi.fn(), onFailed: vi.fn(), onProgress: vi.fn() }, 1);
+    players.push(player);
+    player.configure({ design, docVersion: 1, stageW: 800, stageH: 600, reducedMotion: false });
+    await settle(1000);
+    // the second page has nothing of its own that moves, yet it is painted frame after frame for the clip, with its sound
+    expect(clips.calls.length).toBeGreaterThan(20);
+    expect(clips.calls.every((c) => c.sound === true)).toBe(true);
+  });
 });

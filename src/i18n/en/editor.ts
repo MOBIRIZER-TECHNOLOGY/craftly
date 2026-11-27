@@ -246,6 +246,12 @@ export const editor = {
     loop: "Play over and over",
     loopHint: "The clip starts again whenever it ends, for as long as its page is shown.",
     onceHint: "The clip plays once, then stays on its last frame without sound.",
+    runsOn: "Runs on under the next pages",
+    runsOnHint: (n: number) =>
+      plural(n, {
+        one: `The clip goes on under the next page, behind its own content, from where it got to. This page no longer lasts as long as the clip.`,
+        other: `The clip goes on under the next ${num(n)} pages, behind their own content, from where it got to. This page no longer lasts as long as the clip.`,
+      }),
     speed: "Speed",
     speedTip: "How fast the clip plays",
     speedValue: (x: number) => `${num(x)}×`,

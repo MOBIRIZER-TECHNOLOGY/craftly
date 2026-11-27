@@ -220,9 +220,12 @@ const AUDIO = [
   "$.audio[].volume: number",
 ];
 
+/** How many pages after its own a clip runs on under (2026-11-27): optional, absent means its own page only (clipRunsOn in src/core/carriedClips.ts). */
+const CLIP_RUNS_ON = ["$.pages[].elements[].runsOn: number"];
+
 const ADDED: Record<string, string[]> = {
   // in the order the shapes are listed: by path
-  design: [],
+  design: [...CLIP_RUNS_ON],
   summary: [...REVISION, ...SPACE],
   folder: SPACE,
   brandKit: [],

@@ -532,6 +532,12 @@ export interface VideoElement extends ElementBase {
    * loop carried on from the page it was split from (0 when absent; not read for a clip that plays once). See clipLoopFrom.
    */
   loopFrom?: number;
+  /**
+   * How many of the pages after its own the clip runs on under (0 when absent): on those pages it is drawn in the same place, behind
+   * their own elements, going on from where it had got to, with its sound. It is edited on its own page only, and its page no longer
+   * follows its length. See src/core/carriedClips.ts.
+   */
+  runsOn?: number;
   /** how loud it plays, from 0 to 1 (1 when absent): see clipVolume in core/animation.ts */
   volume?: number;
   /** seconds over which its sound rises at the start of every play of it, and falls at the end (0 to 5, 0 when absent) */

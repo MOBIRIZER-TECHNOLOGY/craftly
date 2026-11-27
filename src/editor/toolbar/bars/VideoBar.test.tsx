@@ -431,6 +431,21 @@ describe("video toolbar: trim", () => {
     expect(reset(dialog).disabled).toBe(false);
   });
 
+  it("sets how many pages after its own the clip runs on under, and says what that does", async () => {
+    const el = clip();
+    const { user, dialog } = await openTrim(el);
+    const runs = within(dialog).getByRole("spinbutton", { name: "Runs on under the next pages value" });
+    expect((runs as HTMLInputElement).value).toBe("0");
+    await typeNumber(user, runs, "2");
+    expect(live<VideoElement>(el).runsOn).toBe(2);
+    expect(within(dialog).getByText(/goes on under the next 2 pages/)).toBeTruthy();
+    await typeNumber(user, runs, "1");
+    expect(within(dialog).getByText(/goes on under the next page,/)).toBeTruthy();
+    await typeNumber(user, runs, "0");
+    expect(live<VideoElement>(el).runsOn).toBeUndefined();
+    expect(within(dialog).queryByText(/goes on under/)).toBeNull();
+  });
+
   it("rounds the length in its hint as the fields round theirs", async () => {
     // a browser's own recording: 2.385 s reads 2.38 in the End field, and the hint must not say 2.39
     const { dialog } = await openTrim(clip({ duration: 2.385, trimStart: 1.3, trimEnd: 2.385 }));

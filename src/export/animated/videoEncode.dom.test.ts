@@ -640,6 +640,16 @@ describe("mixing the clips' sound", () => {
     expect(piece.getChannelData(1)[100]).toBeCloseTo(0.2 + (1250 + 100) / 1e9, 6);
   });
 
+  it("goes on under the pages a clip runs on under, from where it got to, and stops when it has played", async () => {
+    // a 2 s clip that plays once, on a 1 s page, running on under the next two
+    const pages = [page([clip({ once: true, runsOn: 2 })], 1), page([], 2), page([], 2)];
+    await mixClipSound(pages, buildTimeline(pages), 5);
+    expect(placed().map(([w, at, n]) => [w, at, n])).toEqual([
+      [0, 0, 1000],
+      [1, 0, 1000],
+    ]);
+  });
+
   it("reads a clip once for two copies of it on two pages", async () => {
     const pages = [page([clip()]), page([clip()])];
     await mixClipSound(pages, buildTimeline(pages), 6);
