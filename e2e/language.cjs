@@ -33,7 +33,18 @@ let shotN = 0;
     return page;
   };
   let current = null; // the page the next screenshot is of
-  const shot = (name, page = current) => page && page.screenshot({ path: OUT + String(++shotN).padStart(2, "0") + "-" + name + ".png" });
+  // the page settles before its picture is taken: a screenshot in Playwright's Firefox can run a ResizeObserver callback in the middle of a
+  // React render, which React then reports as an update made while rendering (a real Firefox does not; without screenshots it is clean)
+  const settled = (page) =>
+    page
+      .evaluate(
+        () =>
+          new Promise((r) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 500 }) : setTimeout(r, 50)))),
+          ),
+      )
+      .catch(() => undefined);
+  const shot = async (name, page = current) => page && (await settled(page), page.screenshot({ path: OUT + String(++shotN).padStart(2, "0") + "-" + name + ".png" }));
   const step = async (name, fn) => {
     try {
       const r = await fn();
@@ -418,7 +429,8 @@ let shotN = 0;
           const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
           if (!own) continue;
           checked++;
-          if (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 2) {
+          // an inline label has no box to scroll (Chrome says 0, Firefox its text's width): whether it stays in its button is checked below
+          if (cs.display !== "inline" && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 2)) {
             out.push(`${el.className || el.tagName} "${el.textContent.trim().slice(0, 30)}" ${el.scrollWidth}x${el.scrollHeight} in ${el.clientWidth}x${el.clientHeight}`);
           }
           // the text also has to stay inside its button

@@ -22,7 +22,7 @@ const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, lacksMedia, BASE } = require("./lib.cjs");
 
 const OUT = outDir("accounts");
 const ROOT = path.resolve(__dirname, "..");
@@ -116,7 +116,13 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     const serverAway = (text) =>
       !server.running && (/^Could not connect to server/.test(text) || (text.includes(new URL(SERVER).host) && /due to access control checks/.test(text)));
     page.on("console", (m) => {
-      if (m.type() === "error" && !/WebSocket|ERR_CONNECTION|ERR_INTERNET_DISCONNECTED|Failed to load resource|Failed to fetch/.test(m.text()) && !serverAway(m.text()))
+      if (
+        m.type() === "error" &&
+        !/WebSocket|ERR_CONNECTION|ERR_INTERNET_DISCONNECTED|Failed to load resource|Failed to fetch|NetworkError when attempting to fetch|CORS request did not succeed/.test(
+          m.text(),
+        ) &&
+        !serverAway(m.text())
+      )
         logs.push(`${name} console.error: ` + m.text().slice(0, 240));
     });
     page.on("pageerror", (e) => {
@@ -357,7 +363,10 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     return "listed on the phone";
   });
 
-  await step("a clip and a sound in a design of the laptop reach the phone with it, as themselves", async () => {
+  // the steps of clips and sounds need a browser that records and plays them
+  const noMedia = await lacksMedia(browser);
+  const mediaStep = (name, fn) => (noMedia ? Promise.resolve(void console.log(`SKIP ${name}  (${noMedia}; Safari has them)`)) : step(name, fn));
+  await mediaStep("a clip and a sound in a design of the laptop reach the phone with it, as themselves", async () => {
     await ready(laptop);
     const made = await laptop.page.evaluate(async () => {
       const { lib, factory, assets } = window.__journey;
@@ -666,7 +675,7 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     return `${ws.length} sockets, each joined with a session and no key`;
   });
 
-  await step("a clip added in the team's live room reaches the other member through the room, sent with a session and no key", async () => {
+  await mediaStep("a clip added in the team's live room reaches the other member through the room, sent with a session and no key", async () => {
     const puts = [];
     const onRequest = (req) => {
       if (/\/api\/rooms\/[^/]+\/media\//.test(req.url()) && req.method() === "PUT") puts.push(req.headers());

@@ -64,12 +64,32 @@ const near = (p, c, tol = 24) => !!p && dist(p, c) <= tol;
   };
   /** Waits for the first painted frame (the page background shows in the corner). */
   const painted = (bg) => until("the first frame", async () => near(await px(0.03, 0.03), bg, 30), 8000);
-  const openShow = async () => {
+  /**
+   * Opens the show. With `trail`, the middle of the page is read on every frame from the click on, in the page itself: read from
+   * here, one at a time, the first frames can be gone before the first answer comes (Playwright's Firefox is that slow).
+   */
+  const openShow = async ({ trail = false } = {}) => {
+    if (trail)
+      await page.evaluate(() => {
+        const t0 = performance.now();
+        const frames = (window.__trail = []);
+        const read = () => {
+          const c = document.querySelector("canvas.cf-present__page");
+          if (c && c.width) {
+            const d = c.getContext("2d").getImageData(Math.floor(c.width * 0.5), Math.floor(c.height * 0.5), 1, 1).data;
+            frames.push([Math.round(performance.now() - t0), [d[0], d[1], d[2]]]);
+          }
+          if (performance.now() - t0 < 2500) requestAnimationFrame(read);
+        };
+        requestAnimationFrame(read);
+      });
     await page
       .getByRole("button", { name: /^Present$/ })
       .first()
       .click();
     await page.locator(".cf-present").waitFor({ timeout: 8000 });
+    // full screen is asked for as the show opens: a key pressed before it has come (or been refused) is the browser's
+    await page.waitForFunction(() => !!document.fullscreenElement, null, { timeout: 1500 }).catch(() => undefined);
   };
 
   let pageIds = [];
@@ -126,16 +146,15 @@ const near = (p, c, tol = 24) => !!p && dist(p, c) <= tol;
     // reopen so the clock starts from a known first frame
     await page.keyboard.press("Escape");
     await until("the show to close", async () => !(await inShow()), 3000);
-    await openShow();
+    await openShow({ trail: true });
     await painted(RED);
-    const t0 = Date.now();
-    const samples = [];
-    for (let i = 0; i < 14; i++) {
-      samples.push([Date.now() - t0, await px(0.5, 0.5)]);
-      await wait(60);
-    }
     await shot("fade-during");
-    await wait(900);
+    await wait(2600);
+    // the frames of the show from its first one, as they were drawn
+    const frames = await page.evaluate(() => window.__trail);
+    if (!frames.length) throw new Error("no frame of the show was read");
+    const t0 = frames[0][0];
+    const samples = frames.filter((_, i) => i % 4 === 0).map(([t, p]) => [t - t0, p]);
     const settled = await px(0.5, 0.5);
     const dF = dist(settled, RED);
     if (dF < 60) throw new Error(`the shape never appeared (settled ${settled}, background ${RED})`);

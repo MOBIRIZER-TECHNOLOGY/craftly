@@ -108,7 +108,8 @@ export function SelectionOverlay() {
           <LinkIcon size={12} aria-hidden="true" />
         </span>
       ) : null}
-      {!active && <ConnectorAnchors page={page} hover={hover} zoom={zoom} />}
+      {/* not while points, a crop or a text are edited: the anchors would lie over the points and take their drags */}
+      {!active && !pathEditing && !cropping && !editing && <ConnectorAnchors page={page} hover={hover} zoom={zoom} />}
     </>
   );
 }

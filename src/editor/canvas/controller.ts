@@ -184,6 +184,10 @@ interface Pinch {
 
 const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 4;
+/** a tap moves no further than this (CSS px); the second tap of a double tap comes this soon and this near the first */
+const TAP_SLOP = 10;
+const DOUBLE_TAP_MS = 400;
+const DOUBLE_TAP_REACH = 24;
 /** Overlays that handle the pointer themselves: fingers on them take no part in a pinch. */
 const OWN_POINTER = "[data-cf-text-editor],[data-cf-table-editor],[data-cf-crop],[data-cf-pathedit]";
 
@@ -1026,7 +1030,48 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
 
   /* ---------------- double click / context menu ---------------- */
 
+  // A double tap: Chrome and Safari answer it with a dblclick, Firefox with two clicks of detail 1 and no dblclick. Two taps
+  // close in time and place are taken as a double click here, unless the browser's own dblclick comes first; one that comes
+  // just after is then left alone, so the element is not opened twice.
+  let tapDown: { id: number; x: number; y: number } | null = null;
+  let lastTap: { t: number; x: number; y: number } | null = null;
+  let doubleTimer = 0;
+  let tappedDoubleAt = -Infinity;
+  function onTapDown(e: PointerEvent) {
+    if (e.pointerType !== "touch") return;
+    // a second finger is a pinch, not a tap
+    tapDown = e.isPrimary ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
+    if (!e.isPrimary) lastTap = null;
+  }
+  function onTapUp(e: PointerEvent) {
+    if (e.pointerType !== "touch" || tapDown?.id !== e.pointerId) return;
+    const still = Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y) <= TAP_SLOP;
+    tapDown = null;
+    if (!still) {
+      lastTap = null;
+      return;
+    }
+    const { clientX: x, clientY: y, timeStamp: t } = e;
+    if (lastTap && t - lastTap.t <= DOUBLE_TAP_MS && Math.hypot(x - lastTap.x, y - lastTap.y) <= DOUBLE_TAP_REACH) {
+      lastTap = null;
+      window.clearTimeout(doubleTimer);
+      doubleTimer = window.setTimeout(() => {
+        const target = document.elementFromPoint(x, y);
+        if (!target || !host.contains(target)) return;
+        tappedDoubleAt = performance.now();
+        openAt({ target, clientX: x, clientY: y });
+      }, 80);
+    } else lastTap = { t, x, y };
+  }
+
   function onDoubleClick(e: MouseEvent) {
+    window.clearTimeout(doubleTimer);
+    if (performance.now() - tappedDoubleAt < 600) return;
+    openAt(e);
+  }
+
+  /** what a double click does at a point: a text is edited, a picture cropped, a path's points opened, a group entered */
+  function openAt(e: { target: EventTarget | null; clientX: number; clientY: number }) {
     const target = e.target as HTMLElement;
     if (target.closest("[data-cf-ui],[data-cf-handle],[data-cf-text-editor],[data-cf-table-editor],[data-cf-crop],[data-cf-pathedit]")) return;
     const s = st();
@@ -1145,6 +1190,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   host.addEventListener("pointercancel", onPointerCancel);
   host.addEventListener("lostpointercapture", onLostPointerCapture);
   host.addEventListener("dblclick", onDoubleClick);
+  host.addEventListener("pointerdown", onTapDown, true);
+  host.addEventListener("pointerup", onTapUp, true);
   host.addEventListener("contextmenu", onContextMenu);
   host.addEventListener("wheel", onWheel, { passive: false });
   host.addEventListener("dragover", onDragOver);
@@ -1174,6 +1221,9 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       host.removeEventListener("pointercancel", onPointerCancel);
       host.removeEventListener("lostpointercapture", onLostPointerCapture);
       host.removeEventListener("dblclick", onDoubleClick);
+      host.removeEventListener("pointerdown", onTapDown, true);
+      host.removeEventListener("pointerup", onTapUp, true);
+      window.clearTimeout(doubleTimer);
       host.removeEventListener("contextmenu", onContextMenu);
       host.removeEventListener("wheel", onWheel);
       host.removeEventListener("dragover", onDragOver);

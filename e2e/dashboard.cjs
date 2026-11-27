@@ -210,7 +210,8 @@ const results = [];
     await waitSelected("Favourites");
     const hash = await page.evaluate(() => location.hash);
     if (hash !== "#/templates/favourites") throw new Error("Favourites is at " + hash);
-    await page.reload({ waitUntil: "load" });
+    // the page reloads itself: Playwright's reload in Firefox adds an entry to the history, which Back would then go to first
+    await Promise.all([page.waitForEvent("load"), page.evaluate(() => location.reload())]);
     await chip("Favourites").waitFor({ timeout: 20000 });
     await wait(600);
     if ((await selected()) !== "Favourites") throw new Error("after a reload the chosen chip is " + (await selected()));

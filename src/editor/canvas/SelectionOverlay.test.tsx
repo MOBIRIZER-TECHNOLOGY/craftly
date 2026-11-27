@@ -8,6 +8,7 @@ import { createLine, createShape, createText } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
 import { canvasDesign, mountWorkspace, selectIds, type CanvasRig } from "@/test/canvasUtils";
 import { useGesture } from "./gestureStore";
+import { startPathEdit, stopPathEdit } from "./pathEditStore";
 
 const handles = (rig: CanvasRig) => Array.from(rig.host.querySelectorAll("[data-cf-handle]")).map((h) => h.getAttribute("data-cf-handle"));
 const frame = (rig: CanvasRig) => rig.container.querySelector<HTMLElement>(".cf-sel")!;
@@ -151,6 +152,29 @@ describe("the hover outline", () => {
     const rig = await mountWorkspace(canvasDesign([box("a")]));
     act(() => getActions().setHover("ghost"));
     expect(rig.container.querySelector(".cf-outline--hover")).toBeNull();
+  });
+});
+
+describe("the anchors for arrows on the shape under the pointer", () => {
+  const anchors = (rig: CanvasRig) => handles(rig).filter((h) => h?.startsWith("connect:"));
+
+  it("show on hover, and not while the shape's points are edited, where they would lie over the points and take their drags", async () => {
+    const path = createShape("path", { id: "a", x: 100, y: 100, width: 200, height: 100, path: "M0 0 L100 0 L100 100 Z" });
+    const rig = await mountWorkspace(canvasDesign([path]));
+    act(() => getActions().setHover("a"));
+    expect(anchors(rig)).toEqual(["connect:a:top", "connect:a:right", "connect:a:bottom", "connect:a:left"]);
+    act(() => startPathEdit("a"));
+    act(() => getActions().setHover("a"));
+    expect(anchors(rig)).toEqual([]);
+    act(() => stopPathEdit());
+    expect(anchors(rig)).toHaveLength(4);
+  });
+
+  it("do not show while a text is being written", async () => {
+    const rig = await mountWorkspace(canvasDesign([createText({ id: "t", text: "Hi", x: 100, y: 100 }), box("a")]));
+    act(() => getActions().startTextEdit("t"));
+    act(() => getActions().setHover("a"));
+    expect(anchors(rig)).toEqual([]);
   });
 });
 

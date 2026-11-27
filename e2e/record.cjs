@@ -12,7 +12,7 @@
  */
 const fs = require("node:fs");
 const path = require("node:path");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, BASE, isChromium, ENGINE } = require("./lib.cjs");
 
 const OUT = outDir("record");
 const results = [];
@@ -36,6 +36,10 @@ function cameraClip(file) {
 }
 
 (async () => {
+  if (!isChromium) {
+    console.log(`SKIP record.cjs  (it records Chrome's own fake camera, microphone and screen, which ${ENGINE} does not have)`);
+    return;
+  }
   const browser = await launch({
     args: [
       "--use-fake-device-for-media-stream",

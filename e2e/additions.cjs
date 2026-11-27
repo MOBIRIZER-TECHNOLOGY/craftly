@@ -321,11 +321,15 @@ let shotN = 0;
     await page.keyboard.press("l");
     await page.mouse.move(500, 300);
     await page.mouse.move(520, 320);
-    const dot = await page.evaluate(() => {
-      const d = document.querySelector("[data-cf-present-dot]");
-      const r = d?.getBoundingClientRect();
-      return r ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null;
-    });
+    // the dot is drawn on the next frame after the key and the move (WebKit's can come a little later than Chrome's)
+    const dotAt = () =>
+      page.evaluate(() => {
+        const d = document.querySelector("[data-cf-present-dot]");
+        const r = d?.getBoundingClientRect();
+        return r ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null;
+      });
+    let dot = await dotAt();
+    for (let end = Date.now() + 2000; Date.now() < end && (!dot || Math.abs(dot.x - 520) > 2 || Math.abs(dot.y - 320) > 2); dot = await dotAt()) await wait(100);
     if (!dot || Math.abs(dot.x - 520) > 2 || Math.abs(dot.y - 320) > 2) throw new Error("the dot is at " + JSON.stringify(dot));
     await shot("present");
     await page.keyboard.press("Escape");

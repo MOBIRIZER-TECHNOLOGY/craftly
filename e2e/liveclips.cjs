@@ -11,7 +11,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, lacksMedia, BASE } = require("./lib.cjs");
 
 const OUT = outDir("liveclips");
 const ROOT = path.resolve(__dirname, "..");
@@ -76,8 +76,15 @@ async function startServer() {
 }
 
 (async () => {
-  const server = await startServer();
   const browser = await launch();
+  const lacking = await lacksMedia(browser);
+  if (lacking) {
+    console.log(`SKIP liveclips.cjs  (${lacking}; Safari has them)`);
+    await browser.close();
+    return;
+  }
+  // (started after the check: a server left running would keep this script from ending)
+  const server = await startServer();
   const open = async (name) => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await ctx.newPage();

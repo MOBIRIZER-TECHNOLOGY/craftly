@@ -271,7 +271,9 @@ function resolve(from, target) {
       const corner = await page.evaluate(async (base64) => {
         const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
         const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/jpeg" }));
-        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
         const c2d = canvas.getContext("2d");
         c2d.drawImage(bitmap, 0, 0);
         return [...c2d.getImageData(bitmap.width - 20, bitmap.height - 20, 1, 1).data.slice(0, 3)];

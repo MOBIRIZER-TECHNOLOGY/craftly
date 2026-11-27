@@ -17,7 +17,7 @@
  */
 const fs = require("node:fs");
 const path = require("node:path");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, lacksMedia, BASE } = require("./lib.cjs");
 
 const OUT = outDir("audio");
 const results = [];
@@ -50,6 +50,12 @@ function tone(file, hz, seconds) {
   const low = tone(path.join(OUT, "Tone 440.wav"), 440, 2);
   const high = tone(path.join(OUT, "Tone 880.wav"), 880, 2);
   const browser = await launch();
+  const lacking = await lacksMedia(browser);
+  if (lacking) {
+    console.log(`SKIP audio.cjs  (${lacking}; Safari has them)`);
+    await browser.close();
+    return;
+  }
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
   const page = await ctx.newPage();
   // the <audio> elements the app makes for the sounds are never put in the page: they are written down as they are made

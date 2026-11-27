@@ -12,7 +12,7 @@
  *   reload           the clip is still there after a reload, its first frame drawn again
  */
 const fs = require("fs");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, lacksMedia, BASE } = require("./lib.cjs");
 
 const OUT = outDir("video");
 const results = [];
@@ -21,6 +21,12 @@ let shotN = 0;
 
 (async () => {
   const browser = await launch();
+  const lacking = await lacksMedia(browser);
+  if (lacking) {
+    console.log(`SKIP video.cjs  (${lacking}; Safari has them)`);
+    await browser.close();
+    return;
+  }
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
   const page = await ctx.newPage();
   page.on("console", (m) => {

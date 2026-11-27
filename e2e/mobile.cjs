@@ -38,7 +38,14 @@ const EN = { file: "File", addTextBox: "Add a text box", shareDownload: "Downloa
 
   /** a new touch screen with its own storage, in language `lang` */
   const open = async (lang, viewport, phone) => {
-    const ctx = await browser.newContext({ viewport, hasTouch: true, isMobile: phone, locale: lang === "hi" ? "hi-IN" : "en-US", acceptDownloads: true });
+    // (Firefox has no mobile emulation: there the phone is a narrow window with touch, without a phone's meta viewport handling)
+    const ctx = await browser.newContext({
+      viewport,
+      hasTouch: true,
+      ...(ENGINE === "firefox" ? {} : { isMobile: phone }),
+      locale: lang === "hi" ? "hi-IN" : "en-US",
+      acceptDownloads: true,
+    });
     await ctx.addInitScript((l) => {
       try {
         localStorage.setItem("craftly.language", l);
@@ -79,7 +86,8 @@ const EN = { file: "File", addTextBox: "Add a text box", shareDownload: "Downloa
   const inScreen = async (locator, what) => {
     const box = await locator.boundingBox();
     if (!box) throw new Error(what + " is not on the page");
-    const { width, height } = page.viewportSize();
+    // the window the page is in: Playwright's Firefox puts a page in full screen (Present) at the size of the computer's screen, not the phone's
+    const { width, height } = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     if (box.x < -0.5 || box.y < -0.5 || box.x + box.width > width + 0.5 || box.y + box.height > height + 0.5)
       throw new Error(`${what} is at ${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}, outside the ${width}x${height} screen`);
     return box;

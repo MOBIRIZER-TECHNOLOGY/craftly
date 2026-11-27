@@ -93,11 +93,24 @@ function readZip(file) {
   const page = await ctx.newPage();
   // what is expected to be reported while a library is being refused is not an error of the app (see the step that says so)
   let expectRefusals = false;
+  /** errors of the console whose words are still being read (see below) */
+  const reading = [];
   const watch = (target, label) => {
     target.on("console", (m) => {
       if (m.type() !== "error") return;
       const text = m.text();
-      if (expectRefusals && /MigrationError|newer version of Craftly|VersionError|Could not open|Failed to load resource/i.test(text)) return;
+      const expected = /MigrationError|newer version of Craftly|VersionError|Could not open|Failed to load resource/i;
+      if (expectRefusals && expected.test(text)) return;
+      // Firefox gives an Error that is logged as the bare word "Error": its name and message are read from it
+      if (expectRefusals && /^\w*Error$/.test(text.trim()) && m.args().length) {
+        const pending = m
+          .args()[0]
+          .evaluate((v) => (v instanceof Error ? v.name + ": " + v.message : String(v)))
+          .catch(() => text)
+          .then((full) => void (expected.test(full) || logs.push(label + " console.error: " + full.slice(0, 240))));
+        reading.push(pending);
+        return;
+      }
       logs.push(label + " console.error: " + text.slice(0, 240));
     });
     target.on("pageerror", (e) => logs.push(label + " PAGEERROR " + e.message.slice(0, 240)));
@@ -323,7 +336,8 @@ function readZip(file) {
     await page.waitForFunction(() => window.__editor.getState().saveState === "saved", null, { timeout: 15000 });
     // a page of the same origin that runs none of the app: it is another tab that talks to the database
     const other = await ctx.newPage();
-    await other.goto(BASE + "/manifest.webmanifest");
+    // (a picture of the site, not its manifest: Firefox downloads a .webmanifest instead of showing it)
+    await other.goto(BASE + "/favicon.svg");
     // the title is written to the design when its field is left (Enter): from then on an edit waits for the autosave, 0.7 s away
     const title = page.getByRole("textbox", { name: "Design title" });
     await title.fill("Edited just before the upgrade");
@@ -379,6 +393,7 @@ function readZip(file) {
   });
 
   await step("no errors reached the console", async () => {
+    await Promise.all(reading);
     if (logs.length) throw new Error(logs.slice(0, 4).join(" | "));
     return "clean";
   });
