@@ -35,7 +35,7 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { checkDesign, joinCredential, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type JoinMsg, type Role, type ServerMsg } from "@/collab/protocol";
 import { cleanName } from "@/collab/presence";
@@ -1273,8 +1273,30 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   /** Whether each connection has answered the last ping of the heartbeat (nothing yet: it has not been pinged). */
   const answered = new WeakMap<WebSocket, boolean>();
 
+  // What goes to one connection in one turn of the event loop leaves in one write. Under load a person is told several things
+  // at once (where the others' pointers are, their edits, the acknowledgement of their own), and the cost of the server is
+  // then mostly the writes to the network, one each (measured: docs/PERFORMANCE.md, "The live server under load"). The
+  // socket is held (corked) at the first message and let go once the turn is over, a fraction of a millisecond later.
+  const corked = new Set<Socket>();
+  let uncorking = false;
+  const uncork = () => {
+    uncorking = false;
+    for (const socket of corked) socket.uncork();
+    corked.clear();
+  };
+  const hold = (ws: WebSocket) => {
+    const socket = (ws as unknown as { _socket?: Socket })._socket;
+    if (!socket || corked.has(socket) || socket.destroyed) return;
+    socket.cork();
+    corked.add(socket);
+    if (!uncorking) {
+      uncorking = true;
+      setImmediate(uncork);
+    }
+  };
   const send = (ws: WebSocket, msg: ServerMsg) => {
     if (ws.readyState !== ws.OPEN) return;
+    hold(ws);
     ws.send(JSON.stringify(msg));
     // What a connection does not read waits here, in memory, and a connection that reads nothing would have it grow for as long as
     // the room has something to say. Past the limit it is dropped at once (a polite close would wait behind everything else that

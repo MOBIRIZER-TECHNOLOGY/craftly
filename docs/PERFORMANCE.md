@@ -245,3 +245,48 @@ errs on the large side.
   Uploads at its full size, placed, kept across a reload and downloaded in a 1080p video; the browser stayed under 0.95 GB. Its
   decoding was not heavier than a small clip's (the padding is not pictures).
 - Not tried: a computer with less memory, a phone, Firefox and Safari (whose encoders differ).
+
+# Performance: the live server under load
+
+Measured on 2026-11-28 with `scripts/live-load.mjs` against the server's image (`Dockerfile.server`) in Docker Desktop on Windows,
+limited to **one CPU and 512 MB** (`docker run --cpus 1 --memory 512m`), about what a small virtual server has. The load ran
+on the same machine (an AMD Ryzen 9 9900X), outside the container. Every room has five people. Each of them joins with the edit
+key, adds a shape, then moves it again and again and moves their pointer. An edit is acknowledged only once it is on disk, so
+the time to acknowledge includes the write.
+
+Two profiles:
+- **Busy:** an edit every 2 s and 5 pointer moves a second per person, all the time. The editor sends a pointer move at most
+  every 80 ms and only while the mouse moves, and an edit when something changes, so this is a room where everybody is busy
+  at once, more than people are.
+- **Extreme:** an edit every 0.5 s and 10 pointer moves a second per person, all the time. It shows where the server breaks.
+
+| Profile | Connections | Edits a second | Acknowledged in, p50 / p95 / p99 | CPU | Memory, peak |
+| --- | --- | --- | --- | --- | --- |
+| busy | 1,000 | 498 | 40 / 104 / 137 ms | 89 % | 66 MB |
+| busy | 2,000 | 997 | 1.7 / 2.3 / 2.4 s | 100 % | 85 MB |
+| extreme, before the change below | 500 | 997 | 242 / 363 / 450 ms | 100 % | 61 MB |
+| extreme, after it | 500 | 986 | 161 / 251 / 274 ms | 87 % | — |
+| extreme, before | 1,000 | 1,998 | 4.4 / 5.7 / 6.0 s | 100 % | 100 MB |
+| extreme, after | 1,000 | 1,975 | 0.98 / 1.3 / 1.4 s | 100 % | — |
+| extreme, before | 2,000 | 2,355 | 79 / 102 / 113 s | 100 % | 246 MB |
+
+In every run but the last nothing was refused, lost or closed. In the last one the server was far past what one CPU does:
+joining took eleven minutes instead of thirty seconds, 100 people could not join, and 733 connections were sent away with
+"try again later" (close 1013, `connections_closed_total{reason="queue"}`), as the server is made to do when edits wait too
+long to be saved; a browser comes back by itself and sends again what was not acknowledged. The process stayed up, was not
+killed for its memory, and went back to idle afterwards.
+
+**What was changed.** A profile of the server under the extreme load of 500 connections (`node --cpu-prof` in the container)
+showed its JavaScript idle 44 % of the time and the writes to the network at 25 %: one write for each message to each person,
+and a person in a room of five is told four pointer moves for each of their own. Turning messages into JSON was under 2 %.
+The server now holds each connection's socket at the first message of a turn of the event loop and lets it go when the turn
+is over (`hold` in `src/server/live.ts`), so what one person is told at once leaves in one write. It costs less than a
+millisecond, and it made the extreme load of 1,000 connections four times faster.
+
+**What it means.** One CPU carries about 1,000 people who are all busy at once with an edit acknowledged in about a tenth of
+a second, and degrades slowly past that; most people in most rooms are idle most of the time, which costs a ping every 30 s.
+The server is one Node process and does not use more cores, so a bigger machine helps only up to one fast core; more people
+than that need more servers (docs/DEPLOY.md, "What is not there yet").
+
+**Not measured.** The load on a machine of its own (here the load and the server shared one), designs with many pages and
+pictures, clips and pictures uploaded during the load, rooms of 20 or 50 people, a slow disk, and a run of hours.

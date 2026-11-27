@@ -372,7 +372,7 @@ node scripts/accounts.mjs delete ann@example.org --yes # the account and its own
 - **Logs.** The server writes a line when it starts. There is no access log; use the proxy's.
 - **Accounts for rooms of links.** With `ACCOUNTS=1` (section 2.9) the editor signs in, syncs, and edits a team's design live in a room of its own, joined with the member's session. A room made from a link still knows no accounts: who may make a room, how long rooms live and whether an operator can list and delete rooms (section 2.7) depend on the settings in section 2.3: if a setting is not in that table, the server does not have it. Without `ROOM_CREATE_KEY` anybody who can reach `POST /api/rooms` can make rooms up to `MAX_ROOMS`; with it, everybody who has that one key can, and the server does not know one of them from another.
 - **More than one server.** A room lives in the memory of one process and the files of one folder. Two servers behind a load balancer would each have their own rooms; there is no shared storage and no way to spread a room over processes.
-- **A load test.** How many rooms and people one server carries has not been measured.
+- **A load test on production hardware.** One CPU carries about 1,000 busy people with edits acknowledged in about 0.1 s, measured in Docker on a desktop (docs/PERFORMANCE.md, "The live server under load", and `scripts/live-load.mjs` to run it again). Not measured on the machine you will run, for hours, or with large designs.
 - **TLS in the server itself.** It speaks plain HTTP on purpose; use a proxy.
 - **A compose file, Kubernetes manifests, a Helm chart.** None.
 - **esbuild as a named dependency.** `server:build` uses the esbuild that Vite installs (see "Develop" in the README).
