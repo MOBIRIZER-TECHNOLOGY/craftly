@@ -40,8 +40,16 @@ function tone(hz, seconds) {
   return buf;
 }
 
-/** starts the server for shared designs and gives its address and its folder, which is thrown away at the end */
+/**
+ * starts the server for shared designs and gives its address and its folder, which is thrown away at the end. With LIVE_SERVER
+ * (its address) and LIVE_DATA (its data folder as this machine sees it), a server that is already running is used instead and
+ * left as it is: the image of Dockerfile.server, for one, run with a folder of this machine mounted at /data.
+ */
 async function startServer() {
+  if (process.env.LIVE_SERVER) {
+    if (!process.env.LIVE_DATA || !fs.existsSync(process.env.LIVE_DATA)) throw new Error("LIVE_SERVER needs LIVE_DATA, the server's data folder as this machine sees it");
+    return { address: process.env.LIVE_SERVER.replace(/\/$/, ""), data: process.env.LIVE_DATA, stop: () => undefined };
+  }
   const built = spawnSync("npm", ["run", "server:build"], { cwd: ROOT, shell: true, encoding: "utf8" });
   if (built.status !== 0) throw new Error("the server did not build: " + (built.stderr || built.stdout).slice(0, 400));
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "craftly-liveclips-"));

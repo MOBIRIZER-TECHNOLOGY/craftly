@@ -38,8 +38,9 @@ docker run -d --name craftly-live --restart unless-stopped \
 - The image sets `HOST=0.0.0.0`, `PORT=8787` and `DATA_DIR=/data`. With that `HOST` the server prints a warning at every start that it speaks plain HTTP and WebSocket and needs a proxy with TLS in front (section 2.4). In a container that is expected: publish the port to `127.0.0.1` only, as above, or to the network of the proxy. The other settings (section 2.3) are passed with `-e`.
 - `docker stop` sends SIGTERM; the server saves and exits.
 - If you mount a folder of the host instead of a named volume (`-v /srv/craftly-live:/data`), it must be writable by uid 1000, the `node` user of the image.
+- The server writes its files readable by itself only (600, folders 700), with or without Docker: they hold the designs and, with `ACCOUNTS=1`, emails and password hashes. Whatever reads the folder (a backup, a copy) runs as the same user or as root.
 
-**This image has not been built.** There is no Docker on the machine where the Dockerfile was written. What was done instead, by hand and outside a container: the bundle was built from only the files the Dockerfile copies (`package.json`, `package-lock.json`, `tsconfig.json`, `src/`, `scripts/`); `scripts/server-runtime-package.mjs` wrote the two package files; `npm ci --omit=dev --ignore-scripts` from them installed `ws` 8.22.2 and nothing else; the server started from that folder and answered `/api/health`; the health command returned 0 with the server up and 1 with it down. Not checked: that `npm ci` of the whole project succeeds on Alpine Linux, the ownership of the volume, the health check as Docker runs it, the size of the image, and stopping with `docker stop`. Build it once and watch the output before you rely on it.
+**What was checked**, on 2026-11-28 with Docker Desktop 29.9.3 on Windows (a Linux engine, linux/amd64): the build succeeds from a clean cache in about 30 s, with no warning but npm's about `npm cache clean --force`; the image is 244 MB, runs as uid 1000, and holds the bundle, two package files and `ws` only. Started with a named volume, Docker calls it healthy about 8 s later; `/api/health` answers 200, `POST /api/rooms` 201 (a room file appears in the volume), a `POST` from an origin not in `ALLOW_ORIGIN` 403, and `/metrics` 401 without `METRICS_KEY` and the numbers with it. `docker stop` exits with code 0 in about a second, and after `docker start` the room is still there. With a folder of the host mounted at `/data`, `e2e/liveclips.cjs` (`LIVE_SERVER` and `LIVE_DATA` point it at a server that runs already) passes: one person shares a design with a clip and a sound, the server keeps them as files in that folder, and a second person joins and sees and hears them. With `ACCOUNTS=1`, a sign-up is refused (403) unless `SIGNUP=open`; with it, an account is made, survives a restart, signs in, and a wrong password gets 401. `scripts/server-smoke.mjs` passes inside `node:22-alpine`, with a clean exit on SIGTERM. Not checked: an ARM host (`linux/arm64`), Docker on Linux itself (rather than Docker Desktop), a long run, and a host with SELinux, where a mounted folder needs `:z`.
 
 Why the second stage does not use the project's `package.json`: its `dependencies` are the editor's fonts and libraries (some fifty packages, the ONNX runtime among them), which the server never loads. `scripts/server-runtime-package.mjs` reads what the bundle imports (today `ws` only) and writes a `package.json` and a `package-lock.json` with the version, address and checksum from the project's own lock file, so the image gets the same `ws` that the tests ran against. If the server ever imports another package, the script picks it up, or stops with a message if it cannot describe it.
 
@@ -195,8 +196,8 @@ Everything the server keeps is in `DATA_DIR` (`/data` in the container, the volu
   ```bash
   docker run --rm -v craftly-live-data:/data:ro -v "$PWD":/backup alpine \
     tar czf /backup/craftly-live-$(date +%F).tar.gz -C /data .
-  # without Docker:
-  tar czf craftly-live-$(date +%F).tar.gz -C /var/lib/craftly-live .
+  # without Docker, as the server's user or root (its files are readable by that user only):
+  sudo -u craftly tar czf craftly-live-$(date +%F).tar.gz -C /var/lib/craftly-live .
   ```
 
 - **Restoring.** Stop the server, put the files back into an empty `DATA_DIR` owned by the user the server runs as, start it. Links made before the backup work again; edits made after it are gone from the server, and what a browser that was ahead of the restored copy does on its next visit has not been tried. A restore has not been rehearsed: try one before you need it.
@@ -345,7 +346,7 @@ node scripts/accounts.mjs delete ann@example.org --yes # the account and its own
 
 ## 3. What is not there yet
 
-- **A built and tested image.** `Dockerfile.server` has never been through `docker build` (section 2.1). No image is published anywhere, and CI does not build one.
+- **A published image.** `Dockerfile.server` is built and tested by hand (section 2.1), but no image is published anywhere, and CI does not build one.
 - **A deployment on a real host.** The proxy configurations, the systemd unit, the backup and the restore are written from reading, not from running them in public.
 - **Dashboards and alert rules.** The metrics are there (section 2.8), with a few alerts suggested in words; no Grafana dashboard and no rules file is shipped, and no real Prometheus has scraped the endpoint yet.
 - **Logs.** The server writes a line when it starts. There is no access log; use the proxy's.

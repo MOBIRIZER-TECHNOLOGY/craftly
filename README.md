@@ -248,7 +248,7 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before sending a change, and [`CHANGEL
 
 ## Deploy
 
-Craftly is a static site: `npm run build` writes everything to `dist/` and any static host can serve it (Netlify, Cloudflare Pages, Vercel, GitHub Pages, an S3 bucket behind a CDN, nginx). The optional live server for working together is deployed separately: [`docs/DEPLOY.md`](docs/DEPLOY.md) has both parts in one place, with a Dockerfile for the server (`Dockerfile.server`, written but not built yet), its settings, a reverse proxy for TLS and backups.
+Craftly is a static site: `npm run build` writes everything to `dist/` and any static host can serve it (Netlify, Cloudflare Pages, Vercel, GitHub Pages, an S3 bucket behind a CDN, nginx). The optional live server for working together is deployed separately: [`docs/DEPLOY.md`](docs/DEPLOY.md) has both parts in one place, with a Dockerfile for the server (`Dockerfile.server`, built and tested on 2026-11-28), its settings, a reverse proxy for TLS and backups.
 
 - **Routing needs no setup.** Pages use the URL hash (`#/design/...`), so there are no rewrite rules.
 - **HTTPS is required** for the service worker and for installing the app (`localhost` is exempt).

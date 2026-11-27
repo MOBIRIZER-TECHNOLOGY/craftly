@@ -4,6 +4,12 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **The server image is built and tested, and the server's files are readable by itself only (2026-11-28).** `Dockerfile.server` had never been built. Built with Docker 29.9.3, it works as written: 244 MB, healthy about 8 s after it starts, and `docker stop` exits 0 in about a second. Rooms and accounts are kept in the volume over a restart, and the editor shares a clip and a sound through it into a folder of the host. Found on the way:
+  - The server wrote its files readable by every user of the machine (644, folders 755). With `ACCOUNTS=1` those files hold emails and password hashes, and with a folder of the host mounted into the container, other users of that machine could read them. The server now sets its umask to 077 as it starts, so files are 600 and folders 700, and the image makes `/data` 700. A backup runs as the server's user or root (`docs/DEPLOY.md`, 2.5). Files written before this keep their modes.
+  - `npm run server:smoke` failed on Windows with a libuv assertion (exit code 127) after it had passed: it now lets Node end by itself.
+
+  `e2e/liveclips.cjs` can run against a server that is already running (`LIVE_SERVER`, `LIVE_DATA`). What was checked, and what was not (ARM, Docker on Linux itself, SELinux, a long run), is in `docs/DEPLOY.md`, section 2.1.
+
 - **The journeys run in Firefox and WebKit, and what they found is fixed (2026-11-27).** Two problems in the app:
   - **A double tap opens a text in Firefox.** Firefox answers two taps with two clicks and no `dblclick`, and the canvas opened a text, a crop, a path's points or a group only on `dblclick`, so on a touch screen in Firefox a text could not be opened for editing by tapping it twice. The canvas now takes two still taps within 400 ms and 24 px as a double click, and leaves the browser's own `dblclick` alone when it comes as well, so nothing opens twice (`onTapDown`, `onTapUp` and `openAt` in `src/editor/canvas/controller.ts`).
   - **The arrow anchors no longer cover a path's points while they are edited.** The four anchors for drawing an arrow from a shape were drawn on the shape under the pointer even while its points, its crop or its text were being edited, and took the drags meant for the points (`SelectionOverlay.tsx`).

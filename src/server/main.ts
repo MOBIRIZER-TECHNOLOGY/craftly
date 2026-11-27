@@ -23,6 +23,11 @@ import { listenWarning } from "./listenWarning";
 import { FileStorage } from "./storage";
 
 const env = process.env;
+
+// What the server writes is for the server alone: rooms, uploads, and with ACCOUNTS=1 emails and password hashes. Files are
+// made 600 and folders 700, also in a folder of the host mounted into a container, where other users of that machine could
+// otherwise read them. A backup must run as the same user (or root). Before anything is written.
+process.umask(0o077);
 const number = (name: string, min: number, max: number) => {
   const raw = env[name];
   if (raw === undefined || raw.trim() === "") return undefined;
