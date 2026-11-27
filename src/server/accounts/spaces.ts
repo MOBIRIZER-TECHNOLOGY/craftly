@@ -22,8 +22,7 @@ import { checkDesign } from "@/collab/protocol";
 import { uid } from "@/core/ids";
 import { MigrationError } from "@/core/schema/migrator";
 import { migrateDesign } from "@/core/schema/design";
-import { svgProblem } from "@/core/svgSafety";
-import { ASSET_ID, ASSET_LIMIT, MEDIA_TYPE, checkAsset, readBody, reply } from "../http";
+import { ASSET_ID, ASSET_LIMIT, MEDIA_TYPE, checkAsset, pictureProblem, readBody, reply } from "../http";
 import { badRequest, BodyTooBig, exactly, notFound, readJson, refuse, TOMBSTONE_MS, type Ctx } from "./context";
 import { can, type Action, type TeamRole } from "./roles";
 import { SERVER_ID, type DesignEntry, type Manifest, type StoredDesign, type UserRecord } from "./storage";
@@ -513,28 +512,6 @@ export async function deleteFolder(ctx: Ctx, req: IncomingMessage, res: ServerRe
 
 /* ---------------- uploads ---------------- */
 
-/** Whether the bytes begin the way a picture of that type does. A picture that is not is refused, whatever it says it is. */
-export function looksLike(mime: string, bytes: Buffer): boolean {
-  const starts = (...b: number[]) => b.every((v, i) => bytes[i] === v);
-  const ascii = (at: number, text: string) => bytes.subarray(at, at + text.length).toString("latin1") === text;
-  switch (mime) {
-    case "image/png":
-      return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
-    case "image/jpeg":
-      return starts(0xff, 0xd8, 0xff);
-    case "image/gif":
-      return ascii(0, "GIF87a") || ascii(0, "GIF89a");
-    case "image/webp":
-      return ascii(0, "RIFF") && ascii(8, "WEBP");
-    case "image/bmp":
-      return ascii(0, "BM");
-    case "image/avif":
-      return ascii(4, "ftyp");
-    default:
-      return false;
-  }
-}
-
 export async function putAsset(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
   const { asker } = await access(ctx, req, space, "upload");
   const id = readId(rawId, ASSET_ID, "an upload");
@@ -552,11 +529,8 @@ export async function putAsset(ctx: Ctx, req: IncomingMessage, res: ServerRespon
   // the checks a picture of a room gets (http.ts), and then what is inside: plain drawing for an SVG, a picture's bytes otherwise
   const asset = checkAsset(parsed);
   if (!asset) throw badRequest("invalid image data or format");
-  const bytes = Buffer.from(asset.base64, "base64");
-  if (asset.mime === "image/svg+xml") {
-    const problem = svgProblem(bytes.toString("utf8"));
-    if (problem) throw badRequest(`this drawing cannot be kept: ${problem}`);
-  } else if (!looksLike(asset.mime, bytes)) throw badRequest(`this is not a ${asset.mime} picture`);
+  const problem = pictureProblem(asset);
+  if (problem) throw badRequest(problem);
   const status = await change(ctx, space, asker, async (m) => {
     if (Object.hasOwn(m.assets, id)) {
       const have = await ctx.storage.loadAsset(space, id);
@@ -647,9 +621,7 @@ export async function missingFiles(ctx: Ctx, space: string, ids: readonly string
 /** Keeps a room's picture in the space: true when it is there afterwards, false when it may not be kept (its kind, or the quota). */
 export async function keepPicture(ctx: Ctx, space: string, id: string, given: unknown): Promise<boolean> {
   const asset = ASSET_ID.test(id) ? checkAsset(given) : null;
-  if (!asset) return false;
-  const bytes = Buffer.from(asset.base64, "base64");
-  if (asset.mime === "image/svg+xml" ? svgProblem(bytes.toString("utf8")) : !looksLike(asset.mime, bytes)) return false;
+  if (!asset || pictureProblem(asset)) return false;
   return change(ctx, space, null, async (m) => {
     if (Object.hasOwn(m.assets, id)) return { value: true, changed: false };
     if (spaceBytes(m) + asset.base64.length > ctx.o.spaceQuotaBytes) return { value: false, changed: false };

@@ -45,7 +45,7 @@ import { ACCOUNT_CORS, createAccounts, type Accounts, type AccountsOptions, type
 import { refuse } from "./accounts/context";
 import type { TeamRole } from "./accounts/roles";
 import { clientAddress, hourlyLimit } from "./address";
-import { ASSET_ID, ASSET_LIMIT, MEDIA_TYPE, checkAsset, cors, foreign, readBody, reply, replyTooBig, requestTarget, sameSecret, sha256, sha256Hex } from "./http";
+import { ASSET_ID, ASSET_LIMIT, MEDIA_TYPE, checkAsset, cors, foreign, pictureProblem, readBody, reply, replyTooBig, requestTarget, sameSecret, sha256, sha256Hex } from "./http";
 import { createMetrics, METRICS_CONTENT_TYPE, type LabelOf } from "./metrics";
 import { ROOM_ID, type LiveStorage, type RoomRecord } from "./storage";
 
@@ -960,7 +960,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       return asset ? reply(res, 200, asset) : reply(res, 404, { error: "no such shared image" });
     }
     const body = await readBody(req, ASSET_LIMIT + 100);
-    if (body === null) return reply(res, 413, { error: "this shared image is too large" });
+    // (answered the way a clip that is too big is: the rest of the body is not read)
+    if (body === null) return replyTooBig(req, res, { error: "this shared image is too large" });
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
@@ -969,6 +970,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     }
     const asset = checkAsset(parsed);
     if (!asset) return reply(res, 400, { error: "invalid image data or format" });
+    // what is inside, as a space checks it: the others' browsers draw what one person uploads
+    const problem = pictureProblem(asset);
+    if (problem) return reply(res, 400, { error: problem });
     const { mime, base64 } = asset;
     await enqueue(l, async () => {
       // The body may have taken minutes. Only the room that is in memory now may be saved: not one that was stopped meanwhile, and
