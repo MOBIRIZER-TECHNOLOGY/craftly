@@ -28,6 +28,10 @@ const journeys = [
     "editing together in three browsers against the real server: start from Share, join by the edit link, a view link that only looks, pointer drags, simultaneous edits, undo of one's own steps, reload, stop sharing",
   ],
   [
+    "liveclips.cjs",
+    "clips and sounds in a shared design against the real server: a clip and a sound put in a design that is then shared, kept as files beside the room, and a second person who joins by the edit link sees the clip's own picture and hears the sound in the timeline's Play",
+  ],
+  [
     "hostile.cjs",
     "a link that leads to a server that cannot be trusted: a design with code in it is refused in words and nothing of it is kept, an honest server opens the design, the same server turning hostile is left at once and the design stays as it was",
   ],

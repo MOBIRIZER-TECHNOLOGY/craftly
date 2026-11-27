@@ -107,6 +107,11 @@ export const ASSET_ID = /^[A-Za-z0-9_-]{1,128}$/;
 export const IMAGE_TYPE = /^image\/(?:png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
 /** base64 for up to 9 MiB */
 export const ASSET_LIMIT = 12 * 1024 * 1024;
+/**
+ * The clips and sounds a room may keep (docs/COLLABORATION.md, "Clips and sounds"): the types the app stores them under
+ * (ACCEPTED_VIDEO_TYPES and ACCEPTED_AUDIO_TYPES in src/core/assets.ts), and nothing a browser would run as a page.
+ */
+export const MEDIA_TYPE = /^(?:video\/(?:mp4|webm|ogg)|audio\/(?:mpeg|mp4|aac|wav|ogg|webm|flac))$/;
 
 /**
  * An uploaded picture as it came, if it is one that may be kept: a picture type, and base64 that is exactly what its bytes

@@ -45,7 +45,7 @@ import { ACCOUNT_CORS, createAccounts, type Accounts, type AccountsOptions, type
 import { refuse } from "./accounts/context";
 import type { TeamRole } from "./accounts/roles";
 import { clientAddress, hourlyLimit } from "./address";
-import { ASSET_ID, ASSET_LIMIT, checkAsset, cors, foreign, readBody, reply, replyTooBig, requestTarget, sameSecret, sha256, sha256Hex } from "./http";
+import { ASSET_ID, ASSET_LIMIT, MEDIA_TYPE, checkAsset, cors, foreign, readBody, reply, replyTooBig, requestTarget, sameSecret, sha256, sha256Hex } from "./http";
 import { createMetrics, METRICS_CONTENT_TYPE, type LabelOf } from "./metrics";
 import { ROOM_ID, type LiveStorage, type RoomRecord } from "./storage";
 
@@ -100,6 +100,10 @@ export interface LiveServerOptions {
   seatCheckEveryMs?: number;
   /** The most the images of one room may take in the storage, in bytes (they are kept as base64: 48 MiB hold 36 MiB of images). */
   maxRoomAssetBytes?: number;
+  /** The largest clip or sound a room keeps, in bytes (100 MiB unless set): a larger one stays on the device that added it. */
+  maxMediaBytes?: number;
+  /** The most the clips and sounds of one room may take, in bytes (500 MiB unless set). */
+  maxRoomMediaBytes?: number;
   maxRooms?: number;
   maxPeersPerRoom?: number;
   /** The most a message from a browser may be, in bytes. */
@@ -182,6 +186,8 @@ const DEFAULTS = {
   sweepEveryMs: 60 * 60 * 1000,
   seatCheckEveryMs: 5 * 60 * 1000,
   maxRoomAssetBytes: 48 * 1024 * 1024,
+  maxMediaBytes: 100 * 1024 * 1024,
+  maxRoomMediaBytes: 500 * 1024 * 1024,
 };
 const DAY = 24 * 60 * 60 * 1000;
 /** The rooms in one answer to the operator: so many unless asked otherwise, and never more than the second. */
@@ -283,6 +289,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     sweepEveryMs: options.sweepEveryMs ?? DEFAULTS.sweepEveryMs,
     seatCheckEveryMs: options.seatCheckEveryMs ?? DEFAULTS.seatCheckEveryMs,
     maxRoomAssetBytes: options.maxRoomAssetBytes ?? DEFAULTS.maxRoomAssetBytes,
+    maxMediaBytes: options.maxMediaBytes ?? DEFAULTS.maxMediaBytes,
+    maxRoomMediaBytes: options.maxRoomMediaBytes ?? DEFAULTS.maxRoomMediaBytes,
   };
   const now = options.now ?? Date.now;
   const roomsMade = hourlyLimit(o.roomCreatePerHour, now);
@@ -930,6 +938,85 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     });
   };
 
+  /* ---------------- clips and sounds ---------------- */
+
+  const roomMedia = async (id: string, assetId: string, req: IncomingMessage, res: ServerResponse) => {
+    const l = await find(id);
+    if (!l || l.removed) return reply(res, 404, { error: "no such shared design" });
+    await pinned(l, () => roomMediaIn(l, assetId, req, res));
+  };
+
+  /**
+   * A clip or a sound of a room (docs/COLLABORATION.md, "Clips and sounds"). Unlike a picture it travels as itself, not as base64 in
+   * JSON: it may be a hundred megabytes, so it is streamed to the storage as it comes and from it as it is read. PUT gives its type
+   * (MEDIA_TYPE) and its size up front, which is weighed against the limits before a byte is read; GET and HEAD give it back
+   * under that type, as a download and never as a page. The same keys and sessions as for pictures.
+   */
+  const roomMediaIn = async (l: Loaded, assetId: string, req: IncomingMessage, res: ServerResponse) => {
+    const id = l.id;
+    const role = l.record.bound ? await sessionRole(l, req.headers.authorization) : roleOf(l, req.headers["x-craftly-key"]);
+    if (!role || (req.method === "PUT" && role !== "edit")) return reply(res, 403, { error: "this link cannot access the requested clip" });
+    if (!ASSET_ID.test(assetId)) return reply(res, 400, { error: "invalid clip id" });
+    if (req.method === "GET" || req.method === "HEAD") {
+      const info = await o.storage.mediaInfo(id, assetId);
+      if (!info) return reply(res, 404, { error: "no such shared clip" });
+      res.statusCode = 200;
+      res.setHeader("content-type", info.mime);
+      res.setHeader("content-length", String(info.size));
+      res.setHeader("cache-control", "no-store");
+      res.setHeader("x-content-type-options", "nosniff");
+      res.setHeader("content-disposition", "attachment");
+      if (req.method === "HEAD") return void res.end();
+      const stream = o.storage.mediaStream(id, assetId);
+      stream.on("error", (error) => {
+        console.error(`Craftly could not read the clip ${assetId} of the shared design ${id}`, error);
+        res.destroy();
+      });
+      return void stream.pipe(res);
+    }
+    const mime = String(req.headers["content-type"] ?? "")
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+    if (!MEDIA_TYPE.test(mime)) return reply(res, 415, { error: "only clips and sounds are shared this way" });
+    const declared = Number(req.headers["content-length"]);
+    if (!Number.isSafeInteger(declared) || declared <= 0) return reply(res, 411, { error: "the size of the clip must be given" });
+    if (declared > o.maxMediaBytes) return replyTooBig(req, res, { error: "this clip is too large to share", limit: o.maxMediaBytes });
+    if ((await o.storage.mediaBytes(id)) + declared > o.maxRoomMediaBytes) {
+      return replyTooBig(req, res, { error: "this room has reached its storage limit for clips and sounds", limit: o.maxRoomMediaBytes });
+    }
+    // the bytes come as they come, which may take minutes; the room is changed only once they are all there
+    const staged = await o.storage.stageMedia(id, req, declared);
+    if (!staged) return replyTooBig(req, res, { error: "the clip was longer than it said" });
+    if (staged.size !== declared) {
+      await o.storage.dropMedia(id, staged);
+      return reply(res, 400, { error: "the clip did not arrive whole" });
+    }
+    await enqueue(l, async () => {
+      // what to answer; a received clip that is not kept is thrown away before the answer goes
+      let answer: [number, unknown];
+      try {
+        const have = l.removed || loaded.get(id) !== l ? null : await o.storage.mediaInfo(id, assetId);
+        if (l.removed || loaded.get(id) !== l) answer = [404, { error: "no such shared design" }];
+        else if (have) answer = have.sha256 === staged.sha256 && have.mime === mime ? [200, { ok: true }] : [409, { error: "clip id already in use" }];
+        // weighed again: another clip may have come in meanwhile
+        else if ((await o.storage.mediaBytes(id)) + staged.size > o.maxRoomMediaBytes) {
+          answer = [413, { error: "this room has reached its storage limit for clips and sounds", limit: o.maxRoomMediaBytes }];
+        } else {
+          await o.storage.commitMedia(id, assetId, staged, mime);
+          reply(res, 201, { ok: true });
+          noteUse(l);
+          return;
+        }
+      } catch (error) {
+        await o.storage.dropMedia(id, staged);
+        throw error;
+      }
+      await o.storage.dropMedia(id, staged);
+      reply(res, ...answer);
+    });
+  };
+
   /* ---------------- the operator ---------------- */
 
   /**
@@ -989,6 +1076,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           usedAt: Math.max(usedAt, l?.usedAt ?? 0),
           designBytes: Buffer.byteLength(JSON.stringify(record.design)),
           imageBytes: inside + (await o.storage.assetBytes(id)),
+          mediaBytes: await o.storage.mediaBytes(id),
           people,
         });
       } catch (error) {
@@ -1127,6 +1215,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       if (req.method === "POST" && url.pathname === "/api/rooms") return await createRoom(req, res);
       const asset = /^\/api\/rooms\/([^/]+)\/assets\/([^/]+)$/.exec(url.pathname);
       if (asset && (req.method === "GET" || req.method === "PUT")) return await roomAsset(asset[1], asset[2], req, res);
+      const media = /^\/api\/rooms\/([^/]+)\/media\/([^/]+)$/.exec(url.pathname);
+      if (media && (req.method === "GET" || req.method === "HEAD" || req.method === "PUT")) return await roomMedia(media[1], media[2], req, res);
       const del = /^\/api\/rooms\/([^/]+)$/.exec(url.pathname);
       if (req.method === "DELETE" && del) return await deleteRoom(del[1], req, res);
       reply(res, 404, { error: "not found" });

@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { connect } from "node:net";
+import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
 import { join as join2 } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -539,6 +540,12 @@ describe("a store that cannot be read", () => {
       loadAsset: async () => null,
       saveAsset: async () => undefined,
       assetBytes: async () => 0,
+      stageMedia: async () => null,
+      commitMedia: async () => undefined,
+      dropMedia: async () => undefined,
+      mediaInfo: async () => null,
+      mediaStream: () => Readable.from([]),
+      mediaBytes: async () => 0,
     };
     const log = logged();
     const b = await boot({}, failing);
@@ -2153,6 +2160,7 @@ describe("the operator's tools", () => {
       usedAt: 1_700_000_000_000,
       designBytes: Buffer.byteLength(JSON.stringify(record.design)),
       imageBytes: 0,
+      mediaBytes: 0,
       people: 0,
     });
     expect(byId.get(second.room)).toMatchObject({ title: "The second", createdAt: 1_700_000_060_000, people: 2 });

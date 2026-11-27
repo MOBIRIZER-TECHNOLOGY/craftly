@@ -558,6 +558,12 @@ export const editor = {
     unreachableLink: "Couldn't reach the server. Check the link and that the server is running.",
     /** media.ts: the pictures of a shared design */
     media: {
+      clipTooBig: (name: string, mb: number) =>
+        `"${name}" is larger than this shared design can carry${mb ? ` (${num(mb)} MB)` : ""}: it stays on this device, and the others see an empty box in its place.`,
+      clipsFull: (name: string) => `This shared design holds as many clips and sounds as its server allows: "${name}" stays on this device, and the others do not get it.`,
+      clipRefused: (name: string, status: number) => `"${name}" could not be shared (server response ${status}): it stays on this device.`,
+      /** the file name of a clip or a sound that came from the server, before its extension */
+      clipFileName: "Shared clip",
       missing: "An uploaded image is missing. Replace it to sync this design.",
       checkFailed: (status: number) => `Could not check a shared image (server response ${status}).`,
       cannotShare: (status: number) =>

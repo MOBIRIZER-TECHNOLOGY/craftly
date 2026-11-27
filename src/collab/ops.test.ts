@@ -31,6 +31,19 @@ describe("diffDesign", () => {
     expect(diffDesign(noGuides, d)).toEqual([{ k: "design", unset: ["guides"] }]);
   });
 
+  it("sends the sounds of the design whole, and their going when the last one goes; another copy takes them", () => {
+    const d = designOf(page("p"));
+    const song = { id: "au1", src: "asset:song", duration: 10, trimStart: 0, trimEnd: 10, startAt: 1 };
+    const withSong = { ...d, audio: [song] };
+    expect(diffDesign(d, withSong)).toEqual([{ k: "design", set: { audio: [song] } }]);
+    expect(diffDesign(withSong, d)).toEqual([{ k: "design", unset: ["audio"] }]);
+    const louder = { ...d, audio: [{ ...song, volume: 0.5 }] };
+    // the list is set whole: a copy that had none takes it as it is
+    expect(applyOps(d, diffDesign(withSong, louder)).audio).toEqual([{ ...song, volume: 0.5 }]);
+    expect(applyOps(withSong, diffDesign(withSong, louder)).audio).toEqual([{ ...song, volume: 0.5 }]);
+    expect(applyOps(withSong, diffDesign(withSong, d)).audio).toBeUndefined();
+  });
+
   it("describes pages: added whole, deleted, moved, and their own properties without their elements", () => {
     const a = page("a", [rect("r1")]);
     const b = page("b");

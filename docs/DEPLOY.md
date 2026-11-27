@@ -95,6 +95,8 @@ All settings are environment variables, read once at the start by `src/server/ma
 | `DATA_DIR` | `live-data` | The folder for the rooms, made if it is not there. Relative to the folder the server is started from; give a full path in production. |
 | `ALLOW_ORIGIN` | (none) | The origin of the editor, as the browser sends it: `https://editor.example.org`, no path, no slash at the end. Several, separated by commas, or `*` for any. Without it the server sends no cross-origin headers, and an editor on another origin cannot make or join rooms. With a list, the server also refuses (403) a WebSocket connection and every `POST`, `PUT` and `DELETE` from a page of an origin that is not on it; a request with no `Origin` header (curl, another server) is not refused by this. Name your editor's origin; `*` is for trying things out, and asks no page where it comes from. |
 | `MAX_ROOMS` | `1000` | How many rooms the server keeps. Making one more is refused with 503. |
+| `MAX_MEDIA_MB` | `100` | The largest clip or sound a shared design carries, in MiB. A larger one stays on the device that added it, and the person is told. `0`: shared designs carry no clips or sounds. |
+| `MAX_ROOM_MEDIA_MB` | `500` | The most the clips and sounds of one shared design may take on the server's disk, in MiB (beside `<room>.json`, in `<room>.media/`). Plan the disk for `MAX_ROOMS` times this at worst, and set `ROOM_TTL_DAYS`. |
 | `MAX_PEERS_PER_ROOM` | `50` | How many people can be in one room at once. |
 | `ROOM_CREATE_PER_HOUR` | `10` | How many rooms one address may make in any hour (0 to 100000; `0` for no limit). Every attempt counts. Beyond it the answer is 429 with `Retry-After`. An IPv6 address is counted by its /64. Behind a proxy, set `TRUST_PROXY` too, or all visitors share the proxy's address and this one allowance. |
 | `ROOM_CREATE_KEY` | (none) | A secret that whoever starts to share must give: the editor asks for it ("Key to start sharing") when the server answers that it wants one. Not set: anybody who can reach the server may make rooms. At least 8 characters, no spaces, printable ASCII (the server does not start otherwise); make it long and random, `openssl rand -base64 24` for example. It is one key for everybody you let share, and changing it is the only way to take it back. Every attempt counts towards `ROOM_CREATE_PER_HOUR`, which limits guessing: leave that on. People who are given a link join, edit and look without the key. The editor does not store it; people type it each time they start to share, or let their password manager do it. For a public server set it, unless making rooms is meant to be open to everybody. |
@@ -126,7 +128,7 @@ Limits that are not settings (they are options of `createLiveServer` in `src/ser
 The proxy holds the certificate, listens on 443, and passes both ordinary requests and the WebSocket upgrade on to the server. Three things matter:
 
 - **The WebSocket upgrade** on `/ws` must be passed on (`Upgrade` and `Connection` headers, HTTP/1.1 to the server).
-- **Body size.** `POST /api/rooms` carries a whole design (up to 16 MiB) and an image upload up to about 12 MB. nginx refuses bodies over 1 MB unless told otherwise, and sharing a design with pictures in it would then fail.
+- **Body size.** `POST /api/rooms` carries a whole design (up to 16 MiB), an image upload up to about 12 MB, and a clip or a sound up to `MAX_MEDIA_MB` (100 MiB). nginx refuses bodies over 1 MB unless told otherwise, and sharing a design with pictures or clips in it would then fail. Let bodies through up to `MAX_MEDIA_MB` and a little more, and let them stream (`proxy_request_buffering off`), or nginx first writes each clip to its own disk.
 - **Idle time.** The server pings every connection every 30 seconds, so a proxy that closes connections idle for 60 seconds (the default of nginx) leaves them alone. Do not set that time below about 45 seconds.
 
 Both examples set `X-Forwarded-For`, the address of the browser as the proxy saw it. The server reads it only when `TRUST_PROXY=1` (section 2.3), and then believes its last entry, which is what both examples write. Set that only when the server can be reached through the proxy alone, since anybody who reaches the port directly can write the header themselves; without it, every visitor behind the proxy counts as one address for `ROOM_CREATE_PER_HOUR`.
@@ -154,7 +156,8 @@ server {
     ssl_certificate     /etc/letsencrypt/live/live.example.org/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/live.example.org/privkey.pem;
 
-    client_max_body_size 20m;
+    client_max_body_size 110m;   # MAX_MEDIA_MB and a little more
+    proxy_request_buffering off; # a clip streams through to the server
 
     location / {
         proxy_pass http://127.0.0.1:8787;

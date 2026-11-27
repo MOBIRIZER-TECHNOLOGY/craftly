@@ -82,6 +82,11 @@ export function playSoundsAt(tracks: readonly AudioTrack[] | undefined, time: nu
   for (const [id, player] of players) if (!seen.has(id)) release(id, player);
 }
 
+/** A sound of the uploads that has come since its player found nothing (from a shared design): the player starts again for it. */
+export function retrySound(id: string): void {
+  for (const [key, player] of players) if (player.broken && player.src === `asset:${id}`) release(key, player);
+}
+
 /** Pauses every sound (the playback stopped); they go on from where the time is when they are asked for again. */
 export function stopSounds(): void {
   for (const player of players.values()) if (!player.audio.paused) player.audio.pause();

@@ -14,6 +14,14 @@ import { applyOps, type Op } from "./ops";
 const el = () => createShape("rect", { id: "a" });
 
 describe("checkOps", () => {
+  it("takes the sounds of a design that the app can use, and refuses any other", () => {
+    const song = { id: "au1", src: "asset:song", duration: 10, trimStart: 0, trimEnd: 10, startAt: 1 };
+    expect(checkOps([{ k: "design", set: { audio: [song] } }])).toEqual([{ k: "design", set: { audio: [song] } }]);
+    expect(checkOps([{ k: "design", unset: ["audio"] }])).toEqual([{ k: "design", unset: ["audio"] }]);
+    expect(checkOps([{ k: "design", set: { audio: "loud" } }])).toBe("design: the sounds of a design are a list");
+    expect(checkOps([{ k: "design", set: { audio: [{ ...song, src: "https://example.test/x.mp3" }] } }])).toBe("design: a sound of the design is not one the app can use");
+  });
+
   const good: Op[] = [
     { k: "design", set: { title: "T" }, unset: ["guides"] },
     { k: "page.add", page: { id: "p", background: { type: "solid", color: "#fff" }, elements: [el()] }, index: 0 },

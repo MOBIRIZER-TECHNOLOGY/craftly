@@ -28,7 +28,10 @@ onVideosChange(() => {
 });
 
 export function retryAssetImage(id: string): void {
-  if (!failed.delete(`asset:${id}`)) return;
+  // the picture itself, or the first frames of a clip of that upload (a clip that came from a shared design after it was painted)
+  let again = failed.delete(`asset:${id}`);
+  for (const key of failed) if (key.startsWith(`video:asset:${id}@`)) again = failed.delete(key) || again;
+  if (!again) return;
   epoch++;
   subs.forEach((cb) => cb());
 }

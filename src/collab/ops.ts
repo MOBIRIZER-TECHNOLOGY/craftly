@@ -17,9 +17,14 @@ import type { CommentReply, Design, DesignComment, DesignElement, GroupElement, 
 
 export type Props = Record<string, unknown>;
 
-/** The properties of a design that are shared; `guides` is the only one that may be absent. */
-export const DESIGN_KEYS = ["title", "typeId", "width", "height", "unit", "guides"] as const;
+/**
+ * The properties of a design that are shared; `guides` and `audio` (the sounds of the design, a list that is set whole) are the
+ * ones that may be absent. A browser from before the sounds leaves `audio` alone, as it does any property it does not share.
+ */
+export const DESIGN_KEYS = ["title", "typeId", "width", "height", "unit", "guides", "audio"] as const;
 const DESIGN_SET: ReadonlySet<string> = new Set(DESIGN_KEYS);
+/** The shared properties of a design that an operation may take away. */
+const DESIGN_OPTIONAL = ["guides", "audio"] as const;
 
 export type Op =
   | { k: "design"; set?: Props; unset?: string[] }
@@ -409,9 +414,10 @@ function step(d: Design, op: Op, used?: IdCounts): Design {
       for (const [k, v] of Object.entries(op.set ?? {})) {
         if (DESIGN_SET.has(k) && v !== undefined && !jsonEqual((out as unknown as Props)[k], v)) out = { ...out, [k]: v };
       }
-      if (op.unset?.includes("guides") && out.guides !== undefined) {
-        const { guides: _guides, ...rest } = out;
-        out = rest;
+      for (const key of DESIGN_OPTIONAL) {
+        if (!op.unset?.includes(key) || out[key] === undefined) continue;
+        const { [key]: _gone, ...rest } = out;
+        out = rest as Design;
       }
       return out;
     }

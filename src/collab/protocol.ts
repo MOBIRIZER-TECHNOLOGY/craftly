@@ -11,6 +11,7 @@
  * same operations to everyone else. A batch that is applied twice (a client that sends again after a lost connection) does no
  * harm: the server answers `ack` for a number it has already seen, and nearly every operation is the same when repeated.
  */
+import { readAudioTracks } from "@/core/audioTracks";
 import { isRemoteImage } from "@/core/imageSources";
 import { isBlendMode } from "@/core/blend";
 import { isPlainColor } from "@/core/color";
@@ -272,6 +273,12 @@ function designPropProblem(key: string, value: unknown): string | null {
     case "unit":
     case "typeId":
       return value === undefined || typeof value === "string" ? null : `${key} is text`;
+    case "audio": {
+      // the sounds of the design, each as a project file's must be (src/core/audioTracks.ts), and no more than a design holds
+      if (value === undefined) return null;
+      if (!Array.isArray(value)) return "the sounds of a design are a list";
+      return readAudioTracks(value).skipped ? "a sound of the design is not one the app can use" : null;
+    }
     default:
       return null;
   }

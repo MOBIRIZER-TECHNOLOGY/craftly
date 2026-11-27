@@ -158,6 +158,18 @@ export function onVideosChange(cb: () => void): () => void {
 }
 const tell = () => subs.forEach((cb) => cb());
 
+/** A clip of the uploads that has come since its player found nothing (from a shared design): the player starts again for it. */
+export function retryClip(id: string): void {
+  let again = false;
+  for (const [key, player] of players) {
+    if (player.broken && player.src === `asset:${id}`) {
+      release(key, player);
+      again = true;
+    }
+  }
+  if (again) tell();
+}
+
 function release(key: string, player: Player): void {
   player.video.pause();
   player.video.removeAttribute("src");

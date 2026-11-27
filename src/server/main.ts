@@ -9,7 +9,8 @@
  * whoever starts to share must show; not set: anybody may), and ADMIN_KEY (the operator's key for listing and removing rooms,
  * scripts/rooms.mjs; not set: there is no such interface), and METRICS_KEY (the key of a scraper for GET /metrics; not set: the
  * server shows no numbers), and ACCOUNTS (1 for accounts, teams and sync; off by default) with SIGNUP (invite, open or closed;
- * invite), MAX_ACCOUNTS (no limit) and SPACE_QUOTA_MB (1024). What is not set keeps the default
+ * invite), MAX_ACCOUNTS (no limit) and SPACE_QUOTA_MB (1024), and MAX_MEDIA_MB (100) and MAX_ROOM_MEDIA_MB (500), the largest clip or
+ * sound a shared design carries and the most one room keeps (0: none). What is not set keeps the default
  * of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000) is how long the server may take to close when it
  * is told to stop. See docs/COLLABORATION.md and docs/DEPLOY.md.
  */
@@ -79,10 +80,19 @@ const accounts = accountsOn
     }
   : undefined;
 
+/** A size given in MiB, as bytes; 0 lets no clip or sound be shared. */
+const megabytes = (name: string) => {
+  const value = number(name, 0, 1024 * 1024);
+  return value === undefined ? undefined : value * 1024 * 1024;
+};
+
 const server = createLiveServer({
   storage: new FileStorage(dataDir),
   allowOrigin: origins?.includes("*") ? "*" : origins,
   maxRooms: number("MAX_ROOMS", 1, Number.MAX_SAFE_INTEGER),
+  // the clips and sounds of shared designs, in MiB: the largest one, and the most one room keeps
+  maxMediaBytes: megabytes("MAX_MEDIA_MB"),
+  maxRoomMediaBytes: megabytes("MAX_ROOM_MEDIA_MB"),
   maxPeersPerRoom: number("MAX_PEERS_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),
   maxConnections: number("MAX_CONNECTIONS", 1, Number.MAX_SAFE_INTEGER),
   maxWaitingPerRoom: number("MAX_WAITING_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),

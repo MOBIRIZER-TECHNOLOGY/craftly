@@ -111,6 +111,11 @@ export function peaksBetween(sound: SoundPeaks, trimStart: number, trimEnd: numb
   });
 }
 
+/** Forgets a sound that could not be read (it has come since, from a shared design): the next bar of it reads it again. */
+export function retrySoundPeaks(src: string): void {
+  if (cache.get(src) === null) cache.delete(src);
+}
+
 /** For tests: forget every sound's peaks. */
 export function clearSoundPeaks(): void {
   cache.clear();
