@@ -19,13 +19,30 @@ export function addressKey(address: string): string {
   if (mapped && isIP(mapped[1]) === 4) return mapped[1];
   if (isIP(plain) === 4) return plain;
   if (isIP(plain) !== 6) return address;
-  // the groups before a "::" are the front of the address, and what the "::" stands for is zeros
-  const front = plain.split("::")[0].split(":").filter(Boolean);
-  while (front.length < 4) front.push("0");
-  return `${front
+  return `${groups(plain)
     .slice(0, 4)
-    .map((group) => parseInt(group, 16).toString(16))
+    .map((group) => group.toString(16))
     .join(":")}::/64`;
+}
+
+/**
+ * The eight groups of an IPv6 address (which isIP has said it is). A "::" stands for as many zero groups as are missing, and
+ * those may lie inside the first half (`2001::5:1:2:3:4` is 2001:0:0:5:1:2:3:4); an IPv4 address at the end is two groups.
+ */
+function groups(address: string): number[] {
+  const parse = (part: string) =>
+    part
+      .split(":")
+      .filter(Boolean)
+      .flatMap((group) => {
+        if (!group.includes(".")) return [parseInt(group, 16)];
+        const [a, b, c, d] = group.split(".").map(Number);
+        return [(a << 8) | b, (c << 8) | d];
+      });
+  const [head, tail] = address.split("::");
+  const front = parse(head);
+  const back = tail === undefined ? [] : parse(tail);
+  return [...front, ...Array<number>(8 - front.length - back.length).fill(0), ...back];
 }
 
 /**

@@ -83,6 +83,44 @@ export interface JoinFeatures {
   comments?: boolean;
 }
 
+/** Why a batch was refused that changes the words of somebody else's comment or answer, in a room whose people are known. */
+export const NOT_YOUR_COMMENT = "Only its author can change the words of a comment.";
+
+/**
+ * The operations of a person the server knows (`Member.name`), with every comment and answer they add signed with that name,
+ * whatever their browser wrote; or why they are refused: a change of the words (`text`, `editedAt`) of a comment or an answer
+ * that somebody else wrote. Resolving, moving the pin and deleting stay open to everybody who may edit, as everywhere.
+ */
+function signed(ops: readonly Op[], name: string, design: Design): Op[] | string {
+  const mine = new Set<string>();
+  const authorOf = (comment: string, reply?: string): string | undefined => {
+    const c = design.comments?.find((x) => x.id === comment);
+    return reply === undefined ? c?.author.name : c?.replies.find((r) => r.id === reply)?.author.name;
+  };
+  const words = (set: object | undefined, unset: readonly string[] | undefined) => (set && ("text" in set || "editedAt" in set)) || !!unset?.length;
+  const out: Op[] = [];
+  for (const op of ops) {
+    if (op.k === "comment.add") {
+      mine.add(op.comment.id);
+      out.push({ ...op, comment: { ...op.comment, author: { ...op.comment.author, name } } });
+    } else if (op.k === "reply.add") {
+      mine.add(`${op.comment}/${op.reply.id}`);
+      out.push({ ...op, reply: { ...op.reply, author: { ...op.reply.author, name } } });
+    } else if (op.k === "comment.set" && words(op.set, op.unset) && !mine.has(op.id) && authorOf(op.id) !== undefined && authorOf(op.id) !== name) {
+      return NOT_YOUR_COMMENT;
+    } else if (
+      op.k === "reply.set" &&
+      words(op.set, op.unset) &&
+      !mine.has(`${op.comment}/${op.id}`) &&
+      authorOf(op.comment, op.id) !== undefined &&
+      authorOf(op.comment, op.id) !== name
+    ) {
+      return NOT_YOUR_COMMENT;
+    } else out.push(op);
+  }
+  return out;
+}
+
 export class Room {
   design: Design;
   rev: number;
@@ -313,7 +351,13 @@ export class Room {
         });
         continue;
       }
-      const ops = checkOps(msg.ops);
+      const checked = checkOps(msg.ops);
+      if (typeof checked === "string") {
+        refuse(checked);
+        continue;
+      }
+      // in a room whose people the server knows (a team's, joined with sessions), what they write is signed with their names
+      const ops = member.name === undefined ? checked : signed(checked, member.name, design);
       if (typeof ops === "string") {
         refuse(ops);
         continue;
