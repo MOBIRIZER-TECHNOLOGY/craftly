@@ -241,4 +241,7 @@ errs on the large side.
   3 frames a second, so a minute of video takes ten minutes. A clip from a camera or a phone has no such layer.
 - At the encoder's ceiling (10 Mbit/s for ten minutes, 750 MB) the peak would be about 1.9 GB above the editor's own memory. That
   was not measured; the detailed clip above reached 5.7 Mbit/s.
-- Not tried: a computer with less memory, a phone, Firefox and Safari (whose encoders differ), a clip of the 250 MB limit.
+- A clip near the limit of an upload (250 MB): a real 720p MP4 padded to 240 MB with a `free` box, which players skip, was taken by
+  Uploads at its full size, placed, kept across a reload and downloaded in a 1080p video; the browser stayed under 0.95 GB. Its
+  decoding was not heavier than a small clip's (the padding is not pictures).
+- Not tried: a computer with less memory, a phone, Firefox and Safari (whose encoders differ).
