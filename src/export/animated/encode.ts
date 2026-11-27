@@ -8,11 +8,11 @@
  */
 import {
   AudioBufferSource,
-  BufferTarget,
   CanvasSource,
   Mp4OutputFormat,
   Output,
   Quality,
+  StreamTarget,
   WebMOutputFormat,
   canEncodeAudio,
   canEncodeVideo,
@@ -22,6 +22,7 @@ import {
 import { m } from "@/i18n";
 import { ExportError, cancelledError, isCancelled } from "../errors";
 import { nextMacrotask } from "../yield";
+import { BlobFile, blobFileStream } from "./blobFile";
 import { VIDEO_SOUND_BITRATE } from "./frames";
 
 export interface Encoding {
@@ -93,18 +94,34 @@ export interface SoundSource {
   read(from: number, to: number): Promise<AudioBuffer>;
 }
 
-/** Paints and encodes every frame (and the sound alongside it) and returns the file. */
+/** The file is handed over to the Blob in pieces of this size (StreamTarget's chunks). */
+const PIECE_BYTES = 16 * 1024 * 1024;
+/** The fewest samples in one packet of sound the encoders write (Opus at 48 kHz: 960; AAC: 1024). */
+const SAMPLES_PER_PACKET = 960;
+const OPUS_RATE = 48_000;
+
+/**
+ * Paints and encodes every frame (and the sound alongside it) and returns the file. The file is written into a Blob as it is made
+ * (blobFile.ts), not kept in the page's memory and copied at the end: an MP4 keeps room at its start for its index, which it can do
+ * because how many frames and packets of sound it will have is known before the first frame ("reserve"); it is still an MP4 with
+ * its index first, which plays as soon as it starts to load.
+ */
 export async function encodeFrames(options: EncodeOptions): Promise<Blob> {
   const { encoding, canvas, frames, fps, signal } = options;
-  const target = new BufferTarget();
-  const output = new Output({ format: encoding.container === "mp4" ? new Mp4OutputFormat({ fastStart: "in-memory" }) : new WebMOutputFormat(), target });
+  const file = new BlobFile(encoding.container === "mp4" ? "video/mp4" : "video/webm");
+  const target = new StreamTarget(blobFileStream(file), { chunked: true, chunkSize: PIECE_BYTES });
+  const output = new Output({ format: encoding.container === "mp4" ? new Mp4OutputFormat({ fastStart: "reserve" }) : new WebMOutputFormat(), target });
   const picture = new CanvasSource(canvas, { codec: encoding.video, quality: new Quality({ bitrate: options.bitrate }), keyFrameInterval: 2 });
-  output.addVideoTrack(picture, { frameRate: fps });
+  output.addVideoTrack(picture, { frameRate: fps, maximumPacketCount: frames + 1 });
   const sound = options.sound && encoding.audio ? options.sound : null;
   const audio = sound ? new AudioBufferSource({ codec: encoding.audio!, quality: new Quality({ bitrate: AUDIO_BITRATE }) }) : null;
-  if (audio) output.addAudioTrack(audio);
 
   const seconds = frames / fps;
+  if (audio && sound) {
+    // an upper bound: at the higher of the two rates, in the smallest packets, and a few over for the encoder's priming
+    const rate = Math.max(sound.sampleRate, OPUS_RATE);
+    output.addAudioTrack(audio, { maximumPacketCount: Math.ceil((seconds * rate) / SAMPLES_PER_PACKET) + 64 });
+  }
   const soundEnd = sound ? Math.min(sound.length, Math.round(seconds * sound.sampleRate)) : 0;
   let soundDone = 0;
   /**
@@ -140,7 +157,6 @@ export async function encodeFrames(options: EncodeOptions): Promise<Blob> {
     if (error instanceof ExportError) throw error;
     throw new ExportError("encode-failed", m.exporting.animation.encodeFailed, { cause: error });
   }
-  const bytes = target.buffer;
-  if (!bytes || bytes.byteLength === 0) throw new ExportError("encode-failed", m.exporting.animation.encodeFailed);
-  return new Blob([bytes], { type: encoding.container === "mp4" ? "video/mp4" : "video/webm" });
+  if (file.size === 0) throw new ExportError("encode-failed", m.exporting.animation.encodeFailed);
+  return file.blob();
 }

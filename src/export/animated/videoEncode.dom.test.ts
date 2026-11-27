@@ -33,7 +33,19 @@ const mb = vi.hoisted(() => ({
   /** every `canvases(start)` asked of a clip, as [asset id, start] */
   seeks: [] as Array<[string, number]>,
   inputsDisposed: 0,
-  outputs: [] as Array<{ format: string; started: boolean; finalized: boolean; cancelled: boolean; frames: number[]; sound: number[]; videoCodec?: string; audioCodec?: string }>,
+  outputs: [] as Array<{
+    format: string;
+    started: boolean;
+    finalized: boolean;
+    cancelled: boolean;
+    frames: number[];
+    sound: number[];
+    videoCodec?: string;
+    audioCodec?: string;
+    fastStart?: string;
+    videoPackets?: number;
+    audioPackets?: number;
+  }>,
   /** a frame number at which CanvasSource.add fails */
   failAt: -1,
 }));
@@ -98,11 +110,15 @@ vi.mock("mediabunny", () => {
       }
     }
   }
-  class BufferTarget {
-    buffer: ArrayBuffer | null = null;
+  class StreamTarget {
+    constructor(
+      readonly writable: WritableStream<{ type: "write"; data: Uint8Array; position: number }>,
+      readonly options: unknown,
+    ) {}
   }
   class Mp4OutputFormat {
     readonly name = "mp4";
+    constructor(readonly options?: { fastStart?: string }) {}
   }
   class WebMOutputFormat {
     readonly name = "webm";
@@ -127,24 +143,32 @@ vi.mock("mediabunny", () => {
   }
   class Output {
     private readonly record: (typeof mb.outputs)[number];
-    constructor(private readonly opts: { format: { name: string }; target: BufferTarget }) {
+    constructor(private readonly opts: { format: { name: string; options?: { fastStart?: string } }; target: StreamTarget }) {
       this.record = { format: opts.format.name, started: false, finalized: false, cancelled: false, frames: [], sound: [] };
       mb.outputs.push(this.record);
     }
-    addVideoTrack(source: CanvasSource) {
+    addVideoTrack(source: CanvasSource, meta?: { maximumPacketCount?: number }) {
       source.output = this.record;
       this.record.videoCodec = source.config.codec;
+      this.record.videoPackets = meta?.maximumPacketCount;
+      this.record.fastStart = this.opts.format.options?.fastStart;
     }
-    addAudioTrack(source: AudioBufferSource) {
+    addAudioTrack(source: AudioBufferSource, meta?: { maximumPacketCount?: number }) {
       source.output = this.record;
       this.record.audioCodec = source.config.codec;
+      this.record.audioPackets = meta?.maximumPacketCount;
     }
     async start() {
       this.record.started = true;
     }
     async finalize() {
       this.record.finalized = true;
-      this.opts.target.buffer = new Uint8Array([1, 2, 3, this.record.frames.length]).buffer;
+      // as Mediabunny does with "reserve": in order, then the index into the room kept at the start
+      const writer = this.opts.target.writable.getWriter();
+      await writer.write({ type: "write", data: new Uint8Array([0, 0, 0, this.record.frames.length]), position: 0 });
+      await writer.write({ type: "write", data: new Uint8Array([4, 5]), position: 4 });
+      await writer.write({ type: "write", data: new Uint8Array([1, 2, 3]), position: 0 });
+      await writer.close();
     }
     async cancel() {
       this.record.cancelled = true;
@@ -155,7 +179,6 @@ vi.mock("mediabunny", () => {
     AudioBufferSink,
     AudioBufferSource,
     BlobSource,
-    BufferTarget,
     CanvasSink,
     CanvasSource,
     EncodedPacketSink,
@@ -163,6 +186,7 @@ vi.mock("mediabunny", () => {
     Mp4OutputFormat,
     Output,
     Quality,
+    StreamTarget,
     WebMOutputFormat,
     canEncodeVideo: vi.fn(async (codec: string) => mb.video[codec] ?? false),
     canEncodeAudio: vi.fn(async (codec: string) => mb.audio[codec] ?? false),
@@ -472,6 +496,24 @@ describe("encoding the frames", () => {
     expect(mb.outputs[0]).toMatchObject({ format: "mp4", started: true, finalized: true, videoCodec: "avc", sound: [] });
     expect(mb.outputs[0].frames.map((t) => Math.round(t * 30))).toEqual([0, 1, 2, 3, 4, 5]);
     expect(mb.outputs[0].audioCodec).toBeUndefined();
+  });
+
+  it("writes the file as it is made, an MP4 with room kept for its index, and the writes over its start land", async () => {
+    const blob = await encodeFrames({
+      encoding: { container: "mp4", video: "avc", audio: "aac" },
+      canvas: canvas(),
+      paint: async () => undefined,
+      frames: 90,
+      fps: 30,
+      bitrate: 1e6,
+      sound: sound(3, 44100),
+    });
+    const out = mb.outputs[0];
+    // "reserve" needs to know how many packets there can be: every frame, and the sound in its smallest packets at 48 kHz
+    expect(out).toMatchObject({ fastStart: "reserve", videoPackets: 91 });
+    expect(out.audioPackets).toBeGreaterThanOrEqual(Math.ceil((3 * 48000) / 960));
+    // the stand-in writes in order and then its index over the start, as Mediabunny does
+    expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([1, 2, 3, 90, 4, 5]);
   });
 
   it("hands the sound over a second at a time alongside the pictures, cut to the length of the video", async () => {

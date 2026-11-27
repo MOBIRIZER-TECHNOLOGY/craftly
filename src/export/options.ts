@@ -265,7 +265,8 @@ export function weighPage(design: Pick<Design, "width" | "height">, page: Page, 
   const visit = (el: DesignElement) => {
     if (el.hidden) return;
     elements++;
-    if (el.type === "image" && el.src) {
+    if ((el.type === "image" && el.src) || el.type === "video") {
+      // a clip is a picture too: its first frame in a still download or a GIF, moving pictures in a video
       images++;
       photoArea += Math.min(area, el.width * el.height);
     } else if (el.type === "group") {

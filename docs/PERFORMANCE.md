@@ -204,3 +204,41 @@ BASE=http://127.0.0.1:4179 node e2e/perf-drag.cjs
 `ONLY=text,blend` picks pages, `RUNS=5` repeats more, `HEADED=1` shows the window, `PROFILE=text` adds a CPU profile of one
 drag of that page (use the development server for it: a production build has no function names). The script is not part of
 `npm run e2e` and never fails; it prints the table and writes `result.json` into the journeys' output folder.
+
+# Performance: long video downloads
+
+Measured on 2026-11-27 on the machine above, in Chrome headless, against the dev server, with `e2e/perf-video.cjs`: a design of
+ten pages of a minute, each filled by a looping 720p clip, downloaded as a 1080p video (MP4, H.264, 30 fps, a target of 10 Mbit/s).
+The longest video the panel makes is ten minutes (`VIDEO_MAX_SECONDS`). Memory is the working set of all the browser's processes
+together; the editor with the design open was about 0.8 to 1.0 GB before the download.
+
+| The clip | Made in | File | Memory, peak |
+| --- | --- | --- | --- |
+| flat colour with a moving box | 507 s | 53 MB | 1.45 GB |
+| detail that changes every frame (the most the encoder writes) | 178 s | 413 MB | 2.12 GB |
+| the same, after the change below | 203 s | 426 MB | 1.86 GB |
+| a clip with a transparency layer, one minute only | 634 s | 41 MB | 0.93 GB |
+
+The flat run was the first of the day and the machine was busier; the detailed runs go at about 100 frames a second. Encoding and
+decoding are not what limits it: on their own, 1080p frames were encoded at 160 a second and the clip's frames decoded at 160 a
+second.
+
+**What was changed.** The MP4 was built whole in the page's memory and copied into a file at the end (Mediabunny's
+`fastStart: "in-memory"` into a `BufferTarget`), which is about three times the file at the peak. It is now written into a Blob as it
+is made (`src/export/animated/blobFile.ts`): `fastStart: "reserve"` keeps room at the start of the file for its index, which works
+because the number of frames and packets of sound is known before the first frame, so the file is still an ordinary MP4 with its
+index first (`ftyp`, `moov`, a `free` box of what was kept and not used, then `mdat`). The peak went down by 0.26 GB for a file of
+0.43 GB; what is left is mostly the browser keeping the file's bytes, which a download has to have somewhere.
+
+**The size estimate** left clips out: the panel said "~2.3 MB" for a minute that came to 42 MB. A clip now counts as a picture over
+its area, as an image does (`weighPage` in `src/export/options.ts`), so a page filled by a clip is estimated at the full rate: about
+75 MB a minute at 1080p, where detailed footage measured 42 MB and a flat clip 5 MB. It cannot know how much detail a clip has; it
+errs on the large side.
+
+**What is still slow or large.**
+- A clip with a transparency layer (a WebM with alpha, as a canvas records one) is read by seeking a hidden `<video>` for every
+  frame (`SeekReader` in `clipFrames.ts`), because Mediabunny decodes alpha in workers that the app's policy does not allow: about
+  3 frames a second, so a minute of video takes ten minutes. A clip from a camera or a phone has no such layer.
+- At the encoder's ceiling (10 Mbit/s for ten minutes, 750 MB) the peak would be about 1.9 GB above the editor's own memory. That
+  was not measured; the detailed clip above reached 5.7 Mbit/s.
+- Not tried: a computer with less memory, a phone, Firefox and Safari (whose encoders differ), a clip of the 250 MB limit.

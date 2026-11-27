@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDesign, createImage, createPage, createShape, createText, solid } from "@/core/factory";
+import { createDesign, createImage, createPage, createShape, createText, createVideo, solid } from "@/core/factory";
 import { describeExportError, ExportError, isCancelled, cancelledError } from "./errors";
 import type { ExportOptions } from "./exporters";
 import {
@@ -398,6 +398,19 @@ describe("estimateExportBytes for animations", () => {
     expect(webm()).toBeGreaterThan(10_000);
     expect(webm({ resolution: 1080 })).toBeGreaterThan(webm({ resolution: 480 }));
     expect(webm({ fps: 5 })).toBe(webm());
+  });
+
+  it("counts a playing clip as moving pictures: a minute of a clip that fills a 1080p page is tens of megabytes, not a few", () => {
+    const page = createPage({ duration: 60, elements: [createVideo({ src: "asset:a", naturalWidth: 1920, naturalHeight: 1080, duration: 60, width: 1920, height: 1080 })] });
+    const d = createDesign({ width: 1920, height: 1080, pages: [page] });
+    const bytes = estimateExportBytes(d, { ...base, format: "webm", pages: [0], resolution: 1080 });
+    // measured on 2026-11-27 (docs/PERFORMANCE.md): 42 MB for a minute of a detailed clip, 5 MB for a flat one; the estimate
+    // takes the detailed one, rounded up, rather than the "~2 MB" of an empty page it gave before
+    expect(bytes).toBeGreaterThan(40 * 1024 * 1024);
+    expect(bytes).toBeLessThan(80 * 1024 * 1024);
+    const small = createVideo({ src: "asset:a", naturalWidth: 1920, naturalHeight: 1080, duration: 60, width: 480, height: 270 });
+    const corner = createDesign({ width: 1920, height: 1080, pages: [createPage({ duration: 60, elements: [small] })] });
+    expect(estimateExportBytes(corner, { ...base, format: "webm", pages: [0], resolution: 1080 })).toBeLessThan(bytes / 4);
   });
 
   it("covers only the chosen pages and is zero for none", () => {
