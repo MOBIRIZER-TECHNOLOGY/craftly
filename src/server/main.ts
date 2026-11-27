@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { SIGNUP_MODES, type SignupMode } from "./accounts";
 import { FileAccounts } from "./accounts/storage";
 import { closeWithin, createLiveServer } from "./live";
+import { removeLeftovers } from "./leftovers";
 import { listenWarning } from "./listenWarning";
 import { FileStorage } from "./storage";
 
@@ -122,6 +123,10 @@ const server = createLiveServer({
   metricsKey: secret("METRICS_KEY", 16),
   accounts,
 });
+
+// what an earlier run left half-written (a clip being received when it was stopped): nothing is at work yet
+const left = await removeLeftovers(dataDir);
+if (left.files) console.log(`Removed ${left.files} half-written file${left.files === 1 ? "" : "s"} (${Math.ceil(left.bytes / 1024)} KiB) that an earlier run left in ${dataDir}`);
 
 const host = env.HOST ?? "127.0.0.1";
 const address = await server.listen(number("PORT", 0, 65535) ?? 8787, host);
