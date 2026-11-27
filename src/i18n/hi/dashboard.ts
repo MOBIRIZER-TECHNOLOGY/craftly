@@ -319,6 +319,7 @@ export const dashboard: typeof en = {
     storedHere: "इस डिवाइस पर सहेजा गया",
     protected: "सुरक्षित: आपका ब्राउज़र इसे अपने आप नहीं मिटाएगा।",
     localStorage: "ब्राउज़र का लोकल स्टोरेज",
+    licences: "ओपन-सोर्स लाइसेंस",
   },
 
   brand: {

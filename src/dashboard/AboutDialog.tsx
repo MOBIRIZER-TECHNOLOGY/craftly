@@ -66,6 +66,12 @@ function AboutBody() {
       <p className="cf-about__text">{m.dashboard.about.stored}</p>
       <p className="cf-about__text">{m.dashboard.about.aiTools(modelHost(MODELS[0]!))}</p>
       <p className="cf-about__text">{m.dashboard.about.keepCopy}</p>
+      <p className="cf-about__text">
+        {/* written by `npm run notices` and published beside the app (the notices plugin in vite.config.ts) */}
+        <a href={import.meta.env.BASE_URL + "third-party-notices.txt"} target="_blank" rel="noopener noreferrer">
+          {m.dashboard.about.licences}
+        </a>
+      </p>
 
       <div className="cf-about__storage">
         <span className="cf-about__storage-icon" aria-hidden="true">

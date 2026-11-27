@@ -77,8 +77,9 @@ export function offlineSupport(): Plugin {
       root = config.root;
     },
     generateBundle(_options, bundle) {
+      // the notices are read online, from About Craftly: not worth keeping on every device
       const all = Object.keys(bundle)
-        .filter((f) => !f.endsWith(".map") && f !== "index.html")
+        .filter((f) => !f.endsWith(".map") && f !== "index.html" && f !== NOTICES_FILE)
         .sort();
       const runtime = all.filter((f) => f.endsWith(".wasm"));
       const files = all.filter((f) => !f.endsWith(".wasm"));
@@ -90,6 +91,34 @@ export function offlineSupport(): Plugin {
         const file = resolve(root, outDir, name);
         if (existsSync(file)) writeFileSync(file, readFileSync(file, "utf8").replaceAll("__BUILD_ID__", buildId));
       }
+    },
+  };
+}
+
+/** Where the built site carries its third-party notices, linked from About Craftly (`src/dashboard/AboutDialog.tsx`). */
+export const NOTICES_FILE = "third-party-notices.txt";
+
+/**
+ * The notices of the open-source packages and models the app uses (THIRD-PARTY-NOTICES.md, written by `npm run notices`),
+ * published beside the app as plain text: the licences of what is built into the app's files ask that their notices go
+ * with it. Served by the development server at the same address. Not stored for offline use (see offlineSupport).
+ */
+export function notices(): Plugin {
+  let root = process.cwd();
+  const text = () => readFileSync(resolve(root, "THIRD-PARTY-NOTICES.md"), "utf8");
+  return {
+    name: "craftly-notices",
+    configResolved(config) {
+      root = config.root;
+    },
+    configureServer(server) {
+      server.middlewares.use("/" + NOTICES_FILE, (_req, res) => {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.end(text());
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: NOTICES_FILE, source: text() });
     },
   };
 }
@@ -176,7 +205,7 @@ export function cspMeta(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), offlineSupport(), cspMeta(), devReportEndpoint()],
+  plugins: [react(), notices(), offlineSupport(), cspMeta(), devReportEndpoint()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

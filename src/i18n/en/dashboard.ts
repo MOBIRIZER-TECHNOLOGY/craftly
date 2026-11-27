@@ -333,6 +333,7 @@ export const dashboard = {
     storedHere: "Stored on this device",
     protected: "Protected: your browser will not clear it automatically.",
     localStorage: "Local browser storage",
+    licences: "Open-source licences",
   },
 
   /** BrandPage.tsx */

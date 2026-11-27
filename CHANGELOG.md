@@ -4,6 +4,14 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **The licences of what Craftly ships go with the site, complete (2026-11-28).** `THIRD-PARTY-NOTICES.md` was in the repository only. The built site now publishes it at `/third-party-notices.txt`, linked from About Craftly as "Open-source licences": the MIT, BSD and font (OFL) licences of the code built into the app's files ask that their notices go with it. The generator (`npm run notices`) also fills three gaps:
+  - Seven packages that ship no licence file (fontkit, brotli, dfa, qrcode-generator, guid-typescript, and ONNX Runtime's two) now get the standard text of the licence they declare, with their holder (Microsoft for ONNX Runtime).
+  - Mediabunny, the one package under MPL-2.0, is listed with where its unmodified source is, as that licence asks.
+  - The two models the AI tools download, ISNet (Apache-2.0) and Real-ESRGAN (BSD-3-Clause), are listed with their notices.
+
+  Nothing found is under a licence that would keep Craftly from being shipped: 42 font packages under OFL-1.1, the rest MIT, BSD, Apache-2.0, ISC and 0BSD, and Mediabunny under MPL-2.0. The pictures are drawn in code, and the icons are Lucide (ISC). `src/test/notices.test.ts` fails when a dependency or a model is added without running `npm run notices` again. The Hindi label, "ओपन-सोर्स लाइसेंस", awaits the native speaker's review with the rest.
+  - **Not checked**: what a lawyer would want, for example whether the notices should also be in the app's own files and in the server image.
+
 - **The live server is load tested, and sends what one person is told at once in one write (2026-11-28).** `scripts/live-load.mjs` makes many rooms of five people who all edit and move their pointers at once. On one CPU and 512 MB, about a small virtual server, 1,000 busy people had their edits acknowledged in 40 ms (p50) and 104 ms (p95), with 66 MB of memory and nothing refused or lost. At 2,000 the p95 was 2.3 s, still with nothing lost. A profile showed most of the server's time going into one network write per message, so each connection's socket is now held for the rest of one turn of the event loop and its messages leave together (`hold` in `src/server/live.ts`). That made the heaviest load measured four times faster (p50 from 4.4 s to 0.98 s at 1,000 connections). Far past what one CPU does, the server sent connections away to try again later as it is made to, and stayed up. The measurements, and what was not measured, are in `docs/PERFORMANCE.md`, "The live server under load".
   - **Checked**: the 914 tests of `src/server` and `src/collab` pass with the change, and `live-check.mjs` passes against the new image.
 

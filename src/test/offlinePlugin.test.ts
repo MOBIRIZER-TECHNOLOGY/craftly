@@ -33,6 +33,11 @@ const read = (name: string) => readFileSync(join(folder, "dist", name), "utf8");
 const BUNDLE = ["index.html", "assets/index-a1.js", "assets/index-a1.js.map", "assets/chunk-b2.js", "assets/app-c3.css", "assets/font-d4.woff2", "assets/ort-e5.wasm"];
 
 describe("the offline support of the build", () => {
+  it("leaves out the third-party notices, which are read online from About Craftly", () => {
+    const list = emitted(setup({}), [...BUNDLE, "third-party-notices.txt"]);
+    expect(list.files).not.toContain("third-party-notices.txt");
+  });
+
   it("lists what the service worker has to store: every file but the page, the source maps and the web assembly files, which are listed apart", () => {
     const list = emitted(setup({}), BUNDLE);
     expect(list.files).toEqual(["assets/app-c3.css", "assets/chunk-b2.js", "assets/font-d4.woff2", "assets/index-a1.js"]);
