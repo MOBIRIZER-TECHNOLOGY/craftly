@@ -1,0 +1,18 @@
+# Prometheus for the live server (docs/DEPLOY.md, section 2.8). The key is METRICS_KEY, in a file only Prometheus reads.
+# The target is the server itself, not the TLS proxy: /metrics is not for the public, and the proxy may keep it away.
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: craftly-live
+    metrics_path: /metrics
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/craftly-metrics-key
+    static_configs:
+      - targets: ["live:8787"] # 127.0.0.1:8787 when Prometheus runs on the server's machine

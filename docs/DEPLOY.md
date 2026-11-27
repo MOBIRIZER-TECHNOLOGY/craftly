@@ -176,32 +176,51 @@ server {
 
 `X-Forwarded-For $remote_addr` replaces whatever the browser sent in that header with the address nginx saw, which is what you want when nginx is the only proxy. (`$proxy_add_x_forwarded_for` would append to what the browser sent.)
 
-Neither configuration has been run against the live server: they are written from the documentation of the two programs and from what the server needs. The key of a room is never in an address (it is in the first WebSocket message), so the access log of the proxy holds room ids and no keys.
+The key of a room is never in an address (it is in the first WebSocket message), so the access log of the proxy holds room ids and no keys.
+
+**Ready to run, with Docker Compose.** `deploy/` holds both setups: the server and Caddy (`compose.caddy.yml` with `Caddyfile`), and the server and nginx (`compose.nginx.yml` with `nginx.conf`, which also sends plain HTTP to HTTPS and streams bodies both ways). In both, only the proxy is published; the server is on the compose network alone, so `TRUST_PROXY=1` is set and safe. Each file says at the top how to start it.
+
+**What was checked**, on 2026-11-28 with Docker Desktop on Windows, Caddy 2 and nginx 1.29: each setup was started with a certificate for `localhost` (Caddy's own local authority; for nginx a test authority made with `openssl`), and `scripts/live-check.mjs` passed through it over TLS. It made a room, joined it with two WebSocket connections and saw an edit go from one to the other, sent a clip of 60 MiB (Caddy) and 100 MiB (nginx) and read it back byte for byte, stayed idle for 70 s and edited again, and removed the room. The server's port could not be reached around the proxy, and plain HTTP was sent to HTTPS (308). Twelve rooms asked for with a different forged `X-Forwarded-For` each time got ten 201s and then 429: both proxies replace the header, so a browser cannot make itself look like many visitors. Not checked: a real domain and a certificate from Let's Encrypt, renewal, and a CDN in front.
 
 Check a deployment from outside:
 
 ```bash
 curl -i https://live.example.org/api/health        # 200 {"ok":true,...}; 503 means the data folder cannot be written
+node scripts/live-check.mjs https://live.example.org --origin https://editor.example.org
 ```
 
-Then start a live session from your editor with `https://live.example.org` as the server and open the link in a second browser.
+`live-check.mjs` runs the steps above against any server and removes the room it made; `--create-key` gives it the `ROOM_CREATE_KEY`, `--media-mb` the size of the clip, `--idle` the quiet time, and `--ca` a certificate to trust for a test authority. Then start a live session from your editor with `https://live.example.org` as the server and open the link in a second browser.
 
 ### 2.5 Where the data lives, and backing it up
 
-Everything the server keeps is in `DATA_DIR` (`/data` in the container, the volume `craftly-live-data` in the example above): the shared designs, their uploaded images, revision numbers, and the SHA-256 hashes of the edit, view and owner keys. There is no database and nothing is kept anywhere else. Lose the folder and every link stops working; the people who joined still have their own copy of each design in their browser.
+Everything the server keeps is in `DATA_DIR` (`/data` in the container, the volume `craftly-live-data` in the example above): the shared designs, their uploaded images, clips and sounds, revision numbers, the SHA-256 hashes of the edit, view and owner keys, and with `ACCOUNTS=1` the accounts under `accounts/` (section 2.9). There is no database and nothing is kept anywhere else. Lose the folder and every link stops working; the people who joined still have their own copy of each design in their browser.
 
 - **What a backup holds.** The designs in plain text, pictures included. The keys cannot be read out of it (only their hashes are stored), so a copy cannot be used to edit or view through the server, but anybody who has the copy can read the designs. Store it like the designs themselves.
-- **Taking one.** Copy the folder. Every file is written whole under another name and renamed into place, so a copy taken while the server runs holds each file either before or after a save, never half of one. A copy taken at a busy moment can still hold files from slightly different moments; for a copy that is certainly consistent, stop the server first (it saves on SIGTERM), copy, start it again. Files ending in `.tmp` are saves or uploads that were interrupted, and can be left out; the server removes those it left itself when it next starts, and says how many in its log. A room is the file `<room>.json` and, when it has uploaded images, the folder `<room>.assets` beside it: a backup needs both.
+- **Taking one.** Copy the folder. Every file is written whole under another name and renamed into place, so a copy taken while the server runs holds each file either before or after a save, never half of one. A copy taken at a busy moment can still hold files from slightly different moments; for a copy that is certainly consistent, stop the server first (it saves on SIGTERM), copy, start it again. Files ending in `.tmp` are saves or uploads that were interrupted, and can be left out; the server removes those it left itself when it next starts, and says how many in its log. A room is the file `<room>.json` and, beside it, the folder `<room>.assets` when it has uploaded images and `<room>.media` when it has clips or sounds: a backup needs all three.
+
+  The archive is made readable by its owner only (`umask 077`): it holds what the folder holds, password hashes included. The image of the server has `tar`, so nothing else needs to be pulled; run it as `node`, the user that owns the files, or as root.
 
   ```bash
-  docker run --rm -v craftly-live-data:/data:ro -v "$PWD":/backup alpine \
-    tar czf /backup/craftly-live-$(date +%F).tar.gz -C /data .
+  docker run --rm --user node --entrypoint sh -v craftly-live-data:/data:ro -v "$PWD":/backup craftly-live \
+    -c 'umask 077 && tar czf /backup/craftly-live-$(date +%F).tar.gz -C /data .'
   # without Docker, as the server's user or root (its files are readable by that user only):
-  sudo -u craftly tar czf craftly-live-$(date +%F).tar.gz -C /var/lib/craftly-live .
+  sudo -u craftly sh -c 'umask 077 && tar czf craftly-live-$(date +%F).tar.gz -C /var/lib/craftly-live .'
   ```
 
-- **Restoring.** Stop the server, put the files back into an empty `DATA_DIR` owned by the user the server runs as, start it. Links made before the backup work again; edits made after it are gone from the server, and what a browser that was ahead of the restored copy does on its next visit has not been tried. A restore has not been rehearsed: try one before you need it.
-- **Growth.** A room stays until its owner stops sharing; the images of a room are kept as long as the room. Watch the size of the folder.
+  With Docker, `/backup` must be writable by uid 1000 (`node`); on Linux, make the folder that user's or use `--user root`.
+
+- **Restoring.** Stop the server, put the files back into an empty `DATA_DIR` owned by the user the server runs as, start it. Links made before the backup work again; edits made after it are gone from the server, and what a browser that was ahead of the restored copy does on its next visit has not been tried. With Docker, unpack into a new named volume mounted at `/data`, where it takes the owner and mode of the image's folder (`node`, 700):
+
+  ```bash
+  docker stop craftly-live && docker rm craftly-live
+  docker volume rm craftly-live-data           # only once you are sure the archive is good
+  docker run --rm --user node --entrypoint tar -v craftly-live-data:/data -v "$PWD":/backup:ro craftly-live \
+    xzf /backup/craftly-live-2026-11-28.tar.gz -C /data
+  # then start the server as in section 2.1
+  ```
+
+  **Rehearsed** on 2026-11-28 with the image and these commands: a server with `ACCOUNTS=1` held a room edited three times with a clip of 5 MiB, and an account with a design in its space. The archive was taken while the server ran; then the container and its volume were deleted, and the archive was unpacked into a new volume. The server came back healthy, the room opened with its old view key at revision 3, its clip came back byte for byte, the account's old session still worked, it signed in with its password, and its design was there at its revision. The modes stayed 700 and 600, owned by `node`. Not rehearsed: a restore onto another machine, and a browser that had edits newer than the archive.
+- **Growth.** A room stays until its owner stops sharing, or for `ROOM_TTL_DAYS` after anybody last used it; its images, clips and sounds are kept as long as the room. Watch the size of the folder.
 
 ### 2.6 What to put in the editor's `connect-src`
 
@@ -306,7 +325,8 @@ What to know:
 - No metric names a room, a person, an address or a path, and none ever will by a label: the values of every label are a fixed list.
 - The endpoint is not for pages (a request with an `Origin` header is refused, there are no CORS headers) and ten wrong keys in an hour lock an address out for the rest of it, which it shares with wrong `ADMIN_KEY`s. Scrape the server directly, or keep `/metrics` away from the public at the proxy as for `/api/admin/` (section 2.7).
 - Counters start at 0 with the process. Memory and CPU are not here: take them from the system (`node_exporter`, the container runtime).
-- Suggested alerts: `increase(craftly_live_save_failures_total[5m]) > 0`; `craftly_live_rooms_stored` above 90 % of `MAX_ROOMS`; `craftly_live_connections` near `MAX_CONNECTIONS`; `increase(craftly_live_http_responses_total{class="5xx"}[5m]) > 0`; and the scrape failing (`up == 0`).
+- **Alerts, ready to load.** `deploy/prometheus/alerts.yml` holds nine rules: the server not answering its scrape for 2 minutes, a save that failed, a 5xx, a team room that could not be written back or whose uploads did not fit its space, over 90 % of `MAX_ROOMS` or `MAX_CONNECTIONS` (the defaults are written in; change them with yours), many connections sent away because the disk is slow (`queue`), and more than two restarts in 30 minutes. `deploy/prometheus/prometheus.yml` is the scrape configuration above with the rules loaded.
+- **Checked** on 2026-11-28 with Prometheus 3.5: `promtool check config` and `check rules` pass, and `promtool test rules alerts.test.yml` checks that the down, save, 5xx and rooms alerts fire when they should and not before. Prometheus scraped the server's image with the key (`up`); with the data folder made read-only, `/api/health` answered 503, an edit was refused (`rejected`, "The server could not save this edit"), and `CraftlyLiveSaveFailing` and `CraftlyLiveServerErrors` fired; with the server stopped, `CraftlyLiveDown` fired after its two minutes. Not checked: Alertmanager, and where it sends the alerts (mail, a chat, a pager), which is yours to set.
 
 ### 2.9 Accounts, teams and sync
 

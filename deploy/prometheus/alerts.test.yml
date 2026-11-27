@@ -1,0 +1,51 @@
+# promtool test rules alerts.test.yml
+rule_files:
+  - alerts.yml
+evaluation_interval: 30s
+tests:
+  - interval: 30s
+    input_series:
+      - series: 'up{job="craftly-live",instance="live:8787"}'
+        values: "1 1 0 0 0 0 0 0"
+      - series: 'craftly_live_save_failures_total{job="craftly-live",instance="live:8787"}'
+        values: "0 0 0 1 1 1 1 1"
+      - series: 'craftly_live_http_responses_total{job="craftly-live",instance="live:8787",class="5xx"}'
+        values: "0 0 0 0 0 0 0 0"
+      - series: 'craftly_live_rooms_stored{job="craftly-live",instance="live:8787"}'
+        values: "950x40"
+      - series: 'craftly_live_connections{job="craftly-live",instance="live:8787"}'
+        values: "10x40"
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: CraftlyLiveDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: CraftlyLiveDown
+        exp_alerts:
+          - exp_labels: { severity: page, job: craftly-live, instance: "live:8787" }
+            exp_annotations:
+              summary: The live server does not answer its scrape
+              description: Shared designs cannot be opened or edited. Check the container and GET /api/health.
+      - eval_time: 2m
+        alertname: CraftlyLiveSaveFailing
+        exp_alerts:
+          - exp_labels: { severity: page, job: craftly-live, instance: "live:8787" }
+            exp_annotations:
+              summary: The live server could not save a room
+              description: Edits are not being acknowledged. This is the disk (full, read-only, or gone); /api/health answers 503 when the data folder cannot be written.
+      - eval_time: 3m
+        alertname: CraftlyLiveServerErrors
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: CraftlyLiveRoomsNearlyFull
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: CraftlyLiveRoomsNearlyFull
+        exp_alerts:
+          - exp_labels: { severity: ticket, job: craftly-live, instance: "live:8787" }
+            exp_annotations:
+              summary: The live server holds over 90 % of MAX_ROOMS
+              description: New rooms will be refused with 503. Set ROOM_TTL_DAYS, raise MAX_ROOMS, or remove rooms (section 2.7).
+      - eval_time: 16m
+        alertname: CraftlyLiveConnectionsNearlyFull
+        exp_alerts: []

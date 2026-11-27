@@ -1,0 +1,70 @@
+# Alerts for the live server (docs/DEPLOY.md, section 2.8). Checked with `promtool check rules` and `promtool test rules
+# alerts.test.yml`. The two limits below are the server's defaults: change them with MAX_ROOMS and MAX_CONNECTIONS.
+groups:
+  - name: craftly-live
+    rules:
+      - alert: CraftlyLiveDown
+        expr: up{job="craftly-live"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: The live server does not answer its scrape
+          description: Shared designs cannot be opened or edited. Check the container and GET /api/health.
+
+      - alert: CraftlyLiveSaveFailing
+        expr: increase(craftly_live_save_failures_total[5m]) > 0
+        labels: { severity: page }
+        annotations:
+          summary: The live server could not save a room
+          description: Edits are not being acknowledged. This is the disk (full, read-only, or gone); /api/health answers 503 when the data folder cannot be written.
+
+      - alert: CraftlyLiveServerErrors
+        expr: increase(craftly_live_http_responses_total{class="5xx"}[5m]) > 0
+        labels: { severity: page }
+        annotations:
+          summary: The live server answered with 5xx
+          description: Usually the storage failing. Read the server's log.
+
+      - alert: CraftlyLiveWriteBackFailing
+        expr: increase(craftly_live_write_back_failures_total[15m]) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: A team's live room could not be written back to its space
+          description: The team's design stays in the room and is tried again; read the server's log for the reason.
+
+      - alert: CraftlyLiveFilesRefusedOnWriteBack
+        expr: increase(craftly_live_write_back_files_refused_total[1h]) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: Uploads of a team's live room did not fit its space
+          description: The design was written back, but some clips or pictures stayed in the room. The space is near SPACE_QUOTA_MB.
+
+      - alert: CraftlyLiveRoomsNearlyFull
+        expr: craftly_live_rooms_stored > 0.9 * 1000
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: The live server holds over 90 % of MAX_ROOMS
+          description: New rooms will be refused with 503. Set ROOM_TTL_DAYS, raise MAX_ROOMS, or remove rooms (section 2.7).
+
+      - alert: CraftlyLiveConnectionsNearlyFull
+        expr: craftly_live_connections > 0.9 * 5000
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: The live server has over 90 % of MAX_CONNECTIONS open
+          description: New connections will be refused with 503 and try again by themselves.
+
+      - alert: CraftlyLiveQueueClosing
+        expr: increase(craftly_live_connections_closed_total{reason="queue"}[10m]) > 20
+        labels: { severity: ticket }
+        annotations:
+          summary: Connections are being sent away because edits wait too long to be saved
+          description: Nothing is lost (browsers send again), but the disk is too slow for the rooms. Watch craftly_live_save_duration_seconds.
+
+      - alert: CraftlyLiveRestarted
+        expr: resets(craftly_live_uptime_seconds[30m]) > 2
+        labels: { severity: ticket }
+        annotations:
+          summary: The live server restarted more than twice in 30 minutes
+          description: It may be crashing. Read the container's log and exit codes.
