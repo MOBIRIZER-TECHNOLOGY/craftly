@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pageDuration } from "./animation";
-import { MAX_RUNS_ON, carriedClips, carriedClipsOf, clipRunsOn, runEnd } from "./carriedClips";
+import { MAX_RUNS_ON, carriedClips, carriedClipsOf, carriedClipsSince, clipRunsOn, runEnd } from "./carriedClips";
 import { createGroup, createPage, createShape, createVideo } from "./factory";
 import type { Page, VideoElement } from "./types";
 
@@ -87,5 +87,26 @@ describe("a clip that runs on under the pages after its own", () => {
     expect(carriedClips(pages, page("x", 2))).toEqual([]);
     expect(carriedClips(undefined, pages[1])).toEqual([]);
     expect(carriedClipsOf([page("a", 2, [clip()]), page("b", 2)])[1]).toEqual([]);
+  });
+});
+
+describe("a clip carried at the pace the pages were really shown", () => {
+  const pages = () => [page("a", 2, [clip({ once: true, trimEnd: 10, runsOn: 2 })]), page("b", 2), page("c", 2), page("d", 2)];
+
+  it("goes on from the time that really passed since its own page started", () => {
+    expect(carriedClipsSince(pages(), 1, () => 3.5)).toMatchObject([{ id: "v", trimStart: 3.5 }]);
+    expect(carriedClipsSince(pages(), 2, (i) => (i === 0 ? 7 : undefined))).toMatchObject([{ trimStart: 7 }]);
+  });
+
+  it("goes by the timeline when that time is not known or makes no sense", () => {
+    expect(carriedClipsSince(pages(), 2, () => undefined)).toMatchObject([{ trimStart: 4 }]);
+    expect(carriedClipsSince(pages(), 1, () => -1)).toMatchObject([{ trimStart: 2 }]);
+    expect(carriedClipsSince(pages(), 1, () => Number.NaN)).toMatchObject([{ trimStart: 2 }]);
+  });
+
+  it("is under the pages it runs on only, and under no page of its own", () => {
+    expect(carriedClipsSince(pages(), 0, () => 1)).toEqual([]);
+    expect(carriedClipsSince(pages(), 3, () => 1)).toEqual([]);
+    expect(carriedClipsSince(pages(), 9, () => 1)).toEqual([]);
   });
 });

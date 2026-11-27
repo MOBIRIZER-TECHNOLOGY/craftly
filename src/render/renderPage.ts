@@ -70,6 +70,11 @@ export interface RenderOptions {
    */
   playVideos?: { sound?: boolean; time?: number; frame?: ClipFrameSource };
   /**
+   * The clips that run on under the page from the pages before, in place of those the design's timeline gives
+   * (core/carriedClips.ts): Present, where the presenter decides how long a page stays, passes them as they really are.
+   */
+  carried?: readonly VideoElement[];
+  /**
    * Design pixels to paint beyond every edge of the page (a print export with bleed). The canvas then starts `bleed`
    * above and left of the page, and `clip` is measured from that corner; the background is stretched over the larger
    * area, and elements that hang over the edge of the page are painted there. Elements keep their place on the page.
@@ -817,7 +822,7 @@ export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height"> & 
     } else paintBackground(ctx, page.background, design.width, design.height, env);
   }
   // the clips that run on from the pages before: with the background, under everything of the page's own
-  if (part?.background !== false) for (const el of carriedClips(design.pages, page)) drawElement(ctx, el, env);
+  if (part?.background !== false) for (const el of opts.carried ?? carriedClips(design.pages, page)) drawElement(ctx, el, env);
   if (part) {
     for (let i = Math.max(0, part.from); i < Math.min(part.to, page.elements.length); i++) drawElement(ctx, page.elements[i], env);
   } else if (opts.animation) {

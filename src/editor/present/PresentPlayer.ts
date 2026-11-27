@@ -13,9 +13,9 @@
  *   frozen      auto-play ran out of pages: its last frame stays
  */
 import { pageDuration, pageHasAnimation, playsClip } from "@/core/animation";
-import { carriedClips } from "@/core/carriedClips";
+import { carriedClips, carriedClipsSince } from "@/core/carriedClips";
 import { buildTimeline, type TimelineFrame } from "@/core/transition";
-import type { Design, Page } from "@/core/types";
+import type { Design, Page, VideoElement } from "@/core/types";
 import { onFontsChange } from "@/render/fonts";
 import { onImagesChange } from "@/render/images";
 import { drawTransition, PlaybackRenderer } from "@/render/playback";
@@ -155,6 +155,15 @@ export class PresentPlayer {
   private soundFrom = 0;
   private soundAt = 0;
   private soundTimer = 0;
+  /**
+   * When the pages the presenter went through one after another, forwards, started their own clocks (performance.now(), with the
+   * page's id): a clip that runs on under the next pages (core/carriedClips.ts) goes on there from where it had really got to, as the
+   * sounds do, however long a page was held. Going back, jumping or auto-play starts again from the timeline's distances.
+   */
+  private clocks = new Map<number, { id: string; at: number }>();
+  private lastClock = -1;
+  /** the carried clips of the page being held, made once for its clock */
+  private carriedNow: { key: string; clips: readonly VideoElement[] } | null = null;
 
   constructor(
     private readonly host: PlayerHost,
@@ -311,6 +320,34 @@ export class PresentPlayer {
     return this.carries(page) || (this.reduced ? page.elements.some(playsClip) : pageHasAnimation(stripExits(page)));
   }
 
+  /** The presenter holds the page on screen, its own clock at 0 at `startedAt`. */
+  private hold(startedAt: number): void {
+    this.mode = { kind: "page", startedAt };
+    const i = this.index;
+    const id = this.design?.pages[i]?.id;
+    if (!id) return;
+    // the page right after the last one held goes on with them; the same page again (a transition cut short) starts its clock again
+    if (this.lastClock !== i - 1 && this.lastClock !== i) this.clocks.clear();
+    this.clocks.set(i, { id, at: startedAt });
+    this.lastClock = i;
+  }
+
+  /** The clips that run on under page `i` while it is held, as far on as the presenter's own pace has taken them. */
+  private carriedHeld(i: number): readonly VideoElement[] | undefined {
+    const pages = this.design?.pages;
+    const own = this.clocks.get(i);
+    if (!pages || !own || own.id !== pages[i]?.id || !this.carries(pages[i])) return undefined;
+    const key = `${this.docVersion}:${i}:${own.at}`;
+    if (this.carriedNow?.key !== key) {
+      const since = (from: number) => {
+        const clock = this.clocks.get(from);
+        return clock && clock.id === pages[from]?.id ? (own.at - clock.at) / 1000 : undefined;
+      };
+      this.carriedNow = { key, clips: carriedClipsSince(pages, i, since) };
+    }
+    return this.carriedNow.clips;
+  }
+
   /** Whether a clip runs on under `page` from a page before it (core/carriedClips.ts): it plays, so the page moves. */
   private carries(page: Page): boolean {
     return carriedClips(this.design?.pages, page).length > 0;
@@ -338,7 +375,7 @@ export class PresentPlayer {
     } catch (err) {
       if (!this.live(token)) return;
       console.warn("Craftly: could not prepare page", page.id, err);
-      this.mode = { kind: "page", startedAt: performance.now() };
+      this.hold(performance.now());
       this.shownId = page.id;
       this.fail(page.id);
       return;
@@ -357,7 +394,7 @@ export class PresentPlayer {
       return;
     }
     try {
-      this.mode = { kind: "page", startedAt: performance.now() };
+      this.hold(performance.now());
       if (still) this.blit(still);
       else this.frame();
       this.arrived(to, true);
@@ -387,7 +424,7 @@ export class PresentPlayer {
     const mode = this.mode;
     if (mode?.kind !== "transition" && mode?.kind !== "arriving") return;
     this.token++;
-    this.mode = { kind: "page", startedAt: performance.now() };
+    this.hold(performance.now());
   }
 
   /** Paints the current scene again after something it depends on changed (design, size, motion preference). */
@@ -498,7 +535,8 @@ export class PresentPlayer {
     if (!carries && (this.reduced ? !page.elements.some(playsClip) : !pageHasAnimation(page))) return false;
     const t = Math.max(0, (now - mode.startedAt) / 1000);
     this.fit();
-    const complete = this.reduced ? this.paintReduced(this.ctx!, page, t) : this.renderer!.renderPageAt(this.ctx!, page, t);
+    const carried = this.carriedHeld(this.index);
+    const complete = this.reduced ? this.paintReduced(this.ctx!, page, t, carried) : this.renderer!.renderPageAt(this.ctx!, page, t, { carried });
     this.clearFailed();
     return this.after(complete, this.reduced || carries || isAnimating(page, t));
   }
@@ -524,7 +562,7 @@ export class PresentPlayer {
     drawTransition(this.ctx!, a, b, mode.plan.kind, p, mode.plan.direction);
     if (p < 1) return true;
     // the new page is all there (the blend ends on its first frame): its own clock starts now
-    this.mode = { kind: "page", startedAt: now };
+    this.hold(now);
     if (this.animated(this.index)) return true; // it warms the neighbours when it settles
     this.scheduleWarm();
     return false;
@@ -538,6 +576,8 @@ export class PresentPlayer {
     this.token++; // an arrival still loading is dropped
     this.quiet();
     this.mode = { kind: "auto", plan: planAutoplay(design.pages, this.index, this.reduced), startedAt: performance.now() };
+    this.clocks.clear();
+    this.lastClock = -1;
     this.prepared = null;
     this.stillPage = null;
     this.autoTime = 0;
@@ -553,10 +593,10 @@ export class PresentPlayer {
     if (mode?.kind === "auto") {
       // the sounds go on from where auto-play had got to
       this.startSounds(mode.plan.offset + (performance.now() - mode.startedAt) / 1000);
-      this.mode = { kind: "page", startedAt: performance.now() - this.autoTime * 1000 };
+      this.hold(performance.now() - this.autoTime * 1000);
       this.host.onAutoplay(false);
     } else if (mode?.kind === "frozen") {
-      this.mode = { kind: "page", startedAt: performance.now() - mode.time * 1000 };
+      this.hold(performance.now() - mode.time * 1000);
     }
   }
 
@@ -602,9 +642,9 @@ export class PresentPlayer {
   }
 
   /** With reduced motion: the page at rest, with its clips playing `time` seconds in (and their sound). */
-  private paintReduced(ctx: CanvasRenderingContext2D, page: Page, time: number): boolean {
+  private paintReduced(ctx: CanvasRenderingContext2D, page: Page, time: number, carried?: readonly VideoElement[]): boolean {
     const design = this.design!;
-    return renderPage(ctx, design, page, { scale: ctx.canvas.width / design.width, playVideos: { sound: true, time } });
+    return renderPage(ctx, design, page, { scale: ctx.canvas.width / design.width, playVideos: { sound: true, time }, carried });
   }
 
   private paintAutoTransition(frame: Extract<TimelineFrame, { kind: "transition" }>): void {

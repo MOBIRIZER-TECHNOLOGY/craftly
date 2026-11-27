@@ -5,7 +5,7 @@
  */
 import { pageDuration } from "@/core/animation";
 import { frameAt, getTransitionPreset, transitionFrame, type Timeline, type TransitionLayer } from "@/core/transition";
-import type { AnimDirection, Design, Page } from "@/core/types";
+import type { AnimDirection, Design, Page, VideoElement } from "@/core/types";
 import { renderPage, type RenderOptions } from "./renderPage";
 
 type Ctx = CanvasRenderingContext2D;
@@ -73,10 +73,10 @@ export class PlaybackRenderer {
   }
 
   /** One page `time` seconds into its own animations. True when every image and font was ready. */
-  renderPageAt(ctx: Ctx, page: Page, time: number, opts: { transparent?: boolean; still?: boolean } = {}): boolean {
+  renderPageAt(ctx: Ctx, page: Page, time: number, opts: { transparent?: boolean; still?: boolean; carried?: readonly VideoElement[] } = {}): boolean {
     const scale = ctx.canvas.width / this.design.width;
     const playVideos = this.videos && !opts.still ? this.videos : undefined;
-    return renderPage(ctx, this.design, page, { scale, transparent: opts.transparent, animation: { time }, playVideos });
+    return renderPage(ctx, this.design, page, { scale, transparent: opts.transparent, animation: { time }, playVideos, carried: opts.carried });
   }
 
   /** The frame at `t` seconds of the whole playback described by `timeline`. */

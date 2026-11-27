@@ -34,6 +34,17 @@ function runningClips(page: Pick<Page, "elements">): VideoElement[] {
   return out;
 }
 
+/** A copy of `el` as it is `seconds` after its own page started: what is drawn under a later page. */
+function carryOn(el: VideoElement, seconds: number): VideoElement {
+  const copy = cloneDeep(el);
+  delete copy.runsOn;
+  // it is behind the page's own elements, and does not come in again
+  delete copy.animation;
+  delete copy.locked;
+  goOn(copy, seconds);
+  return copy;
+}
+
 const NONE: readonly VideoElement[] = Object.freeze([]);
 const kept = new WeakMap<readonly Page[], readonly (readonly VideoElement[])[]>();
 
@@ -47,15 +58,7 @@ export function carriedClipsOf(pages: readonly Page[]): readonly (readonly Video
     pages.forEach((page, i) => {
       for (const el of runningClips(page)) {
         const runs = clipRunsOn(el);
-        for (let k = 1; k <= runs && i + k < pages.length; k++) {
-          const copy = cloneDeep(el);
-          delete copy.runsOn;
-          // it is behind the page's own elements, and does not come in again
-          delete copy.animation;
-          delete copy.locked;
-          goOn(copy, (timeline.segments[i + k]?.playStart ?? 0) - (timeline.segments[i]?.playStart ?? 0));
-          out[i + k].push(copy);
-        }
+        for (let k = 1; k <= runs && i + k < pages.length; k++) out[i + k].push(carryOn(el, (timeline.segments[i + k]?.playStart ?? 0) - (timeline.segments[i]?.playStart ?? 0)));
       }
     });
   }
@@ -71,6 +74,30 @@ export function carriedClips(pages: readonly Page[] | undefined, page: Page): re
   let index = pages.indexOf(page);
   if (index < 0) index = pages.findIndex((p) => p.id === page.id);
   return index < 0 ? NONE : carriedClipsOf(pages)[index];
+}
+
+/**
+ * The clips that run on under page `index` of `pages` when the pages were not shown for as long as the timeline says: a presenter
+ * holds a page, or moves on before its time. `since(i)` is how many seconds really passed from the start of page `i` to the start of
+ * page `index`, or undefined when that is not known (the page was not shown just before, in order); then the timeline's distance
+ * counts, as in carriedClipsOf. Made each time it is asked for: the caller keeps what it needs.
+ */
+export function carriedClipsSince(pages: readonly Page[], index: number, since: (from: number) => number | undefined): VideoElement[] {
+  const out: VideoElement[] = [];
+  if (index <= 0 || index >= pages.length) return out;
+  let timeline: ReturnType<typeof buildTimeline> | null = null;
+  for (let i = Math.max(0, index - MAX_RUNS_ON); i < index; i++) {
+    for (const el of runningClips(pages[i])) {
+      if (clipRunsOn(el) < index - i) continue;
+      let seconds = since(i);
+      if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) {
+        timeline ??= buildTimeline(pages);
+        seconds = (timeline.segments[index]?.playStart ?? 0) - (timeline.segments[i]?.playStart ?? 0);
+      }
+      out.push(carryOn(el, seconds));
+    }
+  }
+  return out;
 }
 
 /**
