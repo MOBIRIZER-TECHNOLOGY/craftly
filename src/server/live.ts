@@ -127,6 +127,12 @@ export interface LiveServerOptions {
    * What is more is dropped and the connection stays; see `handle` for how this stands beside `rate`.
    */
   presenceRate?: { burst?: number; perSecond?: number };
+  /**
+   * How much work a connection's edits may take on the server (`applyOps`, in elements and pages walked or copied): a burst,
+   * then so much a second. A batch beyond what is left is refused (`rejected`, "too big to apply at once") and its connection
+   * stays. Ordinary editing takes a small part of it; it is what keeps a stream of costly batches from holding every room.
+   */
+  workRate?: { burst?: number; perSecond?: number };
   /** The most a message may be before the connection has shown its key, in bytes; a join is tiny. A bigger one is not read. */
   maxUnjoinedMessageBytes?: number;
   /** The most that may wait to be sent to one connection, in bytes: one that reads slower than that is dropped. Twice `maxDesignBytes` unless set. */
@@ -174,6 +180,8 @@ const DEFAULTS = {
   byteRate: { burst: 8 * 1024 * 1024, perSecond: 1024 * 1024 },
   joinRate: { burst: 4, perSecond: 0.5 },
   presenceRate: { burst: 30, perSecond: 15 },
+  // about 250 ms of one core at once, then 50 ms a second
+  workRate: { burst: 100_000_000, perSecond: 20_000_000 },
   maxUnjoinedMessageBytes: 8 * 1024,
   maxConnections: 5000,
   maxWaitingPerRoom: 20,
@@ -286,6 +294,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     byteRate: bucket(options.byteRate, DEFAULTS.byteRate),
     joinRate: bucket(options.joinRate, DEFAULTS.joinRate),
     presenceRate: bucket(options.presenceRate, DEFAULTS.presenceRate),
+    workRate: bucket(options.workRate, DEFAULTS.workRate),
     maxUnjoinedMessageBytes: options.maxUnjoinedMessageBytes ?? DEFAULTS.maxUnjoinedMessageBytes,
     maxBufferedBytes: options.maxBufferedBytes ?? 2 * (options.maxDesignBytes ?? DEFAULTS.maxDesignBytes),
     maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
@@ -1403,10 +1412,23 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       return void ws.close(1013, "try again later");
     }
     l.sockets.add(ws);
+    let work = o.workRate.burst;
+    let workAt = Date.now();
     const peer: Peer = {
       send: (msg) => {
         if (msg.t === "rejected") metrics.count("batches_rejected_total");
         send(ws, msg);
+      },
+      work: {
+        left: () => {
+          const at = Date.now();
+          work = Math.min(o.workRate.burst, work + ((at - workAt) / 1000) * o.workRate.perSecond);
+          workAt = at;
+          return Math.max(0, work);
+        },
+        spent: (n) => {
+          work -= n;
+        },
       },
     };
     const silent = setTimeout(() => deny(ws, "bad-request"), o.joinWaitMs);

@@ -26,9 +26,9 @@
  */
 import { withoutComments } from "@/core/comments";
 import type { Design } from "@/core/types";
-import { applyOps, isCommentOp, type Op } from "./ops";
+import { applyOps, isCommentOp, TooMuchWork, type Op } from "./ops";
 import { checkPresence, PRESENCE_STALE_MS, type PresenceState } from "./presence";
-import { canEdit, checkOps, checkSets, COMMENTS, type ClientMsg, type Role, type ServerMsg } from "./protocol";
+import { canEdit, checkOps, checkSets, COMMENTS, MAX_BATCH_WORK, type ClientMsg, type Role, type ServerMsg } from "./protocol";
 
 /** How long a client that is not in the room is remembered after it was last seen. */
 export const CLIENTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
@@ -53,6 +53,12 @@ export interface RoomOptions extends ClientMemory {
 /** Whatever receives what the room says to one connection. */
 export interface Peer {
   send(msg: ServerMsg): void;
+  /**
+   * The connection's allowance of work for its edits (`applyOps`, in elements and pages walked or copied): `left` says how
+   * much it may spend now, `spent` takes off what a batch took. A peer without it (a test) has no allowance beyond
+   * MAX_BATCH_WORK a batch.
+   */
+  work?: { left(): number; spent(n: number): void };
 }
 
 interface Member {
@@ -312,7 +318,17 @@ export class Room {
         refuse(ops);
         continue;
       }
-      const next = applyOps(design, ops);
+      const meter: { work: number; used?: number } = { work: Math.min(MAX_BATCH_WORK, peer.work?.left() ?? Infinity) };
+      let next: Design;
+      try {
+        next = applyOps(design, ops, meter);
+      } catch (error) {
+        if (!(error instanceof TooMuchWork)) throw error;
+        peer.work?.spent(meter.used ?? 0);
+        refuse(TOO_MUCH_WORK);
+        continue;
+      }
+      peer.work?.spent(meter.used ?? 0);
       // what the operations look like is fine; what they leave of the elements they changed is asked now that it is known
       const spoiled = checkSets(design, next, ops);
       if (spoiled) {
@@ -388,6 +404,8 @@ export class Room {
 
 /** What a browser is told of a batch that was to be applied when the write that should have kept it failed. */
 export const SAVE_FAILED = "The server could not save this edit.";
+/** Why a batch was refused that would take too much work at once (MAX_BATCH_WORK), or more than its connection has left now. */
+export const TOO_MUCH_WORK = "This edit is too big to apply at once.";
 
 /**
  * What `Room.commit` throws when it does not save a design only because the design is larger than a room may be. A group of

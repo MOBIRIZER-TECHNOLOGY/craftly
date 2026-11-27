@@ -4,6 +4,13 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **One batch of edits can no longer hold the live server still (2026-11-28, security).** An outside-style review found that applying an edit took time in proportion to the whole page, once per operation. A batch of 10,000 changes to the last of 100,000 small shapes (a 569 KB message, sent with the edit key of a room anybody could make) held the server for about 4 s, and every room, account request and health check with it. Three changes:
+  - A run of property changes, and a run of deletions, is now applied in one walk of each page: 2,000 such operations on 100,000 elements went from 857 ms to 4 ms, and 2,000 deletions from 830 ms to 6 ms. The result is exactly that of one by one. `ops.batch.test.ts` compares the two on 3,000 random designs, with groups in groups, repeated ids and repeated page ids (20,000 were run once). A run that names an id the design holds twice, where the two can differ, still goes one by one.
+  - What still costs a walk per operation (additions, moves, pages) counts against a limit. A batch beyond `MAX_BATCH_WORK` (about 50 ms of one core) is refused whole, "This edit is too big to apply at once", and changes nothing; the editor keeps the person's copy as it does for any refused edit.
+  - Each connection also has an allowance of that work over time (`workRate`: about 250 ms at once, then 50 ms a second), so that a stream of batches each under the limit cannot hold the server either.
+
+  Dragging or deleting a selection of any size stays one walk and far under both. `src/collab/ops.ts`, `room.ts`, `protocol.ts`, `src/server/live.ts`; `src/server/work.test.ts` checks the refusals through a real server.
+
 - **CI builds the server image for amd64 and arm64, and a version tag publishes it (2026-11-28).** A new `image` job in `.github/workflows/ci.yml` builds `Dockerfile.server` for both, runs the amd64 image until Docker calls it healthy, checks it from outside with `scripts/live-check.mjs`, and requires a clean stop. `.github/workflows/release-image.yml` publishes both to `ghcr.io/<owner>/<repository>/live` when a tag `v*` is pushed, with provenance and an SBOM. Its actions are pinned to the commits of their releases, like the rest of CI, and Dependabot now also watches the base image.
   - **Checked** here: the arm64 image builds in 78 s under emulation and, run under emulation, is healthy, passes `live-check.mjs` and stops with code 0; both workflow files parse. **Not checked**: either workflow on GitHub, which needs the branch pushed.
 

@@ -273,7 +273,27 @@ export function diffDesign(prev: Design, next: Design): Op[] {
 
 const clamp = (index: number, length: number) => (Number.isFinite(index) ? Math.max(0, Math.min(length, Math.trunc(index))) : length);
 
+/**
+ * The work a batch has done so far, in elements and pages walked or copied: what `applyOps` weighs against a limit. A batch
+ * is small and a design may be large, so it is the design that decides the cost of most operations (one that moves the last
+ * of 100,000 elements walks and copies all of them), and a batch of 10,000 of them could hold the server for seconds.
+ */
+let spent = 0;
+let limit = Infinity;
+const charge = (n: number): void => {
+  spent += n;
+  if (spent > limit) throw new TooMuchWork();
+};
+
+/** Thrown by `applyOps` when a batch would take more work than it was given (`limits.work`). */
+export class TooMuchWork extends Error {
+  constructor() {
+    super("this batch of edits would take too long to apply");
+  }
+}
+
 function insertAt<T>(list: readonly T[], index: number, item: T): T[] {
+  charge(list.length);
   const out = list.slice();
   out.splice(clamp(index, out.length), 0, item);
   return out;
@@ -298,6 +318,7 @@ function withProps<T extends object>(obj: T, set: Props | undefined, unset: read
 
 /** Looks for an element at any depth, the way `edit` does. */
 function findElement(list: readonly DesignElement[], id: ID): DesignElement | null {
+  charge(list.length);
   for (const el of list) {
     if (el.id === id) return el;
     if (el.type === "group") {
@@ -310,6 +331,8 @@ function findElement(list: readonly DesignElement[], id: ID): DesignElement | nu
 
 /** The list with the element `id`, wherever it is, replaced by what `fn` makes of it (null takes it out); the same list when there is none. */
 function edit(list: readonly DesignElement[], id: ID, fn: (el: DesignElement) => DesignElement | null): readonly DesignElement[] {
+  // (walked, and copied when something changes: twice its length at most)
+  charge(list.length * 2);
   for (let i = 0; i < list.length; i++) {
     const el = list[i];
     if (el.id === id) {
@@ -340,6 +363,7 @@ function insertElement(list: readonly DesignElement[], parent: ID | null, index:
 
 /** The id of every one of these elements, the children of groups included, in order. */
 const idList = (list: readonly DesignElement[], into: ID[] = []): ID[] => {
+  charge(list.length);
   for (const el of list) {
     into.push(el.id);
     if (el.type === "group") idList(el.children, into);
@@ -382,6 +406,7 @@ function allNew(used: IdCounts, ids: readonly ID[]): boolean {
 }
 
 function inPage(d: Design, pageId: ID, fn: (page: Page) => Page): Design {
+  charge(d.pages.length * 2);
   const i = d.pages.findIndex((p) => p.id === pageId);
   if (i < 0) return d;
   const made = fn(d.pages[i]);
@@ -422,12 +447,14 @@ function step(d: Design, op: Op, used?: IdCounts): Design {
       return out;
     }
     case "page.add": {
+      charge(d.pages.length);
       const ids = [op.page.id, ...idList(op.page.elements)];
       if (!allNew(used ?? countIds(d), ids)) return d;
       if (used) taken(used, ids);
       return { ...d, pages: insertAt(d.pages, op.index, op.page) };
     }
     case "page.del": {
+      charge(d.pages.length * 2);
       if (d.pages.length < 2 || !d.pages.some((p) => p.id === op.id)) return d;
       // (every page of that id goes, should a design have come with two)
       if (used) for (const p of d.pages) if (p.id === op.id) freed(used, [p.id, ...idList(p.elements)]);
@@ -437,6 +464,7 @@ function step(d: Design, op: Op, used?: IdCounts): Design {
       return out;
     }
     case "page.move": {
+      charge(d.pages.length * 2);
       const from = d.pages.findIndex((p) => p.id === op.id);
       if (from < 0) return d;
       const rest = d.pages.filter((_, i) => i !== from);
@@ -534,14 +562,146 @@ function withAllowed<T extends object>(obj: T, set: object | undefined, unset: r
   return (out ?? obj) as T;
 }
 
-/** Operations applied one after the other; the same design when none of them changes anything. */
-export function applyOps(design: Design, ops: readonly Op[]): Design {
-  let out = design;
-  // the ids of the design, counted when the first addition asks for them (most batches add nothing) and kept right from then on
-  let used: IdCounts | undefined;
-  for (const op of ops) {
-    if (!used && (op.k === "el.add" || op.k === "page.add")) used = countIds(out);
-    out = step(out, op, used);
+type SetOp = Extract<Op, { k: "el.set" }>;
+
+/**
+ * A run of `el.set` applied in one walk of each page it names, with the same result as applying them one by one: such an
+ * operation changes no id, type or children (ELEMENT_FIXED), so the elements stay where they are, and those of different
+ * elements do not depend on each other. Each goes to the element `edit` would find, the first of that id in the page, depth
+ * first; those of one element are applied in their order. Dragging a selection sends one for each element it holds, and on a
+ * big page, one walk each was most of the cost of the whole batch.
+ */
+function setRun(d: Design, run: readonly SetOp[]): Design {
+  const byPage = new Map<ID, Map<ID, SetOp[]>>();
+  for (const op of run) {
+    let page = byPage.get(op.page);
+    if (!page) byPage.set(op.page, (page = new Map()));
+    const list = page.get(op.id);
+    if (list) list.push(op);
+    else page.set(op.id, [op]);
+  }
+  let out = d;
+  for (const [pageId, pending] of byPage) {
+    out = inElements(out, pageId, (list) => setAll(list, pending));
   }
   return out;
+}
+
+/** The list with the pending changes made to the first element of each id, depth first; the same list when nothing changes. */
+function setAll(list: readonly DesignElement[], pending: Map<ID, SetOp[]>): readonly DesignElement[] {
+  let out: DesignElement[] | null = null;
+  for (let i = 0; i < list.length && pending.size; i++) {
+    charge(1);
+    const el = list[i];
+    let made = el;
+    const mine = pending.get(el.id);
+    if (mine) {
+      pending.delete(el.id);
+      for (const op of mine) made = withProps(made, op.set, op.unset, ELEMENT_FIXED);
+    }
+    if (made.type === "group" && pending.size) {
+      const inner = setAll(made.children, pending);
+      if (inner !== made.children) made = { ...made, children: inner as DesignElement[] } as GroupElement;
+    }
+    if (made !== el) {
+      if (!out) {
+        charge(list.length);
+        out = list.slice();
+      }
+      out[i] = made;
+    }
+  }
+  return out ?? list;
+}
+
+type DelOp = Extract<Op, { k: "el.del" }>;
+
+/**
+ * A run of `el.del` applied in one walk of each page it names, with the same result as one by one: each takes away the first
+ * element of its id, depth first, with what it holds (`edit` with null). An id named twice takes away two, should a design
+ * have come with two; an element inside one that is taken away goes with it, and its own `el.del` then finds nothing, as it
+ * would have one by one. Deleting a big selection sends one for each element.
+ */
+function delRun(d: Design, run: readonly DelOp[], used: IdCounts | undefined): Design {
+  const byPage = new Map<ID, Map<ID, number>>();
+  for (const op of run) {
+    let page = byPage.get(op.page);
+    if (!page) byPage.set(op.page, (page = new Map()));
+    page.set(op.id, (page.get(op.id) ?? 0) + 1);
+  }
+  let out = d;
+  for (const [pageId, pending] of byPage) out = inElements(out, pageId, (list) => delAll(list, pending, used));
+  return out;
+}
+
+function delAll(list: readonly DesignElement[], pending: Map<ID, number>, used: IdCounts | undefined): readonly DesignElement[] {
+  let out: DesignElement[] | null = null;
+  let i = 0;
+  for (; i < list.length && pending.size; i++) {
+    charge(1);
+    const el = list[i];
+    const left = pending.get(el.id);
+    let made: DesignElement | null = el;
+    if (left) {
+      if (left > 1) pending.set(el.id, left - 1);
+      else pending.delete(el.id);
+      if (used) freed(used, idList([el]));
+      made = null;
+    } else if (el.type === "group") {
+      const inner = delAll(el.children, pending, used);
+      if (inner !== el.children) made = { ...el, children: inner as DesignElement[] } as GroupElement;
+    }
+    if (made !== el && !out) {
+      charge(list.length);
+      out = list.slice(0, i);
+    }
+    if (out && made) out.push(made);
+  }
+  if (!out) return list;
+  // what the walk did not reach, once nothing was left to take away
+  for (; i < list.length; i++) out.push(list[i]);
+  return out;
+}
+
+/**
+ * Operations applied one after the other; the same design when none of them changes anything. With `limits.work`, it throws
+ * `TooMuchWork` once the batch has walked or copied that many elements and pages, and it sets `limits.used` to the work it
+ * took: the server gives each batch a limit (`MAX_BATCH_WORK` in protocol.ts) and each connection an allowance over time
+ * (`Peer.work`), so that neither one batch nor a stream of them can hold every room still.
+ */
+export function applyOps(design: Design, ops: readonly Op[], limits: { work?: number; used?: number } = {}): Design {
+  spent = 0;
+  limit = limits.work ?? Infinity;
+  try {
+    let out = design;
+    // the ids of the design, counted when the first addition asks for them (most batches add nothing) and kept right from then on
+    let used: IdCounts | undefined;
+    for (let i = 0; i < ops.length;) {
+      const op = ops[i];
+      // a run of changes to properties, or of deletions, takes one walk of each page it names
+      if (op.k === "el.set" || op.k === "el.del") {
+        let end = i + 1;
+        while (end < ops.length && ops[end].k === op.k) end++;
+        const run = ops.slice(i, end);
+        // An id that is in the design twice (a design this code did not make) is the one case where one walk and one by one
+        // differ: which of the two a deletion takes, with what it holds, and which a change goes to (one by one, it goes on to
+        // the second when it would change nothing in the first). Such a run goes one by one.
+        used ??= countIds(out);
+        const counts = used;
+        if (run.some((o) => (counts.get((o as SetOp | DelOp).id) ?? 0) > 1)) for (const o of run) out = step(out, o, counts);
+        else out = op.k === "el.set" ? setRun(out, run as SetOp[]) : delRun(out, run as DelOp[], counts);
+        i = end;
+        continue;
+      }
+      if (!used && (op.k === "el.add" || op.k === "page.add")) used = countIds(out);
+      out = step(out, op, used);
+      i++;
+    }
+    return out;
+  } finally {
+    // how much it took (or had taken when it was stopped), for a caller that counts it
+    limits.used = spent;
+    spent = 0;
+    limit = Infinity;
+  }
 }

@@ -90,6 +90,12 @@ export type ServerMsg =
 
 /** The most operations in one batch; one editor action makes a handful, pasting a page of a template a few hundred. */
 export const MAX_OPS_PER_BATCH = 10_000;
+/**
+ * The most work one batch may take on the server, in elements and pages walked or copied (`applyOps`): about 50 ms of one
+ * core. Dragging or deleting a selection of any size takes one walk of the page and is far below it; 2,000 elements moved
+ * one at a time across a page of 100,000 would take seconds, and such a batch is refused whole.
+ */
+export const MAX_BATCH_WORK = 20_000_000;
 const MAX_ID_LENGTH = 200;
 const MAX_PROPS = 200;
 const MAX_NESTING = 32;
