@@ -51,7 +51,8 @@ describe("the maths of a clip's row", () => {
     expect(pageClips(page).map((c) => c.id)).toEqual(["a", "b"]);
     expect(clipRows([page, createPage({})])).toBe(2);
     expect(clipRows([createPage({})])).toBe(0);
-    expect(clipRows([createPage({ elements: [video("1"), video("2"), video("3"), video("4")] })])).toBe(MAX_ROWS);
+    expect(clipRows([createPage({ elements: [video("1"), video("2"), video("3"), video("4")] })])).toBe(4);
+    expect(clipRows([createPage({ elements: Array.from({ length: MAX_ROWS + 2 }, (_, i) => video(`c${i}`)) })])).toBe(MAX_ROWS);
   });
 
   it("gives the span of a clip on its page: once, over and over to the page's end, past the end cut off", () => {
@@ -75,16 +76,13 @@ describe("the maths of a clip's row", () => {
   });
 
   it("makes room for at most MAX_ROWS rows: a further clip goes on the row that is free soonest", () => {
-    const page = createPage({
-      elements: [
-        video("a", { trimEnd: 4, once: true }),
-        video("b", { trimEnd: 1, once: true }),
-        video("c", { trimEnd: 3, once: true }),
-        video("d", { trimEnd: 1, once: true, startAt: 0.5 }),
-      ],
-    });
-    // a 0-4, b 0-1, c 0-3 take the three rows; d (0.5-1.5) goes where b ends, the soonest
-    expect(clipLanes(page, 5)).toEqual({ rows: MAX_ROWS, row: { a: 0, b: 1, c: 2, d: 1 } });
+    // MAX_ROWS clips from 0 s, the second the shortest (to 1 s), and one more from 0.5 s: it goes where the second ends
+    const lasting = Array.from({ length: MAX_ROWS }, (_, i) => video(`r${i}`, { trimEnd: i === 1 ? 1 : 4, once: true }));
+    const page = createPage({ elements: [...lasting, video("more", { trimEnd: 1, once: true, startAt: 0.5 })] });
+    const lanes = clipLanes(page, 5);
+    expect(lanes.rows).toBe(MAX_ROWS);
+    expect(lanes.row.more).toBe(1);
+    expect(lanes.row[`r${MAX_ROWS - 1}`]).toBe(MAX_ROWS - 1);
   });
 
   it("counts the rows of the busiest page", () => {
@@ -149,6 +147,19 @@ describe("<Timeline>: the clips", () => {
     expect(long.style.width).toBe(`${5 * 60}px`);
     expect(later.style.left).toBe(`${16 + 2 * 60}px`);
     expect(later.style.top).not.toBe(long.style.top);
+  });
+
+  it("gives each of six clips at once a row of its own: the band grows by four and the lane scrolls for the rest", async () => {
+    const six = createDesign({
+      title: "Six",
+      width: 400,
+      height: 300,
+      pages: [createPage({ id: "p1", duration: 3, elements: Array.from({ length: 6 }, (_, i) => video(`s${i}`)) })],
+    });
+    const { container } = await renderChrome(<Timeline />, six);
+    expect(new Set(bars(container).map((b) => b.style.top)).size).toBe(6);
+    expect((container.querySelector(".cf-tl") as HTMLElement).style.height).toContain(`${4 * 30}px`);
+    expect((container.querySelector(".cf-tl__lane") as HTMLElement).style.height).toBe(`calc(100% + ${2 * 30}px)`);
   });
 
   it("draws clips that play one after another on one row, and the band grows for that one row only", async () => {

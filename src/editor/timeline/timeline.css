@@ -30,8 +30,9 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
+  /* more rows of clips and sounds than the band shows scroll up and down (Timeline.tsx: VISIBLE_ROWS) */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .cf-tl__lane {

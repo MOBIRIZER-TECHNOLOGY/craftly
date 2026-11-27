@@ -12,8 +12,10 @@ export const CLIP_TOP_PX = 62;
 /** Height of a clip's row and the gap above it, in pixels. */
 export const ROW_H = 26;
 export const ROW_GAP = 4;
-/** The most rows of clips the timeline makes room for (clips that play at once past these share a row: clipLanes). */
-export const MAX_ROWS = 3;
+/** The most rows of clips (and of sounds) the timeline makes (what plays at once past these shares a row: packRows). */
+export const MAX_ROWS = 12;
+/** The most rows the timeline's band grows by; past these its lane scrolls up and down. */
+export const VISIBLE_ROWS = 4;
 /** About this many pixels of a bar for each picture of the clip. */
 const TILE_W = 44;
 

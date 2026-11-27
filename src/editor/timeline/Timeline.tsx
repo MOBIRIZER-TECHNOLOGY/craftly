@@ -10,7 +10,7 @@ import { Button, IconButton, IconPause, IconPlay, IconSplit, cx } from "@/ui";
 import { TransitionJoin } from "./TransitionJoin";
 import { splitMoment } from "@/core/splitPage";
 import { runEnd } from "@/core/carriedClips";
-import { CLIP_TOP_PX, ClipBar, ROW_GAP, ROW_H, clipSpan, packRows, pageClips } from "./ClipBar";
+import { CLIP_TOP_PX, ClipBar, ROW_GAP, ROW_H, VISIBLE_ROWS, clipSpan, packRows, pageClips } from "./ClipBar";
 import { pauseTimeline, placeAt, playTimeline, pxPerSecond, seekTimeline, useTimeline } from "./timelineStore";
 import { TrackBar, TrackControls, soundLanes } from "./TrackBar";
 import "./timeline.css";
@@ -225,7 +225,7 @@ export function Timeline() {
 
   const laneWidth = PAD * 2 + total * pps;
   return (
-    <section className="cf-tl" aria-label={words.region} style={rows ? { height: `calc(var(--strip-h) + ${rows * (ROW_H + ROW_GAP)}px)` } : undefined}>
+    <section className="cf-tl" aria-label={words.region} style={rows ? { height: `calc(var(--strip-h) + ${Math.min(rows, VISIBLE_ROWS) * (ROW_H + ROW_GAP)}px)` } : undefined}>
       <div className="cf-tl__bar">
         <IconButton
           size="sm"
@@ -244,7 +244,11 @@ export function Timeline() {
         {chosen && !readOnly ? <TrackControls track={chosen} /> : null}
       </div>
       <div ref={scrollRef} className="cf-tl__scroll">
-        <div className="cf-tl__lane" style={{ width: Math.max(laneWidth, width) }}>
+        {/* more rows than the band shows: the lane is as tall as all of them, and scrolls */}
+        <div
+          className="cf-tl__lane"
+          style={{ width: Math.max(laneWidth, width), ...(rows > VISIBLE_ROWS ? { height: `calc(100% + ${(rows - VISIBLE_ROWS) * (ROW_H + ROW_GAP)}px)` } : {}) }}
+        >
           <div
             className="cf-tl__track"
             role="slider"
