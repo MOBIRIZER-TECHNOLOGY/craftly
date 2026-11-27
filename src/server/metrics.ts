@@ -29,6 +29,8 @@ const COUNTERS = {
   session_joins_refused_total: "Joins with a session that were refused: the session lets nobody in, its person is not in the space, or the room is not bound.",
   write_backs_total: "Designs of bound rooms written back to their space when the room left memory or the server stopped (also when nothing had changed).",
   write_back_failures_total: "Designs of bound rooms that could not be written back; the room keeps its copy and is tried again.",
+  write_back_files_refused_total:
+    "Pictures, clips and sounds of bound rooms that could not be brought into their space with the design (full, too large, or a failure); the room keeps them.",
   write_back_copies_total:
     "Designs of bound rooms kept as a new design, '(edited live)', because their space had moved on past the revision the room was made from (counted in write_backs_total too).",
   write_backs_dropped_total: "Bound rooms dropped without writing back because their design or their space was gone.",

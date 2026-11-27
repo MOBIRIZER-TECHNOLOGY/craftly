@@ -259,7 +259,8 @@ design above, or says more:
   minutes), and its socket is sent away the same way. Looking again is not a use of the session (a browser's own requests are,
   its sync every minute), so a socket alone does not keep a session alive.
 - **Metrics** (`craftly_live_`): `bound_rooms_made_total`, `session_joins_total`, `session_joins_refused_total`,
-  `write_backs_total`, `write_back_failures_total`, `write_back_copies_total`, `write_backs_dropped_total`, the gauge
+  `write_backs_total`, `write_back_failures_total`, `write_back_copies_total`, `write_backs_dropped_total`,
+  `write_back_files_refused_total`, the gauge
   `bound_rooms_in_memory`, and the reason `revoked` of `connections_closed_total`.
 - **Not built**: the client (joining with the session, "Edit live with your team", the viewer's read-only mode, asking again
   after `no-access` and after a room that went away between `POST …/live` and the join, which answers `not-found`). A bound room
@@ -406,7 +407,11 @@ under its id `409 exists`. `GET` and `HEAD` give it back with its type, `Content
 (`src/cloud/sync.ts`) sends a design's clips and sounds that are on the device and that the space has not got (`HEAD`, then
 `PUT`) after its pictures and before the design, and fetches those a pulled design uses that the device has not got, checked as
 uploads; a clip the server will not keep stays on the device it was added on, the run says so (or that the space is full), and
-the design goes all the same. Removing a space removes its folder of clips.
+the design goes all the same. Removing a space removes its folder of clips. A design edited live in a team's room gets its new
+uploads from the room: when the room writes the design back, the server brings into the space the pictures, clips and sounds
+the design names (`asset:<id>` anywhere in it) that the space has not got, checked and counted as an upload is; one that does not
+fit stays the room's, is written to the log and counted (`write_back_files_refused_total`), and the design is written back all
+the same.
 
 **Signing in where there are designs already**: "Move N designs into your account?" with Move all, Choose and Not now. Moving
 sets `space` and pushes with `baseRev: null`; a different design under that id on the server (409 `exists`) is pushed as a copy

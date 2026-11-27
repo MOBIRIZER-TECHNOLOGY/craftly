@@ -666,6 +666,73 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     return `${ws.length} sockets, each joined with a session and no key`;
   });
 
+  await step("a clip added in the team's live room reaches the other member through the room, sent with a session and no key", async () => {
+    const puts = [];
+    const onRequest = (req) => {
+      if (/\/api\/rooms\/[^/]+\/media\//.test(req.url()) && req.method() === "PUT") puts.push(req.headers());
+    };
+    laptop.page.on("request", onRequest);
+    const made = await laptop.page.evaluate(async () => {
+      const { assets, factory } = window.__journey;
+      const c = document.createElement("canvas");
+      c.width = 160;
+      c.height = 90;
+      const g = c.getContext("2d");
+      const rec = new MediaRecorder(c.captureStream(30), { mimeType: "video/webm;codecs=vp8" });
+      const chunks = [];
+      rec.ondataavailable = (e) => chunks.push(e.data);
+      const start = performance.now();
+      rec.start(100);
+      await new Promise((done) => {
+        const tick = () => {
+          g.fillStyle = "#16a34a";
+          g.fillRect(0, 0, 160, 90);
+          if (performance.now() - start < 1000) requestAnimationFrame(tick);
+          else done();
+        };
+        tick();
+      });
+      await new Promise((r) => {
+        rec.onstop = r;
+        rec.stop();
+      });
+      const clip = await assets.addAssetFromFile(new File(chunks, "Green.webm", { type: "video/webm" }));
+      const { actions } = window.__editor.getState();
+      // (the editor gives it an id of its own)
+      actions.addElements([{ ...factory.createVideo({ src: `asset:${clip.id}`, naturalWidth: 160, naturalHeight: 90, duration: 1, x: 400, y: 300 }) }], {
+        center: false,
+        select: false,
+      });
+      return { id: clip.id, size: clip.size, live: window.__editor.getState().live };
+    });
+    const where = (who) =>
+      who.page.evaluate(() => {
+        const st = window.__editor.getState();
+        return { live: st.live, pages: st.design.pages.map((p) => p.elements.map((e) => `${e.type}:${e.id}`)) };
+      });
+    await until("bob's page has the clip", async () =>
+      bob.page.evaluate((src) => window.__editor.getState().design.pages.some((p) => p.elements.some((e) => e.src === src)), `asset:${made.id}`),
+    ).catch(async (error) => {
+      throw new Error(`${error.message}; made ${JSON.stringify(made)}; laptop ${JSON.stringify(await where(laptop))}; bob ${JSON.stringify(await where(bob))}`);
+    });
+    await until(
+      "bob has the clip's file, as it was",
+      async () => (await bob.page.evaluate(async (id) => (await window.__journey.assets.getAsset(id))?.size ?? 0, made.id)) === made.size,
+      30000,
+    );
+    laptop.page.off("request", onRequest);
+    if (!puts.length) throw new Error("the clip was not sent to the room");
+    for (const h of puts) {
+      if (!/^Bearer /.test(h.authorization ?? "") || "x-craftly-key" in h) throw new Error("the clip was sent with " + JSON.stringify(Object.keys(h)));
+    }
+    // the clip is removed again on the laptop, so the steps after see the team's design as they did
+    await laptop.page.evaluate((src) => {
+      const { design, actions } = window.__editor.getState();
+      actions.deleteElements(design.pages.flatMap((p) => p.elements.filter((e) => e.src === src).map((e) => e.id)));
+    }, `asset:${made.id}`);
+    return `a ${Math.round(made.size / 1024)} KB clip on bob's device; ${puts.length} PUT with a session`;
+  });
+
   await step("a member lowered to viewer is sent out and comes back read-only", async () => {
     const team = await api(SERVER, "GET", `/api/teams/${teamId}`, annToken);
     const bobId = team.body.members.find((m) => m.name === "Bob").id;

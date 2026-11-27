@@ -632,6 +632,60 @@ export async function putMedia(ctx: Ctx, req: IncomingMessage, res: ServerRespon
   }
 }
 
+/*
+ * What a room bound to a design of the space brings back with the design (live.ts, `writeBack`): the pictures, clips and sounds
+ * that were added while it was edited live went to the room, and a member who opens the design from the space later needs them
+ * there. They are checked as an upload of the space is, count towards its quota, and never replace one the space has under the id.
+ */
+
+/** Which of `ids` the space has neither as a picture nor as a clip or a sound. */
+export async function missingFiles(ctx: Ctx, space: string, ids: readonly string[]): Promise<string[]> {
+  const m = await ctx.storage.loadManifest(space);
+  return ids.filter((id) => ASSET_ID.test(id) && !Object.hasOwn(m.assets, id) && !(m.media && Object.hasOwn(m.media, id)));
+}
+
+/** Keeps a room's picture in the space: true when it is there afterwards, false when it may not be kept (its kind, or the quota). */
+export async function keepPicture(ctx: Ctx, space: string, id: string, given: unknown): Promise<boolean> {
+  const asset = ASSET_ID.test(id) ? checkAsset(given) : null;
+  if (!asset) return false;
+  const bytes = Buffer.from(asset.base64, "base64");
+  if (asset.mime === "image/svg+xml" ? svgProblem(bytes.toString("utf8")) : !looksLike(asset.mime, bytes)) return false;
+  return change(ctx, space, null, async (m) => {
+    if (Object.hasOwn(m.assets, id)) return { value: true, changed: false };
+    if (spaceBytes(m) + asset.base64.length > ctx.o.spaceQuotaBytes) return { value: false, changed: false };
+    await ctx.storage.saveAsset(space, id, asset);
+    m.seq++;
+    m.assets[id] = { mime: asset.mime, bytes: asset.base64.length, seq: m.seq, createdAt: ctx.now() };
+    return { value: true, changed: true };
+  });
+}
+
+/** Keeps a room's clip or sound in the space, read from `source`, which gives `size` bytes: true when it is there afterwards. */
+export async function keepClip(ctx: Ctx, space: string, id: string, mime: string, size: number, source: AsyncIterable<Buffer | Uint8Array>): Promise<boolean> {
+  if (!ASSET_ID.test(id) || !MEDIA_TYPE.test(mime) || !Number.isSafeInteger(size) || size <= 0 || size > ctx.o.maxMediaBytes) return false;
+  const before = await ctx.storage.loadManifest(space);
+  if (before.media && Object.hasOwn(before.media, id)) return true;
+  if (spaceBytes(before) + size > ctx.o.spaceQuotaBytes) return false;
+  const staged = await ctx.storage.stageMedia(space, source, size);
+  if (!staged) return false;
+  let kept = false;
+  try {
+    if (staged.size !== size) return false;
+    return await change(ctx, space, null, async (m) => {
+      const media = (m.media ??= {});
+      if (Object.hasOwn(media, id)) return { value: true, changed: false };
+      if (spaceBytes(m) + staged.size > ctx.o.spaceQuotaBytes) return { value: false, changed: false };
+      await ctx.storage.commitMedia(space, id, staged);
+      kept = true;
+      m.seq++;
+      media[id] = { mime, bytes: staged.size, sha256: staged.sha256, seq: m.seq, createdAt: ctx.now() };
+      return { value: true, changed: true };
+    });
+  } finally {
+    if (!kept) await ctx.storage.dropMedia(staged);
+  }
+}
+
 /** A clip or a sound of a space, streamed back as a download of its type; HEAD says only whether it is there. */
 export async function getMedia(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
   await access(ctx, req, space, "read");

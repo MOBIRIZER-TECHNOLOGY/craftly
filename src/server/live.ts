@@ -250,6 +250,18 @@ interface Seat {
 
 /** What a role in a team allows in a room: owners and editors edit, viewers look. */
 const roomRole = (role: TeamRole): Role => (role === "viewer" ? "view" : "edit");
+const UPLOAD = /^asset:([A-Za-z0-9_-]{1,128})$/;
+/** The ids of the uploads a design names anywhere in it (`asset:<id>`: pictures, backgrounds, fills, clips, sounds), each once. */
+function uploadsOf(value: unknown, into = new Set<string>(), depth = 0): string[] {
+  if (typeof value === "string") {
+    const found = UPLOAD.exec(value);
+    if (found) into.add(found[1]);
+  } else if (value && typeof value === "object" && depth < 64) {
+    for (const item of Array.isArray(value) ? value : Object.values(value)) uploadsOf(item, into, depth + 1);
+  }
+  return [...into];
+}
+
 /** The id of the room bound to a design of a space: the same every time, so that the design always finds its room (also after a restart). */
 const boundRoomId = (space: string, designId: string) => createHash("sha256").update(`craftly bound room\n${space}\n${designId}`).digest("base64url");
 const boundKey = (space: string, designId: string) => `${space}\n${designId}`;
@@ -535,6 +547,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         return true;
       }
       metrics.count("write_backs_total");
+      await keepFiles(l, bound.space);
       if (done.copy) {
         // the room's copy is a design of its own now; the room is no longer the design's (`rev` stays: anything more is a copy too)
         metrics.count("write_back_copies_total");
@@ -545,6 +558,35 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       metrics.count("write_back_failures_total");
       console.error(`Craftly could not write the live design of the room ${l.id} back to its space; the room keeps it and tries again when it next leaves memory`, error);
       return false;
+    }
+  };
+
+  /**
+   * Brings the pictures, clips and sounds the room's design uses into its space, those the space has not got: they were added while
+   * the design was edited live, so they went to the room, and a member who opens the design from the space needs them there. One
+   * that cannot be kept there (the space is full, a clip too large) is written to the log and stays the room's; the design is
+   * written back all the same, as an upload of a device that the space refuses leaves the design as it is.
+   */
+  const keepFiles = async (l: Loaded, space: string) => {
+    if (!accounts) return;
+    const missing = await accounts.bound.missingFiles(space, uploadsOf(l.record.design));
+    for (const assetId of missing) {
+      try {
+        const picture = (await o.storage.loadAsset(l.id, assetId)) ?? (l.record.assets && Object.hasOwn(l.record.assets, assetId) ? l.record.assets[assetId] : null);
+        let kept: boolean | null = null;
+        if (picture) kept = await accounts.bound.keepPicture(space, assetId, picture);
+        else {
+          const clip = await o.storage.mediaInfo(l.id, assetId);
+          if (clip) kept = await accounts.bound.keepClip(space, assetId, clip.mime, clip.size, o.storage.mediaStream(l.id, assetId));
+        }
+        if (kept === false) {
+          metrics.count("write_back_files_refused_total");
+          console.error(`Craftly could not keep the upload ${assetId} of the room ${l.id} in its space (it is full, or the upload is too large); the room keeps it`);
+        }
+      } catch (error) {
+        metrics.count("write_back_files_refused_total");
+        console.error(`Craftly could not bring the upload ${assetId} of the room ${l.id} into its space`, error);
+      }
     }
   };
 
