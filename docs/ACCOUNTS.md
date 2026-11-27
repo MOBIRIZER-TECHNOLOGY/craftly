@@ -262,8 +262,9 @@ design above, or says more:
   `write_backs_total`, `write_back_failures_total`, `write_back_copies_total`, `write_backs_dropped_total`,
   `write_back_files_refused_total`, the gauge
   `bound_rooms_in_memory`, and the reason `revoked` of `connections_closed_total`.
-- **Not built**: the client (joining with the session, "Edit live with your team", the viewer's read-only mode, asking again
-  after `no-access` and after a room that went away between `POST …/live` and the join, which answers `not-found`). A bound room
+- **The client** is built: joining with the session, "Edit live with your team" in Share, the viewer's read-only mode
+  (`src/editor/live/teamLive.ts`, `TeamLiveSection.tsx`; checked in the browser by `e2e/accounts.cjs`).
+- **Not built**: a bound room
   removed by the operator (`DELETE /api/admin/rooms/:id`) is not written back. A room kept on the disk whose design or space went
   while the server was not running (no hook told it) counts towards `MAX_ROOMS` until it is next loaded (a join, `POST …/live`,
   the sweep) and dropped.
