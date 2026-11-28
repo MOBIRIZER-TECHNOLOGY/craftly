@@ -128,10 +128,14 @@ describe("the work a batch may take", () => {
     const ops: Op[] = Array.from({ length: 2000 }, (_, i) => ({ k: "el.move", page: "p", id: `e${N - 1}`, parent: null, index: i % 2 ? 0 : N }));
     const t = performance.now();
     expect(() => applyOps(design, ops, { work: 20_000_000 })).toThrow(TooMuchWork);
-    // it stopped at the limit, long before the 1.7 s the whole batch takes
-    expect(performance.now() - t).toBeLessThan(400);
+    const stopped = performance.now() - t;
     expect(design.pages[0].elements[N - 1].id).toBe(`e${N - 1}`);
-  });
+    // it stopped at the limit, long before the whole batch would have finished (measured on the same machine, so that a slow
+    // one, such as CI's with coverage, is weighed against itself)
+    const w = performance.now();
+    applyOps(big(), ops);
+    expect(stopped).toBeLessThan((performance.now() - w) / 2);
+  }, 30_000);
 
   it("refuses 2,000 additions at the front of that page the same way", () => {
     const design = big();

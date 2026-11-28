@@ -153,11 +153,25 @@ const near = (p, c, tol = 24) => !!p && dist(p, c) <= tol;
     // the frames of the show from its first one, as they were drawn
     const frames = await page.evaluate(() => window.__trail);
     if (!frames.length) throw new Error("no frame of the show was read");
-    const t0 = frames[0][0];
-    const samples = frames.filter((_, i) => i % 4 === 0).map(([t, p]) => [t - t0, p]);
     const settled = await px(0.5, 0.5);
     const dF = dist(settled, RED);
     if (dF < 60) throw new Error(`the shape never appeared (settled ${settled}, background ${RED})`);
+    // the show's first frames may be drawn before its page is (on a slow machine, a frame of what was under it): the fade starts
+    // at the first frame whose colour lies between the page's background and the shape
+    const between = (p) => dist(p, RED) + dist(p, settled) < dF * 1.15;
+    const start = frames.findIndex(([, p]) => between(p));
+    if (start < 0)
+      throw new Error(
+        `no frame of the show was between the background and the shape (${frames
+          .slice(0, 5)
+          .map(([, p]) => p)
+          .join(" | ")})`,
+      );
+    const t0 = frames[start][0];
+    const samples = frames
+      .slice(start)
+      .filter((_, i) => i % 4 === 0)
+      .map(([t, p]) => [t - t0, p]);
     const fractions = samples.map(([, p]) => dist(p, RED) / dF);
     const trail = samples.map(([t], i) => `${t}ms:${Math.round(fractions[i] * 100)}%`).join(" ");
     if (fractions[0] > 0.7) throw new Error(`the shape was already there at the first frame (${trail})`);

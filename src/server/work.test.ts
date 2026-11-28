@@ -95,7 +95,8 @@ describe("the work a batch of edits may take", () => {
 
   it("refuses the batches of a connection that has used up its allowance, until it has some again", async () => {
     // each addition at the front of the page copies it: about 40,000 units a batch here
-    const b = await boot({ workRate: { burst: 200_000, perSecond: 400_000 } });
+    // it gets back 50,000 a second: about one batch's worth, so the batches outrun it unless each took most of a second
+    const b = await boot({ workRate: { burst: 200_000, perSecond: 50_000 } });
     const ann = await person(b, "ann");
     const add = (i: number) => [{ k: "el.add", page: "p", parent: null, index: 0, el: createShape("rect", { id: `n${i}` }) }];
     const answers: string[] = [];
@@ -105,9 +106,9 @@ describe("the work a batch of edits may take", () => {
     }
     expect(answers.slice(0, 3)).toEqual(["ack", "ack", "ack"]);
     expect(answers).toContain("rejected");
-    // half a second later it has 200,000 again
-    await new Promise((r) => setTimeout(r, 600));
+    // two and a half seconds later it has more than a batch's worth again
+    await new Promise((r) => setTimeout(r, 2500));
     ann.send(9, add(9));
     expect(await ann.answer(9)).toMatchObject({ t: "ack" });
-  });
+  }, 30_000);
 });

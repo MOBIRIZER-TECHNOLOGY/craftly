@@ -55,7 +55,8 @@ async function startServer() {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "craftly-liveclips-"));
   const child = spawn(process.execPath, [path.join(ROOT, "dist-server", "live.mjs")], {
     cwd: ROOT,
-    env: { ...process.env, PORT: "0", HOST: "127.0.0.1", DATA_DIR: data, ALLOW_ORIGIN: "*" },
+    // on LIVE_PORT when the page is served under a Content-Security-Policy that names the origin of the server (a production build)
+    env: { ...process.env, PORT: process.env.LIVE_PORT || "0", HOST: "127.0.0.1", DATA_DIR: data, ALLOW_ORIGIN: "*" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   const address = await new Promise((resolve, reject) => {
