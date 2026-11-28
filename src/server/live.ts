@@ -1387,10 +1387,23 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       setImmediate(uncork);
     }
   };
+  // The design each join is sent, as text, by the design and its revision: everybody who joins a room between two edits is sent
+  // the same text, written once instead of once each (a design of 16 MB is about 20 ms of the one thread on a fast machine).
+  const designText = new WeakMap<object, { rev: number; text: string }>();
+  const encode = (msg: ServerMsg): string => {
+    if (msg.t !== "welcome") return JSON.stringify(msg);
+    const { design, ...rest } = msg;
+    let known = designText.get(design);
+    if (!known || known.rev !== msg.rev) {
+      known = { rev: msg.rev, text: JSON.stringify(design) };
+      designText.set(design, known);
+    }
+    return `${JSON.stringify(rest).slice(0, -1)},"design":${known.text}}`;
+  };
   const send = (ws: WebSocket, msg: ServerMsg) => {
     if (ws.readyState !== ws.OPEN) return;
     hold(ws);
-    ws.send(JSON.stringify(msg));
+    ws.send(encode(msg));
     // What a connection does not read waits here, in memory, and a connection that reads nothing would have it grow for as long as
     // the room has something to say. Past the limit it is dropped at once (a polite close would wait behind everything else that
     // waits); a browser that was only slow comes back by itself and is sent the design as it is then.

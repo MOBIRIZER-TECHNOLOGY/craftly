@@ -4,6 +4,18 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **A flood of sign-ins no longer keeps people out, and joining a big room costs the server once (2026-11-28).** The two
+  findings of the security review that were written down rather than fixed:
+  - **Sign-ins.** Password hashes ran 4 at a time and a fifth was answered 503 at once, whoever it came from, so sign-ins from
+    many addresses kept everybody else out while they lasted. Now more wait their turn (64 at most, 3 s each at most), one
+    address may have 2 going, and one of the 4 places is kept for people signing in from an address their account used
+    lately, changing their password, or resetting it from such an address; they go first when they wait. Checked by
+    `passwords.test.ts` (the order, the limits, the kept place, a flood of 200) and an `accounts.test.ts` case where a person
+    signs in during 40 sign-ins at once from 40 addresses at the real cost: the person gets 200, the flood 503s and 401s.
+  - **Joins.** Each person joining was sent the design written out again as text, about 20 ms of the server's one thread for
+    a design of 16 MB. The text is now kept with the design and its revision, so everybody who joins between two edits is
+    sent the same text, written once; the copy without comments, for older browsers, is kept the same way. Checked by
+    `join.test.ts`, which counts the writes: five joins after the first write the design no more times.
 - **The live server's disk and memory cannot be filled by uploads or connections that pile up (2026-11-28, security).** From the security review:
   - **Clips on their way in.** A clip was weighed against its room's or space's limit before it was received, but against what was already stored only. Fifty 100 MiB uploads started at once into one room each found it empty and wrote 5 GB of half-received files. Each upload now reserves its size first, the limits count what is reserved (`src/server/staging.ts`), and all uploads together may reserve `MAX_STAGING_MB` (2 GiB); one more is answered 503 with `Retry-After` before a byte is read. The reservations are given back however an upload ends, a lost connection included. Write-back from a team's live room into its space reserves too.
   - **Connections from one address.** Every connection could hold 32 MiB waiting to be sent, and one address could open all 5,000. One address may now have `MAX_CONNECTIONS_PER_ADDRESS` (200) at once, and what waits for all connections together is kept under `MAX_TOTAL_BUFFERED_MB` (1 GiB) by dropping, once a second, those with the most waiting. They come back by themselves.

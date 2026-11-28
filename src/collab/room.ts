@@ -199,6 +199,16 @@ export class Room {
     return { seqs, seen, floor };
   }
 
+  /** The design without its comments, kept while the design is the same, so that a host can keep its text too (`join`). */
+  private stripped?: { from: Design; rev: number; design: Design };
+  private bare(): Design {
+    const s = this.stripped;
+    if (s && s.from === this.design && s.rev === this.rev) return s.design;
+    const design = withoutComments(this.design);
+    this.stripped = { from: this.design, rev: this.rev, design };
+    return design;
+  }
+
   /**
    * Lets a connection in: it is sent the design, the revision, and the last batch of its own that was applied. A client that comes
    * back on another connection replaces the old one, which is no longer told anything; the peers that were replaced are returned so
@@ -229,7 +239,7 @@ export class Room {
       role,
       rev: this.rev,
       lastSeq: this.lastOf(client),
-      design: comments ? this.design : withoutComments(this.design),
+      design: comments ? this.design : this.bare(),
       peer: member.peer,
       // the name the others hear for this person is the one it is shown under itself (an account's: `present`)
       ...(member.name ? { name: member.name } : {}),
