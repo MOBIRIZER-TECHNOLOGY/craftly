@@ -97,13 +97,13 @@ describe("a design with comments that arrives whole", () => {
 
 describe("saying that comments are understood", () => {
   it("is read from a join that lists them, and from nothing else", () => {
-    expect(joinFeatures({ t: "join", client: "c", key: "k", features: ["comments"] })).toEqual({ comments: true });
-    expect(joinFeatures({ t: "join", client: "c", key: "k", features: ["later", "comments"] })).toEqual({ comments: true });
-    expect(joinFeatures({ t: "join", client: "c", key: "k" })).toEqual({ comments: false });
-    expect(joinFeatures({ t: "join", client: "c", key: "k", features: "comments" })).toEqual({ comments: false });
-    expect(joinFeatures({ t: "join", client: "c", key: "k", features: [1, "comments"] })).toEqual({ comments: false });
-    expect(joinFeatures({ t: "join", client: "c", key: "k", features: Array.from({ length: 40 }, () => "comments") })).toEqual({ comments: false });
-    expect(joinFeatures(null)).toEqual({ comments: false });
+    expect(joinFeatures({ t: "join", client: "c", key: "k", features: ["comments"] })).toMatchObject({ comments: true });
+    expect(joinFeatures({ t: "join", client: "c", key: "k", features: ["later", "comments"] })).toMatchObject({ comments: true });
+    expect(joinFeatures({ t: "join", client: "c", key: "k" })).toMatchObject({ comments: false });
+    expect(joinFeatures({ t: "join", client: "c", key: "k", features: "comments" })).toMatchObject({ comments: false });
+    expect(joinFeatures({ t: "join", client: "c", key: "k", features: [1, "comments"] })).toMatchObject({ comments: false });
+    expect(joinFeatures({ t: "join", client: "c", key: "k", features: Array.from({ length: 40 }, () => "comments") })).toMatchObject({ comments: false });
+    expect(joinFeatures(null)).toMatchObject({ comments: false });
   });
 
   it("is kept from a welcome that says it, without names this version does not know", () => {

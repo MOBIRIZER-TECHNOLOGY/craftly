@@ -5,7 +5,7 @@
  */
 import { rememberServer } from "./knownServers";
 import { Live, type LiveStatus, type SocketLike } from "@/collab/live";
-import { checkOps, COMMENTS, type DeniedReason, type Role } from "@/collab/protocol";
+import { checkOps, COMMENTS, TEXT, type DeniedReason, type Role } from "@/collab/protocol";
 import { announceArrivals, useComments } from "../comments/commentsStore";
 import type { Outbox } from "@/collab/session";
 import { uid } from "@/core/ids";
@@ -20,7 +20,7 @@ import { toast } from "@/ui";
 import { create } from "zustand";
 import { apiUrl, normalizeServer, websocketUrl } from "./links";
 import { sharedMedia } from "./media";
-import { clearPresence, heardPresence, shownName, startPresence, typingIn } from "./presence";
+import { clearPresence, heardPresence, shownName, startPresence, typingIn, usePresence } from "./presence";
 
 export interface LiveEnv {
   createSocket?: (url: string) => SocketLike;
@@ -204,8 +204,9 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     key: link.key,
     session: env.session,
     createSocket: env.createSocket,
-    // this browser understands comments: a server that shares them says so in its welcome (docs/COLLABORATION.md, "Comments")
-    features: [COMMENTS],
+    // this browser understands comments, and merges text typed into one box at once: a server that does too says so in its welcome
+    // (docs/COLLABORATION.md, "Comments" and "Two people typing in one text box")
+    features: [COMMENTS, TEXT],
     outbox,
     onOutbox(outbox) {
       mark(outbox.queue.length ? outbox.client : null);
@@ -269,6 +270,8 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
     },
     onPresence: (heard) => {
       heardPresence(heard);
+      // With a server that merges text, two people type in one box together; one whose browser does not merge is said in words (onTaken).
+      if (live.sharesText) return;
       // One person at a time types in a text box. The server passes on that somebody types in a box only for the first who said
       // so (src/collab/room.ts), so hearing it of the box this person is typing in means that the other was first: both opened it
       // in the same moment, before either had heard of the other. This one gives way. What was typed here until now has been
@@ -276,6 +279,13 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       if ("gone" in heard || heard.editing === null || heard.editing !== useEditor.getState().editingTextId) return;
       actions().endTextEdit();
       toast.info(m.editor.live.typedFirst(shownName(heard.name, heard.peer)));
+    },
+    onTaken: (id, peer) => {
+      // the box is held by somebody whose browser types alone (an older version of Craftly): it closes here, and the person is told who
+      if (id !== useEditor.getState().editingTextId) return;
+      actions().endTextEdit();
+      const holder = usePresence.getState().people.find((p) => p.peer === peer);
+      toast.info(m.editor.live.textTakenOlder(holder?.name ?? shownName("", peer)));
     },
   });
   useLiveStatus.setState({ status: "connecting", reason: null, role: null, stopped: false });
@@ -287,8 +297,9 @@ export function connectLive(link: LiveLink, env: LiveEnv = {}): () => void {
       // a clip or a sound added here goes to the room beside the edit, not before it
       media.sendClips(after);
     },
-    // a text box that somebody else is typing in is not opened here (the store asks before it opens one), and the person is told who has it
-    textHolder: (id) => typingIn(id)?.name ?? null,
+    // A text box that somebody else is typing in is not opened here (the store asks before it opens one), and the person is told who
+    // has it; with a server that merges text it opens, and both type in it (the server still says when the other cannot: onTaken).
+    textHolder: (id) => (live.sharesText ? null : (typingIn(id)?.name ?? null)),
     textRefused: (_id, holder) => void toast.info(m.editor.live.textTaken(holder)),
     sharesComments: () => live.sharesComments,
   });

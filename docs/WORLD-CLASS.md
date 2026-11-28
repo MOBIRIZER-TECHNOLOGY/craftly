@@ -36,7 +36,8 @@ Nothing in later phases matters until real people can use it safely.
 People forgive a missing feature. They do not forgive lost work or a tool that stutters.
 
 **Reliability**
-- [ ] Two people typing in the same text box at once: merge the letters instead of the last one winning (`COLLABORATION.md`). [here] M
+- [x] Two people typing in the same text box at once: the letters are merged instead of one person at a time (2026-11-28;
+      `COLLABORATION.md`, "Two people typing in one text box"). The cells of a table are not merged yet. [here] M
 - [x] Each person joining a room was sent the design written out again: it is now written once between two edits (2026-11-28). [here] S
 - [x] A flood of sign-ins made real ones answer "busy": hashes now wait their turn, one address may have 2 going, and one place
       is kept for people signing in where they did before (2026-11-28). [here] S
@@ -118,4 +119,5 @@ carry ([`ON-DEVICE-AI.md`](ON-DEVICE-AI.md)).
 ## Where to start
 
 The first lines of Phase 1 that are **[here]** can start now, while Phase 0's **[people]** lines are being done. The join copy,
-the sign-in queue and the budgets in CI were done on 2026-11-28; merging text typed at once is next. Phase 0 still decides the launch date; nothing in Phase 1 is a reason to wait for it.
+the sign-in queue, the budgets in CI and merging text typed at once were done on 2026-11-28; version history people can see is
+next. Phase 0 still decides the launch date; nothing in Phase 1 is a reason to wait for it.

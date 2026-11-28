@@ -84,7 +84,7 @@ function PersonLayer({ person, page, zoom }: { person: Person; page: Page; zoom:
         );
       })}
       {typing ? (
-        // One person at a time types in a text box (docs/COLLABORATION.md): this is how the others see that it is taken.
+        // Who is typing in a text box (docs/COLLABORATION.md, "Two people typing in one text box"): the others see it here.
         <div className="cf-presence__outline cf-presence__outline--typing" style={outlineStyle(typing, zoom, person.color)}>
           <span className="cf-presence__tag cf-presence__tag--outline">{m.editor.live.typing(person.name)}</span>
         </div>

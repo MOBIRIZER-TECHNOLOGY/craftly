@@ -26,9 +26,9 @@
  */
 import { withoutComments } from "@/core/comments";
 import type { Design } from "@/core/types";
-import { applyOps, isCommentOp, TooMuchWork, type Op } from "./ops";
+import { applyOps, isCommentOp, plainText, TooMuchWork, type Op } from "./ops";
 import { checkPresence, PRESENCE_STALE_MS, type PresenceState } from "./presence";
-import { canEdit, checkOps, checkSets, COMMENTS, MAX_BATCH_WORK, type ClientMsg, type Role, type ServerMsg } from "./protocol";
+import { canEdit, checkOps, checkSets, COMMENTS, MAX_BATCH_WORK, TEXT, type ClientMsg, type Feature, type Role, type ServerMsg } from "./protocol";
 
 /** How long a client that is not in the room is remembered after it was last seen. */
 export const CLIENTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
@@ -71,6 +71,8 @@ interface Member {
   heard: number;
   /** Whether this browser said in its join that it understands comments: one that did not is sent nothing of them. */
   comments: boolean;
+  /** Whether this browser merges text typed into one box at once (protocol.ts, `TEXT`): it may type where another does who merges too. */
+  text: boolean;
   /**
    * The name the others hear for this person whatever their browser says: their account's, for a seat of a bound room joined with
    * a session (the server knows who it is). Undefined for a join with a key, whose person names themselves.
@@ -81,6 +83,7 @@ interface Member {
 /** What a browser said in its join that it understands (`joinFeatures` in protocol.ts reads it). */
 export interface JoinFeatures {
   comments?: boolean;
+  text?: boolean;
 }
 
 /** Why a batch was refused that changes the words of somebody else's comment or answer, in a room whose people are known. */
@@ -226,8 +229,9 @@ export class Room {
     // a connection that asks for the design again keeps its number, what it said about where it is, and what it understands
     const had = this.members.get(peer);
     const comments = features ? features.comments === true : (had?.comments ?? false);
+    const text = features ? features.text === true : (had?.text ?? false);
     const fixed = name ?? had?.name;
-    const member: Member = { client, role, peer: had?.peer ?? ++this.numbered, presence: had?.presence ?? null, heard: had?.heard ?? 0, comments };
+    const member: Member = { client, role, peer: had?.peer ?? ++this.numbered, presence: had?.presence ?? null, heard: had?.heard ?? 0, comments, text };
     if (fixed !== undefined) member.name = fixed;
     this.members.set(peer, member);
     if (this.lastSeq.has(client)) this.seen.set(client, this.now());
@@ -244,7 +248,10 @@ export class Room {
       // the name the others hear for this person is the one it is shown under itself (an account's: `present`)
       ...(member.name ? { name: member.name } : {}),
     };
-    peer.send(comments ? { ...welcome, features: [COMMENTS] } : welcome);
+    const understood: Feature[] = [];
+    if (comments) understood.push(COMMENTS);
+    if (text) understood.push(TEXT);
+    peer.send(understood.length ? { ...welcome, features: understood } : welcome);
     // where the others are, as each last said it: without this a newcomer would see nobody until they move
     const at = this.now();
     for (const other of this.members.values()) {
@@ -273,14 +280,16 @@ export class Room {
    * later) and nowhere else. It does not touch the design, the revision or the batch numbers, and nothing is answered. What
    * does not have the form it should is dropped without a word: it is not worth closing a connection over.
    *
-   * ONE PERSON AT A TIME TYPES IN A TEXT BOX. Text typed into one box by two people at once is one value, of which one side
-   * would be lost (ops.ts: the last writer wins). So whoever says first that they type in a box is the one, for as long as they
-   * keep saying so: anybody who says the same of that box meanwhile is passed on, and remembered, as somebody who types in
-   * nothing. The second browser hears that the first types there, as everybody does, and closes its own box (the editor does
-   * that); the first never hears of the second's attempt. The order in which the server heard the two decides, so it is the same
-   * for everybody. It cannot get stuck: it ends when the first says otherwise, leaves, or has not been heard of for
-   * `PRESENCE_STALE_MS` (a browser that types repeats itself every few seconds). Somebody who only looks types in nothing and
-   * has no selection.
+   * TWO PEOPLE IN ONE TEXT BOX. Browsers that merge text (`Member.text`) type in one box together: their changes are splices that
+   * keep the letters of both (ops.ts, `el.text`), and each is passed on as typing there. A browser from before that sets the
+   * paragraphs whole, and would take the other's letters away with each key, so where one of the two does not merge, ONE PERSON
+   * AT A TIME TYPES IN A TEXT BOX: whoever says first that they type in it is the one, for as long as they keep saying so, and
+   * anybody who says the same of that box meanwhile is passed on, and remembered, as somebody who types in nothing. A browser
+   * that merges is told so in words (`taken`) and closes its box; one from before hears that the first types there, as everybody
+   * does, and closes its own (its editor does that). The first never hears of the second's attempt. The order in which the server
+   * heard the two decides, so it is the same for everybody. It cannot get stuck: it ends when the first says otherwise, leaves,
+   * or has not been heard of for `PRESENCE_STALE_MS` (a browser that types repeats itself every few seconds). Somebody who only
+   * looks types in nothing and has no selection.
    */
   private present(peer: Peer, member: Member, raw: unknown): void {
     const said = checkPresence(raw);
@@ -290,8 +299,13 @@ export class Room {
     // a person the server knows is heard under their account's name, never under one their browser claims
     if (member.name !== undefined) state.name = member.name;
     if (state.editing !== null) {
+      const box = state.editing;
       for (const other of this.members.values()) {
-        if (other !== member && other.presence?.editing === state.editing && at - other.heard <= PRESENCE_STALE_MS) state.editing = null;
+        if (other === member || other.presence?.editing !== box || at - other.heard > PRESENCE_STALE_MS || (member.text && other.text)) continue;
+        state.editing = null;
+        // (each time they say it: a browser that closed the box and opened it again before saying so is told again)
+        if (member.text) peer.send({ t: "taken", id: box, peer: other.peer });
+        break;
       }
     }
     member.presence = state;
@@ -389,11 +403,13 @@ export class Room {
         refuse(spoiled);
         continue;
       }
+      // the others are sent the text it made, not the splice (protocol.ts, `TEXT`): every browser understands that, and it is the same
+      const told = plainText(design, ops);
       design = next;
       kept = this.remember(member.client, seq, kept);
       applied.push({ peer, ops });
       const rev = this.rev + applied.length;
-      answers.push({ saved: () => this.publish(peer, seq, rev, ops), failed: () => peer.send({ t: "rejected", seq, reason: SAVE_FAILED }) });
+      answers.push({ saved: () => this.publish(peer, seq, rev, told), failed: () => peer.send({ t: "rejected", seq, reason: SAVE_FAILED }) });
     }
     const settle = (how: "saved" | "failed") => {
       if (how === "saved" && applied.length) this.takeOver(design, kept);

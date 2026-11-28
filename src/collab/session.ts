@@ -10,9 +10,9 @@
  */
 import { withoutComments } from "@/core/comments";
 import type { Design } from "@/core/types";
-import { applyOps, diffDesign, isCommentOp, type Op } from "./ops";
+import { applyOps, diffDesign, isCommentOp, plainText, type Op } from "./ops";
 import type { PresenceHeard } from "./presence";
-import { checkSets, COMMENTS, parseServerMsg, type ClientMsg, type DeniedReason, type Feature, type Role, type ServerMsg } from "./protocol";
+import { checkSets, COMMENTS, parseServerMsg, TEXT, type ClientMsg, type DeniedReason, type Feature, type Role, type ServerMsg } from "./protocol";
 
 export type SessionStatus = "offline" | "joining" | "live" | "ended";
 
@@ -44,6 +44,8 @@ export interface Outcome {
   rejected?: string;
   /** Where another person is, or that they have gone (presence.ts): read like everything else, and no part of the design. */
   presence?: PresenceHeard;
+  /** The text box this person opened is held by somebody whose browser does not merge text: it is to be closed (protocol.ts, `taken`). */
+  taken?: { id: string; peer: number };
 }
 
 const NOTHING: Outcome = { changed: false, ended: null };
@@ -78,6 +80,12 @@ export class Session {
    * (the operations are taken out of every batch) and none that the server holds is shown (docs/COLLABORATION.md, "Comments").
    */
   sharesComments = false;
+  /**
+   * Whether text typed into one box at once is merged by this server (protocol.ts, `TEXT`): changes to characters then go as
+   * splices (`el.text`), and others may type in a box this person types in. Until the welcome, and with a server from before this,
+   * the paragraphs of a text are set whole, and one person at a time types in a box.
+   */
+  sharesText = false;
   /** The design as the server has it, as far as this browser has heard. */
   server: Design | null = null;
   private queue: Batch[] = [];
@@ -172,7 +180,8 @@ export class Session {
   edit(before: Design, after: Design): void {
     if (this.status === "ended" || this.role === "view") return;
     // (before the first welcome it is not known whether comments are shared: they wait with the rest, and the welcome decides)
-    const all = diffDesign(before, after);
+    // (a splice for a server that merges text, and before the welcome, which decides: see `welcome`)
+    const all = diffDesign(before, after, { text: this.status !== "live" || this.sharesText });
     const ops = this.status === "live" ? this.forServer(all) : all;
     if (!ops.length) return;
     const batch = { seq: this.nextSeq++, ops };
@@ -198,6 +207,8 @@ export class Session {
         return { changed: false, ended: msg.reason };
       case "pong":
         return NOTHING;
+      case "taken":
+        return { changed: false, ended: null, taken: { id: msg.id, peer: msg.peer } };
       case "presence":
         return { changed: false, ended: null, presence: msg };
     }
@@ -233,6 +244,17 @@ export class Session {
     // are not shown. What this browser made of comments while it waited stays on its own copy, and is not sent.
     this.server = this.sharesComments ? msg.design : withoutComments(msg.design);
     if (!this.sharesComments) this.queue = this.queue.map((b) => ({ seq: b.seq, ops: this.forServer(b.ops) })).filter((b) => b.ops.length > 0);
+    this.sharesText = (this.opts.features ?? []).includes(TEXT) && (msg.features ?? []).includes(TEXT);
+    if (!this.sharesText && this.queue.some((b) => b.ops.some((op) => op.k === "el.text"))) {
+      // made before the welcome, for a server that turns out not to merge text: each splice becomes the paragraphs it leaves,
+      // made on the design as this server has it, batch after batch
+      let d = this.server;
+      this.queue = this.queue.map((b) => {
+        const ops = plainText(d, b.ops);
+        d = applyOps(d, ops);
+        return { seq: b.seq, ops };
+      });
+    }
     this.rev = msg.rev;
     this.status = "live";
     // What the server has already applied is in the design it sent; the rest goes again, in order. The server counts this client

@@ -1,12 +1,15 @@
 /**
- * One person at a time types in a text box of a shared design, end to end: the real store, the browser's connection, the real
- * server, and other people on connections of their own. A box that somebody types in stays closed for the others, who are told
- * who has it; when two open the same box at the same moment the server's order decides, the same for everybody, and the one who
- * gives way is told and loses nothing they had typed until then.
+ * Text boxes of a shared design, end to end: the real store, the browser's connection, the real server, and other people on
+ * connections of their own. This browser merges text typed into one box at once, and so does a person who joins saying so: the two
+ * type in one box together and both keep their letters. A person on a browser from before that (one that says nothing of what it
+ * understands) types alone: a box they type in is closed for this person as soon as the server says so, and this person is told
+ * who has it; when the two open the same box at the same moment the server's order decides, the same for everybody, and the one
+ * who gives way is told and loses nothing they had typed until then.
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { WebSocket } from "ws";
 import { Live, type SocketLike } from "@/collab/live";
+import { TEXT, type Feature } from "@/collab/protocol";
 import type { PresenceHeard, PresenceState } from "@/collab/presence";
 import { createDesign, createPage, createText } from "@/core/factory";
 import { useEditor } from "@/core/store";
@@ -101,12 +104,13 @@ async function until(what: string, check: () => boolean | Promise<boolean>, ms =
   throw new Error(`waited for ${what}`);
 }
 
-/** another person, on a plain connection of their own, and what they last heard of each of the others */
-async function person(link: LiveLink, name: string) {
+/** another person, on a plain connection of their own (a browser from before merged text, unless `features` say otherwise), and what they last heard of each of the others */
+async function person(link: LiveLink, name: string, features: Feature[] = []) {
   const heard = new Map<number, PresenceState>();
   const live = new Live({
     url: websocketUrl(link),
     key: link.key,
+    features,
     createSocket: (url) => new WebSocket(url) as unknown as SocketLike,
     onChange: () => undefined,
     onPresence: (msg: PresenceHeard) => void ("gone" in msg ? heard.delete(msg.peer) : heard.set(msg.peer, msg)),
@@ -129,16 +133,18 @@ const me = () => usePresence.getState().me;
 const typingHere = (peer: number | null) => usePresence.getState().people.find((p) => p.peer === peer)?.editing ?? null;
 const textOnServer = async (room: string) => ((await storage.load(room))?.design.pages[0].elements[0] as TextElement).paragraphs[0].runs[0].text;
 
-describe("a text box that somebody else is typing in", () => {
-  it("stays closed here, the person is told who is typing, and another box opens as always", async () => {
+describe("a text box that somebody types in on a browser from before merged text", () => {
+  it("is closed here as soon as the server says so, the person is told who is typing, and another box opens as always", async () => {
     const link = await shared();
     const bo = await person(link, "Bo");
     bo.say("t");
     await until("this browser to know that Bo types", () => typingHere(bo.live.peer) === "t");
+    // this browser cannot tell an older browser from one that merges: it opens the box, and the server, which can, says no
     a().startTextEdit("t");
-    expect(s().editingTextId).toBeNull();
+    await until("the box to be closed", () => s().editingTextId === null);
     expect(told).toHaveBeenCalledTimes(1);
-    expect(told.mock.calls[0][0]).toMatch(/^Bo is typing in this text/);
+    expect(told.mock.calls[0][0]).toMatch(/^Bo is typing in this text with an older version of Craftly/);
+    expect(bo.typingOf(me())).toBeNull();
     a().startTextEdit("u");
     expect(s().editingTextId).toBe("u");
   });
@@ -173,6 +179,7 @@ describe("a text box that somebody else is typing in", () => {
     bo.say("t");
     await until("this browser to know that they type", () => typingHere(bo.live.peer) === "t");
     a().startTextEdit("t");
+    await until("the box to be closed", () => s().editingTextId === null);
     expect(told.mock.calls[0][0]).toMatch(new RegExp(`^Guest ${bo.live.peer} is typing in this text`));
   });
 });
@@ -196,14 +203,14 @@ describe("two people who open the same text box at the same moment", () => {
     openTheDoor();
     await until("this person's box to be closed", () => s().editingTextId === null);
     expect(told).toHaveBeenCalledTimes(1);
-    expect(told.mock.calls[0][0]).toMatch(/^Bo started typing in this text a moment before you/);
+    expect(told.mock.calls[0][0]).toMatch(/^Bo is typing in this text with an older version of Craftly/);
     // what was typed until then was the last write, and is still there
     expect(await textOnServer(link.room)).toBe("Hello from me");
     expect((s().design?.pages[0].elements[0] as TextElement).paragraphs[0].runs[0].text).toBe("Hello from me");
     expect(s().design?.pages[0].elements.map((e) => e.id)).toEqual(["t", "u"]);
-    // and it stays Bo's: asking again is refused like any box that is taken
+    // and it stays Bo's: opening it again is closed again by the server
     a().startTextEdit("t");
-    expect(s().editingTextId).toBeNull();
+    await until("the box to be closed again", () => s().editingTextId === null && told.mock.calls.length === 2);
     expect(cat.typingOf(bo.live.peer)).toBe("t");
   });
 
@@ -220,5 +227,39 @@ describe("two people who open the same text box at the same moment", () => {
     expect(bo.typingOf(me())).toBe("t");
     expect(s().editingTextId).toBe("t");
     expect(told).not.toHaveBeenCalled();
+  });
+});
+
+describe("two browsers that merge text, in one text box", () => {
+  /** What a person on their own connection types: the text of `t` as their copy has it, changed by `change`. */
+  const typeOn = (live: Live, change: (text: string) => string) => {
+    const before = live.design as Design;
+    const page = before.pages[0];
+    const el = page.elements[0] as TextElement;
+    const text = el.paragraphs[0].runs[0].text;
+    const after: Design = { ...before, pages: [{ ...page, elements: [{ ...el, paragraphs: [{ runs: [{ text: change(text) }] }] }, ...page.elements.slice(1)] }] };
+    live.edit(before, after);
+  };
+
+  it("both type in it at once, and both keep their letters", async () => {
+    const link = await shared();
+    const bo = await person(link, "Bo", [TEXT]);
+    bo.say("t");
+    await until("this browser to know that Bo types", () => typingHere(bo.live.peer) === "t");
+    a().startTextEdit("t");
+    // nobody is told it is taken, and Bo hears that this person types there too
+    expect(s().editingTextId).toBe("t");
+    await until("Bo to hear that this person types there", () => bo.typingOf(me()) === "t");
+    expect(told).not.toHaveBeenCalled();
+    // at the same moment: neither has heard of the other's letters
+    shutTheDoor();
+    a().setTextParagraphs("t", [{ runs: [{ text: "Hello there" }] }]);
+    typeOn(bo.live, (text) => `Oh, ${text}`);
+    await until("both to be on the server", async () => (await textOnServer(link.room)).length === "Oh, Hello there".length);
+    openTheDoor();
+    expect(await textOnServer(link.room)).toBe("Oh, Hello there");
+    await until("this browser to show it", () => (s().design?.pages[0].elements[0] as TextElement).paragraphs[0].runs[0].text === "Oh, Hello there");
+    await until("Bo to show it", () => ((bo.live.design as Design).pages[0].elements[0] as TextElement).paragraphs[0].runs[0].text === "Oh, Hello there");
+    expect(s().editingTextId).toBe("t");
   });
 });

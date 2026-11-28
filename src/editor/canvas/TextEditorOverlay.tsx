@@ -5,6 +5,7 @@ import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { TextElement, TextParagraph, TextRun } from "@/core/types";
 import { cssFontFamily, customFontDefs, FONT_CATALOG } from "@/render/fonts";
 import { findElement } from "@/core/ops";
+import { editScript, flatText, mapPosition, mergeText, textSplice } from "@/collab/text";
 import { takePendingCaret, takeSelectAllOnEdit } from "./controller";
 import { worldBox } from "./frame";
 import { registerTextEditor, useTextSelectionStyle, type InlineFormat } from "./textEditing";
@@ -167,6 +168,58 @@ function domToParagraphs(root: HTMLElement, base: TextElement, zoom: number): Te
   return normalizeParagraphs(out);
 }
 
+/* ------------------------------------------------------------------ */
+/* the caret as a position of the text's line (collab/text.ts)         */
+/* ------------------------------------------------------------------ */
+
+/** A character no text has, put where the caret is for a moment to find its position in the line. */
+const CARET_MARK = "";
+
+/** The position in the line of the text (`flatText`) of a point of the editing box, read as `domToParagraphs` reads the box. */
+function linePosition(root: HTMLElement, node: Node, offset: number, base: TextElement, zoom: number): number {
+  const range = document.createRange();
+  range.setStart(node, offset);
+  const mark = document.createTextNode(CARET_MARK);
+  range.insertNode(mark);
+  const at = flatText(domToParagraphs(root, base, zoom)).indexOf(CARET_MARK);
+  const parent = mark.parentNode;
+  mark.remove();
+  parent?.normalize();
+  return Math.max(0, at);
+}
+
+/** Where a position of the line is in a box built by `buildDom` from `paragraphs`: a node and an offset in it. */
+function pointAt(root: HTMLElement, paragraphs: TextParagraph[], pos: number): { node: Node; offset: number } {
+  const divs = Array.from(root.children) as HTMLElement[];
+  let start = 0;
+  for (let i = 0; i < divs.length; i++) {
+    const len = paragraphs[i]?.runs.reduce((n, r) => n + r.text.length, 0) ?? 0;
+    const contentStart = start + 1;
+    const last = i === divs.length - 1;
+    if (pos <= contentStart + len || last) {
+      const div = divs[i];
+      let left = Math.max(0, Math.min(len, pos - contentStart));
+      const lone = div.childNodes.length === 1 && div.firstChild?.nodeName === "BR";
+      if (lone) return { node: div, offset: 0 };
+      const kids = Array.from(div.childNodes);
+      for (let k = 0; k < kids.length; k++) {
+        const kid = kids[k];
+        if (kid.nodeName === "BR") {
+          if (left === 0) return { node: div, offset: k };
+          left -= 1;
+          continue;
+        }
+        const t = kid.textContent?.length ?? 0;
+        if (left <= t) return kid.firstChild ? { node: kid.firstChild, offset: left } : { node: div, offset: k };
+        left -= t;
+      }
+      return { node: div, offset: kids.length };
+    }
+    start = contentStart + len;
+  }
+  return { node: root, offset: root.childNodes.length };
+}
+
 /** What the editor should do when it opens, remembered per editor element (see the mount effect). */
 const startIntent = new WeakMap<HTMLElement, { selectAll: boolean; caret: { x: number; y: number } | null }>();
 
@@ -193,17 +246,83 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
   const lastRange = useRef<Range | null>(null);
   const id = el.id;
 
+  /*
+   * In a shared design somebody else may type in this box too (docs/COLLABORATION.md, "Two people typing in one text box"): their
+   * letters arrive in the store while the box is open. `synced` is the text of the store that the box shows, and `shown` is that
+   * text as the box reads it back (its runs may say a style in other words). When the store's text is no longer `synced`, what this
+   * person typed since (from `shown` to the box) is made on the store's text the way the server makes it (collab/text.ts,
+   * `mergeText`), and the box is built again from the result, with the caret and the selection where they were among the letters.
+   */
+  const synced = useRef<TextParagraph[] | null>(null);
+  const shown = useRef<TextParagraph[] | null>(null);
+  const composing = useRef(false);
+  const stored = (): TextParagraph[] | null => {
+    const s = useEditor.getState();
+    const page = getActivePage(s);
+    const found = page ? findElement(page, id) : null;
+    return found?.type === "text" ? found.paragraphs : null;
+  };
+  const read = (root: HTMLElement) => domToParagraphs(root, elRef.current, zoomRef.current);
+
+  /** The box built again from `to`, the caret and the selection moved from where they are in `from` (what the box holds now). */
+  const redraw = (root: HTMLElement, from: TextParagraph[], to: TextParagraph[]) => {
+    const sel = window.getSelection();
+    const inside = !!sel && sel.rangeCount > 0 && root.contains(sel.anchorNode) && root.contains(sel.focusNode);
+    const range = inside ? sel.getRangeAt(0) : null;
+    const ends = range
+      ? [
+          linePosition(root, range.startContainer, range.startOffset, elRef.current, zoomRef.current),
+          linePosition(root, range.endContainer, range.endOffset, elRef.current, zoomRef.current),
+        ]
+      : null;
+    // (the positions were found on the box as it reads now, which `from` is)
+    const script = editScript(flatText(from), flatText(to));
+    root.replaceChildren(buildDom(to, elRef.current, zoomRef.current));
+    if (!ends || !sel) return;
+    const [a, b] = ends.map((pos) => pointAt(root, to, mapPosition(script, pos, false)));
+    const made = document.createRange();
+    made.setStart(a.node, a.offset);
+    made.setEnd(b.node, b.offset);
+    sel.removeAllRanges();
+    sel.addRange(made);
+    lastRange.current = made.cloneRange();
+  };
+
   const commit = () => {
     const root = ref.current;
     if (!root) return;
-    getActions().setTextParagraphs(id, domToParagraphs(root, elRef.current, zoomRef.current));
+    const mine = read(root);
+    const now = stored();
+    if (!now || now === synced.current || !shown.current) {
+      getActions().setTextParagraphs(id, mine);
+      synced.current = stored();
+      shown.current = mine;
+      return;
+    }
+    // somebody else's letters arrived while a word is being composed (an input method): they join it when it is done
+    if (composing.current) return;
+    const merged = mergeText(shown.current, mine, now);
+    if (textSplice(now, merged)) getActions().setTextParagraphs(id, merged);
+    const target = stored() ?? merged;
+    synced.current = target;
+    redraw(root, mine, target);
+    shown.current = read(root);
   };
+
+  /* the text changed in the store while the box is open (somebody else typed in it, or a panel changed it): the box takes it in */
+  useEffect(() => {
+    if (!ref.current || composing.current || synced.current === null || el.paragraphs === synced.current) return;
+    commit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [el.paragraphs]);
 
   /* initial content + caret (runs once per edit session) */
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
     root.replaceChildren(buildDom(el.paragraphs, el, zoom));
+    synced.current = el.paragraphs;
+    shown.current = read(root);
     root.focus({ preventScroll: true });
     const sel = window.getSelection();
     const range = document.createRange();
@@ -434,6 +553,13 @@ function TextEditor({ el, box }: { el: TextElement; box: { x: number; y: number;
       spellCheck={spellCheck}
       style={style}
       onInput={commit}
+      onCompositionStart={() => {
+        composing.current = true;
+      }}
+      onCompositionEnd={() => {
+        composing.current = false;
+        commit();
+      }}
       onKeyDown={(e) => {
         // the keys stay with the text, but for Save and Print: the editor's own shortcuts (src/editor/hotkeys.ts, Editor.tsx)
         // would never see them, and the browser would take them ("Save page as", a print of the editor around the page)

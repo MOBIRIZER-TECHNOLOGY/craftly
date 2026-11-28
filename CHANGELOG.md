@@ -4,6 +4,18 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **Two people can type in one text box at once, and both keep their letters (2026-11-28).** Text typed into one box was one
+  value, so since 2026-11-14 one person at a time typed in a box. Now a change to the characters goes to the server as a
+  splice with the text it was made on (`el.text`, `src/collab/text.ts`); the server moves it onto the text as it is, so that
+  letters typed elsewhere stay, and passes the text it made on to everybody as before. The open box takes in the others'
+  letters with the caret and the selection behind the same letters, waits while a word is composed with an input method, and
+  undo in a shared design takes back only this person's letters. Where one of the two has a browser from before this, one
+  person at a time types in the box, as before, and the other is told so. Checked by `text.test.ts` and `textRoom.test.ts`
+  (among them seeded runs of two and three browsers whose messages cross, which all end with the same text), 4 more cases of
+  the open box, the real store and server in `textLock.test.ts`, and a step of `e2e/live.cjs` in which two Chrome windows
+  type in one box at the same moment with real keys. Not merged yet: the cells of a table; and letters typed inside a
+  stretch that the other gives a style at that moment are lost. [`docs/COLLABORATION.md`](docs/COLLABORATION.md), "Two people
+  typing in one text box".
 - **Budgets for size and speed, checked in CI (2026-11-28).** `npm run budgets` measures what each screen downloads (gzipped)
   and what is kept offline, against budgets about 10 % above today's (first load 247 KiB, the dashboard 254 KiB, the editor 243
   KiB, offline 6.5 MiB), and fails over them; it runs after the production build. `e2e/budgets.cjs`, on the production build,
