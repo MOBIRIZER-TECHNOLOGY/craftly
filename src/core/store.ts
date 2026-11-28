@@ -592,10 +592,10 @@ export const useEditor = create<EditorState>()((set, get) => {
     let told = false;
     if (bridge) {
       // shared: history is made of this person's own steps as operations; a change that is not for the others (a star) is not a step
-      const forward = diffDesign(base, next);
+      const forward = diffDesign(base, next, { text: true });
       if (forward.length) {
         told = true;
-        if (opts.record !== false && history) recordLive({ forward, inverse: diffDesign(next, base) }, opts);
+        if (opts.record !== false && history) recordLive({ forward, inverse: diffDesign(next, base, { text: true }) }, opts);
       }
       canUndo = liveUndo.length > 0;
       canRedo = liveRedo.length > 0;
@@ -1239,7 +1239,7 @@ export const useEditor = create<EditorState>()((set, get) => {
       const page = pageOf(s.design, s.activePageId);
       const el = page && ops.findElement(page, id);
       if (!el || el.type !== "text" || el.locked || s.mode === "view") return;
-      // one person at a time types in a text box of a shared design: the box stays closed here, and the person is told who has it
+      // a box that somebody types in alone (with a server or a browser that does not merge text) stays closed here, and the person is told who has it
       const holder = bridge?.textHolder?.(id) ?? null;
       if (holder !== null) return void bridge?.textRefused?.(id, holder);
       set({ editingTextId: id, selection: [selectId ?? id], croppingId: null });

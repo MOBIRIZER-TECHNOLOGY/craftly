@@ -10,7 +10,7 @@ import { cleanName } from "@/collab/presence";
 import { clientAddress, hourlyLimit, knownAddresses, type HourlyLimit } from "../address";
 import { readBody, sha256Hex } from "../http";
 import { createStaging, type Staging } from "../staging";
-import { createHasher, DEFAULT_COST, HASH_CONCURRENCY, type Cost, type Hasher } from "./passwords";
+import { createHasher, DEFAULT_COST, HASH_CONCURRENCY, type Cost, type Hasher, type HashLimits } from "./passwords";
 import { SERVER_ID, type AccountStorage, type SessionRecord, type TeamRecord, type UserRecord } from "./storage";
 import type { TeamRole } from "./roles";
 
@@ -35,6 +35,8 @@ export interface AccountsOptions {
   /** The cost of new password hashes; the default is N = 2^15, r = 8, p = 1. Tests give a low one. */
   passwordCost?: Cost;
   hashConcurrency?: number;
+  /** How many hashes may wait, for how long, and how many one address may have going (`createHasher`). Tests change them. */
+  hashLimits?: HashLimits;
   /** Per hour; 0 for no limit. */
   limits?: Partial<Limits>;
   /** The time, in milliseconds; a test gives its own. The server's own clock unless set. */
@@ -237,7 +239,7 @@ export function createContext(options: AccountsOptions, server: ServerContext) {
     maxOpenInvites: options.maxOpenInvites ?? 50,
     maxDesignBytes: server.maxDesignBytes,
   };
-  const hasher: Hasher = createHasher(options.passwordCost ?? DEFAULT_COST, options.hashConcurrency ?? HASH_CONCURRENCY);
+  const hasher: Hasher = createHasher(options.passwordCost ?? DEFAULT_COST, options.hashConcurrency ?? HASH_CONCURRENCY, options.hashLimits);
   const limiters = {
     signinAddress: hourlyLimit(limits.signinPerAddress, now),
     signinAccountAddress: hourlyLimit(limits.signinPerAccountAddress, now),

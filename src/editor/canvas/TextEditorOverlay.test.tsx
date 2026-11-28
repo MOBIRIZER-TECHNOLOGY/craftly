@@ -813,3 +813,60 @@ describe("under React's strict mode", () => {
     expect(window.getSelection()?.toString()).toBe("Hello world");
   });
 });
+
+describe("letters that arrive while the box is open (somebody else typing in it, in a shared design)", () => {
+  /** The text before the caret, as the box shows it. */
+  const beforeCaret = (editor: HTMLElement) => {
+    const range = document.createRange();
+    const sel = window.getSelection()!.getRangeAt(0);
+    range.setStart(editor, 0);
+    range.setEnd(sel.startContainer, sel.startOffset);
+    return range.toString();
+  };
+
+  it("are shown in the box, with the caret still behind the same letter", async () => {
+    const { editor } = await openEditor();
+    select(editor, 5, 5);
+    act(() => getActions().setTextParagraphs("t", [{ runs: [{ text: "Oh, Hello world" }] }]));
+    expect(editor.textContent).toBe("Oh, Hello world");
+    expect(beforeCaret(editor)).toBe("Oh, Hello");
+    expect(paragraphs()[0].runs[0].text).toBe("Oh, Hello world");
+  });
+
+  it("are merged with what this person typed and the box had not passed on yet", async () => {
+    const { editor } = await openEditor();
+    // the browser has put "!" in the box, and the letters of the other arrive before its input event
+    editor.innerHTML = "<div>Hello world!</div>";
+    select(editor, 12, 12);
+    act(() => getActions().setTextParagraphs("t", [{ runs: [{ text: "Oh, Hello world" }] }]));
+    expect(paragraphs()[0].runs[0].text).toBe("Oh, Hello world!");
+    expect(editor.textContent).toBe("Oh, Hello world!");
+    expect(beforeCaret(editor)).toBe("Oh, Hello world!");
+  });
+
+  it("wait while a word is being composed, and join it when it is done", async () => {
+    const { editor } = await openEditor();
+    fireEvent.compositionStart(editor);
+    act(() => getActions().setTextParagraphs("t", [{ runs: [{ text: "Oh, Hello world" }] }]));
+    // the box is not built again under the input method
+    expect(editor.textContent).toBe("Hello world");
+    editor.innerHTML = "<div>Hello world, 你好</div>";
+    fireEvent.input(editor);
+    expect(paragraphs()[0].runs[0].text).toBe("Oh, Hello world");
+    fireEvent.compositionEnd(editor);
+    expect(paragraphs()[0].runs[0].text).toBe("Oh, Hello world, 你好");
+    expect(editor.textContent).toBe("Oh, Hello world, 你好");
+  });
+
+  it("leave the box alone when it is this person's own typing that changed the text", async () => {
+    const { editor } = await openEditor();
+    const div = editor.firstElementChild;
+    browserSets(editor, "<div>Hello world?</div>");
+    const same = editor.firstElementChild;
+    expect(paragraphs()[0].runs[0].text).toBe("Hello world?");
+    // (not built again: the node the browser left is still there)
+    expect(same).not.toBe(div);
+    act(() => undefined);
+    expect(editor.firstElementChild).toBe(same);
+  });
+});

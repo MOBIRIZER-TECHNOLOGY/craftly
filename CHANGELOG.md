@@ -4,6 +4,37 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **Two people can type in one text box at once, and both keep their letters (2026-11-28).** Text typed into one box was one
+  value, so since 2026-11-14 one person at a time typed in a box. Now a change to the characters goes to the server as a
+  splice with the text it was made on (`el.text`, `src/collab/text.ts`); the server moves it onto the text as it is, so that
+  letters typed elsewhere stay, and passes the text it made on to everybody as before. The open box takes in the others'
+  letters with the caret and the selection behind the same letters, waits while a word is composed with an input method, and
+  undo in a shared design takes back only this person's letters. Where one of the two has a browser from before this, one
+  person at a time types in the box, as before, and the other is told so. Checked by `text.test.ts` and `textRoom.test.ts`
+  (among them seeded runs of two and three browsers whose messages cross, which all end with the same text), 4 more cases of
+  the open box, the real store and server in `textLock.test.ts`, and a step of `e2e/live.cjs` in which two Chrome windows
+  type in one box at the same moment with real keys. Not merged yet: the cells of a table; and letters typed inside a
+  stretch that the other gives a style at that moment are lost. [`docs/COLLABORATION.md`](docs/COLLABORATION.md), "Two people
+  typing in one text box".
+- **Budgets for size and speed, checked in CI (2026-11-28).** `npm run budgets` measures what each screen downloads (gzipped)
+  and what is kept offline, against budgets about 10 % above today's (first load 247 KiB, the dashboard 254 KiB, the editor 243
+  KiB, offline 6.5 MiB), and fails over them; it runs after the production build. `e2e/budgets.cjs`, on the production build,
+  times the dashboard in a new browser, a page of 5,000 shapes added and drawn, and the frames of a drag on it (850 ms, 60 ms
+  and 31 ms here; budgets of 4,000 ms, 1,500 ms and 100 ms for CI's slower runner). The numbers are in
+  [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), "Budgets". Checked by `src/test/budgets.test.ts` on a small build written by
+  the test, and by running the journey with budgets set too low, which fails the two steps. Not yet run on CI's runner.
+- **A flood of sign-ins no longer keeps people out, and joining a big room costs the server once (2026-11-28).** The two
+  findings of the security review that were written down rather than fixed:
+  - **Sign-ins.** Password hashes ran 4 at a time and a fifth was answered 503 at once, whoever it came from, so sign-ins from
+    many addresses kept everybody else out while they lasted. Now more wait their turn (64 at most, 3 s each at most), one
+    address may have 2 going, and one of the 4 places is kept for people signing in from an address their account used
+    lately, changing their password, or resetting it from such an address; they go first when they wait. Checked by
+    `passwords.test.ts` (the order, the limits, the kept place, a flood of 200) and an `accounts.test.ts` case where a person
+    signs in during 40 sign-ins at once from 40 addresses at the real cost: the person gets 200, the flood 503s and 401s.
+  - **Joins.** Each person joining was sent the design written out again as text, about 20 ms of the server's one thread for
+    a design of 16 MB. The text is now kept with the design and its revision, so everybody who joins between two edits is
+    sent the same text, written once; the copy without comments, for older browsers, is kept the same way. Checked by
+    `join.test.ts`, which counts the writes: five joins after the first write the design no more times.
 - **The live server's disk and memory cannot be filled by uploads or connections that pile up (2026-11-28, security).** From the security review:
   - **Clips on their way in.** A clip was weighed against its room's or space's limit before it was received, but against what was already stored only. Fifty 100 MiB uploads started at once into one room each found it empty and wrote 5 GB of half-received files. Each upload now reserves its size first, the limits count what is reserved (`src/server/staging.ts`), and all uploads together may reserve `MAX_STAGING_MB` (2 GiB); one more is answered 503 with `Retry-After` before a byte is read. The reservations are given back however an upload ends, a lost connection included. Write-back from a team's live room into its space reserves too.
   - **Connections from one address.** Every connection could hold 32 MiB waiting to be sent, and one address could open all 5,000. One address may now have `MAX_CONNECTIONS_PER_ADDRESS` (200) at once, and what waits for all connections together is kept under `MAX_TOTAL_BUFFERED_MB` (1 GiB) by dropping, once a second, those with the most waiting. They come back by themselves.

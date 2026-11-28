@@ -45,6 +45,8 @@ export interface LiveOptions {
   onStatus?(status: LiveStatus, reason: DeniedReason | null): void;
   /** Where another person in the room is, or that they have gone: what the server passed on, after it has been read. */
   onPresence?(heard: PresenceHeard): void;
+  /** The text box `id` that this person opened is held by `peer`, whose browser does not merge text: it is to be closed. */
+  onTaken?(id: string, peer: number): void;
 }
 
 const OPEN = 1;
@@ -89,6 +91,11 @@ export class Live {
       onOutbox: opts.onOutbox,
       features: opts.features,
     });
+  }
+
+  /** Whether text typed into one box at once is merged by this server (`Session.sharesText`): false until the welcome says so. */
+  get sharesText(): boolean {
+    return this.session.sharesText;
   }
 
   /** Whether comments are shared with this server (`Session.sharesComments`): false until the welcome says so. */
@@ -239,6 +246,7 @@ export class Live {
       this.setStatus("live");
     }
     if (outcome.presence) this.opts.onPresence?.(outcome.presence);
+    if (outcome.taken) this.opts.onTaken?.(outcome.taken.id, outcome.taken.peer);
     if (outcome.rejected !== undefined) this.opts.onRejected?.(outcome.rejected);
     if (outcome.changed) this.opts.onChange();
   }

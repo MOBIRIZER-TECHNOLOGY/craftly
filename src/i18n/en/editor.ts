@@ -548,6 +548,8 @@ export const editor = {
     imagesFailed: "Could not load shared images.",
     typedFirst: (name: string) => `${name} started typing in this text a moment before you, so it was closed here. One person at a time types in a text box.`,
     textTaken: (name: string) => `${name} is typing in this text. You can type in it when they are done.`,
+    textTakenOlder: (name: string) =>
+      `${name} is typing in this text with an older version of Craftly, which cannot share a text box, so it was closed here. You can type in it when they are done.`,
     keyNeeded: "This server asks for a key to start sharing. Whoever runs it can give it to you.",
     keyWrong: "That key is not right. Check it with whoever runs the server.",
     serverAnswered: (status: number) => `The server answered ${status}.`,

@@ -13,7 +13,8 @@
  * id, the dates, the folder, the star and the trash of a design belong to each person's own library.
  */
 import { MAX_COMMENTS, MAX_REPLIES, type CommentPatch, type ReplyPatch } from "@/core/comments";
-import type { CommentReply, Design, DesignComment, DesignElement, GroupElement, ID, Page } from "@/core/types";
+import type { CommentReply, Design, DesignComment, DesignElement, GroupElement, ID, Page, TextElement } from "@/core/types";
+import { applySplice, flatText, rebase, textSplice, type TextPiece } from "./text";
 
 export type Props = Record<string, unknown>;
 
@@ -36,7 +37,17 @@ export type Op =
   | { k: "el.del"; page: ID; id: ID }
   | { k: "el.move"; page: ID; id: ID; parent: ID | null; index: number }
   | { k: "el.set"; page: ID; id: ID; set?: Props; unset?: string[] }
+  | TextOp
   | CommentOp;
+
+/**
+ * A change to the characters of a text box, made where they are now (text.ts): from `at`, take `del` positions away and put `ins`
+ * there, on the text as it was when the change was made (`base`, its plain line). Applied to a text that has changed since, it
+ * is moved onto it first, so that two people typing in one box both keep their letters. It is sent only to a server that said in
+ * its welcome that it merges text, and the server passes on what it makes of it as an `el.set` of the paragraphs, which every
+ * browser understands (docs/COLLABORATION.md, "Two people typing in one text box").
+ */
+export type TextOp = { k: "el.text"; page: ID; id: ID; base: string; at: number; del: number; ins: TextPiece[] };
 
 /**
  * The operations of comments (docs/COLLABORATION.md, "Comments"). Each touches one comment or one reply, named by its id, so that two
@@ -160,7 +171,7 @@ function diffList<T extends { id: ID }>(prev: readonly T[], next: readonly T[], 
   });
 }
 
-function diffElements(out: Pieces, page: ID, parent: ID | null, prev: readonly DesignElement[], next: readonly DesignElement[]): void {
+function diffElements(out: Pieces, page: ID, parent: ID | null, prev: readonly DesignElement[], next: readonly DesignElement[], text: boolean): void {
   if (prev === next) return;
   diffList(
     prev,
@@ -171,9 +182,14 @@ function diffElements(out: Pieces, page: ID, parent: ID | null, prev: readonly D
       add: (el, index) => out.add.push({ k: "el.add", page, parent, index, el }),
       both: (a, b) => {
         if (a === b) return;
-        const props = diffProps(a as unknown as Props, b as unknown as Props, keysOf(a, b, ELEMENT_FIXED));
+        // the characters of a text that is still a text go as a splice, which is merged with what others type (TextOp)
+        const splice = text && a.type === "text" && b.type === "text" && a.paragraphs !== b.paragraphs ? textSplice(a.paragraphs, b.paragraphs) : undefined;
+        const keys = keysOf(a, b, ELEMENT_FIXED);
+        if (splice !== undefined) keys.delete("paragraphs");
+        const props = diffProps(a as unknown as Props, b as unknown as Props, keys);
         if (props) out.set.push({ k: "el.set", page, id: b.id, ...props });
-        if (a.type === "group" && b.type === "group") diffElements(out, page, b.id, a.children, b.children);
+        if (splice) out.set.push({ k: "el.text", page, id: b.id, base: flatText((a as TextElement).paragraphs), ...splice });
+        if (a.type === "group" && b.type === "group") diffElements(out, page, b.id, a.children, b.children, text);
       },
     },
     (a, b) => a.type === b.type,
@@ -241,9 +257,11 @@ function diffComments(prev: readonly DesignComment[], next: readonly DesignComme
 
 /**
  * The operations that take a copy of `prev` to `next`: deletions first, then changes, then moves, then additions; the comments
- * last, so that a page that comes back is there before the comments on it.
+ * last, so that a page that comes back is there before the comments on it. With `text`, a change to the characters of a text box
+ * is a splice (`el.text`) instead of its paragraphs set whole: for a server that merges text.
  */
-export function diffDesign(prev: Design, next: Design): Op[] {
+export function diffDesign(prev: Design, next: Design, opts: { text?: boolean } = {}): Op[] {
+  const text = opts.text === true;
   if (prev === next) return [];
   const out: Pieces = { del: [], set: [], move: [], add: [] };
   const design = diffProps(prev as unknown as Props, next as unknown as Props, DESIGN_KEYS);
@@ -260,7 +278,7 @@ export function diffDesign(prev: Design, next: Design): Op[] {
           if (a === b) return;
           const props = diffProps(a as unknown as Props, b as unknown as Props, keysOf(a, b, PAGE_FIXED));
           if (props) out.set.push({ k: "page.set", id: b.id, ...props });
-          diffElements(out, b.id, null, a.elements, b.elements);
+          diffElements(out, b.id, null, a.elements, b.elements, text);
         },
       },
       () => true,
@@ -504,6 +522,14 @@ function step(d: Design, op: Op, used?: IdCounts): Design {
       });
     case "el.set":
       return inElements(d, op.page, (list) => edit(list, op.id, (el) => withProps(el, op.set, op.unset, ELEMENT_FIXED)));
+    case "el.text":
+      return inElements(d, op.page, (list) =>
+        edit(list, op.id, (el) => {
+          if (el.type !== "text") return el;
+          const paragraphs = applySplice(el.paragraphs, rebase(op.base, flatText(el.paragraphs), op, charge), charge);
+          return jsonEqual(paragraphs, el.paragraphs) ? el : { ...el, paragraphs };
+        }),
+      );
     case "comment.add": {
       const list = d.comments ?? [];
       // a comment whose id is there already (the same batch twice), on a page that is not there, or one too many, is not added
@@ -704,4 +730,41 @@ export function applyOps(design: Design, ops: readonly Op[], limits: { work?: nu
     spent = 0;
     limit = Infinity;
   }
+}
+
+/**
+ * The same batch with each `el.text` replaced by an `el.set` of the paragraphs it leaves, as it leaves them applied to `design`:
+ * what the server passes on, and what goes to a server that does not merge text. A text that is not there (any more) needs none.
+ */
+export function plainText(design: Design, ops: readonly Op[]): Op[] {
+  if (!ops.some((op) => op.k === "el.text")) return ops as Op[];
+  const out: Op[] = [];
+  let d = design;
+  let from = 0;
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i];
+    if (op.k !== "el.text") continue;
+    d = applyOps(d, ops.slice(from, i));
+    out.push(...ops.slice(from, i));
+    from = i + 1;
+    const next = applyOp(d, op);
+    const page = next.pages.find((p) => p.id === op.page);
+    const el = next !== d && page ? findIn(page.elements, op.id) : null;
+    d = next;
+    if (el?.type === "text") out.push({ k: "el.set", page: op.page, id: op.id, set: { paragraphs: el.paragraphs } });
+  }
+  out.push(...ops.slice(from));
+  return out;
+}
+
+/** The first element of an id at any depth, without counting work (for `plainText`, after the work was counted). */
+function findIn(list: readonly DesignElement[], id: ID): DesignElement | null {
+  for (const el of list) {
+    if (el.id === id) return el;
+    if (el.type === "group") {
+      const inner = findIn(el.children, id);
+      if (inner) return inner;
+    }
+  }
+  return null;
 }

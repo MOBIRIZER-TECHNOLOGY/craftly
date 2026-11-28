@@ -291,3 +291,33 @@ than that need more servers (docs/DEPLOY.md, "What is not there yet").
 
 **Not measured.** The load on a machine of its own (here the load and the server shared one), designs with many pages and
 pictures, clips and pictures uploaded during the load, rooms of 20 or 50 people, a slow disk, and a run of hours.
+
+# Performance: budgets checked in CI
+
+Since 2026-11-28 CI fails a pull request that makes the app noticeably heavier or slower. There are two kinds of budget.
+
+**Sizes** (`scripts/budgets.mjs`, `npm run budgets` after `npm run build`, in the "Type-check, test, build" job). What a browser
+downloads before each screen, gzipped, counting a screen's chunk and everything it imports statically, less what an earlier
+screen fetched; and what the service worker keeps for offline use. These are exact, so the budgets have about 10 % to spare.
+
+| | Measured 2026-11-28 | Budget |
+| --- | --- | --- |
+| First load (index.html's script and stylesheet) | 247 KiB | 275 KiB |
+| The dashboard, after the first load | 254 KiB | 280 KiB |
+| The editor, after the dashboard | 243 KiB | 270 KiB |
+| Kept for offline use (not gzipped) | 6.5 MiB | 7.25 MiB |
+
+**Speed** (`e2e/budgets.cjs`, in the "Browser checks" job's production pass). Each is the median of three tries. Measured here
+on headless Chrome against a production build; CI's runner draws without a GPU and is slower, so its budgets are set to catch a
+real slowing (a repaint that walks every element on each move, a start-up that loads a library it does not need), not a slow
+minute. A run's numbers are in `budgets.json` in the journey's output folder; compare them with these to see where a change
+took the time.
+
+| | Measured 2026-11-28 (a laptop) | Budget on CI |
+| --- | --- | --- |
+| The dashboard shown in a new browser, nothing cached | 850 ms | 4,000 ms |
+| A page of 5,000 shapes added through the store and drawn | 60 ms | 1,500 ms |
+| The median frame while dragging a shape on that page | 31 ms | 100 ms |
+
+When something heavier or slower is worth it, raise the budget in the same change and say why. The budgets have not been run
+on CI's runner yet; if the first run there is close to a speed budget, raise that budget rather than chase the runner.

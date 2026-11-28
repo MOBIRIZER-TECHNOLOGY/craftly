@@ -41,7 +41,14 @@ export const MAX_KEY_LENGTH = 200;
  * that it supports. Neither side sends the other anything of a feature the other did not name (docs/COLLABORATION.md, "Comments").
  */
 export const COMMENTS = "comments";
-export const FEATURES = [COMMENTS] as const;
+/**
+ * `text`: text typed into one box by two people at once is merged (ops.ts, `el.text`; docs/COLLABORATION.md, "Two people typing
+ * in one text box"). A browser that names it sends `el.text`, to a server that named it back, and is told by the server when a box
+ * it opened is held by somebody whose browser does not merge (`taken`). The server passes `el.text` on to nobody: it sends the text
+ * it made, as an `el.set`.
+ */
+export const TEXT = "text";
+export const FEATURES = [COMMENTS, TEXT] as const;
 export type Feature = (typeof FEATURES)[number];
 
 /** A session of an account on the server (docs/ACCOUNTS.md): 32 random bytes in base64url. */
@@ -86,7 +93,14 @@ export type ServerMsg =
   | { t: "ops"; rev: number; ops: Op[] }
   | { t: "denied"; reason: DeniedReason }
   | { t: "pong" }
+  | TakenMsg
   | PresenceHeard;
+
+/**
+ * To a browser that merges text: the text box `id` that it said it types in is held by the person `peer`, whose browser does not
+ * merge, so this one is to close it (room.ts, `present`). A browser from before this does not know the kind, and ignores it.
+ */
+export type TakenMsg = { t: "taken"; id: string; peer: number };
 
 /** The most operations in one batch; one editor action makes a handful, pasting a page of a template a few hundred. */
 export const MAX_OPS_PER_BATCH = 10_000;
@@ -209,9 +223,33 @@ const isFeatureList = (v: unknown): v is string[] =>
  * What a browser said in its join that it understands (the server reads this; it is not checked otherwise, because a join from
  * before features has none): comments only when `features` is a short list of short names with "comments" in it.
  */
-export function joinFeatures(value: unknown): { comments: boolean } {
+export function joinFeatures(value: unknown): { comments: boolean; text: boolean } {
   const features = isObject(value) ? value.features : undefined;
-  return { comments: isFeatureList(features) && features.includes(COMMENTS) };
+  const list = isFeatureList(features) ? features : [];
+  return { comments: list.includes(COMMENTS), text: list.includes(TEXT) };
+}
+
+/** The fields of a change to the characters of a text, and no other. */
+const TEXT_OP_FIELDS: readonly string[] = ["k", "page", "id", "base", "at", "del", "ins"];
+/** What a paragraph mark of such a change may carry: what belongs to a paragraph and not to its characters. */
+const PARA_FIELDS: ReadonlySet<string> = new Set(["align", "list"]);
+
+/** What is wrong with a change to the characters of a text (`el.text`), if anything; the values in it are walked like all others. */
+function checkTextOp(op: Record<string, unknown>): string | null {
+  const extra = Object.keys(op).find((key) => !TEXT_OP_FIELDS.includes(key));
+  if (extra !== undefined) return `a field that this operation does not have (${extra.slice(0, 40)})`;
+  if (!isId(op.page) || !isId(op.id)) return "it needs a page and an id";
+  if (typeof op.base !== "string") return "the text it was made on is text";
+  if (!isCount(op.at) || !isCount(op.del) || op.at + op.del > op.base.length) return "where it is and how much it takes away are counts within its text";
+  if (!Array.isArray(op.ins) || op.ins.length > MAX_LIST) return "what it puts in is a list of pieces";
+  for (const piece of op.ins) {
+    if (!isObject(piece)) return "a piece is an object";
+    if (Object.hasOwn(piece, "para")) {
+      if (Object.keys(piece).length !== 1 || !isObject(piece.para)) return "a paragraph mark carries its paragraph alone";
+      if (Object.keys(piece.para).some((key) => !PARA_FIELDS.has(key))) return "a paragraph mark carries an alignment and a list";
+    } else if (typeof piece.text !== "string") return "a piece of characters has its text";
+  }
+  return null;
 }
 
 /** The fields of each comment operation, and no other (the other operations are older and are not held to their fields). */
@@ -330,11 +368,14 @@ export function checkOps(value: unknown): Op[] | string {
       case "el.set":
         error = !isId(op.page) || !isId(op.id) ? "el.set needs a page and an id" : checkProps(op);
         break;
+      case "el.text":
+        error = checkTextOp(op);
+        break;
       default:
         error = Object.hasOwn(COMMENT_OP_FIELDS, op.k) ? checkCommentOp(op) : `unknown operation ${op.k.slice(0, 40)}`;
     }
     // (a comment and a reply are read field by field above; they count towards what one batch may carry like everything else)
-    for (const part of [op.set, op.page, op.el, op.comment, op.reply]) error = error ?? (part === undefined ? null : checkValue(part, "", 0, budget));
+    for (const part of [op.set, op.page, op.el, op.comment, op.reply, op.base, op.ins]) error = error ?? (part === undefined ? null : checkValue(part, "", 0, budget));
     if (error) return `${op.k}: ${error}`;
   }
   return value as Op[];
@@ -381,7 +422,7 @@ export function checkSets(before: Design, after: Design, ops: readonly Op[]): st
   };
   const asked = new Map<string, Set<string>>();
   for (const op of ops) {
-    if (op.k !== "el.set") continue;
+    if (op.k !== "el.set" && op.k !== "el.text") continue;
     let onPage = asked.get(op.page);
     if (!onPage) asked.set(op.page, (onPage = new Set()));
     if (onPage.has(op.id)) continue;
@@ -466,6 +507,8 @@ export function parseServerMsg(value: unknown): ServerMsg | string | null {
       return typeof value.reason === "string" && DENIED_REASONS.has(value.reason) ? { t: "denied", reason: value.reason as DeniedReason } : "denied: a reason that nobody has";
     case "pong":
       return { t: "pong" };
+    case "taken":
+      return isId(value.id) && isCount(value.peer) ? { t: "taken", id: value.id, peer: value.peer } : "taken: a text and a person";
     default:
       return null;
   }

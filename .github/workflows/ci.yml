@@ -39,6 +39,8 @@ jobs:
         run: npm run coverage
       - name: Production build
         run: npm run build
+      - name: Size budgets (what each screen downloads, and what is kept offline)
+        run: npm run budgets
       - name: Build the live server bundle, start it, make a room, stop it
         run: npm run server:smoke
       - name: Keep the coverage report

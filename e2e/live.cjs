@@ -266,7 +266,7 @@ async function startServer() {
     return `Bob is "${name}" at ${JSON.stringify(await where.jsonValue())} for Ann`;
   });
 
-  await step("a text box that one person is typing in stays closed for the other, who is told who has it, and opens once it is free", async () => {
+  await step("two people type in one text box at the same moment with real keys, and both keep every letter where they typed it", async () => {
     await ann.page.getByRole("tab", { name: "Text", exact: true }).click();
     await ann.page
       .getByRole("button", { name: /Add a heading/i })
@@ -285,37 +285,42 @@ async function startServer() {
         const el = s.design.pages.flatMap((p) => p.elements).find((e) => e.id === id);
         return el ? el.paragraphs.map((p) => p.runs.map((r) => r.text).join("")).join("\n") : null;
       }, textId);
-    await bob.page.waitForFunction(
-      (id) => {
-        const el = window.__editor
-          .getState()
-          .design.pages.flatMap((p) => p.elements)
-          .find((e) => e.id === id);
-        return !!el && JSON.stringify(el.paragraphs).includes("Ann was here");
-      },
-      textId,
-      { timeout: 8000 },
-    );
-    // Bob double-clicks the text with the real pointer: it does not open, and he is told why
+    const boxOf = (who) => who.page.evaluate(() => document.querySelector("[data-cf-text-editor]")?.textContent ?? null);
+    const textIs = async (what, who, want) => {
+      const end = Date.now() + 12000;
+      let last = null;
+      while (Date.now() < end) {
+        last = await textOf(who);
+        if (last === want) return;
+        await who.page.waitForTimeout(100);
+      }
+      throw new Error(`waited for ${what}: ${JSON.stringify(last)}`);
+    };
+    await textIs("Bob to have Ann's words", bob, "Ann was here");
+    // Bob double-clicks the text with the real pointer while Ann is in it: it opens for him too, and nobody is told it is taken
     const box = await typing.boundingBox();
-    const [mx, my] = [box.x + box.width / 2, box.y + box.height / 2];
-    await bob.page.mouse.dblclick(mx, my);
-    await bob.page.locator(".cf-toast__message", { hasText: "is typing in this text" }).first().waitFor({ timeout: 5000 });
-    if (await bob.page.evaluate(() => window.__editor.getState().editingTextId)) throw new Error("the box opened for Bob while Ann was typing in it");
-    await shot(bob, "text-is-taken");
-    // Ann types on, and nothing of hers is lost
-    await ann.page.keyboard.type(" first", { delay: 15 });
-    const typed = await textOf(ann);
-    await ann.page.keyboard.press("Escape");
-    await typing.waitFor({ state: "detached", timeout: 8000 });
-    if ((await textOf(ann)) !== typed || !typed.includes("Ann was here first")) throw new Error("Ann's text: " + JSON.stringify(typed));
-    // now it is free: the same double click opens it for Bob, and Ann sees that he has it
-    await bob.page.mouse.dblclick(mx, my);
+    await bob.page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
     await bob.page.waitForFunction((id) => window.__editor.getState().editingTextId === id, textId, { timeout: 5000 });
     await ann.page.locator(".cf-presence__outline--typing").waitFor({ timeout: 8000 });
+    if (await bob.page.locator(".cf-toast__message", { hasText: "is typing in this text" }).count()) throw new Error("Bob was told the box is taken");
+    await bob.page.keyboard.press("Home");
+    // both type at once, key by key: Bob at the start, Ann at the end
+    await Promise.all([bob.page.keyboard.type("Bob says ", { delay: 40 }), ann.page.keyboard.type(" first, then Bob", { delay: 40 })]);
+    const want = "Bob says Ann was here first, then Bob";
+    await textIs("Ann to have both", ann, want);
+    await textIs("Bob to have both", bob, want);
+    // what each sees in the box that is still open is the same text, and each caret is still where its person was typing
+    if ((await boxOf(ann)) !== want || (await boxOf(bob)) !== want) throw new Error(`the boxes show ${JSON.stringify(await boxOf(ann))} and ${JSON.stringify(await boxOf(bob))}`);
+    await ann.page.keyboard.type("!", { delay: 15 });
+    await bob.page.keyboard.type("hi: ", { delay: 15 });
+    const end = "Bob says hi: Ann was here first, then Bob!";
+    await textIs("Ann to have the last keys", ann, end);
+    await textIs("Bob to have the last keys", bob, end);
+    await shot(bob, "two-in-one-text");
+    await ann.page.keyboard.press("Escape");
     await bob.page.keyboard.press("Escape");
     await ann.page.locator(".cf-presence__outline--typing").waitFor({ state: "detached", timeout: 8000 });
-    if ((await textOf(bob)) !== typed) throw new Error("the text changed by being opened: " + JSON.stringify(await textOf(bob)));
+    await typing.waitFor({ state: "detached", timeout: 8000 });
     // the page is left as the steps below expect it: two boxes
     await ann.page.evaluate((id) => {
       const { actions } = window.__editor.getState();
@@ -325,7 +330,7 @@ async function startServer() {
     await bob.page.evaluate(() => window.__editor.getState().actions.clearSelection());
     await until("the text to be gone for Bob", bob, (x) => x.els.length === 2);
     await until("the text to be gone for Ann", ann, (x) => x.els.length === 2);
-    return `"${label}", refused with a message, "${typed}" kept, then opened for Bob`;
+    return `"${label}", both typing: "${end}"`;
   });
 
   await step("changes made at the same moment to different things both survive, for both people", async () => {
