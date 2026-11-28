@@ -174,7 +174,9 @@ differs from the design above, and why:
   details and `rev`, `metaSeq`, `seq`, `updatedAt`, `deletedAt` (or null); not their content.
 - **Limits**: failed sign-ins (also wrong old passwords) are counted per address, per account and address, and per account; a
   sign-up counts every attempt; wrong codes (invites, sign-up codes, reset codes, recovery codes) are counted per address and a
-  right one is not. Hashing more than 4 at once is 503 `busy`. A person who does not exist is checked against a random salt at the
+  right one is not. At most 4 hashes run at once; more wait (64 at most, 3 s each at most) and are then 503 `busy`. One address
+  may have 2 going, and one place is kept for a sign-in from an address the account used lately, for changing a password, and
+  for a reset from such an address (`createHasher` in `passwords.ts`). A person who does not exist is checked against a random salt at the
   server's cost, so a sign-in for them takes as long as one with a wrong password.
 - **A reset with the recovery code uses it up** and answers a new one; changing the password ends every other session; a
   sign-in's `device` is optional (empty when not given).

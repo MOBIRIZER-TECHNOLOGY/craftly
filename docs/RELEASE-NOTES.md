@@ -53,7 +53,8 @@ The editor is static files on any host; the live server, for sharing and account
 - A video download with a clip that has a transparent background is slow: about 3 frames a second, ten minutes for a minute of
   video. Clips from cameras and phones are not affected.
 - A video download is at most ten minutes long.
-- Under a sign-in flood from many addresses, sign-ins can be answered "busy" for a while.
+- Under a sign-in flood from many addresses, people signing in from a new address can be answered "busy" for a while; those
+  signing in where they did before are let in.
 - The open-source licences are published with the site (About Craftly, "Open-source licences").
 
 ## Not checked before this release

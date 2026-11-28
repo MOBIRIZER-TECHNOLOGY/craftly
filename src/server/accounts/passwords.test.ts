@@ -82,16 +82,88 @@ describe("passwords", () => {
     const newer = createHasher({ logN: 11, r: 8, p: 1 });
     expect(await newer.verify("an older password", old)).toBe(true);
   });
+});
 
-  it("run at most so many at once; one more is refused at once, not queued, and the count goes back down", async () => {
-    const hasher = createHasher(cheap, 2);
-    const first = hasher.hash("password one");
-    const second = hasher.verify("password two", null);
+describe("hashes waiting for a place", () => {
+  /** A hash that is going, and whether it has ended yet and how. */
+  const track = <T>(p: Promise<T>) => {
+    const t = { done: false, busy: false, value: undefined as T | undefined };
+    p.then(
+      (v) => Object.assign(t, { done: true, value: v }),
+      (e: unknown) => Object.assign(t, { done: true, busy: e instanceof HashBusy }),
+    );
+    return Object.assign(
+      p.catch(() => undefined),
+      { t },
+    );
+  };
+
+  it("run at most so many at once, keep one place for a person known at the address, and count back down", async () => {
+    const hasher = createHasher(cheap, 2, { waitMs: 10_000 });
+    const first = track(hasher.verify("one", null, { address: "a" }));
+    // a second from somewhere new waits: the other place is kept
+    const second = track(hasher.verify("two", null, { address: "b" }));
+    expect(hasher.busy()).toBe(1);
+    expect(hasher.waiting()).toBe(1);
+    // a known person takes the kept place at once
+    const known = track(hasher.verify("three", null, { address: "c", known: true }));
     expect(hasher.busy()).toBe(2);
-    await expect(hasher.hash("password three")).rejects.toBeInstanceOf(HashBusy);
-    await expect(hasher.verify("password three", null)).rejects.toBeInstanceOf(HashBusy);
-    await Promise.all([first, second]);
+    await Promise.all([first, second, known]);
+    expect([first.t.busy, second.t.busy, known.t.busy]).toEqual([false, false, false]);
     expect(hasher.busy()).toBe(0);
-    expect(await hasher.hash("password four")).toMatch(/^scrypt\$10\$/);
+    expect(hasher.waiting()).toBe(0);
+  });
+
+  it("let a known person waiting go before those who came earlier", async () => {
+    const hasher = createHasher(cheap, 2, { waitMs: 10_000 });
+    const order: string[] = [];
+    const go = (name: string, known = false) => hasher.verify(name, null, { address: name, known }).then(() => order.push(name));
+    // the known one takes the kept place, the new one the other; then three more wait
+    const all = [go("k1", true), go("n1"), go("n2"), go("n3"), go("k2", true)];
+    expect(hasher.waiting()).toBe(3);
+    await Promise.all(all);
+    expect(order.indexOf("k2")).toBeLessThan(order.indexOf("n3"));
+  });
+
+  it("refuse one more from an address that has as many going as it may, and one more when the queue is full", async () => {
+    const hasher = createHasher(cheap, 2, { waiting: 2, perAddress: 2, waitMs: 10_000 });
+    const mine = [track(hasher.hash("a1", { address: "a" })), track(hasher.hash("a2", { address: "a" }))];
+    await expect(hasher.hash("a3", { address: "a" })).rejects.toBeInstanceOf(HashBusy);
+    // the queue holds a2 and one more
+    const other = track(hasher.hash("b1", { address: "b" }));
+    await expect(hasher.hash("c1", { address: "c" })).rejects.toBeInstanceOf(HashBusy);
+    await Promise.all([...mine, other]);
+    expect([...mine, other].map((m) => m.t.busy)).toEqual([false, false, false]);
+    // and the address may go again once its hashes have ended
+    expect(await hasher.hash("a4", { address: "a" })).toMatch(/^scrypt\$10\$/);
+  });
+
+  it("refuse a hash that has waited too long, and forget it", async () => {
+    const hasher = createHasher(DEFAULT_COST, 1, { waitMs: 1 });
+    const slow = track(hasher.verify("slow one", null, { address: "a" }));
+    await expect(hasher.verify("in a hurry", null, { address: "b" })).rejects.toBeInstanceOf(HashBusy);
+    expect(hasher.waiting()).toBe(0);
+    await slow;
+    expect(slow.t.busy).toBe(false);
+  });
+
+  it("let a person known at their address in during a flood from many new addresses", async () => {
+    const hasher = createHasher(cheap, 4, { waiting: 8, waitMs: 10_000 });
+    const flood = Array.from({ length: 200 }, (_, i) => track(hasher.verify("guess", null, { address: `bot-${i}` })));
+    const person = track(hasher.verify("mine", null, { address: "home", known: true }));
+    await Promise.all([...flood, person]);
+    expect(person.t.busy).toBe(false);
+    // the flood was mostly turned away, by the full queue, not let pile up
+    expect(flood.filter((f) => f.t.busy).length).toBeGreaterThan(150);
+  });
+
+  it("with one place, keep none: everybody shares it", async () => {
+    const hasher = createHasher(cheap, 1, { waitMs: 10_000 });
+    const a = track(hasher.verify("a", null, { address: "a" }));
+    expect(hasher.busy()).toBe(1);
+    const b = track(hasher.verify("b", null, { address: "b" }));
+    expect(hasher.waiting()).toBe(1);
+    await Promise.all([a, b]);
+    expect([a.t.busy, b.t.busy]).toEqual([false, false]);
   });
 });

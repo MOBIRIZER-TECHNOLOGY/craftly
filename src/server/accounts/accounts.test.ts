@@ -102,7 +102,7 @@ describe("signing up", () => {
   });
 
   it("gives an email to one account when many sign up with it at the same moment", async () => {
-    const b = await boot({ limits: { signupPerAddress: 0 }, hashConcurrency: 10 });
+    const b = await boot({ limits: { signupPerAddress: 0 }, hashConcurrency: 10, hashLimits: { perAddress: 10 } });
     const answers = await Promise.all(Array.from({ length: 6 }, () => call(b, "POST", "/api/auth/signup", { body: { email: "race@example.org", password: PASSWORD, name: "R" } })));
     expect(answers.filter((a) => a.status === 201)).toHaveLength(1);
     expect(answers.filter((a) => a.status === 409)).toHaveLength(5);
@@ -280,6 +280,20 @@ describe("signing in and out", () => {
     expect(busy[0].body.code).toBe("busy");
     expect(busy[0].headers.get("retry-after")).toBe("1");
     expect(answers.some((a) => a.status === 401)).toBe(true);
+  });
+
+  it("lets a person in from an address they used lately while a flood of sign-ins from many new addresses fills the server", async () => {
+    // the real cost, so that the flood's hashes are still at work when the person comes; two places, one kept for the known
+    const b = await boot({ hashConcurrency: 2, passwordCost: { logN: 15, r: 8, p: 1 }, hashLimits: { waiting: 4 } }, { trustProxy: true });
+    const { email } = await signUp(b);
+    const flood = Array.from({ length: 40 }, (_, i) => signIn(b, `nobody${i}@example.org`, PASSWORD, { headers: { "x-forwarded-for": `10.9.${i}.1` } }));
+    // from the address the account was made at (this machine), so known there
+    const person = signIn(b, email);
+    const [mine, ...theirs] = await Promise.all([person, ...flood]);
+    expect(mine.status).toBe(200);
+    // the flood was answered, not left to pile up: a few checked (401), the rest told the server is busy
+    expect(theirs.filter((a) => a.status === 503).length).toBeGreaterThan(30);
+    expect(theirs.every((a) => a.status === 401 || a.status === 503)).toBe(true);
   });
 
   it("ends the session with sign-out: its token is refused from then on (401 session)", async () => {

@@ -1,17 +1,23 @@
 /**
  * Passwords: what one may be, and how it is kept. A password is kept as an scrypt hash with the parameters in front of it
  * (`scrypt$15$8$1$<salt>$<hash>`, the cost as a power of two), so that the cost can be raised later and an old hash still read.
- * Hashing is slow on purpose and takes 32 MiB of memory at the default cost, so only a few may run at once: one more is refused
- * (`HashBusy`) rather than queued, because a queue of hashes is what a flood of sign-ins would build. Nothing here touches a
- * socket, a file or a clock.
+ * Hashing is slow on purpose and takes 32 MiB of memory at the default cost, so only a few may run at once. What waits for a
+ * place is shared out so that a flood cannot keep the people it is not from out (`createHasher`). Nothing here touches a socket
+ * or a file.
  */
 import { randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from "node:crypto";
 
 /** The cost of a new hash: N = 2^15, r = 8, p = 1 (docs/ACCOUNTS.md, "Passwords"). */
 export const DEFAULT_COST = { logN: 15, r: 8, p: 1 } as const;
 export type Cost = { logN: number; r: number; p: number };
-/** How many hashes may run at the same time; one more is refused with `HashBusy` (the server answers 503). */
+/** How many hashes may run at the same time; more wait for a place, for a while (`createHasher`). */
 export const HASH_CONCURRENCY = 4;
+/** The most hashes that may wait for a place, from everywhere together; one more is refused with `HashBusy` (503). */
+export const HASH_WAITING = 64;
+/** How long a hash may wait for a place before it is refused with `HashBusy`, in milliseconds. */
+export const HASH_WAIT_MS = 3000;
+/** The most hashes one address may have at work or waiting at once; one more is refused with `HashBusy`. */
+export const HASH_PER_ADDRESS = 2;
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 256;
 const SALT_BYTES = 16;
@@ -63,30 +69,108 @@ const derive = (password: string, salt: Buffer, cost: Cost) =>
     scrypt(normalizePassword(password), salt, KEY_BYTES, options, (error, key) => (error ? reject(error) : resolve(key)));
   });
 
+/**
+ * Who a hash is for: the address it came from (counted against `HASH_PER_ADDRESS`), and whether the account has signed in from
+ * that address lately (`known`), which may take the place that is kept for such people. Without it, a hash is from nowhere in
+ * particular and is not known.
+ */
+export type HashFor = { address: string; known?: boolean };
+
 export interface Hasher {
-  /** The stored form of a new password. Throws `HashBusy` when `concurrency` hashes are at work already. */
-  hash(password: string): Promise<string>;
+  /**
+   * The stored form of a new password. Waits for a place when `concurrency` hashes are at work already, and throws `HashBusy`
+   * when it has waited `HASH_WAIT_MS`, when `HASH_WAITING` wait already, or when its address has `HASH_PER_ADDRESS` going.
+   */
+  hash(password: string, who?: HashFor): Promise<string>;
   /**
    * Whether the password is the one of the stored hash. A stored value that is no hash (or null: there is no such person) is
    * checked against a hash of nothing, at the same cost, and is never right: the time an answer takes says nothing about
-   * whether there is an account. Throws `HashBusy` like `hash`.
+   * whether there is an account. Waits and throws `HashBusy` like `hash`.
    */
-  verify(password: string, stored: string | null): Promise<boolean>;
+  verify(password: string, stored: string | null, who?: HashFor): Promise<boolean>;
   /** How many hashes are at work now. */
   busy(): number;
+  /** How many wait for a place now. */
+  waiting(): number;
 }
 
-export function createHasher(cost: Cost = DEFAULT_COST, concurrency = HASH_CONCURRENCY): Hasher {
+export type HashLimits = { waiting?: number; waitMs?: number; perAddress?: number };
+
+/**
+ * A hasher that runs at most `concurrency` hashes at once. More wait, and how the places are given out is what keeps a flood of
+ * sign-ins from many addresses from turning the people it is not from away:
+ *
+ * - one address may have only `perAddress` going, at work or waiting, so that it cannot take the queue for itself;
+ * - with two places or more, one is kept for a person signing in from an address their account used lately (`known`), which a
+ *   flood from new addresses cannot reach;
+ * - a known person waiting goes first; the others wait in the order they came, each for `waitMs` at most.
+ */
+export function createHasher(cost: Cost = DEFAULT_COST, concurrency = HASH_CONCURRENCY, limits: HashLimits = {}): Hasher {
   if (!within(cost)) throw new Error("that password cost is outside what this server will check");
+  const maxWaiting = limits.waiting ?? HASH_WAITING;
+  const waitMs = limits.waitMs ?? HASH_WAIT_MS;
+  const perAddress = limits.perAddress ?? HASH_PER_ADDRESS;
+  // the places a person who is not known may take: all but the one kept for the known, when there are two or more
+  const open = concurrency >= 2 ? concurrency - 1 : concurrency;
   let active = 0;
-  const run = async <T>(work: () => Promise<T>): Promise<T> => {
-    if (active >= concurrency) throw new HashBusy();
-    active++;
+  const going = new Map<string, number>();
+  type Waiting = { known: boolean; go: () => void };
+  const queue: Waiting[] = [];
+  const mayStart = (known: boolean) => active < (known ? concurrency : open);
+  const next = () => {
+    while (queue.length) {
+      const i = queue.findIndex((w) => w.known && mayStart(true));
+      const j = i >= 0 ? i : queue.findIndex((w) => mayStart(w.known));
+      if (j < 0) return;
+      queue.splice(j, 1)[0].go();
+    }
+  };
+  const run = async <T>(work: () => Promise<T>, who?: HashFor): Promise<T> => {
+    const address = who?.address;
+    const known = who?.known === true;
+    if (address !== undefined && (going.get(address) ?? 0) >= perAddress) throw new HashBusy();
+    if (!mayStart(known)) {
+      if (queue.length >= maxWaiting) throw new HashBusy();
+      if (address !== undefined) going.set(address, (going.get(address) ?? 0) + 1);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const entry: Waiting = {
+            known,
+            // the place is taken here, before the waiting hash runs on, so that `next` gives out no more places than are free
+            go: () => {
+              clearTimeout(timer);
+              active++;
+              resolve();
+            },
+          };
+          const timer = setTimeout(() => {
+            const at = queue.indexOf(entry);
+            if (at >= 0) queue.splice(at, 1);
+            reject(new HashBusy());
+          }, waitMs);
+          timer.unref?.();
+          queue.push(entry);
+        });
+      } catch (error) {
+        if (address !== undefined) leave(address);
+        throw error;
+      }
+    } else {
+      if (address !== undefined) going.set(address, (going.get(address) ?? 0) + 1);
+      active++;
+    }
     try {
       return await work();
     } finally {
       active--;
+      if (address !== undefined) leave(address);
+      next();
     }
+  };
+  const leave = (address: string) => {
+    const left = (going.get(address) ?? 1) - 1;
+    if (left > 0) going.set(address, left);
+    else going.delete(address);
   };
   const make = async (password: string) => {
     const salt = randomBytes(SALT_BYTES);
@@ -94,8 +178,8 @@ export function createHasher(cost: Cost = DEFAULT_COST, concurrency = HASH_CONCU
     return `scrypt$${cost.logN}$${cost.r}$${cost.p}$${salt.toString("base64url")}$${key.toString("base64url")}`;
   };
   return {
-    hash: (password) => run(() => make(password)),
-    verify: (password, stored) =>
+    hash: (password, who) => run(() => make(password), who),
+    verify: (password, stored, who) =>
       run(async () => {
         const parsed = stored === null ? null : parseStored(stored);
         if (!parsed) {
@@ -105,7 +189,8 @@ export function createHasher(cost: Cost = DEFAULT_COST, concurrency = HASH_CONCU
         }
         const key = await derive(password, parsed.salt, parsed.cost);
         return key.length === parsed.hash.length && timingSafeEqual(key, parsed.hash);
-      }),
+      }, who),
     busy: () => active,
+    waiting: () => queue.length,
   };
 }

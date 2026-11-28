@@ -57,7 +57,7 @@ export async function signup(ctx: Ctx, req: IncomingMessage, res: ServerResponse
     }
   }
   if (await ctx.storage.emailOwner(email)) throw refuse(409, "email-taken", "there is an account with this email already");
-  const pw = await ctx.hasher.hash(password);
+  const pw = await ctx.hasher.hash(password, { address });
   const recoveryCode = secret(16);
 
   /** The account itself: the person, then their email. */
@@ -127,7 +127,8 @@ export async function signin(ctx: Ctx, req: IncomingMessage, res: ServerResponse
   if (wait) throw tooMany(wait, "too many failed sign-ins; try again later");
   const user = userId ? await ctx.storage.loadUser(userId) : null;
   // nobody, or a disabled person, is checked against nothing at the cost of a real check, and fails the same way
-  const right = await ctx.hasher.verify(password, user && !user.disabled ? user.pw : null);
+  // a person who signed in from this address lately may take the place kept for such people, which a flood cannot reach
+  const right = await ctx.hasher.verify(password, user && !user.disabled ? user.pw : null, { address, known });
   if (!right || !user || user.disabled) {
     for (const [limit, name] of names) limit.take(name);
     throw refuse(401, "wrong", "that email and password do not match");
@@ -206,11 +207,12 @@ export async function changePassword(ctx: Ctx, req: IncomingMessage, res: Server
   ];
   const wait = ctx.waitOf(names);
   if (wait) throw tooMany(wait, "too many wrong passwords; try again later");
-  if (!(await ctx.hasher.verify(body.old, user.pw))) {
+  // signed in already, so known: a flood of sign-ins does not stop somebody changing their password
+  if (!(await ctx.hasher.verify(body.old, user.pw, { address, known: true }))) {
     for (const [limit, name] of names) limit.take(name);
     throw refuse(401, "wrong", "the old password is not right");
   }
-  const pw = await ctx.hasher.hash(next);
+  const pw = await ctx.hasher.hash(next, { address, known: true });
   await ctx.serial(`user:${user.id}`, async () => {
     const fresh = await ctx.storage.loadUser(user.id);
     if (!fresh) throw refuse(401, "session", "sign in again");
@@ -251,7 +253,7 @@ export async function reset(ctx: Ctx, req: IncomingMessage, res: ServerResponse)
   const user = userId && SERVER_ID.test(userId) ? await ctx.storage.loadUser(userId) : null;
   if (!user || user.disabled) throw wrong();
   if (!byCode && !sameHex(user.recoveryHash, codeHash)) throw wrong();
-  const pw = await ctx.hasher.hash(password);
+  const pw = await ctx.hasher.hash(password, { address, known: ctx.known.has(user.id, address) });
   const recoveryCode = byCode ? null : secret(16);
   const done = await ctx.serial(`user:${user.id}`, async () => {
     const fresh = await ctx.storage.loadUser(user.id);
