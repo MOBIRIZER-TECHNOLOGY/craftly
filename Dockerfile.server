@@ -10,7 +10,9 @@
 # and a sound through it (docs/DEPLOY.md, section 2.1, says what was checked).
 
 # ---- stage 1: build the bundle -------------------------------------------------------------------------------------
-FROM node:22-alpine AS build
+# On the machine's own platform whatever the image is for: the bundle is JavaScript, the same for every platform, and the
+# development install under emulation (an arm64 image built on amd64) took more than half an hour on CI, or never ended.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 
 # The whole development install, because the bundler (esbuild) comes with Vite. Nothing of it reaches the final image.

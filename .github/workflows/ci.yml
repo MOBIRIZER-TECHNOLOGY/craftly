@@ -134,7 +134,8 @@ jobs:
           node scripts/live-check.mjs http://127.0.0.1:8787 --origin https://editor.example.test --media-mb 20 --idle 5
           docker stop -t 15 live
           [ "$(docker inspect -f '{{.State.ExitCode}}' live)" = 0 ] || { docker logs live; exit 1; }
-      - name: Build it for arm64 too (emulated; not run)
+      - name: Build it for arm64 too (the bundle is built natively, the last stage emulated; not run)
+        timeout-minutes: 15
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
