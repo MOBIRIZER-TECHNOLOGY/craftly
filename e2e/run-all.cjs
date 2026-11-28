@@ -97,6 +97,7 @@ if (!process.env.OFFLINE) {
 }
 if (process.env.OFFLINE) {
   journeys.push(["offline.cjs", "service worker: reload and work offline (needs a production preview, see e2e/README.md)"]);
+  journeys.push(["budgets.cjs", "speed budgets on the production build: the dashboard in a new browser, a page of 5,000 shapes added and drawn, dragging on it"]);
   journeys.push([
     "update.cjs",
     "service worker updates: a new build waits, open tabs are asked to reload, Reload saves and switches, the build before is kept (needs dist-e2e, see e2e/README.md)",

@@ -4,6 +4,13 @@ All notable changes to Craftly are listed here. The format follows [Keep a Chang
 
 ## Unreleased production-readiness fixes
 
+- **Budgets for size and speed, checked in CI (2026-11-28).** `npm run budgets` measures what each screen downloads (gzipped)
+  and what is kept offline, against budgets about 10 % above today's (first load 247 KiB, the dashboard 254 KiB, the editor 243
+  KiB, offline 6.5 MiB), and fails over them; it runs after the production build. `e2e/budgets.cjs`, on the production build,
+  times the dashboard in a new browser, a page of 5,000 shapes added and drawn, and the frames of a drag on it (850 ms, 60 ms
+  and 31 ms here; budgets of 4,000 ms, 1,500 ms and 100 ms for CI's slower runner). The numbers are in
+  [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), "Budgets". Checked by `src/test/budgets.test.ts` on a small build written by
+  the test, and by running the journey with budgets set too low, which fails the two steps. Not yet run on CI's runner.
 - **A flood of sign-ins no longer keeps people out, and joining a big room costs the server once (2026-11-28).** The two
   findings of the security review that were written down rather than fixed:
   - **Sign-ins.** Password hashes ran 4 at a time and a fifth was answered 503 at once, whoever it came from, so sign-ins from

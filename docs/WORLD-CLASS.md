@@ -37,13 +37,16 @@ People forgive a missing feature. They do not forgive lost work or a tool that s
 
 **Reliability**
 - [ ] Two people typing in the same text box at once: merge the letters instead of the last one winning (`COLLABORATION.md`). [here] M
-- [ ] Each person joining a room is sent the whole design, re-written each time: send a cached copy, then only changes. [here] S
-- [ ] Sign-in hashing has one shared queue, so a flood of sign-ins can make real ones answer "busy": a queue per address. [here] S
+- [x] Each person joining a room was sent the design written out again: it is now written once between two edits (2026-11-28). [here] S
+- [x] A flood of sign-ins made real ones answer "busy": hashes now wait their turn, one address may have 2 going, and one place
+      is kept for people signing in where they did before (2026-11-28). [here] S
 - [ ] Version history people can see: named versions, compare two, restore one, for local designs as well as synced ones. [here] M
 - [ ] A crash-free rate measured from the opt-in problem reports, with a target (99.9 % of sessions). [decision] then [here] S
 
 **Speed**
-- [ ] Performance budgets checked in CI: start-up, a 5,000-element design, a drag at 60 frames a second, and the bundle's size. [here] M
+- [x] Performance budgets checked in CI: what each screen downloads, start-up, a 5,000-element page and a drag on it
+      (2026-11-28; `docs/PERFORMANCE.md`, "Budgets"). Not yet run on CI's runner. The drag budget is 100 ms a frame on CI, to
+      catch a real slowing; 60 frames a second at 5,000 elements is the next step. [here] M
 - [ ] Zoom and pan without repainting everything (ROADMAP 13). [here] M
 - [ ] The same budgets measured on a mid-range phone. [people] S
 - [ ] Video download with a transparent clip: about 3 frames a second today; decode such clips with WebCodecs instead. [here] M
@@ -114,6 +117,5 @@ carry ([`ON-DEVICE-AI.md`](ON-DEVICE-AI.md)).
 
 ## Where to start
 
-The first lines of Phase 1 that are **[here]** can start now, while Phase 0's **[people]** lines are being done: the join copy
-and the sign-in queue (both small, and found by the security review), then the performance budgets in CI, then merging text
-typed at once. Phase 0 still decides the launch date; nothing in Phase 1 is a reason to wait for it.
+The first lines of Phase 1 that are **[here]** can start now, while Phase 0's **[people]** lines are being done. The join copy,
+the sign-in queue and the budgets in CI were done on 2026-11-28; merging text typed at once is next. Phase 0 still decides the launch date; nothing in Phase 1 is a reason to wait for it.
