@@ -2,13 +2,15 @@
  * The rulers along the top and left edge of the workspace and the guides dragged out of them: painting the scale,
  * dropping a guide on the page, moving a guide and dragging it back onto the ruler to remove it.
  */
-import { act, configure, fireEvent, waitFor } from "@testing-library/react";
+import { act, configure, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createShape } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
 import { contextOf } from "@/test/canvasMock";
 import { canvasDesign, mountWorkspace, type CanvasRig } from "@/test/canvasUtils";
-import { RULER } from "./Rulers";
+import { resetEditor } from "@/test/helpers";
+import { Grid, Margins, RULER } from "./Rulers";
+import { useView } from "./viewStore";
 
 // the machine may be busy: give waitFor more than its default second
 configure({ asyncUtilTimeout: 20_000 });
@@ -176,6 +178,17 @@ describe("dragging a guide out of a ruler", () => {
   });
 });
 
+describe("page margins", () => {
+  it("draws the default margin and then the custom size saved on the design", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    expect(rig.container.querySelector("[data-cf-margins]")).toBeNull();
+    act(() => getActions().toggle("showMargins"));
+    expect(rig.container.querySelector<HTMLElement>("[data-cf-margins]")?.style.inset).toBe("30px");
+    act(() => getActions().setMargin(75));
+    expect(rig.container.querySelector<HTMLElement>("[data-cf-margins]")?.style.inset).toBe("75px");
+  });
+});
+
 describe("guides on the page", () => {
   const withGuides = () => canvasDesign([], { guides: { vertical: [300], horizontal: [200] } });
   const line = (rig: CanvasRig, axis: "v" | "h") => rig.container.querySelector<HTMLElement>(`.cf-gline--${axis}:not(.cf-gline--draft)`)!;
@@ -280,5 +293,97 @@ describe("guides on the page", () => {
     showRulers();
     rig.down(300, 100, { target: line(rig, "v") });
     expect(state().selection).toEqual([]);
+  });
+});
+
+describe("the margins of the page", () => {
+  const margins = (rig: CanvasRig) => rig.container.querySelector<HTMLElement>("[data-cf-margins]");
+
+  it("are drawn only when they are switched on, a twentieth of the shorter side in from every edge, at the zoom of the view", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    expect(margins(rig)).toBeNull();
+    act(() => getActions().toggle("showMargins"));
+    const d = state().design!;
+    const inset = Math.round(Math.min(d.width, d.height) * 0.05) * state().zoom;
+    expect(margins(rig)?.style.inset).toBe(`${inset}px`);
+    expect(margins(rig)?.getAttribute("aria-hidden")).toBe("true");
+    act(() => getActions().toggle("showMargins"));
+    expect(margins(rig)).toBeNull();
+  });
+});
+
+describe("the scale at zooms beyond the editor's own limits", () => {
+  // the editor keeps its zoom between 5 % and 400 %, but the rulers only read the view, so they still pick a sensible step
+  // for any magnification: labels at least 70 screen px apart, with finer ticks between them
+  const step = (list: unknown[]) => Number(list[1]) - Number(list[0]);
+  const ticks = (canvas: HTMLCanvasElement) => contextOf(canvas)!.callsTo("moveTo").length;
+
+  it.each([
+    [14, 5],
+    [35, 2],
+    [70, 1],
+  ])("labels every %s-times magnified ruler at a step of %s design px", async (zoom, expected) => {
+    const rig = await mountWorkspace(canvasDesign());
+    showRulers();
+    const canvas = top(rig).querySelector("canvas")!;
+    await waitFor(() => expect(labels(canvas).length).toBeGreaterThan(0));
+    contextOf(canvas)!.reset();
+    act(() => useView.setState({ zoom }));
+    await waitFor(() => expect(labels(canvas).length).toBeGreaterThan(0));
+    expect(step(labels(canvas))).toBe(expected);
+    // below a step of 10 there are five ticks per label for a step of 5 and two for a step of 1 or 2
+    expect(ticks(canvas) / labels(canvas).length).toBeCloseTo(expected === 5 ? 5 : 2, 0);
+  });
+
+  it("falls back to the coarsest step when the view is shrunk so far that even it is narrower than a label", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    showRulers();
+    const canvas = top(rig).querySelector("canvas")!;
+    await waitFor(() => expect(labels(canvas).length).toBeGreaterThan(0));
+    contextOf(canvas)!.reset();
+    act(() => useView.setState({ zoom: 0.001 }));
+    await waitFor(() => expect(labels(canvas).length).toBeGreaterThan(0));
+    expect(step(labels(canvas))).toBe(10000);
+  });
+});
+
+describe("the grid of the page", () => {
+  const grid = (rig: CanvasRig) => rig.container.querySelector<HTMLElement>("[data-cf-grid]");
+
+  it("is drawn while grid snapping is on, one square per grid step at the zoom of the view", async () => {
+    const rig = await mountWorkspace(canvasDesign([], { gridSize: 25 }));
+    expect(grid(rig)).toBeNull();
+    act(() => getActions().toggle("snapToGrid"));
+    const size = 25 * state().zoom;
+    expect(grid(rig)?.style.backgroundSize).toBe(`${size}px ${size}px`);
+    expect(grid(rig)?.getAttribute("aria-hidden")).toBe("true");
+    act(() => getActions().toggle("snapToGrid"));
+    expect(grid(rig)).toBeNull();
+  });
+
+  it("uses a step of 20 when the design has no grid size of its own", async () => {
+    const rig = await mountWorkspace(canvasDesign());
+    act(() => getActions().toggle("snapToGrid"));
+    const size = 20 * state().zoom;
+    expect(grid(rig)?.style.backgroundSize).toBe(`${size}px ${size}px`);
+  });
+});
+
+describe("margins and grid without a design", () => {
+  it("draw nothing while no design is open, even when they are switched on", () => {
+    resetEditor();
+    act(() => {
+      getActions().toggle("showMargins");
+      getActions().toggle("snapToGrid");
+    });
+    const { container } = render(
+      <>
+        <Margins />
+        <Grid />
+      </>,
+    );
+    expect(container.querySelector("[data-cf-margins]")).toBeNull();
+    // the grid does not depend on the page, so it shows its default step
+    expect(container.querySelector<HTMLElement>("[data-cf-grid]")?.style.backgroundSize).toBe(`${20 * state().zoom}px ${20 * state().zoom}px`);
   });
 });

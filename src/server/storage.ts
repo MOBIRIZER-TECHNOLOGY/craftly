@@ -5,13 +5,31 @@
  * them again. (They were inside the record once; such a record is still read, see `RoomRecord.assets`.)
  */
 import { createHash, randomBytes } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, open, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type { Design } from "@/core/types";
 
 export interface SharedAsset {
   mime: string;
   base64: string;
+}
+
+/** A clip or a sound of a room (docs/COLLABORATION.md, "Clips and sounds"): its type, its size in bytes and the SHA-256 of its bytes. */
+export interface StoredMedia {
+  mime: string;
+  size: number;
+  sha256: string;
+}
+
+/** A clip or a sound that has been received whole and waits to be put in place (`commitMedia`) or thrown away (`dropMedia`). */
+export interface StagedMedia {
+  /** where the storage keeps it meanwhile */
+  handle: string;
+  size: number;
+  sha256: string;
 }
 
 export interface RoomRecord {
@@ -69,13 +87,28 @@ export interface LiveStorage {
    * the design is then not turned into text a second time.
    */
   save(id: string, record: RoomRecord, designJson?: string): Promise<void>;
-  /** Removes the room and its images. */
+  /** Removes the room, its images, and its clips and sounds. */
   remove(id: string): Promise<void>;
   /** An image of a room, or null when the room has no such image. One that is there and cannot be read is an error. */
   loadAsset(id: string, assetId: string): Promise<SharedAsset | null>;
   saveAsset(id: string, assetId: string, asset: SharedAsset): Promise<void>;
   /** How much the images of a room take where they are kept, in bytes (the image as text, and a few bytes around it). */
   assetBytes(id: string): Promise<number>;
+  /**
+   * Receives the bytes of a clip or a sound of a room as they come, counting and hashing them: null when there are more than
+   * `limit` (what had come is thrown away). Nothing is a clip of the room until `commitMedia`.
+   */
+  stageMedia(id: string, source: AsyncIterable<Buffer | Uint8Array>, limit: number): Promise<StagedMedia | null>;
+  /** Puts a received clip or sound in place under its id, with its type. */
+  commitMedia(id: string, assetId: string, staged: StagedMedia, mime: string): Promise<void>;
+  /** Throws away a received clip or sound that was not put in place. */
+  dropMedia(id: string, staged: StagedMedia): Promise<void>;
+  /** What is known of a clip or a sound of a room, or null when it has none by that id. */
+  mediaInfo(id: string, assetId: string): Promise<StoredMedia | null>;
+  /** The bytes of a clip or a sound of a room, from the start (asked only for one that `mediaInfo` found). */
+  mediaStream(id: string, assetId: string): Readable;
+  /** How many bytes the clips and sounds of a room take. */
+  mediaBytes(id: string): Promise<number>;
   count(): Promise<number>;
   checkWritable(): Promise<void>;
   /** Every room with the time it was last used, without reading any of them. */
@@ -144,6 +177,43 @@ export class MemoryStorage implements LiveStorage {
     for (const text of this.assets.get(id)?.values() ?? []) bytes += Buffer.byteLength(text);
     return bytes;
   }
+  private media = new Map<string, Map<string, { info: StoredMedia; bytes: Buffer }>>();
+  private staged = new Map<string, Buffer>();
+  async stageMedia(_id: string, source: AsyncIterable<Buffer | Uint8Array>, limit: number) {
+    const chunks: Buffer[] = [];
+    const hash = createHash("sha256");
+    let size = 0;
+    for await (const chunk of source) {
+      size += chunk.length;
+      if (size > limit) return null;
+      hash.update(chunk);
+      chunks.push(Buffer.from(chunk));
+    }
+    const handle = randomBytes(8).toString("hex");
+    this.staged.set(handle, Buffer.concat(chunks));
+    return { handle, size, sha256: hash.digest("hex") };
+  }
+  async commitMedia(id: string, assetId: string, staged: StagedMedia, mime: string) {
+    const bytes = this.staged.get(staged.handle);
+    this.staged.delete(staged.handle);
+    if (!bytes) throw new Error("no such received clip");
+    const room = this.media.get(id) ?? new Map<string, { info: StoredMedia; bytes: Buffer }>();
+    this.media.set(id, room.set(assetId, { info: { mime, size: staged.size, sha256: staged.sha256 }, bytes }));
+  }
+  async dropMedia(_id: string, staged: StagedMedia) {
+    this.staged.delete(staged.handle);
+  }
+  async mediaInfo(id: string, assetId: string) {
+    return this.media.get(id)?.get(assetId)?.info ?? null;
+  }
+  mediaStream(id: string, assetId: string) {
+    return Readable.from([this.media.get(id)?.get(assetId)?.bytes ?? Buffer.alloc(0)]);
+  }
+  async mediaBytes(id: string) {
+    let bytes = 0;
+    for (const item of this.media.get(id)?.values() ?? []) bytes += item.info.size;
+    return bytes;
+  }
   async list() {
     return [...this.rooms].map(([id, room]) => ({ id, usedAt: room.usedAt }));
   }
@@ -154,6 +224,7 @@ export class MemoryStorage implements LiveStorage {
   async remove(id: string) {
     this.rooms.delete(id);
     this.assets.delete(id);
+    this.media.delete(id);
   }
   async count() {
     return this.rooms.size;
@@ -219,10 +290,11 @@ export class FileStorage implements LiveStorage {
     await this.write(this.dir, this.path(id), recordText(record, designJson));
   }
 
-  /** The record goes first: from then on there is no such room, and what is left of its images is nobody's. */
+  /** The record goes first: from then on there is no such room, and what is left of its images, clips and sounds is nobody's. */
   async remove(id: string): Promise<void> {
     await rm(this.path(id), { force: true });
     await rm(this.assetDir(id), { recursive: true, force: true });
+    await rm(this.mediaDir(id), { recursive: true, force: true });
     await this.syncDirectory(this.dir);
   }
 
@@ -259,6 +331,97 @@ export class FileStorage implements LiveStorage {
     }
     let bytes = 0;
     for (const name of names) if (name.endsWith(".json")) bytes += (await stat(join(folder, name))).size;
+    return bytes;
+  }
+
+  /*
+   * The clips and sounds of a room are in a folder of their own beside it, `<room>.media`: the bytes of each in `<hash>.bin`, as
+   * they came, and what is known of them in `<hash>.json`, written after the bytes are in place (one without the other is no
+   * clip). A clip being received is a `.tmp` file there until it is put in place or thrown away.
+   */
+  private mediaDir(id: string): string {
+    if (!ROOM_ID.test(id)) throw new Error("not a room id");
+    return join(this.dir, `${id}.media`);
+  }
+
+  private mediaPath(id: string, assetId: string, ext: "bin" | "json"): string {
+    return join(this.mediaDir(id), `${createHash("sha256").update(assetId).digest("hex")}.${ext}`);
+  }
+
+  async stageMedia(id: string, source: AsyncIterable<Buffer | Uint8Array>, limit: number): Promise<StagedMedia | null> {
+    const folder = this.mediaDir(id);
+    await mkdir(folder, { recursive: true });
+    const handle = join(folder, `${randomBytes(8).toString("hex")}.tmp`);
+    const hash = createHash("sha256");
+    let size = 0;
+    let over = false;
+    async function* counted() {
+      for await (const chunk of source) {
+        size += chunk.length;
+        if (size > limit) {
+          over = true;
+          return;
+        }
+        hash.update(chunk);
+        yield chunk;
+      }
+    }
+    try {
+      await pipeline(Readable.from(counted()), createWriteStream(handle, { flags: "wx", flush: true }));
+    } catch (error) {
+      await rm(handle, { force: true });
+      throw error;
+    }
+    if (over) {
+      await rm(handle, { force: true });
+      return null;
+    }
+    return { handle, size, sha256: hash.digest("hex") };
+  }
+
+  async commitMedia(id: string, assetId: string, staged: StagedMedia, mime: string): Promise<void> {
+    await rename(staged.handle, this.mediaPath(id, assetId, "bin"));
+    await this.write(this.mediaDir(id), this.mediaPath(id, assetId, "json"), JSON.stringify({ mime, size: staged.size, sha256: staged.sha256 }));
+  }
+
+  async dropMedia(_id: string, staged: StagedMedia): Promise<void> {
+    await rm(staged.handle, { force: true });
+  }
+
+  async mediaInfo(id: string, assetId: string): Promise<StoredMedia | null> {
+    let text: string;
+    try {
+      text = await readFile(this.mediaPath(id, assetId, "json"), "utf8");
+      // the bytes are there too
+      await stat(this.mediaPath(id, assetId, "bin"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+    let info: Partial<StoredMedia>;
+    try {
+      info = JSON.parse(text) as Partial<StoredMedia>;
+    } catch (error) {
+      throw new Error("the file of this clip is damaged: it is not JSON", { cause: error });
+    }
+    if (typeof info.mime !== "string" || typeof info.size !== "number" || typeof info.sha256 !== "string") throw new Error("the file of this clip is damaged");
+    return { mime: info.mime, size: info.size, sha256: info.sha256 };
+  }
+
+  mediaStream(id: string, assetId: string): Readable {
+    return createReadStream(this.mediaPath(id, assetId, "bin"));
+  }
+
+  async mediaBytes(id: string): Promise<number> {
+    let names: string[];
+    try {
+      names = await readdir(this.mediaDir(id));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+      throw error;
+    }
+    let bytes = 0;
+    for (const name of names) if (name.endsWith(".bin")) bytes += (await stat(join(this.mediaDir(id), name))).size;
     return bytes;
   }
 

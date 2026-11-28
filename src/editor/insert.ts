@@ -3,18 +3,22 @@
  * paste and the controller. Panels should call these instead of building
  * elements by hand.
  */
-import { addAssetFromFile, assetSrc, isAcceptedImage } from "@/core/assets";
-import { createImage } from "@/core/factory";
+import { addAssetFromFile, assetSrc, isAcceptedAudio, isAcceptedImage, isAcceptedVideo, videoInfo } from "@/core/assets";
+import { createImage, createVideo } from "@/core/factory";
 import { isRemoteImage } from "@/core/imageSources";
 import { getActions, getActivePage, useEditor } from "@/core/store";
-import type { Design, DesignElement, Fill, ID, ImageElement, Page, Point } from "@/core/types";
+import type { Design, DesignElement, Fill, ID, ImageElement, Page, Point, VideoElement } from "@/core/types";
+import { isVideoSource } from "@/render/videos";
 import { usableElements, usableFill } from "@/export/projectFormat";
 
 export const DRAG_MIME = "application/x-craftly";
 
 /** What panels put in `dataTransfer` when an item is dragged onto the canvas. */
 export type DragPayload =
-  { type: "elements"; elements: DesignElement[] } | { type: "image"; src: string; naturalWidth: number; naturalHeight: number; name?: string } | { type: "background"; fill: Fill };
+  | { type: "elements"; elements: DesignElement[] }
+  | { type: "image"; src: string; naturalWidth: number; naturalHeight: number; name?: string }
+  | { type: "video"; src: string; naturalWidth: number; naturalHeight: number; duration: number; name?: string }
+  | { type: "background"; fill: Fill };
 
 export function setDragPayload(e: { dataTransfer: DataTransfer | null }, payload: DragPayload, dragImage?: HTMLElement | null): void {
   const dt = e.dataTransfer;
@@ -43,6 +47,17 @@ function usablePayload(value: unknown): DragPayload | null {
     if (typeof p.src !== "string" || !p.src || isRemoteImage(p.src) || !isSize(p.naturalWidth) || !isSize(p.naturalHeight)) return null;
     return { type: "image", src: p.src, naturalWidth: p.naturalWidth, naturalHeight: p.naturalHeight, ...(typeof p.name === "string" ? { name: p.name } : {}) };
   }
+  if (p.type === "video") {
+    if (!isVideoSource(p.src) || !isSize(p.naturalWidth) || !isSize(p.naturalHeight) || !isSize(p.duration)) return null;
+    return {
+      type: "video",
+      src: p.src,
+      naturalWidth: p.naturalWidth,
+      naturalHeight: p.naturalHeight,
+      duration: p.duration,
+      ...(typeof p.name === "string" ? { name: p.name } : {}),
+    };
+  }
   if (p.type === "background") {
     const fill = usableFill(p.fill);
     return fill ? { type: "background", fill } : null;
@@ -66,6 +81,21 @@ export function imageElementFor(design: Pick<Design, "width" | "height">, src: s
   const maxH = design.height * 0.7;
   const s = Math.min(maxW / naturalWidth, maxH / naturalHeight, design.width / naturalWidth);
   return createImage({ src, naturalWidth, naturalHeight, width: Math.round(naturalWidth * s), height: Math.round(naturalHeight * s) });
+}
+
+/** A video element sized as a picture is (`imageElementFor`), playing the whole clip. */
+export function videoElementFor(design: Pick<Design, "width" | "height">, src: string, naturalWidth: number, naturalHeight: number, duration: number, name?: string): VideoElement {
+  const maxW = design.width * 0.5;
+  const maxH = design.height * 0.7;
+  const s = Math.min(maxW / naturalWidth, maxH / naturalHeight, design.width / naturalWidth);
+  return createVideo({ src, naturalWidth, naturalHeight, duration, width: Math.round(naturalWidth * s), height: Math.round(naturalHeight * s), ...(name ? { name } : {}) });
+}
+
+/** Adds a clip to the active page, centred or at the drop point `at` (design px). */
+export function insertVideo(src: string, naturalWidth: number, naturalHeight: number, duration: number, at?: Point, name?: string): ID {
+  const s = useEditor.getState();
+  if (!s.design || !getActivePage(s)) return "";
+  return getActions().addElement(videoElementFor(s.design, src, naturalWidth, naturalHeight, duration, name), at ? { at } : undefined);
 }
 
 /** The image / frame element under `pt` that should receive a dropped photo, if any (never one of `skip`). */
@@ -107,13 +137,29 @@ export function insertImage(src: string, naturalWidth: number, naturalHeight: nu
   return actions.addElement(imageElementFor(s.design, src, naturalWidth, naturalHeight), at ? { at } : undefined);
 }
 
-/** Stores dropped / chosen files as assets and places them on the page. Returns the new element ids. */
+/**
+ * Stores dropped / chosen files as assets and places them on the page; a sound goes on the timeline instead (it has no place on a
+ * page). Returns the new element ids.
+ */
 export async function insertImageFiles(files: File[], at?: Point): Promise<ID[]> {
   const ids: ID[] = [];
   let offset = 0;
-  for (const file of files.filter(isAcceptedImage)) {
+  for (const file of files.filter((f) => isAcceptedImage(f) || isAcceptedVideo(f) || isAcceptedAudio(f))) {
     const asset = await addAssetFromFile(file);
+    if (asset.kind === "audio") {
+      // loaded when it is needed: the timeline is not part of what places things on a page
+      const { addSoundToDesign } = await import("@/editor/timeline/addSound");
+      await addSoundToDesign(asset);
+      continue;
+    }
     const p = at ? { x: at.x + offset, y: at.y + offset } : undefined;
+    if (asset.kind === "video") {
+      const info = await videoInfo(asset.blob);
+      const id = insertVideo(assetSrc(asset.id), asset.width, asset.height, info?.duration || 1, p);
+      if (id) ids.push(id);
+      offset += 32;
+      continue;
+    }
     // a picture added by this very drop is never the target of the next one (it would be replaced instead of joined)
     const id = insertImage(assetSrc(asset.id), asset.width, asset.height, p, new Set(ids));
     if (id) ids.push(id);
@@ -126,5 +172,6 @@ export function insertPayload(payload: DragPayload, at?: Point): void {
   const actions = getActions();
   if (payload.type === "elements") actions.addElements(payload.elements, at ? { at } : undefined);
   else if (payload.type === "image") insertImage(payload.src, payload.naturalWidth, payload.naturalHeight, at);
+  else if (payload.type === "video") insertVideo(payload.src, payload.naturalWidth, payload.naturalHeight, payload.duration, at, payload.name);
   else if (payload.type === "background") actions.setPageBackground(payload.fill);
 }

@@ -42,8 +42,11 @@ export type SyncAction =
   | { kind: "delete"; id: string }
   | { kind: "forget"; id: string }
   | { kind: "meta-push"; id: string; patch: Partial<SyncedMeta> }
-  /** `meta` is what the details become here (what changed here stays), `remote` the server's, which is then what is in step */
-  | { kind: "meta-pull"; id: string; meta: SyncedMeta; remote: SyncedMeta }
+  /**
+   * `meta` is what the details become here (what changed here stays), `remote` the server's, which is then what is in step, and
+   * `local` what they were here when the plan was made (a detail changed after that stays too: `withLaterChanges`)
+   */
+  | { kind: "meta-pull"; id: string; meta: SyncedMeta; remote: SyncedMeta; local: SyncedMeta }
   | { kind: "skip"; id: string };
 
 const FIELDS = ["title", "folderId", "starred", "trashedAt"] as const;
@@ -59,6 +62,17 @@ export function changedHere(meta: SyncedMeta, synced: SyncedMeta | null): Partia
   const out: Partial<SyncedMeta> = {};
   for (const field of FIELDS) if (!synced || meta[field] !== synced[field]) (out as Record<string, unknown>)[field] = meta[field];
   return out;
+}
+
+/**
+ * The details as a `meta-pull` writes them: `meta` as it was planned, but for a field that changed here since the plan was made
+ * (`local` is what the details were then, `now` what they are), which keeps its new value. A rename or a star made while the
+ * run went on is not taken back; it is not in step with the server's either, so the next run sends it.
+ */
+export function withLaterChanges(meta: SyncedMeta, local: SyncedMeta, now: SyncedMeta): SyncedMeta {
+  const next = { ...meta };
+  for (const field of FIELDS) if (now[field] !== local[field]) (next as Record<string, unknown>)[field] = now[field];
+  return next;
 }
 
 /** The details after the server's are taken for every field not changed here; null when nothing would change here. */
@@ -113,7 +127,7 @@ export function planSync(local: readonly LocalDesign[], tombstones: readonly Syn
     if (Object.keys(patch).length) actions.push({ kind: "meta-push", id: design.id, patch });
     if (entry && !changedThere) {
       const taken = takenFromServer(design.meta, record?.syncedMeta ?? null, entry);
-      if (taken) actions.push({ kind: "meta-pull", id: design.id, meta: taken, remote: metaOf(entry) });
+      if (taken) actions.push({ kind: "meta-pull", id: design.id, meta: taken, remote: metaOf(entry), local: metaOf(design.meta) });
     }
   }
 

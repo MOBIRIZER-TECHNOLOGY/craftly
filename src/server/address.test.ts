@@ -55,6 +55,12 @@ describe("one name for the addresses of one visitor", () => {
     ["::", "0:0:0:0::/64"],
     ["fe80::1%eth0", "fe80:0:0:0::/64"],
     ["64:ff9b::192.0.2.33", "64:ff9b:0:0::/64"],
+    // a "::" whose zeros lie inside the first half: the groups after it still belong to the first half
+    ["2001::5:1:2:3:4", "2001:0:0:5::/64"],
+    ["2001:db8::7:0:0:0:1", "2001:db8:0:7::/64"],
+    ["2001:db8::7:1:2:3:4", "2001:db8:0:7::/64"],
+    ["::ab:c:d:e:f", "0:0:0:ab::/64"],
+    ["1:2::3:4.5.6.7", "1:2:0:0::/64"],
     // what is no address is kept as it is: it is still one name for one thing
     ["not an address", "not an address"],
   ])("%s is %s", (address, key) => {

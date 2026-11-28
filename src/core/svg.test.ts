@@ -147,6 +147,13 @@ describe("parseViewBox", () => {
     expect(parseViewBox(`<svg viewBox="0 0 10">`)).toBeNull();
     expect(parseViewBox("")).toBeNull();
   });
+
+  it("reads the root's size, not that of a marker, symbol or nested svg inside it", () => {
+    const marker = `<svg width="200" height="100"><defs><marker viewBox="0 0 10 10"><path d="M0 0L10 5L0 10z"/></marker></defs></svg>`;
+    expect(parseViewBox(marker)).toEqual({ x: 0, y: 0, w: 200, h: 100 });
+    expect(parseViewBox(`<svg viewBox="0 0 40 20"><svg viewBox="0 0 5 5" width="5" height="5"/></svg>`)).toEqual({ x: 0, y: 0, w: 40, h: 20 });
+    expect(normalizeSvg(marker).svg.startsWith(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">`)).toBe(true);
+  });
 });
 
 describe("normalizeSvg", () => {

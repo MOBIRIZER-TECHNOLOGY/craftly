@@ -3,19 +3,49 @@
  * template previews all go through `renderPage`, so what you see is what you
  * export.
  */
-import { evaluateAnimation, isHidden, pageDuration, type AnimState } from "@/core/animation";
+import {
+  captionAt,
+  captionOutlineIsDark,
+  clipCaptions,
+  clipCaptionStyle,
+  clipPlayTime,
+  clipPlayingLength,
+  evaluateAnimation,
+  isHidden,
+  pageDuration,
+  type AnimState,
+} from "@/core/animation";
 import { blendOf } from "@/core/blend";
+import { clipFilter } from "@/core/factory";
 import { DEG } from "@/core/geometry";
+import { lineLabelPoint, linePath, lineRouteAngles } from "@/core/lineRoute";
 import { recolorSvg, setSvgStrokeWidth } from "@/core/svg";
-import type { BlendMode, Design, DesignElement, Fill, GraphicElement, ID, ImageElement, LineElement, Page, Rect, ShapeElement, Stroke } from "@/core/types";
+import type {
+  BlendMode,
+  CaptionStyle,
+  Design,
+  DesignElement,
+  Fill,
+  GraphicElement,
+  ID,
+  ImageElement,
+  LineElement,
+  Page,
+  Rect,
+  ShapeElement,
+  Stroke,
+  VideoElement,
+} from "@/core/types";
 import { drawChart, drawTable } from "./drawBlocks";
 import { drawTextElement } from "./drawText";
-import { ensureFont, isFontReady } from "./fonts";
+import { cssFontFamily, ensureFont, isFontReady } from "./fonts";
 import { cssFilter, filterKey, isNeutral, renderFiltered, supportsCtxFilter } from "./imageFilters";
-import { getImage, getSvgImage, loadImage, loadSvgImage, type Drawable, drawableSize } from "./images";
+import { getImage, getSvgImage, loadImage, loadSvgImage, type Drawable, drawableSize, videoPosterKey } from "./images";
 import { paintFor } from "./paint";
 import { getPath2D, shapeFillRule } from "./shapePaths";
 import { layoutText, resolveRunStyle } from "./textLayout";
+import { clipFinished, clipWaiting, playingFrame } from "./videos";
+import { carriedClips } from "@/core/carriedClips";
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -30,6 +60,20 @@ export interface RenderOptions {
   hide?: ReadonlySet<ID>;
   /** paint the page `time` seconds into its animations (entrance, exit, emphasis); without it elements sit at rest */
   animation?: { time: number };
+  /**
+   * Play the clips of video elements at `animation.time` (src/render/videos.ts), with their sound when `sound` is set: for what
+   * plays in real time (Present, the animation preview, a video recorded as it plays). Without it a clip is its first frame, which
+   * is what every still download and a GIF (painted faster or slower than real time) hold. `time` plays them that many seconds into the
+   * page without animating anything else (Present with reduced motion); without it they play at `animation.time`. `frame` hands
+   * over the picture of a clip `time` seconds into the page instead of the clip's own <video> (a video download made frame by frame,
+   * which decodes the clips itself); null draws its first frame.
+   */
+  playVideos?: { sound?: boolean; time?: number; frame?: ClipFrameSource };
+  /**
+   * The clips that run on under the page from the pages before, in place of those the design's timeline gives
+   * (core/carriedClips.ts): Present, where the presenter decides how long a page stays, passes them as they really are.
+   */
+  carried?: readonly VideoElement[];
   /**
    * Design pixels to paint beyond every edge of the page (a print export with bleed). The canvas then starts `bleed`
    * above and left of the page, and `clip` is measured from that corner; the background is stretched over the larger
@@ -51,7 +95,14 @@ interface Env {
   pending: boolean;
   /** how many blended elements the one being painted is inside of: which layer it would be painted on */
   depth: number;
+  /** clips play, this many seconds into the page (RenderOptions.playVideos) */
+  videoTime?: number;
+  videoSound?: boolean;
+  videoFrame?: ClipFrameSource;
 }
+
+/** The picture of clip `el` when its page has been shown for `time` seconds, or null for its first frame. */
+export type ClipFrameSource = (el: VideoElement, time: number) => CanvasImageSource | null;
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
@@ -249,25 +300,57 @@ function drawLine(ctx: Ctx, el: LineElement, env: Env): void {
     ctx.shadowOffsetX = el.shadow.x * env.scale;
     ctx.shadowOffsetY = el.shadow.y * env.scale;
   }
-  // shaft
-  let x0 = 0;
-  let x1 = el.width;
-  ctx.save();
-  ctx.translate(el.width, 0);
-  const endInset = el.endArrow !== "none" ? arrowHead(ctx, el.endArrow, head, s.color, s.width) : 0;
-  ctx.restore();
-  ctx.save();
-  ctx.translate(0, 0);
-  ctx.scale(-1, 1);
-  const startShaft = el.startArrow !== "none" ? arrowHead(ctx, el.startArrow, head, s.color, s.width) : 0;
-  ctx.restore();
-  x0 += startShaft + startInset;
-  x1 -= endInset;
-  applyStroke(ctx, s);
-  ctx.beginPath();
-  ctx.moveTo(x0, 0);
-  ctx.lineTo(Math.max(x0, x1), 0);
-  ctx.stroke();
+  const routed = el.routing && el.routing !== "straight" && el.route && el.route.length >= 2;
+  if (routed) {
+    const path = linePath(el);
+    const angles = lineRouteAngles(el);
+    const last = path[path.length - 1];
+    ctx.save();
+    ctx.translate(last.x, last.y);
+    ctx.rotate(angles.end);
+    if (el.endArrow !== "none") arrowHead(ctx, el.endArrow, head, s.color, s.width);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(path[0].x, path[0].y);
+    ctx.rotate(angles.start + Math.PI);
+    if (el.startArrow !== "none") arrowHead(ctx, el.startArrow, head, s.color, s.width);
+    ctx.restore();
+    applyStroke(ctx, s);
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    if (el.routing === "curved" && path.length === 4) ctx.bezierCurveTo(path[1].x, path[1].y, path[2].x, path[2].y, path[3].x, path[3].y);
+    else for (const point of path.slice(1)) ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  } else {
+    let x0 = 0;
+    let x1 = el.width;
+    ctx.save();
+    ctx.translate(el.width, 0);
+    const endInset = el.endArrow !== "none" ? arrowHead(ctx, el.endArrow, head, s.color, s.width) : 0;
+    ctx.restore();
+    ctx.save();
+    ctx.translate(0, 0);
+    ctx.scale(-1, 1);
+    const startShaft = el.startArrow !== "none" ? arrowHead(ctx, el.startArrow, head, s.color, s.width) : 0;
+    ctx.restore();
+    x0 += startShaft + startInset;
+    x1 -= endInset;
+    applyStroke(ctx, s);
+    ctx.beginPath();
+    ctx.moveTo(x0, 0);
+    ctx.lineTo(Math.max(x0, x1), 0);
+    ctx.stroke();
+  }
+  if (el.label) {
+    const point = lineLabelPoint(el);
+    ctx.save();
+    ctx.fillStyle = s.color;
+    ctx.font = "600 14px 'Plus Jakarta Sans Variable', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(el.label, point.x, point.y - 8);
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -276,7 +359,7 @@ const placeholderIcon = new Path2D("M4 18 L9 11 L13 16 L16 12 L22 18 Z M17 7 A2 
 function drawImageElement(ctx: Ctx, el: ImageElement, env: Env): void {
   const w = el.width;
   const h = el.height;
-  const clip = getPath2D(el.mask || "rect", w, h, { radius: el.radius });
+  const clip = getPath2D(el.mask || "rect", w, h, { radius: el.radius, path: el.maskPath });
   if (!el.src) {
     ctx.save();
     ctx.clip(clip);
@@ -314,11 +397,165 @@ function drawImageElement(ctx: Ctx, el: ImageElement, env: Env): void {
   }
   ctx.save();
   ctx.clip(clip);
+  if (el.crop.rotation) {
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(el.crop.rotation * DEG);
+    ctx.translate(-w / 2, -h / 2);
+  }
   if (neutral) {
     ctx.drawImage(img as CanvasImageSource, dx, dy, dw, dh);
   } else {
     const filtered = renderFiltered({ key: el.src, img, dx, dy, dw, dh, boxW: w, boxH: h, filter: el.filter, scale: env.scale });
     ctx.drawImage(filtered, 0, 0, w, h);
+  }
+  ctx.restore();
+  if (el.stroke && el.stroke.width > 0) {
+    applyStroke(ctx, el.stroke);
+    ctx.stroke(clip);
+  }
+}
+
+/** The caption line of `el` when its page has been shown for `time` seconds, or null (none, or the clip waits or has finished). */
+export function captionNow(el: VideoElement, time: number): string | null {
+  const lines = clipCaptions(el);
+  if (!lines.length || clipWaiting(el, time) || clipFinished(el, time)) return null;
+  return captionAt(lines, clipPlayTime(el, time) % clipPlayingLength(el))?.text ?? null;
+}
+
+/** Most lines a caption is wrapped to; what does not fit ends in an ellipsis. */
+const CAPTION_LINES = 3;
+
+/** Breaks `text` into lines no wider than `max` (a word longer than that gets a line of its own), at most CAPTION_LINES of them. */
+function wrapCaption(ctx: Ctx, text: string, max: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(next).width > max) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  if (lines.length <= CAPTION_LINES) return lines;
+  const kept = lines.slice(0, CAPTION_LINES);
+  kept[CAPTION_LINES - 1] = `${kept[CAPTION_LINES - 1]}…`;
+  return kept;
+}
+
+const CAPTION_FONTS: Record<CaptionStyle["font"] & string, string> = {
+  sans: 'Inter, "Segoe UI", system-ui, sans-serif',
+  serif: 'Georgia, "Times New Roman", serif',
+  mono: 'ui-monospace, Consolas, "Courier New", monospace',
+};
+/** The CSS font of a caption style: its own font of the app's, before the browser's of its kind. */
+export const captionFontCss = (style: Pick<Required<CaptionStyle>, "font" | "family">): string =>
+  style.family ? `${cssFontFamily(style.family).replace(/, [a-z-]+$/, "")}, ${CAPTION_FONTS[style.font]}` : CAPTION_FONTS[style.font];
+
+const CAPTION_SIZES: Record<CaptionStyle["size"] & string, number> = { s: 0.75, m: 1, l: 1.35 };
+
+/**
+ * A caption over a clip `w` x `h`, centred and sized to the clip, as its style says (clipCaptionStyle): over its bottom, middle or
+ * top; small, medium or large; on a dark band, a light band, or on nothing, the words then outlined in the colour that stands out
+ * against theirs.
+ */
+export function drawCaption(ctx: Ctx, text: string, w: number, h: number, style: Required<CaptionStyle> = clipCaptionStyle({})): void {
+  const size = Math.max(6, Math.min(h * 0.075, w * 0.06) * CAPTION_SIZES[style.size]);
+  ctx.save();
+  ctx.font = `600 ${size}px ${captionFontCss(style)}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const lines = wrapCaption(ctx, text, w * 0.86);
+  const lineHeight = size * 1.3;
+  const pad = size * 0.45;
+  const width = Math.min(w * 0.94, Math.max(...lines.map((l) => ctx.measureText(l).width)) + pad * 2);
+  const height = lines.length * lineHeight + pad;
+  const margin = h * 0.06;
+  const top = style.place === "top" ? margin : style.place === "middle" ? (h - height) / 2 : h - margin - height;
+  if (style.band !== "none") {
+    ctx.fillStyle = style.band === "light" ? "rgba(255, 255, 255, 0.85)" : "rgba(0, 0, 0, 0.66)";
+    ctx.beginPath();
+    // a browser without roundRect (Safari before 16) gets square corners
+    if (typeof ctx.roundRect === "function") ctx.roundRect((w - width) / 2, top, width, height, size * 0.3);
+    else ctx.rect((w - width) / 2, top, width, height);
+    ctx.fill();
+  } else {
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(1, size * 0.18);
+    ctx.strokeStyle = captionOutlineIsDark(style.color) ? "rgba(0, 0, 0, 0.85)" : "rgba(255, 255, 255, 0.9)";
+    lines.forEach((l, i) => ctx.strokeText(l, w / 2, top + pad / 2 + lineHeight * (i + 0.5)));
+  }
+  ctx.fillStyle = style.color;
+  lines.forEach((l, i) => ctx.fillText(l, w / 2, top + pad / 2 + lineHeight * (i + 0.5)));
+  ctx.restore();
+}
+
+/** A clip: the frame that plays now, or its first frame, drawn as a picture is (crop, filter, frame shape, shadow, outline). */
+function drawVideoElement(ctx: Ctx, el: VideoElement, env: Env): void {
+  const w = el.width;
+  const h = el.height;
+  const clip = getPath2D(el.mask || "rect", w, h, { radius: el.radius, path: el.maskPath });
+  const playing = env.videoTime === undefined ? null : env.videoFrame ? env.videoFrame(el, env.videoTime) : playingFrame(el, env.videoTime, env.videoSound);
+  const frame: CanvasImageSource | null = playing ?? (getImage(videoPosterKey(el)) as CanvasImageSource | null);
+  if (el.shadow) {
+    shadowOnly(ctx, el, env, () => {
+      ctx.fillStyle = "#000";
+      ctx.fill(clip);
+    });
+  }
+  ctx.save();
+  ctx.clip(clip);
+  if (!frame) {
+    // still loading (the page is painted again when it has come), or a clip this browser cannot play: a dark box with a play sign
+    if (env.videoTime === undefined) env.pending = true;
+    ctx.fillStyle = "#2a2f3a";
+    ctx.fillRect(0, 0, w, h);
+    const s = Math.min(w, h) * 0.18;
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - s * 0.4, h / 2 - s / 2);
+    ctx.lineTo(w / 2 + s * 0.5, h / 2);
+    ctx.lineTo(w / 2 - s * 0.4, h / 2 + s / 2);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    if (el.crop.rotation) {
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate(el.crop.rotation * DEG);
+      ctx.translate(-w / 2, -h / 2);
+    }
+    const filter = clipFilter(el);
+    if (isNeutral(filter)) ctx.drawImage(frame, el.crop.x * w, el.crop.y * h, el.crop.w * w, el.crop.h * h);
+    else {
+      const key = playing ? `play:${el.id}` : videoPosterKey(el);
+      const out = renderFiltered({
+        key,
+        img: frame as Drawable | HTMLVideoElement,
+        dx: el.crop.x * w,
+        dy: el.crop.y * h,
+        dw: el.crop.w * w,
+        dh: el.crop.h * h,
+        boxW: w,
+        boxH: h,
+        filter,
+        scale: env.scale,
+        live: !!playing,
+      });
+      ctx.drawImage(out, 0, 0, w, h);
+    }
+  }
+  // captions show while the clip plays (Present, the editor's Play, a video download); at rest it is its first frame, without them
+  if (env.videoTime !== undefined) {
+    const text = captionNow(el, env.videoTime);
+    if (text) {
+      const style = clipCaptionStyle(el);
+      // a font of the app's own is loaded first: the page is painted again when it has come
+      if (style.family && !isFontReady(style.family, 600)) {
+        void ensureFont(style.family, 600);
+        env.pending = true;
+      }
+      drawCaption(ctx, text, w, h, style);
+    }
   }
   ctx.restore();
   if (el.stroke && el.stroke.width > 0) {
@@ -473,6 +710,9 @@ function paintByType(ctx: Ctx, el: DesignElement, env: Env): void {
     case "chart":
       drawChart(ctx, el);
       break;
+    case "video":
+      drawVideoElement(ctx, el, env);
+      break;
   }
 }
 
@@ -549,11 +789,19 @@ function drawAnimated(ctx: Ctx, el: DesignElement, env: Env, st: AnimState, unit
 /**
  * Paints `page` into `ctx`. The context's transform is reset; `opts.scale`
  * maps design px to canvas px and `opts.clip` selects the visible region.
+ * When `design.pages` holds `page`, the clips that run on under it from the pages before (core/carriedClips.ts) are painted over
+ * its background, behind its elements.
  * Returns true when everything (images, fonts) was ready.
  */
-export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, page: Page, opts: RenderOptions): boolean {
+export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height"> & { pages?: readonly Page[] }, page: Page, opts: RenderOptions): boolean {
   const { scale, clip } = opts;
   const env: Env = { scale, hide: opts.hide, pending: false, depth: 0 };
+  const videoTime = opts.playVideos?.time ?? opts.animation?.time;
+  if (opts.playVideos && videoTime !== undefined) {
+    env.videoTime = videoTime;
+    env.videoSound = !!opts.playVideos.sound;
+    env.videoFrame = opts.playVideos.frame;
+  }
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const part = opts.part;
@@ -573,6 +821,8 @@ export function renderPage(ctx: Ctx, design: Pick<Design, "width" | "height">, p
       ctx.restore();
     } else paintBackground(ctx, page.background, design.width, design.height, env);
   }
+  // the clips that run on from the pages before: with the background, under everything of the page's own
+  if (part?.background !== false) for (const el of opts.carried ?? carriedClips(design.pages, page)) drawElement(ctx, el, env);
   if (part) {
     for (let i = Math.max(0, part.from); i < Math.min(part.to, page.elements.length); i++) drawElement(ctx, page.elements[i], env);
   } else if (opts.animation) {
@@ -602,7 +852,12 @@ export function collectResources(page: Page): Resources {
   const visit = (el: DesignElement) => {
     if (el.hidden) return;
     if (el.type === "image" && el.src) r.images.add(el.src);
-    else if (el.type === "graphic") r.svgs.add(graphicMarkup(el));
+    else if (el.type === "video") {
+      r.images.add(videoPosterKey(el));
+      // a download waits for the font of its captions
+      const { family } = clipCaptionStyle(el);
+      if (family && clipCaptions(el).length) r.fonts.set(`${family}|600|false`, { family, weight: 600, italic: false });
+    } else if (el.type === "graphic") r.svgs.add(graphicMarkup(el));
     else if (el.type === "group") el.children.forEach(visit);
     else if (el.type === "text") {
       for (const p of el.paragraphs) {
@@ -620,9 +875,10 @@ export function collectResources(page: Page): Resources {
   return r;
 }
 
-/** Waits until every image, graphic and font the page needs is ready. */
-export async function preparePage(page: Page): Promise<void> {
-  const res = collectResources(page);
+/** Waits until every image, graphic and font the page needs is ready (with the clips that run on under it from `pages`). */
+export async function preparePage(page: Page, pages?: readonly Page[]): Promise<void> {
+  const carried = carriedClips(pages, page);
+  const res = collectResources(carried.length ? { ...page, elements: [...carried, ...page.elements] } : page);
   await Promise.all([
     ...[...res.images].map((s) => loadImage(s)),
     ...[...res.svgs].map((s) => loadSvgImage(s)),
@@ -635,7 +891,7 @@ export async function preparePage(page: Page): Promise<void> {
  * aspect ratio). Waits for fonts and images first - used by thumbnails and export.
  */
 export async function renderPageToCanvas(
-  design: Pick<Design, "width" | "height">,
+  design: Pick<Design, "width" | "height"> & { pages?: readonly Page[] },
   page: Page,
   opts: { width: number; transparent?: boolean; /** seconds into the page's animations */ time?: number },
 ): Promise<HTMLCanvasElement> {
@@ -645,7 +901,7 @@ export async function renderPageToCanvas(
   canvas.height = Math.max(1, Math.round(design.height * scale));
   const ctx = canvas.getContext("2d")!;
   for (let attempt = 0; attempt < 3; attempt++) {
-    await preparePage(page);
+    await preparePage(page, design.pages);
     const complete = renderPage(ctx, design, page, { scale, transparent: opts.transparent, animation: opts.time === undefined ? undefined : { time: opts.time } });
     if (complete) break;
   }

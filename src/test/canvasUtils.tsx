@@ -17,6 +17,7 @@ import { useGesture } from "@/editor/canvas/gestureStore";
 import { usePreview } from "@/editor/canvas/preview";
 import { designToScreen, initialMetrics, useView } from "@/editor/canvas/viewStore";
 import { Workspace } from "@/editor/canvas/Workspace";
+import { useTableCellEditor } from "@/editor/canvas/tableCellEditing";
 import { flush, resetEditor, stubLayout } from "./helpers";
 
 /** A one page design that fits the stubbed 1000 x 700 workspace at 100 % zoom. */
@@ -27,8 +28,9 @@ export function canvasDesign(elements: DesignElement[] = [], extra: Partial<Desi
 /** The module level stores the canvas keeps outside the document store; tests start from their initial values. */
 export function resetCanvasStores(): void {
   useView.setState({ ...initialMetrics });
-  useGesture.setState({ marquee: null, hud: null, drawPath: null, pen: null, active: false });
+  useGesture.setState({ marquee: null, hud: null, drawPath: null, connector: null, pen: null, active: false });
   usePreview.setState({ preview: null });
+  useTableCellEditor.setState({ editing: null });
   setContextMenuHandler(null);
 }
 

@@ -28,6 +28,12 @@ describe("resolveRunStyle", () => {
     expect(style).toEqual({ family: "Anton", weight: 400, italic: true, size: 40, color: "#ff0000", underline: true, strike: true, spacing: 20 });
   });
 
+  it("uses a numeric run weight instead of reducing it to bold", () => {
+    expect(resolveRunStyle(box("x", { fontWeight: 400 }), { text: "x", weight: 300 }).weight).toBe(300);
+    expect(resolveRunStyle(box("x", { fontWeight: 400 }), { text: "x", weight: 600 }).weight).toBe(600);
+    expect(resolveRunStyle(box("x", { fontWeight: 800 }), { text: "x", weight: 500, bold: true }).weight).toBe(500);
+  });
+
   it("makes a bold run at least bold and an un-bold run at most regular", () => {
     expect(resolveRunStyle(box("x", { fontWeight: 400 }), { text: "x", bold: true }).weight).toBe(700);
     expect(resolveRunStyle(box("x", { fontWeight: 900 }), { text: "x", bold: true }).weight).toBe(900);

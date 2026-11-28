@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, fireEvent } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createShape, createText } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
 import { boxOf, canvasDesign, currentPage, mountWorkspace, selectIds, type CanvasRig } from "@/test/canvasUtils";
@@ -440,5 +440,88 @@ describe("the browser's own touch gestures on the canvas", () => {
   it("are switched off for the workspace and for its scroller, so a pinch is not also answered by the page", () => {
     expect(rule(".cf-workspace")).toMatch(/touch-action:\s*none/);
     expect(rule(".cf-workspace__scroll")).toMatch(/touch-action:\s*none/);
+  });
+});
+
+describe("a double tap", () => {
+  // the text is on screen from (172, 448) to (472, about 496)
+  const text = () => createText({ id: "t", text: "Hello there", x: 100, y: 400, width: 300, fontSize: 40 });
+  const ON_T: [number, number] = [272, 468];
+  /** one finger down and up at a place, with the time of the event (ms) */
+  const tap = (rig: CanvasRig, at: [number, number], timeStamp: number, to: [number, number] = at) => {
+    fireEvent(
+      rig.host,
+      Object.assign(new MouseEvent("pointerdown", { bubbles: true, clientX: at[0], clientY: at[1], button: 0, buttons: 1 }), {
+        pointerId: 1,
+        pointerType: "touch",
+        isPrimary: true,
+      }),
+    );
+    const up = Object.assign(new MouseEvent("pointerup", { bubbles: true, clientX: to[0], clientY: to[1], button: 0 }), { pointerId: 1, pointerType: "touch", isPrimary: true });
+    Object.defineProperty(up, "timeStamp", { value: timeStamp });
+    fireEvent(rig.host, up);
+  };
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 120)));
+  let rigHost: Element | null = null;
+  beforeEach(() => {
+    // jsdom has no layout: what is under a point is the workspace
+    document.elementFromPoint = () => rigHost;
+  });
+  afterEach(() => {
+    rigHost = null;
+  });
+
+  it("opens a text for editing when the browser sends no dblclick (Firefox sends two clicks)", async () => {
+    const rig = await mountWorkspace(canvasDesign([text()]));
+    rigHost = rig.host;
+    tap(rig, ON_T, 1000);
+    tap(rig, [ON_T[0] + 6, ON_T[1] + 4], 1250);
+    await settle();
+    expect(state().editingTextId).toBe("t");
+  });
+
+  it("opens it once when the browser's own dblclick follows (Chrome, Safari)", async () => {
+    const rig = await mountWorkspace(canvasDesign([text()]));
+    rigHost = rig.host;
+    const start = vi.spyOn(getActions(), "startTextEdit");
+    tap(rig, ON_T, 1000);
+    tap(rig, ON_T, 1200);
+    rig.dblclick(200, 420);
+    await settle();
+    expect(state().editingTextId).toBe("t");
+    expect(start).toHaveBeenCalledTimes(1);
+    start.mockRestore();
+  });
+
+  it.each([
+    ["too slow", 1000, 1500, ON_T],
+    ["too far apart", 1000, 1200, [ON_T[0] + 60, ON_T[1]] as [number, number]],
+  ])("is not two taps %s", async (_, first, second, at) => {
+    const rig = await mountWorkspace(canvasDesign([text()]));
+    rigHost = rig.host;
+    tap(rig, ON_T, first);
+    tap(rig, at, second);
+    await settle();
+    expect(state().editingTextId).toBeNull();
+  });
+
+  it("is not a tap and a drag", async () => {
+    const rig = await mountWorkspace(canvasDesign([text()]));
+    rigHost = rig.host;
+    tap(rig, ON_T, 1000);
+    tap(rig, ON_T, 1200, [ON_T[0] + 40, ON_T[1]]);
+    await settle();
+    expect(state().editingTextId).toBeNull();
+  });
+
+  it("is not two taps with the mouse (the browser's dblclick is the mouse's)", async () => {
+    const rig = await mountWorkspace(canvasDesign([text()]));
+    rigHost = rig.host;
+    for (const t of [1000, 1200]) {
+      fireEvent.pointerDown(rig.host, { clientX: ON_T[0], clientY: ON_T[1], pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0, buttons: 1 });
+      fireEvent.pointerUp(rig.host, { clientX: ON_T[0], clientY: ON_T[1], pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0, timeStamp: t });
+    }
+    await settle();
+    expect(state().editingTextId).toBeNull();
   });
 });

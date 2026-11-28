@@ -3,7 +3,7 @@
  * plays and which way it travels, what a page looks like once its exits are left out, which frames are worth
  * painting, and how an automatic playback turns seconds into frames. `PresentPlayer` does the drawing.
  */
-import { evaluateAnimation, pageDuration } from "@/core/animation";
+import { evaluateAnimation, pageDuration, playsClip } from "@/core/animation";
 import { buildTimeline, frameAt, getTransitionPreset, transitionSeconds, type Timeline, type TimelineFrame } from "@/core/transition";
 import type { AnimDirection, DesignElement, Page } from "@/core/types";
 
@@ -82,6 +82,8 @@ export function stripExits(page: Page): Page {
  */
 export function isAnimating(page: Pick<Page, "elements" | "duration">, t: number): boolean {
   const duration = pageDuration(page);
+  // a clip plays for as long as the page is shown
+  if (page.elements.some(playsClip)) return true;
   return page.elements.some((el) => !el.hidden && !!el.animation && evaluateAnimation(el.animation, t, duration) !== null);
 }
 
@@ -99,8 +101,9 @@ export interface AutoplayPlan {
  * Follows the design's own timeline from the start of page `from`. With reduced motion the transitions are left
  * out of the timeline, so the pages simply follow one another for their durations.
  */
-export function planAutoplay(pages: readonly Pick<Page, "duration" | "transition">[], from: number, reduceMotion = false): AutoplayPlan {
-  const timeline = buildTimeline(reduceMotion ? pages.map((p) => ({ duration: p.duration })) : pages);
+export function planAutoplay(pages: readonly (Pick<Page, "duration" | "transition"> & { elements?: Page["elements"] })[], from: number, reduceMotion = false): AutoplayPlan {
+  // with reduced motion the transitions go, but a page still lasts as long as its clip: its elements stay
+  const timeline = buildTimeline(reduceMotion ? pages.map((p) => ({ duration: p.duration, elements: p.elements })) : pages);
   const seg = timeline.segments[Math.min(Math.max(0, from), timeline.segments.length - 1)];
   return { timeline, offset: seg ? seg.playStart : 0 };
 }

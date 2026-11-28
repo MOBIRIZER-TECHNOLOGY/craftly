@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createChart, createDesign, createGroup, createImage, createLine, createPage, createShape, createTable, createText } from "./factory";
+import { createChart, createDesign, createGroup, createImage, createLine, createPage, createShape, createTable, createText, createVideo } from "./factory";
 import {
   alignElements,
   applyTextProps,
@@ -359,6 +359,15 @@ describe("scaling", () => {
     expect(plain.radius).toBe(10);
   });
 
+  it("scales the corner radius and the outline of a clip as a picture's", () => {
+    const outlined = createVideo({ src: "asset:clip", radius: 5, stroke: { color: "#000000", width: 1, style: "solid" } });
+    scaleElement(outlined, 2, 4);
+    expect([outlined.radius, outlined.stroke!.width]).toEqual([15, 3]);
+    const plain = createVideo({ src: "asset:clip", radius: 5 });
+    scaleElement(plain, 2, 2);
+    expect([plain.radius, plain.stroke]).toEqual([10, null]);
+  });
+
   it("scales the cells and the grid of a table and its text and border", () => {
     const table = createTable({ width: 300, height: 90, colWidths: [100, 200], rowHeights: [30, 60], fontSize: 20, borderWidth: 2 }) as TableElement;
     scaleElement(table, 2, 3);
@@ -470,7 +479,17 @@ describe("normalizeParagraphs", () => {
   });
 
   it("tells runs apart by every style property", () => {
-    const differ = [{ bold: true }, { italic: true }, { underline: true }, { strike: true }, { color: "#ff0000" }, { size: 20 }, { font: "Lora" }, { spacing: 10 }];
+    const differ = [
+      { bold: true },
+      { weight: 300 },
+      { italic: true },
+      { underline: true },
+      { strike: true },
+      { color: "#ff0000" },
+      { size: 20 },
+      { font: "Lora" },
+      { spacing: 10 },
+    ];
     for (const style of differ) {
       expect(normalizeParagraphs([{ runs: [{ text: "a" }, { text: "b", ...style }] }])[0].runs, JSON.stringify(style)).toHaveLength(2);
     }

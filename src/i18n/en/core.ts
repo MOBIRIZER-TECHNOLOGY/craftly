@@ -52,6 +52,10 @@ export const core = {
     cannotCheck: "This browser cannot check font files, so the font was not added.",
     damaged: "This file could not be read as a font. It may be damaged.",
   },
+  unplayableVideo: "This browser cannot play this video. Try an MP4 (H.264) or WebM file.",
+  videoTooBig: (mb: number) => `This video is larger than ${mb} MB, the most Craftly keeps. Try a shorter or smaller file.`,
+  unplayableAudio: "This browser cannot play this sound. Try an MP3, M4A (AAC), WAV or Ogg file.",
+  audioTooBig: (mb: number) => `This sound is larger than ${mb} MB, the most Craftly keeps. Try a shorter or smaller file.`,
   undrawableSvg: "This SVG has parts Craftly does not keep, and it could not be drawn as a picture. Try a different file.",
   /** an edit of a shared design that could not be sent, when the reason has no words of its own */
   sharedImageNotSent: "Could not send a shared image.",

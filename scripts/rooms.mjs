@@ -68,11 +68,11 @@ async function list() {
     if (!page.next) break;
     after = page.next;
   }
-  const head = ["ROOM", "TITLE", "MADE (UTC)", "LAST USED (UTC)", "DESIGN", "IMAGES", "PEOPLE"];
+  const head = ["ROOM", "TITLE", "MADE (UTC)", "LAST USED (UTC)", "DESIGN", "IMAGES", "CLIPS", "PEOPLE"];
   const rows = rooms.map((room) =>
     room.error
-      ? [room.id, `(${room.error})`, "?", when(room.usedAt), "?", "?", String(room.people)]
-      : [room.id, plain(room.title), when(room.createdAt), when(room.usedAt), bytes(room.designBytes), bytes(room.imageBytes), String(room.people)],
+      ? [room.id, `(${room.error})`, "?", when(room.usedAt), "?", "?", "?", String(room.people)]
+      : [room.id, plain(room.title), when(room.createdAt), when(room.usedAt), bytes(room.designBytes), bytes(room.imageBytes), bytes(room.mediaBytes ?? 0), String(room.people)],
   );
   const widths = head.map((title, column) => Math.max(title.length, ...rows.map((row) => row[column].length)));
   for (const row of [head, ...rows])
@@ -82,7 +82,7 @@ async function list() {
         .join("  ")
         .trimEnd(),
     );
-  const held = rooms.reduce((sum, room) => sum + (room.designBytes ?? 0) + (room.imageBytes ?? 0), 0);
+  const held = rooms.reduce((sum, room) => sum + (room.designBytes ?? 0) + (room.imageBytes ?? 0) + (room.mediaBytes ?? 0), 0);
   const people = rooms.reduce((sum, room) => sum + room.people, 0);
   console.log(`\n${total} room${total === 1 ? "" : "s"} on ${server}, ${bytes(held)} in all, ${people} ${people === 1 ? "person" : "people"} connected now.`);
 }

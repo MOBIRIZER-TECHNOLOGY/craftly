@@ -1,7 +1,7 @@
 /*
  * Starts the bundle of the live server as an operator would and checks that it works: `node dist-server/live.mjs` on a free
  * port with an empty temporary data folder, GET /api/health until it answers 200, POST /api/rooms with a small design (201
- * with a room and three keys, and the data folder is no longer empty), then SIGTERM and exit code 0. Anything else fails
+ * with a room and three keys, and the data folder is no longer empty, its folder 700 and its file 600 off Windows), then SIGTERM and exit code 0. Anything else fails
  * with exit code 1 and prints what the server wrote.
  *
  *   npm run server:smoke      (builds the bundle first: npm run server:build)
@@ -11,7 +11,7 @@
  * Linux and macOS only, which is where CI runs.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -24,6 +24,11 @@ const STOP_MS = 10_000;
 const windows = process.platform === "win32";
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+/** `promise`, or null after `ms`: the timer is cleared when the promise comes first, so it keeps nothing running */
+function within(promise, ms) {
+  let timer;
+  return Promise.race([promise, new Promise((done) => (timer = setTimeout(() => done(null), ms)))]).finally(() => clearTimeout(timer));
+}
 
 /** A port that was free a moment ago: the system chooses one, and it is given back before the server takes it. */
 function freePort() {
@@ -100,9 +105,16 @@ async function main() {
       if (typeof made[field] !== "string" || !made[field]) throw new Error(`POST /api/rooms: the answer has no ${field}`);
     }
     if (!existsSync(dataDir) || readdirSync(dataDir).length === 0) throw new Error(`the room was made, but nothing was written to the data folder ${dataDir}`);
+    // what the server writes is for itself alone (process.umask in src/server/main.ts); Windows has no such modes
+    if (!windows) {
+      for (const [what, file, want] of [["the data folder", dataDir, 0o700], ...readdirSync(dataDir).map((name) => ["the room's file " + name, join(dataDir, name), 0o600])]) {
+        const mode = statSync(file).mode & 0o777;
+        if (mode !== want) throw new Error(`${what} is ${mode.toString(8)}, not ${want.toString(8)}: other users of the machine could read it`);
+      }
+    }
 
     child.kill("SIGTERM");
-    const stopped = await Promise.race([exited, sleep(STOP_MS).then(() => null)]);
+    const stopped = await within(exited, STOP_MS);
     if (!stopped) throw new Error(`the server was still running ${STOP_MS / 1000} s after SIGTERM`);
     if (!windows && stopped.code !== 0) throw new Error(`the server did not stop cleanly after SIGTERM (exit code ${stopped.code}, signal ${stopped.signal})`);
 
@@ -115,16 +127,18 @@ async function main() {
   } finally {
     if (!exit) {
       child.kill("SIGKILL");
-      await Promise.race([exited, sleep(2000)]);
+      await within(exited, 2000);
     }
     rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }
 
+// exitCode and not process.exit(): on Windows, Node 24 stops on a libuv assertion ("UV_HANDLE_CLOSING", exit code 127) when
+// it is made to exit while fetch's connections are still closing
 main().then(
-  () => process.exit(0),
+  () => (process.exitCode = 0),
   (error) => {
     console.error(`Server smoke test failed: ${error instanceof Error ? error.message : error}`);
-    process.exit(1);
+    process.exitCode = 1;
   },
 );

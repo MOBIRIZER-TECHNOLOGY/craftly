@@ -1,4 +1,14 @@
-import { forwardRef, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from "react";
+import {
+  forwardRef,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { createPortal } from "react-dom";
 import "./Popover.css";
 import { cx } from "./cx";
@@ -169,6 +179,16 @@ function PopoverPanel({
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (trapFocus && panelRef.current) trapTab(e, panelRef.current);
   };
+  // Focus that leaves something inside the open panel for nowhere (a number field drops its edit on Escape and lets go of the
+  // focus) would land on the page itself, where a keyboard or a screen reader is lost and the next Escape reaches nothing: the
+  // panel takes it back, so the next Escape closes it and gives the keyboard back to what opened it.
+  const onBlur = (e: ReactFocusEvent<HTMLDivElement>) => {
+    if (!trapFocus || e.relatedTarget || e.target === panelRef.current) return;
+    requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (panel?.isConnected && (document.activeElement === document.body || document.activeElement === null)) panel.focus({ preventScroll: true });
+    });
+  };
 
   return createPortal(
     <div
@@ -181,6 +201,7 @@ function PopoverPanel({
       tabIndex={-1}
       style={style}
       onKeyDown={onKeyDown}
+      onBlur={onBlur}
       {...aria}
     >
       {children}

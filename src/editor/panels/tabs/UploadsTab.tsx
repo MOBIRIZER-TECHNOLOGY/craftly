@@ -1,9 +1,41 @@
-import { useMemo, useRef, useState, type DragEvent } from "react";
-import { addAssetFromFile, assetSrc, deleteAsset, isAcceptedImage, renameAsset } from "@/core/assets";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  ACCEPTED_AUDIO_TYPES,
+  ACCEPTED_VIDEO_TYPES,
+  addAssetFromFile,
+  assetSrc,
+  audioInfo,
+  deleteAsset,
+  isAcceptedAudio,
+  isAcceptedImage,
+  isAcceptedVideo,
+  renameAsset,
+  videoInfo,
+} from "@/core/assets";
 import type { Asset } from "@/core/types";
-import { insertImage } from "@/editor/insert";
+import { insertImage, insertVideo } from "@/editor/insert";
+import { clipClock } from "@/render/videos";
 import { m } from "@/i18n";
-import { Button, IconButton, IconCloudUpload, IconCopy, IconMore, IconSearch, IconTrash, IconUpload, MenuPopover, Skeleton, TextField, confirm, cx, toast } from "@/ui";
+import { RecordDialog } from "@/editor/record/RecordDialog";
+import { addSoundToDesign } from "@/editor/timeline/addSound";
+import {
+  Button,
+  IconAudio,
+  IconButton,
+  IconCloudUpload,
+  IconCopy,
+  IconMore,
+  IconRecord,
+  IconSearch,
+  IconTrash,
+  IconUpload,
+  MenuPopover,
+  Skeleton,
+  TextField,
+  confirm,
+  cx,
+  toast,
+} from "@/ui";
 import { DraggableItem } from "../shared/DraggableItem";
 import { EmptyHint } from "../shared/EmptyHint";
 import { useAssetUrl, useAssets, useDebounced } from "../shared/hooks";
@@ -14,7 +46,7 @@ import { IconPencilLine } from "../shared/icons";
 import "./UploadsTab.css";
 
 /**
- * Uploads: the images you added, stored in your browser. Upload with the button, by dropping files on the panel,
+ * Uploads: the images and videos you added, stored in your browser. Upload with the button, by dropping files on the panel,
  * or by dropping them straight onto the page. Click an upload to place it, drag it to drop it where you want.
  */
 export default function UploadsTab() {
@@ -22,6 +54,7 @@ export default function UploadsTab() {
   const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(0);
+  const [recording, setRecording] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const depth = useRef(0);
   const q = useDebounced(query, 120).trim().toLowerCase();
@@ -29,7 +62,7 @@ export default function UploadsTab() {
   const shown = useMemo(() => (assets ?? []).filter((a) => !q || a.name.toLowerCase().includes(q)), [assets, q]);
 
   const upload = async (files: File[]) => {
-    const images = files.filter(isAcceptedImage);
+    const images = files.filter((file) => isAcceptedImage(file) || isAcceptedVideo(file) || isAcceptedAudio(file));
     if (files.length && !images.length) {
       toast.error(m.panelsTabs.uploads.notImages);
       return;
@@ -40,8 +73,10 @@ export default function UploadsTab() {
     for (const file of images) {
       try {
         await addAssetFromFile(file);
-      } catch {
-        failed++;
+      } catch (error) {
+        // a video or a sound that is too big or cannot be played here says so itself; a picture that failed is counted
+        if ((isAcceptedVideo(file) || isAcceptedAudio(file)) && error instanceof Error) toast.error(error.message);
+        else failed++;
       } finally {
         setUploading((n) => n - 1);
       }
@@ -63,13 +98,19 @@ export default function UploadsTab() {
     <Panel>
       <PanelTop>
         <PanelSearch value={query} onChange={setQuery} placeholder={m.panelsTabs.uploads.search} />
-        <Button variant="primary" size="lg" block icon={<IconUpload />} loading={uploading > 0} onClick={() => fileRef.current?.click()}>
-          {m.panelsTabs.uploads.uploadFiles}
-        </Button>
+        <div className="cf-uploads__actions">
+          <Button variant="primary" size="lg" block icon={<IconUpload />} loading={uploading > 0} onClick={() => fileRef.current?.click()}>
+            {m.panelsTabs.uploads.uploadFiles}
+          </Button>
+          <Button variant="secondary" size="lg" icon={<IconRecord />} title={m.panelsTabs.uploads.recordTip} onClick={() => setRecording(true)}>
+            {m.panelsTabs.uploads.record}
+          </Button>
+        </div>
+        <RecordDialog open={recording} onClose={() => setRecording(false)} />
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept={["image/*", ...ACCEPTED_VIDEO_TYPES, ...ACCEPTED_AUDIO_TYPES, ".mp3", ".m4a", ".wav", ".ogg", ".flac"].join(",")}
           multiple
           hidden
           onChange={(e) => {
@@ -178,6 +219,8 @@ function EmptyIntro({ dragging, onBrowse }: { dragging: boolean; onBrowse: () =>
 /* one upload                                                           */
 /* ------------------------------------------------------------------ */
 
+const knownLength = (seconds: number) => (Number.isFinite(seconds) && seconds > 0 ? seconds : 0);
+
 function UploadCard({ asset }: { asset: Asset }) {
   const url = useAssetUrl(asset.id);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -185,7 +228,30 @@ function UploadCard({ asset }: { asset: Asset }) {
   const [name, setName] = useState(asset.name);
   const menuRef = useRef<HTMLButtonElement>(null);
 
-  const insert = () => void insertImage(assetSrc(asset.id), asset.width, asset.height);
+  const clip = asset.kind === "video";
+  const sound = asset.kind === "audio";
+  // the length of a clip, read from the card's own <video> once it knows it (0 until then)
+  const [duration, setDuration] = useState(0);
+  // a clip recorded in a browser does not say its length until it has been read to the end: videoInfo finds it then
+  // the length of a sound, read once from its first bytes
+  useEffect(() => {
+    if (!sound) return;
+    let live = true;
+    void audioInfo(asset.blob).then((info) => live && setDuration(knownLength(info?.duration ?? 0)));
+    return () => {
+      live = false;
+    };
+  }, [sound, asset.blob]);
+  const lengthFrom = (seconds: number) => {
+    if (knownLength(seconds)) setDuration(seconds);
+    else void videoInfo(asset.blob).then((info) => setDuration(knownLength(info?.duration ?? 0)));
+  };
+  const insert = () => {
+    if (sound) return void addSoundToDesign(asset, duration);
+    if (!clip) return void insertImage(assetSrc(asset.id), asset.width, asset.height);
+    if (duration > 0) return void insertVideo(assetSrc(asset.id), asset.width, asset.height, duration, undefined, asset.name);
+    void videoInfo(asset.blob).then((info) => insertVideo(assetSrc(asset.id), asset.width, asset.height, info?.duration || 1, undefined, asset.name));
+  };
 
   const commitRename = () => {
     setRenaming(false);
@@ -197,7 +263,7 @@ function UploadCard({ asset }: { asset: Asset }) {
   const remove = async () => {
     const ok = await confirm({
       title: m.panelsTabs.uploads.deleteTitle(asset.name),
-      message: m.panelsTabs.uploads.deleteText,
+      message: sound ? m.panelsTabs.uploads.deleteSoundText : clip ? m.panelsTabs.uploads.deleteVideoText : m.panelsTabs.uploads.deleteText,
       confirmLabel: m.common.delete,
       danger: true,
     });
@@ -209,18 +275,44 @@ function UploadCard({ asset }: { asset: Asset }) {
 
   return (
     <div className="cf-uploads__card">
-      <DraggableItem
-        label={m.panelsTabs.uploads.addToPage(asset.name)}
-        onInsert={insert}
-        getPayload={() => ({ type: "image", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, name: asset.name })}
-        className="cf-uploads__item"
-        tooltip={false}
-      >
-        <div className="cf-uploads__thumb" style={{ aspectRatio: `${asset.width} / ${asset.height}` }}>
-          {url ? <img src={url} alt="" draggable={false} /> : <Skeleton width="100%" height="100%" radius={0} className="cf-uploads__shimmer" />}
-        </div>
-        {renaming ? null : <span className="cf-uploads__name">{asset.name}</span>}
-      </DraggableItem>
+      {sound ? (
+        // a sound has no place on the page: a click puts it on the timeline
+        <button type="button" className="cf-uploads__item cf-uploads__sounditem" aria-label={m.panelsTabs.uploads.addToTimeline(asset.name)} onClick={insert}>
+          <span className="cf-uploads__thumb cf-uploads__sound">
+            <IconAudio aria-hidden="true" />
+            <span className="cf-uploads__badge">{duration > 0 ? clipClock(duration) : m.panelsTabs.uploads.sound}</span>
+          </span>
+          {renaming ? null : <span className="cf-uploads__name">{asset.name}</span>}
+        </button>
+      ) : (
+        <DraggableItem
+          label={m.panelsTabs.uploads.addToPage(asset.name)}
+          onInsert={insert}
+          getPayload={() =>
+            clip
+              ? { type: "video", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, duration: duration || 1, name: asset.name }
+              : { type: "image", src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, name: asset.name }
+          }
+          className="cf-uploads__item"
+          tooltip={false}
+        >
+          <div className="cf-uploads__thumb" style={{ aspectRatio: `${asset.width} / ${asset.height}` }}>
+            {!url ? (
+              <Skeleton width="100%" height="100%" radius={0} className="cf-uploads__shimmer" />
+            ) : clip ? (
+              <>
+                <video src={url} muted preload="metadata" playsInline draggable={false} onLoadedMetadata={(e) => lengthFrom(e.currentTarget.duration)} />
+                <span className="cf-uploads__badge" aria-label={m.panelsTabs.uploads.video}>
+                  {duration > 0 ? clipClock(duration) : m.panelsTabs.uploads.video}
+                </span>
+              </>
+            ) : (
+              <img src={url} alt="" draggable={false} />
+            )}
+          </div>
+          {renaming ? null : <span className="cf-uploads__name">{asset.name}</span>}
+        </DraggableItem>
+      )}
       {renaming ? (
         <div className="cf-uploads__rename">
           <TextField
@@ -258,7 +350,12 @@ function UploadCard({ asset }: { asset: Asset }) {
         placement="bottom-end"
         aria-label={m.panelsTabs.uploads.actions(asset.name)}
         items={[
-          { id: "insert", label: m.panelsTabs.uploads.insert, icon: <IconCopy />, onSelect: insert },
+          {
+            id: "insert",
+            label: sound ? m.panelsTabs.uploads.addToTimeline(asset.name) : m.panelsTabs.uploads.insert,
+            icon: sound ? <IconAudio /> : <IconCopy />,
+            onSelect: insert,
+          },
           {
             id: "rename",
             label: m.panelsTabs.uploads.rename,

@@ -119,6 +119,8 @@ let shotN = 0;
       for (const el of root.querySelectorAll("button, summary, a[href], input, select, textarea, [role=button]")) {
         const box = el.getBoundingClientRect();
         if (!box.width || !box.height) continue;
+        // folded away: Firefox keeps a box for what a closed <details> hides
+        if (el.checkVisibility && !el.checkVisibility({ contentVisibilityAuto: true })) continue;
         const name = (el.textContent || el.getAttribute("aria-label") || el.tagName).trim().slice(0, 28);
         if (box.width < 24 || box.height < 24) small.push(`${name} ${Math.round(box.width)}x${Math.round(box.height)}`);
         if (box.right > window.innerWidth + 0.5) outside.push(`${name} ends at ${Math.round(box.right)} of ${window.innerWidth}`);

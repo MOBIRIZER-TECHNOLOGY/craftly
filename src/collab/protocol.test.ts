@@ -14,6 +14,14 @@ import { applyOps, type Op } from "./ops";
 const el = () => createShape("rect", { id: "a" });
 
 describe("checkOps", () => {
+  it("takes the sounds of a design that the app can use, and refuses any other", () => {
+    const song = { id: "au1", src: "asset:song", duration: 10, trimStart: 0, trimEnd: 10, startAt: 1 };
+    expect(checkOps([{ k: "design", set: { audio: [song] } }])).toEqual([{ k: "design", set: { audio: [song] } }]);
+    expect(checkOps([{ k: "design", unset: ["audio"] }])).toEqual([{ k: "design", unset: ["audio"] }]);
+    expect(checkOps([{ k: "design", set: { audio: "loud" } }])).toBe("design: the sounds of a design are a list");
+    expect(checkOps([{ k: "design", set: { audio: [{ ...song, src: "https://example.test/x.mp3" }] } }])).toBe("design: a sound of the design is not one the app can use");
+  });
+
   const good: Op[] = [
     { k: "design", set: { title: "T" }, unset: ["guides"] },
     { k: "page.add", page: { id: "p", background: { type: "solid", color: "#fff" }, elements: [el()] }, index: 0 },
@@ -58,6 +66,12 @@ describe("checkOps", () => {
     ["a page whose elements are not a list", [{ k: "page.add", page: { id: "p", elements: {} }, index: 0 }]],
     ["properties that are a list", [{ k: "el.set", page: "p", id: "a", set: [1] }]],
     ["properties that are null", [{ k: "el.set", page: "p", id: "a", set: null }]],
+    // a design that every later welcome would be refused for
+    ["a design with a title that is not text", [{ k: "design", set: { title: 5 } }]],
+    ["a design with a width of 0", [{ k: "design", set: { width: 0 } }]],
+    ["a design with a height that is not a number", [{ k: "design", set: { height: "100" } }]],
+    ["a design with a unit that is not text", [{ k: "design", set: { unit: 3 } }]],
+    ["a design with a type that is not text", [{ k: "design", set: { typeId: {} } }]],
     ["names to remove that are not text", [{ k: "el.set", page: "p", id: "a", unset: [1] }]],
     ["names to remove that are not a list", [{ k: "el.set", page: "p", id: "a", unset: "x" }]],
     ["far too many properties", [{ k: "el.set", page: "p", id: "a", set: Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`k${i}`, i])) }]],

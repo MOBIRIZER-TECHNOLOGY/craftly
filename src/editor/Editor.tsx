@@ -25,6 +25,8 @@ import { CommentsAnnouncer, CommentsPanel } from "./comments/CommentsPanel";
 import { closeComments } from "./comments/commentsStore";
 import { GridView } from "./pages/GridView";
 import { PageStrip } from "./pages/PageStrip";
+import { Timeline } from "./timeline/Timeline";
+import { useTimeline } from "./timeline/timelineStore";
 import { LeftRail } from "./panels/LeftRail";
 import { SidePanel } from "./panels/SidePanel";
 import { PresentMode } from "./present/PresentMode";
@@ -207,6 +209,7 @@ export function Editor({ designId }: { designId: string }) {
   const gridView = useEditor((s) => s.gridView);
   const notesOpen = useEditor((s) => s.notesOpen);
   const showPageStrip = useEditor((s) => s.showPageStrip);
+  const timelineOpen = useTimeline((s) => s.open);
   const presenting = useEditor((s) => s.presenting);
   const viewing = useEditor((s) => s.mode === "view");
 
@@ -286,7 +289,7 @@ export function Editor({ designId }: { designId: string }) {
               </Workspace>
             )}
             {notesOpen && !gridView ? <NotesPanel /> : null}
-            {showPageStrip && !gridView ? <PageStrip /> : null}
+            {timelineOpen && !gridView ? <Timeline /> : showPageStrip && !gridView ? <PageStrip /> : null}
             <BottomBar />
           </main>
           {/* a column beside the page area (not over it), so that the workspace and the bottom bar make room for it */}

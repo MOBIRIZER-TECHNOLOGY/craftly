@@ -1,10 +1,11 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { getActions } from "@/core/store";
 import type { TableElement, TextAlign } from "@/core/types";
 import { m } from "@/i18n";
 import { cx, IconAlignCenter, IconAlignLeft, IconAlignRight, IconButton, IconClose, IconPlus, NumberField, Button, Segmented, Switch } from "@/ui";
 import { addTableColumn, addTableRow, removeTableColumn, removeTableRow, tableSize } from "./dataEdit";
 import { ColorRow, TextCell } from "./DataControls";
+import { CellStyleEditor } from "./CellStyleEditor";
 import { importTableData, pasteIntoTableCell, tellImport } from "./dataImport";
 import { ImportData } from "./ImportData";
 import { Section } from "./PanelShell";
@@ -22,11 +23,13 @@ export function TableEditor({ table, focusCell }: { table: TableElement; focusCe
   const batch = useBatch();
   const { rows, cols } = tableSize(table);
   const grid = useRef<HTMLDivElement>(null);
+  const [selected, setSelected] = useState(focusCell ?? { row: 0, col: 0 });
 
   // Opened for one cell (a double click on the table): the keyboard goes into its field, so that what is typed next is the cell's
   // text and not a shortcut of the canvas. Asked again for the same cell, a new object arrives and the effect runs again.
   useEffect(() => {
     if (!focusCell) return;
+    setSelected(focusCell);
     const field = grid.current?.querySelector<HTMLInputElement>(`[data-cf-cell="${focusCell.row}:${focusCell.col}"]`);
     field?.focus();
     field?.select();
@@ -78,6 +81,7 @@ export function TableEditor({ table, focusCell }: { table: TableElement; focusCe
                   return !!result;
                 }}
                 onRemove={() => edit((t) => removeTableRow(t, r))}
+                onSelect={(c) => setSelected({ row: r, col: c })}
               />
             ))}
           </div>
@@ -91,6 +95,8 @@ export function TableEditor({ table, focusCell }: { table: TableElement; focusCe
           </Button>
         </div>
       </Section>
+
+      <CellStyleEditor table={table} cell={selected} />
 
       <ImportData hint={m.panelsContext.table.importHint} onImport={(text) => importTableData(table.id, text)} />
 
@@ -161,6 +167,7 @@ function TableRow({
   onText,
   onPaste,
   onRemove,
+  onSelect,
 }: {
   row: string[];
   r: number;
@@ -169,6 +176,7 @@ function TableRow({
   onText: (c: number, value: string) => void;
   onPaste: (c: number, text: string) => boolean;
   onRemove: () => void;
+  onSelect: (c: number) => void;
 }) {
   return (
     <>
@@ -181,6 +189,7 @@ function TableRow({
           cellKey={`${r}:${c}`}
           onText={(value) => onText(c, value)}
           onPasteText={(text) => onPaste(c, text)}
+          onSelect={() => onSelect(c)}
         />
       ))}
       <IconButton size="sm" label={m.panelsContext.shared.removeRow(r + 1)} icon={<IconClose />} disabled={!removable} onClick={onRemove} />

@@ -43,6 +43,9 @@ export const cloud = {
     /** the name a picture fetched from the server gets */
     uploadName: "Picture",
     uploadFailed: "A picture could not be fetched from the server. It shows as missing until it can be.",
+    clipName: "Clip",
+    clipFailed: "A clip or a sound could not be fetched from the server. It shows as an empty box until it can be.",
+    clipTooBig: (name: string) => `“${name}” is too large for the server: it stays on this device, and your other devices and your team see an empty box in its place.`,
     newer: "A design on the server is from a newer Craftly. Update Craftly to get it.",
     refused: (title: string) => `“${title}” could not be sent: the server refused it.`,
     full: "Your space on the server is full. Delete designs or uploads you no longer need.",

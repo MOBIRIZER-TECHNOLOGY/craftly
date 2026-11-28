@@ -140,6 +140,29 @@ describe("grouping", () => {
     const [a] = ungroup(p, g.id);
     expect(findElement(p, a)!.rotation).toBe(90);
   });
+  it("ungroup of a group mirrored on one axis turns the children the other way, as they were drawn", () => {
+    for (const axis of ["flipH", "flipV"] as const) {
+      const p = pageWith(2);
+      findElement(p, "e0")!.rotation = 30;
+      const g = groupElements(p, ["e0", "e1"])!;
+      g[axis] = true;
+      g.rotation = 10;
+      ungroup(p, g.id);
+      const child = findElement(p, "e0")!;
+      // drawn as rotate(10°) · mirror · rotate(30°) = rotate(10° − 30°) · mirror
+      expect(child.rotation).toBe(-20);
+      expect(child[axis]).toBe(true);
+    }
+  });
+  it("ungroup of a group mirrored on both axes (a half turn) keeps the children's turn", () => {
+    const p = pageWith(2);
+    findElement(p, "e0")!.rotation = 30;
+    const g = groupElements(p, ["e0", "e1"])!;
+    g.flipH = true;
+    g.flipV = true;
+    ungroup(p, g.id);
+    expect(findElement(p, "e0")!.rotation).toBe(30);
+  });
   it("ungroup gives the children the blend mode of the group, and keeps the one a child has of its own", () => {
     const p = pageWith(3);
     const g = groupElements(p, ["e0", "e1", "e2"])!;
@@ -242,5 +265,24 @@ describe("design resize", () => {
     resizeDesign(d, 800, 800, false);
     expect(d.pages[0].elements[0].width).toBe(40);
     expect(boundsOfElements(d.pages[0].elements)!.w).toBe(40);
+  });
+  it("smart resize keeps element sizes and moves their relative centres into the new page", () => {
+    const d = createDesign({ width: 1000, height: 500, pages: [pageWith(1)] });
+    const e = d.pages[0].elements[0];
+    e.x = 900;
+    e.y = 400;
+    resizeDesign(d, 500, 1000, false, true);
+    expect([e.width, e.height]).toEqual([40, 40]);
+    expect(e.x + e.width / 2).toBeCloseTo(460);
+    expect(e.y + e.height / 2).toBeCloseTo(840);
+  });
+  it("smart resize shrinks only elements too large for the new page", () => {
+    const d = createDesign({ width: 1000, height: 500, pages: [pageWith(1)] });
+    const e = d.pages[0].elements[0];
+    e.width = 600;
+    e.height = 200;
+    resizeDesign(d, 300, 800, false, true);
+    expect([e.width, e.height]).toEqual([300, 100]);
+    expect(e.x).toBe(0);
   });
 });

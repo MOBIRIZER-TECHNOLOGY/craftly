@@ -5,23 +5,29 @@
  *   GIF   frame `i` is painted at `i / fps`, quantised and handed to the `GifEncoder` straight away, as fast as the
  *         computer can go. The thread is given back to the browser after every frame, so progress is shown and
  *         Cancel works; only the latest frame and the bytes produced so far are ever in memory.
- *   WebM  the playback is painted onto a canvas in real time while `MediaRecorder` records it (see video.ts); a browser
- *         that records no WebM (Safari) records an MP4 the same way.
+ *   video frame `i` is painted at `i / fps` and encoded with the browser's own encoders (WebCodecs), as fast as the computer
+ *         can go, into an MP4 with the clips' sound (encode.ts, clipFrames.ts, clipSound.ts). A browser without WebCodecs
+ *         records the playback in real time with `MediaRecorder` instead (see video.ts), as a WebM, or an MP4 in Safari,
+ *         with no sound.
  *
  * Pictures are flattened onto white: neither format has an alpha channel worth using, and a page with a
  * see-through background would otherwise come out black in the video.
  */
+import { buildTimeline } from "@/core/transition";
 import type { Design } from "@/core/types";
 import { m } from "@/i18n";
 import { fontsEpoch } from "@/render/fonts";
 import { imagesEpoch } from "@/render/images";
 import { PlaybackRenderer } from "@/render/playback";
+import type { ClipFrameSource } from "@/render/renderPage";
+import { pauseVideos, prepareClips } from "@/render/videos";
 import { ExportError, throwIfAborted } from "../errors";
 import type { ExportFile, ExportProgress } from "../exporters";
 import { exportFileName, type ResolvedExport } from "../options";
 import { loadPageResources } from "../resources";
 import { nextMacrotask } from "../yield";
-import { VIDEO_FPS, animationProblem, frameDelays, frameTime, paletteSampleFrames, planFrames, videoBitrate, type AnimationPlan, type FramePlan } from "./frames";
+import type { ClipFrames } from "./clipFrames";
+import { VIDEO_FPS, soundingClips, animationProblem, frameDelays, frameTime, paletteSampleFrames, planFrames, videoBitrate, type AnimationPlan, type FramePlan } from "./frames";
 import { GifEncoder } from "./gif";
 import { ColorHistogram, buildPalette } from "./palette";
 import { detectVideoSupport, recordCanvas, videoContainer } from "./video";
@@ -33,6 +39,7 @@ const GIF_MAX_BYTES = 400 * 1024 * 1024;
 
 const TOO_BIG_TO_DRAW = m.exporting.animation.tooBigToDraw;
 const STALLED_NOTE = m.exporting.animation.stalled;
+const NO_SOUND_NOTE = m.exporting.animation.noSound;
 
 /* ------------------------------------------------------------------ */
 /* painting frames                                                     */
@@ -46,11 +53,15 @@ class FrameSource {
   private readonly width: number;
   private readonly height: number;
 
-  /** `readback` is for the GIF, which reads the pixels of every frame: it asks for a canvas that is cheap to read. */
+  /**
+   * `readback` is for the GIF, which reads the pixels of every frame: it asks for a canvas that is cheap to read. `clipFrames` hands
+   * over the clips' pictures for a video made frame by frame.
+   */
   constructor(
     design: Design,
     private readonly plan: AnimationPlan,
     readback: boolean,
+    clipFrames?: ClipFrameSource,
   ) {
     this.width = plan.width;
     this.height = plan.height;
@@ -61,7 +72,11 @@ class FrameSource {
     if (!ctx || this.canvas.width !== plan.width || this.canvas.height !== plan.height) throw new ExportError("too-large", TOO_BIG_TO_DRAW);
     this.ctx = ctx;
     // the timeline indexes the chosen pages, so the renderer gets exactly those, in playing order
-    this.renderer = new PlaybackRenderer({ width: design.width, height: design.height, pages: plan.pages.map((i) => design.pages[i]) });
+    // a video made frame by frame is handed each clip's frame (`clipFrames`); one recorded as it plays plays its clips (without their
+    // sound, which a recording does not have); a GIF is painted faster or slower than they would play, and holds each clip's first frame
+    const pages = plan.pages.map((i) => design.pages[i]);
+    const videos = readback ? undefined : clipFrames ? { frame: clipFrames } : { sound: false };
+    this.renderer = new PlaybackRenderer({ width: design.width, height: design.height, pages }, videos);
   }
 
   /** Paints the moment `t` seconds into the playback; false when an image or font was not ready. */
@@ -84,6 +99,18 @@ class FrameSource {
       const before = fontsEpoch() * 1_000_003 + imagesEpoch();
       if (this.paint(t) || fontsEpoch() * 1_000_003 + imagesEpoch() === before) return;
     }
+  }
+
+  /**
+   * `paintSettled` with the clips' frames read first: those the frame before asked for, `dt` seconds on; and when the page asked for
+   * one that was not read (a clip seen for the first time, a new page), it is read and the page painted again.
+   */
+  async paintWithClips(t: number, clips: ClipFrames, dt: number): Promise<void> {
+    await clips.prefetch(dt);
+    this.paintSettled(t);
+    if (!clips.incomplete) return;
+    await clips.fill();
+    this.paintSettled(t);
   }
 
   read(): ImageData {
@@ -192,29 +219,82 @@ async function exportGif(design: Design, plan: AnimationPlan, onProgress: Export
 /* WebM                                                                */
 /* ------------------------------------------------------------------ */
 
-async function exportWebm(design: Design, plan: AnimationPlan, onProgress: ExportProgress | undefined, signal: AbortSignal | undefined): Promise<ExportFile> {
+async function exportVideo(design: Design, plan: AnimationPlan, onProgress: ExportProgress | undefined, signal: AbortSignal | undefined): Promise<ExportFile> {
   const support = detectVideoSupport();
-  if (!support.ok || !support.mimeType) throw new ExportError("unsupported", support.reason ?? m.exporting.animation.cannotRecord);
+  if (support.offline) {
+    const file = await exportEncoded(design, plan, onProgress, signal);
+    if (file) return file;
+  }
+  if (!support.mimeType) throw new ExportError("unsupported", support.reason ?? m.exporting.animation.cannotRecord);
+  return exportRecorded(design, plan, support.mimeType, onProgress, signal);
+}
+
+/** The video made frame by frame, with the clips' sound; null when the browser can encode no video at this size. */
+async function exportEncoded(design: Design, plan: AnimationPlan, onProgress: ExportProgress | undefined, signal: AbortSignal | undefined): Promise<ExportFile | null> {
+  // Mediabunny is only needed here: it loads as its own chunk the first time a video is made, not for a GIF
+  const [{ chooseEncoding, encodeFrames }, { SOUND_RATE, mixClipSound }, { ClipFrames }] = await Promise.all([import("./encode"), import("./clipSound"), import("./clipFrames")]);
+  const pages = plan.pages.map((i) => design.pages[i]);
+  const bitrate = videoBitrate(plan.width, plan.height);
+  // a sound track when a clip makes a sound or the design has sounds of its own (a sound that plays outside the chosen pages leaves the mix silent)
+  const withSound = pages.some((page) => soundingClips(page.elements).length > 0) || !!design.audio?.length;
+  const encoding = await chooseEncoding(plan.width, plan.height, bitrate, SOUND_RATE, withSound);
+  if (!encoding) return null;
+  onProgress?.(0, plan.frames);
+  await loadPlanResources(design, plan, signal);
+  // the design's own sounds, from where the first chosen page starts in the design's time
+  const first = plan.pages[0] ?? 0;
+  const offset = (buildTimeline(design.pages).segments[first]?.playStart ?? 0) - (plan.timeline.segments[0]?.playStart ?? 0);
+  const sound = encoding.audio ? await mixClipSound(pages, plan.timeline, plan.total, signal, { tracks: design.audio ?? [], offset }) : null;
+
+  const timing = planFrames(plan.total, VIDEO_FPS);
+  const clips = new ClipFrames();
+  const source = new FrameSource(design, plan, false, clips.frame);
+  try {
+    const blob = await encodeFrames({
+      encoding,
+      canvas: source.canvas,
+      frames: timing.count,
+      fps: VIDEO_FPS,
+      bitrate,
+      sound,
+      paint: (i) => source.paintWithClips(frameTime(timing, i), clips, 1 / VIDEO_FPS),
+      onFrame: (done) => onProgress?.(Math.min(plan.frames, done), plan.frames),
+      signal,
+    });
+    onProgress?.(plan.frames, plan.frames);
+    // a clip makes a sound but this browser can encode none: the video is silent, and the person is told why
+    const note = withSound && !encoding.audio ? NO_SOUND_NOTE : undefined;
+    return { name: exportFileName(design.title, encoding.container), blob, note };
+  } finally {
+    source.dispose();
+    await clips.dispose();
+  }
+}
+
+/** The playback recorded in real time, without sound: for a browser without WebCodecs. */
+async function exportRecorded(design: Design, plan: AnimationPlan, mimeType: string, onProgress: ExportProgress | undefined, signal: AbortSignal | undefined): Promise<ExportFile> {
   onProgress?.(0, plan.frames);
   await loadPlanResources(design, plan, signal);
 
   const source = new FrameSource(design, plan, false);
+  await prepareClips(plan.pages.flatMap((i) => design.pages[i].elements));
   try {
     const result = await recordCanvas({
       canvas: source.canvas,
       paint: (seconds) => source.paintSettled(seconds),
       seconds: plan.total,
       fps: VIDEO_FPS,
-      mimeType: support.mimeType,
+      mimeType,
       bitsPerSecond: videoBitrate(plan.width, plan.height),
       // progress counts frames at the video's rate, like the GIF's, so one progress bar fits both
       onProgress: (seconds) => onProgress?.(Math.min(plan.frames, Math.round(seconds * VIDEO_FPS)), plan.frames),
       signal,
     });
     onProgress?.(plan.frames, plan.frames);
-    return { name: exportFileName(design.title, videoContainer(support.mimeType)), blob: result.blob, note: result.stalled ? STALLED_NOTE : undefined };
+    return { name: exportFileName(design.title, videoContainer(mimeType)), blob: result.blob, note: result.stalled ? STALLED_NOTE : undefined };
   } finally {
     source.dispose();
+    pauseVideos();
   }
 }
 
@@ -228,5 +308,5 @@ export async function exportAnimated(design: Design, resolved: ResolvedExport, o
   if (!plan) throw new Error("exportAnimated needs a gif or webm export.");
   const problem = animationProblem(plan);
   if (problem) throw new ExportError("too-large", problem);
-  return plan.format === "gif" ? exportGif(design, plan, onProgress, signal) : exportWebm(design, plan, onProgress, signal);
+  return plan.format === "gif" ? exportGif(design, plan, onProgress, signal) : exportVideo(design, plan, onProgress, signal);
 }

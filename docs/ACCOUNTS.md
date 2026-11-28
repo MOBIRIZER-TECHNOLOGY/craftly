@@ -90,6 +90,7 @@ with `Retry-After`.
 | `DELETE /api/spaces/:s/designs/:id` | a tombstone, kept 90 days |
 | `GET …/designs/:id/versions`, `POST …/designs/:id/restore {rev}` | revisions |
 | `PUT` / `GET /api/spaces/:s/assets/:id`, `POST …/assets/missing {ids}` | uploads, with the checks room pictures get and `svgProblem` |
+| `PUT` / `GET` / `HEAD /api/spaces/:s/media/:id` | clips and sounds, as themselves and streamed ("Clips and sounds" below) |
 | `PUT` / `DELETE /api/spaces/:s/folders/:id` | folders |
 | `POST /api/spaces/:s/designs/:id/live` | the live room of a team design, made when needed |
 
@@ -258,10 +259,12 @@ design above, or says more:
   minutes), and its socket is sent away the same way. Looking again is not a use of the session (a browser's own requests are,
   its sync every minute), so a socket alone does not keep a session alive.
 - **Metrics** (`craftly_live_`): `bound_rooms_made_total`, `session_joins_total`, `session_joins_refused_total`,
-  `write_backs_total`, `write_back_failures_total`, `write_back_copies_total`, `write_backs_dropped_total`, the gauge
+  `write_backs_total`, `write_back_failures_total`, `write_back_copies_total`, `write_backs_dropped_total`,
+  `write_back_files_refused_total`, the gauge
   `bound_rooms_in_memory`, and the reason `revoked` of `connections_closed_total`.
-- **Not built**: the client (joining with the session, "Edit live with your team", the viewer's read-only mode, asking again
-  after `no-access` and after a room that went away between `POST …/live` and the join, which answers `not-found`). A bound room
+- **The client** is built: joining with the session, "Edit live with your team" in Share, the viewer's read-only mode
+  (`src/editor/live/teamLive.ts`, `TeamLiveSection.tsx`; checked in the browser by `e2e/accounts.cjs`).
+- **Not built**: a bound room
   removed by the operator (`DELETE /api/admin/rooms/:id`) is not written back. A room kept on the disk whose design or space went
   while the server was not running (no hook told it) counts towards `MAX_ROOMS` until it is next loaded (a join, `POST …/live`,
   the sweep) and dropped.
@@ -391,6 +394,25 @@ the tab comes into view, 3 s after a save, every 60 s and on Sync now, backing o
   and is pushed as a new design, "Title (edited on Device)". At most 20 such copies a run; past that sync stops and says so.
 - **A design open in the editor** holds the lock `craftly-design-<id>`, and sync leaves it alone meanwhile.
 - **Uploads** are fetched when needed and kept with `cacheSharedAsset`.
+
+**Clips and sounds** (2026-11-27). A space keeps the clips of its designs' video elements and the files of their sounds, apart
+from the pictures: `PUT /api/spaces/:s/media/:id` takes the file itself, streamed, with its type in `Content-Type` (`MEDIA_TYPE`
+in `src/server/http.ts`: the video and audio types the app keeps; anything else `415 type`) and its size in `Content-Length`
+(none `411 length`). The size is weighed before a byte is read: over `maxMediaBytes` (`MAX_MEDIA_MB`, 100 MiB, the same setting
+as for a shared design's) is `413 too-big` with the limit, over what the space may still hold is `413 quota` (clips count towards
+`SPACE_QUOTA_MB` like everything else), and the connection is dropped. The bytes are counted and hashed as they come into
+`spaces/<s>/media/<random>.tmp`, and only a file that came whole is renamed into place (`<sha256(id)>.bin`) in the space's queue,
+where the quota is weighed again; the manifest lists it under `media` (type, size, SHA-256, seq), apart from `assets`, so that a
+browser from before, which fetches every upload of the feed as a picture, never meets one. The same clip again is `200`, another
+under its id `409 exists`. `GET` and `HEAD` give it back with its type, `Content-Disposition: attachment` and `nosniff`. Sync
+(`src/cloud/sync.ts`) sends a design's clips and sounds that are on the device and that the space has not got (`HEAD`, then
+`PUT`) after its pictures and before the design, and fetches those a pulled design uses that the device has not got, checked as
+uploads; a clip the server will not keep stays on the device it was added on, the run says so (or that the space is full), and
+the design goes all the same. Removing a space removes its folder of clips. A design edited live in a team's room gets its new
+uploads from the room: when the room writes the design back, the server brings into the space the pictures, clips and sounds
+the design names (`asset:<id>` anywhere in it) that the space has not got, checked and counted as an upload is; one that does not
+fit stays the room's, is written to the log and counted (`write_back_files_refused_total`), and the design is written back all
+the same.
 
 **Signing in where there are designs already**: "Move N designs into your account?" with Move all, Choose and Not now. Moving
 sets `space` and pushes with `baseRev: null`; a different design under that id on the server (409 `exists`) is pushed as a copy

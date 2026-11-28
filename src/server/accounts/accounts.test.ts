@@ -236,6 +236,35 @@ describe("signing in and out", () => {
     expect((await signIn(b, email, PASSWORD, from("10.0.0.1"))).status).toBe(200);
   });
 
+  it("lets the person in from an address they used lately when guesses from many addresses reach the account's limit", async () => {
+    const b = await boot({ limits: { signinPerAccount: 30 } }, { trustProxy: true });
+    const from = (ip: string) => ({ headers: { "x-forwarded-for": ip } });
+    // the person made the account and uses it from home
+    const { email, token } = await signUp(b);
+    expect((await call(b, "GET", "/api/me", { token, ...from("10.0.0.1") })).status).toBe(200);
+    // somebody guesses from three other networks (10 each, the limit of one address for one account): the account's limit is reached
+    for (const ip of ["10.0.1.1", "10.0.2.1", "10.0.3.1"]) {
+      for (let i = 0; i < 10; i++) expect((await signIn(b, email, "wrong password!", from(ip))).status).toBe(401);
+    }
+    // a new address is held back, the right password or not
+    expect((await signIn(b, email, PASSWORD, from("10.0.4.1"))).status).toBe(429);
+    // the person, from home, still gets in
+    expect((await signIn(b, email, PASSWORD, from("10.0.0.1"))).status).toBe(200);
+  });
+
+  it("does not stop a signed-in person changing their password when the account's sign-in limit is reached, and limits wrong old passwords for one session", async () => {
+    const b = await boot({ limits: { signinPerAccount: 10 } }, { trustProxy: true });
+    const from = (ip: string) => ({ headers: { "x-forwarded-for": ip } });
+    const { email, token } = await signUp(b);
+    for (let i = 0; i < 10; i++) expect((await signIn(b, email, "wrong password!", from("10.0.9.1"))).status).toBe(401);
+    // ten wrong old passwords for this session, spread over addresses, then the session is held back wherever it is
+    for (let i = 0; i < 10; i++) {
+      const wrong = await call(b, "POST", "/api/me/password", { token, body: { old: "wrong password!", new: "another long password" }, ...from(`10.1.${i}.1`) });
+      expect(wrong.status).toBe(401);
+    }
+    expect((await call(b, "POST", "/api/me/password", { token, body: { old: PASSWORD, new: "another long password" }, ...from("10.2.0.1") })).status).toBe(429);
+  });
+
   it("limits failed sign-ins from one address to 20 an hour over all accounts", async () => {
     const b = await boot({}, { trustProxy: true });
     const from = { headers: { "x-forwarded-for": "10.0.0.9" } };

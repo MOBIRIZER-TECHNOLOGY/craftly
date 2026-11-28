@@ -14,6 +14,7 @@ import {
   hitTestElement,
   lerp,
   normalizeDeg,
+  pageMargin,
   pointInRect,
   rectCenter,
   rectContains,
@@ -34,6 +35,13 @@ describe("number helpers", () => {
     expect(round(1.23456, 4)).toBe(1.2346);
     expect(round(1234.5, 0)).toBe(1235);
     expect(round(-1.005, 1)).toBe(-1);
+  });
+
+  it("uses the chosen page margin or 5% by default and keeps it within the page", () => {
+    expect(pageMargin(1000, 600)).toBe(30);
+    expect(pageMargin(1000, 600, 75.4)).toBe(75);
+    expect(pageMargin(1000, 600, -10)).toBe(0);
+    expect(pageMargin(1000, 600, 10000)).toBe(300);
   });
 
   it("measures the distance between two points", () => {

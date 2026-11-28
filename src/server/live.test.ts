@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { connect } from "node:net";
+import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
 import { join as join2 } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -97,6 +98,10 @@ function raw(b: Booted, room: string, key: string, address = `${b.ws}?room=${enc
   const say = (m: unknown) => ws.send(typeof m === "string" ? m : JSON.stringify(m));
   return { ws, heard, opened, closed: () => closed, say, join: (client: string) => say({ t: "join", client, key }) };
 }
+
+/** The bytes a PNG begins with: the server looks inside a picture (pictureProblem), so a test's picture starts as one does. */
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const pngOf = (text: string) => Buffer.concat([PNG, Buffer.from(text)]).toString("base64");
 
 const rename = (d: Design, title: string): Design => ({ ...d, title });
 const addShape = (d: Design, id: string): Design => ({
@@ -539,6 +544,12 @@ describe("a store that cannot be read", () => {
       loadAsset: async () => null,
       saveAsset: async () => undefined,
       assetBytes: async () => 0,
+      stageMedia: async () => null,
+      commitMedia: async () => undefined,
+      dropMedia: async () => undefined,
+      mediaInfo: async () => null,
+      mediaStream: () => Readable.from([]),
+      mediaBytes: async () => 0,
     };
     const log = logged();
     const b = await boot({}, failing);
@@ -904,6 +915,36 @@ describe("admission: what one visitor may cost the server", () => {
     await until("the connection to be closed", () => s.closed() === 1009);
   });
 
+  it("bounds how many messages may wait while the room is being read", async () => {
+    const slow = new (class extends MemoryStorage {
+      async load(id: string) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return super.load(id);
+      }
+    })();
+    const b = await boot({}, slow);
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    for (let i = 0; i < 65; i++) s.say({ t: "ping" });
+    await until("the connection to be closed", () => s.closed() === 1008);
+  });
+
+  it("bounds the bytes of messages that may wait while the room is being read", async () => {
+    const slow = new (class extends MemoryStorage {
+      async load(id: string) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return super.load(id);
+      }
+    })();
+    const b = await boot({ maxUnjoinedMessageBytes: 1024 }, slow);
+    const made = await makeRoom(b);
+    const s = raw(b, made.room, made.editKey);
+    await s.opened;
+    for (let i = 0; i < 300; i++) s.say("x".repeat(1000));
+    await until("the connection to be closed", () => s.closed() === 1008);
+  });
+
   /** A connection that may be refused before it is one: what the server answered the request with, or that it opened. */
   const knock = (b: Booted, room: string) =>
     new Promise<number | "open">((resolve) => {
@@ -952,7 +993,7 @@ describe("admission: what one visitor may cost the server", () => {
 });
 
 describe("an image that takes its time to arrive", () => {
-  const image = JSON.stringify({ mime: "image/png", base64: Buffer.from("a picture, as far as the server can tell").toString("base64") });
+  const image = JSON.stringify({ mime: "image/png", base64: pngOf("a picture, as far as the server can tell") });
 
   /** An upload whose first half has been sent and whose second half waits for `finish`; `status` is what the server answers in the end. */
   function slowUpload(b: Booted, made: Made, id: string) {
@@ -1127,7 +1168,7 @@ describe("looking after itself", () => {
 describe("who may ask, and how often an address may make a room", () => {
   const HOME = "https://app.example.test";
   const post = (b: Booted, headers: Record<string, string> = {}) => fetch(`${b.http}/api/rooms`, { method: "POST", headers, body: JSON.stringify({ design: design() }) });
-  const picture = JSON.stringify({ mime: "image/png", base64: Buffer.from("a picture").toString("base64") });
+  const picture = JSON.stringify({ mime: "image/png", base64: pngOf("a picture") });
   /** A connection that says which page it comes from, as a browser does: whether it opened, or what the server answered instead. */
   const knockFrom = (b: Booted, room: string, origin?: string) =>
     new Promise<number | "open">((resolve) => {
@@ -1337,7 +1378,7 @@ describe("a room that nobody uses any more", () => {
     const time = clock();
     const b = await boot({ roomTtlMs: 10 * DAY, sweepEveryMs: 20, now: time.now }, new MemoryStorage(time.now));
     const made = await makeRoom(b);
-    const image = JSON.stringify({ mime: "image/png", base64: Buffer.from("a picture").toString("base64") });
+    const image = JSON.stringify({ mime: "image/png", base64: pngOf("a picture") });
     const req = request(`${b.http}/api/rooms/${made.room}/assets/img-1`, {
       method: "PUT",
       headers: { "x-craftly-key": made.editKey, "content-length": Buffer.byteLength(image) },
@@ -1551,7 +1592,7 @@ describe("a room that nobody uses any more", () => {
 });
 
 describe("the images of a room", () => {
-  const picture = (text: string): SharedAsset => ({ mime: "image/png", base64: Buffer.from(text).toString("base64") });
+  const picture = (text: string): SharedAsset => ({ mime: "image/png", base64: pngOf(text) });
   const at = (b: Booted, made: Made, id: string) => `${b.http}/api/rooms/${made.room}/assets/${id}`;
   const put = (b: Booted, made: Made, id: string, image: SharedAsset) =>
     fetch(at(b, made, id), { method: "PUT", headers: { "x-craftly-key": made.editKey }, body: JSON.stringify(image) });
@@ -1611,8 +1652,22 @@ describe("the images of a room", () => {
     expect((await put(b, made, "img-1", picture("one"))).status).toBe(201);
     expect((await put(b, made, "img-1", picture("one"))).status).toBe(200);
     expect((await put(b, made, "img-1", picture("another"))).status).toBe(409);
-    expect((await put(b, made, "img-1", { ...picture("one"), mime: "image/jpeg" })).status).toBe(409);
+    // (the bytes of a PNG called a JPEG are refused before the name is looked at: they are not a JPEG)
+    expect((await put(b, made, "img-1", { ...picture("one"), mime: "image/jpeg" })).status).toBe(400);
     expect(await b.storage.loadAsset(made.room, "img-1")).toEqual(picture("one"));
+  });
+
+  it("refuses a drawing with a script and bytes that are not the picture they say, as a space does", async () => {
+    const b = await boot();
+    const made = await makeRoom(b);
+    const svg = (markup: string): SharedAsset => ({ mime: "image/svg+xml", base64: Buffer.from(markup).toString("base64") });
+    const hostile = await put(b, made, "img-1", svg('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'));
+    expect(hostile.status).toBe(400);
+    expect(((await hostile.json()) as { error: string }).error).toMatch(/this drawing cannot be kept/);
+    expect((await put(b, made, "img-2", { mime: "image/png", base64: Buffer.from("<html>not a picture</html>").toString("base64") })).status).toBe(400);
+    expect((await put(b, made, "img-3", svg('<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>'))).status).toBe(201);
+    expect(await b.storage.loadAsset(made.room, "img-1")).toBeNull();
+    expect(await b.storage.loadAsset(made.room, "img-2")).toBeNull();
   });
 
   it("holds no more images for a room than it may, counted over all of its files", async () => {
@@ -2080,7 +2135,7 @@ describe("the operator's tools", () => {
     fetch(`${b.http}/api/admin${path}`, { ...init, headers: { ...(key === null ? {} : { "x-craftly-admin-key": key }), ...(init.headers as Record<string, string>) } });
   type Listed = { id: string; title?: string; createdAt?: number; usedAt: number; designBytes?: number; imageBytes?: number; people: number; error?: string };
   type Listing = { rooms: Listed[]; total: number; next: string | null };
-  const png = { mime: "image/png", base64: Buffer.from("not really a picture, but long enough to weigh something").toString("base64") };
+  const png = { mime: "image/png", base64: pngOf("not really a picture, but long enough to weigh something") };
 
   it("does not exist unless the server was given a key for it", async () => {
     const b = await boot();
@@ -2123,6 +2178,7 @@ describe("the operator's tools", () => {
       usedAt: 1_700_000_000_000,
       designBytes: Buffer.byteLength(JSON.stringify(record.design)),
       imageBytes: 0,
+      mediaBytes: 0,
       people: 0,
     });
     expect(byId.get(second.room)).toMatchObject({ title: "The second", createdAt: 1_700_000_060_000, people: 2 });

@@ -9,7 +9,8 @@
  * whoever starts to share must show; not set: anybody may), and ADMIN_KEY (the operator's key for listing and removing rooms,
  * scripts/rooms.mjs; not set: there is no such interface), and METRICS_KEY (the key of a scraper for GET /metrics; not set: the
  * server shows no numbers), and ACCOUNTS (1 for accounts, teams and sync; off by default) with SIGNUP (invite, open or closed;
- * invite), MAX_ACCOUNTS (no limit) and SPACE_QUOTA_MB (1024). What is not set keeps the default
+ * invite), MAX_ACCOUNTS (no limit) and SPACE_QUOTA_MB (1024), and MAX_MEDIA_MB (100) and MAX_ROOM_MEDIA_MB (500), the largest clip or
+ * sound a shared design carries and the most one room keeps (0: none). What is not set keeps the default
  * of `createLiveServer`. SHUTDOWN_TIMEOUT_MS (10000) is how long the server may take to close when it
  * is told to stop. See docs/COLLABORATION.md and docs/DEPLOY.md.
  */
@@ -17,16 +18,28 @@ import { join } from "node:path";
 import { SIGNUP_MODES, type SignupMode } from "./accounts";
 import { FileAccounts } from "./accounts/storage";
 import { closeWithin, createLiveServer } from "./live";
-import { listenWarning } from "./listenWarning";
+import { removeLeftovers } from "./leftovers";
+import { listenWarning, openRoomsWarning } from "./listenWarning";
 import { FileStorage } from "./storage";
 
 const env = process.env;
+
+// What the server writes is for the server alone: rooms, uploads, and with ACCOUNTS=1 emails and password hashes. Files are
+// made 600 and folders 700, also in a folder of the host mounted into a container, where other users of that machine could
+// otherwise read them. A backup must run as the same user (or root). Before anything is written.
+process.umask(0o077);
 const number = (name: string, min: number, max: number) => {
   const raw = env[name];
   if (raw === undefined || raw.trim() === "") return undefined;
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}: expected an integer between ${min} and ${max}.`);
   return value;
+};
+
+/** A size given in MiB, as bytes; 0 lets no clip or sound be shared. */
+const megabytes = (name: string) => {
+  const value = number(name, 0, 1024 * 1024);
+  return value === undefined ? undefined : value * 1024 * 1024;
 };
 /** A setting that is on or off: 1 or true, 0 or false. Not set is off. */
 const flag = (name: string) => {
@@ -76,6 +89,8 @@ const accounts = accountsOn
       // none: no limit on the number of accounts
       maxAccounts: number("MAX_ACCOUNTS", 1, Number.MAX_SAFE_INTEGER),
       spaceQuotaBytes: (number("SPACE_QUOTA_MB", 1, 1024 * 1024) ?? 1024) * 1024 * 1024,
+      // the largest clip or sound of a space: the same setting as for a shared design's
+      maxMediaBytes: megabytes("MAX_MEDIA_MB"),
     }
   : undefined;
 
@@ -83,8 +98,14 @@ const server = createLiveServer({
   storage: new FileStorage(dataDir),
   allowOrigin: origins?.includes("*") ? "*" : origins,
   maxRooms: number("MAX_ROOMS", 1, Number.MAX_SAFE_INTEGER),
+  // the clips and sounds of shared designs, in MiB: the largest one, and the most one room keeps
+  maxMediaBytes: megabytes("MAX_MEDIA_MB"),
+  maxRoomMediaBytes: megabytes("MAX_ROOM_MEDIA_MB"),
+  maxStagingBytes: megabytes("MAX_STAGING_MB"),
   maxPeersPerRoom: number("MAX_PEERS_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),
   maxConnections: number("MAX_CONNECTIONS", 1, Number.MAX_SAFE_INTEGER),
+  maxConnectionsPerAddress: number("MAX_CONNECTIONS_PER_ADDRESS", 1, Number.MAX_SAFE_INTEGER),
+  maxTotalBufferedBytes: megabytes("MAX_TOTAL_BUFFERED_MB"),
   maxWaitingPerRoom: number("MAX_WAITING_PER_ROOM", 1, Number.MAX_SAFE_INTEGER),
   // edits that may wait in one room to be saved, and how many one write saves (group commit)
   maxQueuedBatches: number("MAX_QUEUED_BATCHES", 1, Number.MAX_SAFE_INTEGER),
@@ -111,12 +132,19 @@ const server = createLiveServer({
   accounts,
 });
 
+// what an earlier run left half-written (a clip being received when it was stopped): nothing is at work yet
+const left = await removeLeftovers(dataDir);
+if (left.files) console.log(`Removed ${left.files} half-written file${left.files === 1 ? "" : "s"} (${Math.ceil(left.bytes / 1024)} KiB) that an earlier run left in ${dataDir}`);
+
 const host = env.HOST ?? "127.0.0.1";
 const address = await server.listen(number("PORT", 0, 65535) ?? 8787, host);
 console.log(`Craftly live server on http://${host}:${address.port} (rooms are kept in ${dataDir}${accounts ? `; accounts are on, sign-up is ${accounts.signup}` : ""})`);
 // Reachable from other machines, the server needs a proxy with TLS in front of it, and says so (src/server/listenWarning.ts).
 const warning = listenWarning(host);
 if (warning) console.warn(warning);
+// and whoever may make rooms, and how long they are kept, is said too (also behind a proxy, where HOST is this machine alone)
+const rooms = openRoomsWarning({ roomCreateKey: env.ROOM_CREATE_KEY?.trim() || undefined, roomTtlDays });
+if (rooms) console.warn(rooms);
 
 // Told to stop, the server saves what is at work and closes every connection. That may hang (a disk that does not answer, an
 // upload that never ends) or fail, and a process that then stays for ever is killed by whatever runs it, without a word in the

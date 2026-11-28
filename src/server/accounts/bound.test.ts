@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 import { joinCredential, SESSION_TOKEN, type ServerMsg } from "@/collab/protocol";
-import { createPage, createShape } from "@/core/factory";
+import { createImage, createPage, createShape, createVideo } from "@/core/factory";
 import type { DesignComment } from "@/core/types";
 import { parseMetrics } from "../metricsText";
 import { FileStorage, MemoryStorage, ROOM_ID, type LiveStorage } from "../storage";
@@ -335,6 +335,66 @@ describe("writing back", () => {
     const now = await metrics(b);
     expect(now("write_backs_total")).toBe(1);
     expect(now("write_back_failures_total")).toBe(0);
+  });
+
+  it("brings the pictures, clips and sounds the design uses from the room into the space, so that a member who was not there gets them", async () => {
+    const b = await boot({}, { idleCloseMs: IDLE });
+    const { owner, teamId, members } = await teamWith(b, ["editor"]);
+    const { room } = (await openLive(b, members[0].token, teamId)).body;
+    const s = await member(b, room, members[0].token, "eddie");
+    const png = { mime: "image/png", base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" };
+    expect((await call(b, "PUT", `/api/rooms/${room}/assets/a_pic`, { token: members[0].token, body: png })).status).toBe(201);
+    const clip = Uint8Array.from({ length: 3000 }, (_, i) => i % 251);
+    const sound = Uint8Array.from({ length: 500 }, (_, i) => (i * 7) % 256);
+    const putClip = (id: string, bytes: Uint8Array, mime: string) =>
+      fetch(`${b.base}/api/rooms/${room}/media/${id}`, {
+        method: "PUT",
+        headers: { origin: ORIGIN, authorization: `Bearer ${members[0].token}`, "content-type": mime },
+        body: new Blob([bytes as BlobPart]),
+      });
+    expect((await putClip("a_clip", clip, "video/webm")).status).toBe(201);
+    expect((await putClip("a_sound", sound, "audio/wav")).status).toBe(201);
+    // one more that the design does not use: it stays the room's
+    expect((await putClip("a_unused", sound, "audio/wav")).status).toBe(201);
+    const image = createImage({ id: "i", src: "asset:a_pic", naturalWidth: 1, naturalHeight: 1 });
+    const video = createVideo({ id: "v", src: "asset:a_clip", naturalWidth: 16, naturalHeight: 9, duration: 1 });
+    expect((await edit(s, [{ k: "el.add", page: "p", parent: null, index: 1, el: image }])).t).toBe("ack");
+    expect((await edit(s, [{ k: "el.add", page: "p", parent: null, index: 2, el: video }])).t).toBe("ack");
+    const audio = [{ id: "au", src: "asset:a_sound", name: "Tone", duration: 1, trimStart: 0, trimEnd: 1, startAt: 0 }];
+    expect((await edit(s, [{ k: "design", set: { audio } }])).t).toBe("ack");
+    s.ws.close();
+    await until("the design to be written back", async () => (await call(b, "GET", `/api/spaces/${teamId}/designs/d1`, { token: owner.token })).body.rev === 2);
+    // the owner was never in the room
+    const space = (path: string) => fetch(`${b.base}/api/spaces/${teamId}/${path}`, { headers: { origin: ORIGIN, authorization: `Bearer ${owner.token}` } });
+    await until("the files to be in the space", async () => (await space("media/a_sound")).status === 200);
+    expect((await call(b, "GET", `/api/spaces/${teamId}/assets/a_pic`, { token: owner.token })).body).toMatchObject(png);
+    const gotClip = await space("media/a_clip");
+    expect(gotClip.headers.get("content-type")).toBe("video/webm");
+    expect(new Uint8Array(await gotClip.arrayBuffer())).toEqual(clip);
+    expect(new Uint8Array(await (await space("media/a_sound")).arrayBuffer())).toEqual(sound);
+    expect((await space("media/a_unused")).status).toBe(404);
+    const m = await b.storage.loadManifest(teamId);
+    expect(Object.keys(m.media ?? {}).sort()).toEqual(["a_clip", "a_sound"]);
+  });
+
+  it("writes the design back even when the space has no room left for its clips; they stay in the room", async () => {
+    const b = await boot({ spaceQuotaBytes: 4000 }, { idleCloseMs: IDLE });
+    const { owner, teamId, members } = await teamWith(b, ["editor"]);
+    const { room } = (await openLive(b, members[0].token, teamId)).body;
+    const s = await member(b, room, members[0].token, "eddie");
+    const big = new Uint8Array(3900).fill(3);
+    const res = await fetch(`${b.base}/api/rooms/${room}/media/a_big`, {
+      method: "PUT",
+      headers: { origin: ORIGIN, authorization: `Bearer ${members[0].token}`, "content-type": "video/mp4" },
+      body: new Blob([big as BlobPart]),
+    });
+    expect(res.status).toBe(201);
+    const video = createVideo({ id: "v", src: "asset:a_big", naturalWidth: 16, naturalHeight: 9, duration: 1 });
+    expect((await edit(s, [{ k: "el.add", page: "p", parent: null, index: 1, el: video }])).t).toBe("ack");
+    s.ws.close();
+    await until("the design to be written back", async () => (await call(b, "GET", `/api/spaces/${teamId}/designs/d1`, { token: owner.token })).body.rev === 2);
+    await until("the room to leave memory", () => b.server.rooms() === 0);
+    expect((await b.storage.loadManifest(teamId)).media ?? {}).toEqual({});
   });
 
   it("writes nothing when nothing changed", async () => {

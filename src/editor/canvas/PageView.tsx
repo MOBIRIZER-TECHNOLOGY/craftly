@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { getActivePage, useEditor } from "@/core/store";
 import { onFontsChange } from "@/render/fonts";
 import { onImagesChange } from "@/render/images";
+import { heldFrame } from "@/render/videos";
 import { createDragPainter } from "@/render/dragLayers";
 import { useGesture } from "./gestureStore";
 import { previewTime, stopPreview, usePreview } from "./preview";
@@ -50,7 +51,9 @@ export function PageView() {
       // a running preview paints the page part-way through its animations and keeps asking for the next frame
       const preview = usePreview.getState().preview;
       const time = preview ? previewTime(preview) : null;
-      const playing = preview !== null && time !== null && time < preview.until;
+      // a held preview (the timeline's playhead) shows its moment until something ends it; a running one ends at `until`
+      const held = !!preview?.paused;
+      const playing = preview !== null && time !== null && (held || time < preview.until);
       if (preview && !playing) queueMicrotask(stopPreview);
       const complete = painter.paint(
         ctx,
@@ -61,10 +64,13 @@ export function PageView() {
           clip: { x: (v.scrollLeft - v.pageLeft) / z, y: (v.scrollTop - v.pageTop) / z, w: v.width / z, h: v.height / z },
           hide,
           animation: playing && time !== null ? { time } : undefined,
+          // the preview plays the page's clips too, with their sound when it was started for them (the clip toolbar's Play); a held
+          // one shows each clip still at the frame of its moment
+          playVideos: !playing ? undefined : held ? { frame: heldFrame } : { sound: !!preview.sound },
         },
         useGesture.getState().active,
       );
-      if (playing) schedule();
+      if (playing && !held) schedule();
       // something (a font, an image) was still loading: its own event repaints, this is the safety net
       if (!complete && !pendingRetry) {
         pendingRetry = window.setTimeout(() => {

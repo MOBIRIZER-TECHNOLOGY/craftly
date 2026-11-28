@@ -144,3 +144,28 @@ describe("a font the design names that is not on this device", () => {
     expect(live<TextElement>(a).fontFamily).toBe("Acme Sans");
   });
 });
+
+describe("the weights of an uploaded family", () => {
+  it("lists a weight that has no common name by its number alone", async () => {
+    // a file states its weight on the scale of 100 to 900, but the faces registered here are not limited to the named steps
+    const face = (id: string, weight: number) => ({
+      id,
+      family: "Odd Grotesk",
+      minWeight: weight,
+      maxWeight: weight,
+      italic: false,
+      format: "ttf" as const,
+      data: new ArrayBuffer(8),
+    });
+    setCustomFaces([face("f_1", 350), face("f_2", 400), face("f_3", 700)]);
+    const a = createText({ text: "Font me", fontFamily: "Odd Grotesk", fontWeight: 350, x: 50, y: 50 });
+    openElements([a], { selected: [a] });
+    await openFont();
+    const weight = await screen.findByRole("combobox", { name: "Weight" });
+    expect(weight.textContent).toContain("350");
+    expect(weight.textContent).not.toContain("(350)");
+    const user = userEvent.setup();
+    await user.click(weight);
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["350", "Regular (400)", "Bold (700)"]);
+  });
+});

@@ -122,7 +122,10 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
       onChange(next);
       onCommit?.(next);
     }
-    requestAnimationFrame(() => inputRef.current?.select());
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (input && document.activeElement === input) input.select();
+    });
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -156,9 +159,10 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
     const text = formatValue(value, precision);
     setDraft(text);
     const input = e.currentTarget;
-    // select the number so typing replaces it - unless something was typed before the frame came, which must survive
+    // select the number so typing replaces it - unless something was typed before the frame came, which must survive, or the
+    // focus has gone on by then (Tab held down, a screen reader moving quickly): in Chrome select() would take the focus back
     requestAnimationFrame(() => {
-      if (input.value === text) input.select();
+      if (input.value === text && document.activeElement === input) input.select();
     });
   };
 

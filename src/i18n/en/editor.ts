@@ -82,6 +82,8 @@ export const editor = {
     hide: "Hide",
     replaceImage: "Replace image",
     altText: "Alternative text",
+    link: "Link",
+    editLink: "Edit link",
   },
 
   /** the toolbars (src/editor/toolbar) */
@@ -167,12 +169,22 @@ export const editor = {
   shapeBar: {
     editPoints: "Edit points",
     editPointsTip: "Move, add and delete the points of this path",
+    useAsFrame: "Use as picture frame",
     combine: "Combine",
     combineTip: "Join the selected shapes into one, or cut one out of another",
+    shapeOptions: "Shape options",
+    shapeOptionsTip: "Sides, points and other numbers of this shape",
+    /** a control whose value is a percentage */
+    percent: (label: string) => `${label} (%)`,
+    params: { sides: "Sides", points: "Points", inner: "Inner size", lobes: "Lobes", amp: "Depth of the lobes", hole: "Size of the hole" },
     lineColor: "Line color",
     lineWeight: "Line weight",
     weight: "Weight",
     lineStyle: "Line style",
+    routing: "Connector route",
+    routes: { straight: "Straight", elbow: "Elbow", curved: "Curved" },
+    lineLabel: "Line label",
+    lineLabelTip: "Text drawn at the middle of the line",
     startArrowhead: "Start arrowhead",
     start: "Start",
     endArrowhead: "End arrowhead",
@@ -200,9 +212,103 @@ export const editor = {
     uploadTip: "Upload a picture into this frame",
     zoom: "Zoom",
     cropZoom: "Crop zoom",
+    straighten: "Straighten",
     resetCrop: "Reset crop",
     resetCropTip: "Restore the original crop",
     finishCropTip: "Finish cropping",
+    ratio: "Shape of the crop",
+    ratioTip: "Give the frame a fixed shape",
+    ratioFree: "Free",
+    ratioOriginal: "Original",
+    frameShape: "Frame shape",
+    frameShapeTip: "Cut the picture to a shape",
+    frameNone: "No frame",
+  },
+
+  /** VideoBar.tsx: a clip on the page */
+  videoBar: {
+    filters: "Filters",
+    filtersTip: "Filters and adjustments for the clip",
+    crop: "Crop",
+    play: "Play",
+    playTip: "Play the clip on the page",
+    stop: "Stop",
+    stopTip: "Stop playing",
+    trim: "Trim",
+    trimTip: "Choose the part of the clip that plays",
+    trimStart: "Start (seconds)",
+    trimEnd: "End (seconds)",
+    /** in seconds, as the two fields above it are */
+    trimLength: (shown: number, whole: number) => `Plays ${num(shown, { maximumFractionDigits: 2 })} s of ${num(whole, { maximumFractionDigits: 2 })} s`,
+    resetTrim: "Play the whole clip",
+    /** when the clip starts on its page; until then it shows its first frame */
+    startAt: "Starts on the page at (seconds)",
+    loop: "Play over and over",
+    loopHint: "The clip starts again whenever it ends, for as long as its page is shown.",
+    onceHint: "The clip plays once, then stays on its last frame without sound.",
+    runsOn: "Runs on under the next pages",
+    runsOnHint: (n: number) =>
+      plural(n, {
+        one: `The clip goes on under the next page, behind its own content, from where it got to. This page no longer lasts as long as the clip.`,
+        other: `The clip goes on under the next ${num(n)} pages, behind their own content, from where it got to. This page no longer lasts as long as the clip.`,
+      }),
+    speed: "Speed",
+    speedTip: "How fast the clip plays",
+    speedValue: (x: number) => `${num(x)}×`,
+    sound: "Sound",
+    soundOnTip: "The clip plays with its sound in Present. Click to mute it",
+    soundOffTip: "The clip is muted. Click to play it with its sound in Present",
+    captions: "Captions",
+    captionsTip: "Words shown over the clip while it plays",
+    captionsNone: "No captions yet.",
+    captionAdd: "Add a line",
+    /** the column heads of the caption lines */
+    captionFrom: "From (s)",
+    captionTo: "To (s)",
+    captionText: "Words",
+    captionFromLabel: (n: number) => `Line ${n}: from (seconds)`,
+    captionToLabel: (n: number) => `Line ${n}: to (seconds)`,
+    captionTextLabel: (n: number) => `Line ${n}: words`,
+    captionRemove: (n: number) => `Remove line ${n}`,
+    captionsOpen: "Open subtitles (.srt)",
+    captionsSave: "Save as .srt",
+    captionStyle: "Look",
+    captionSample: "A caption looks like this",
+    captionPlace: "Where",
+    captionTop: "Top",
+    captionMiddle: "Middle",
+    captionBottom: "Bottom",
+    captionSize: "Size",
+    captionSmall: "Small",
+    captionMedium: "Medium",
+    captionLarge: "Large",
+    captionFont: "Letters",
+    captionSans: "Sans-serif (the browser's)",
+    captionSerif: "Serif (the browser's)",
+    captionMono: "Monospaced (the browser's)",
+    captionOtherColor: "Another colour",
+    captionBand: "Behind the words",
+    captionDark: "Dark band",
+    captionLight: "Light band",
+    captionNoBand: "Outline",
+    captionColor: "Colour of the words",
+    captionColorName: (hex: string) => ({ "#ffffff": "White", "#facc15": "Yellow", "#000000": "Black", "#22d3ee": "Cyan", "#f472b6": "Pink", "#4ade80": "Green" })[hex] ?? hex,
+    /** the file name of saved captions when the clip has no name */
+    captionsFileName: "captions",
+    captionsFileEmpty: "No subtitles were found in that file.",
+    captionsFileRead: (lines: number, skipped: number) =>
+      `Read ${plural(lines, { one: "1 line", other: `${num(lines)} lines` })}${skipped ? `; ${plural(skipped, { one: "1 could not be read", other: `${num(skipped)} could not be read` })}` : ""}.`,
+    captionsHint: "Seconds of the clip as it plays, from when it starts on the page; the lines come again each time it plays. They show in Present, Play and a video download.",
+    audio: "Audio",
+    audioTip: "Volume and fades",
+    volume: "Volume (%)",
+    fadeIn: "Fade in (seconds)",
+    fadeOut: "Fade out (seconds)",
+    /** under the fades */
+    fadeHint: "The sound rises at the start of every play of the clip and falls at its end.",
+    /** in the Audio popover of a muted clip */
+    audioMuted: "The clip is muted: turn Sound on to hear it.",
+    frameShapeTip: "Cut the clip to a shape",
   },
 
   /** MiscBars.tsx: group, table and chart, locked selection, page */
@@ -238,6 +344,16 @@ export const editor = {
     colorN: (n: number) => `Color ${num(n)}`,
     colorNOf: (n: number, total: number) => `Color ${num(n)} of ${num(total)}`,
     strokeWidth: "Stroke width",
+  },
+
+  /** LinkDialog.tsx */
+  link: {
+    title: "Link",
+    hint: "A click on this element opens the address: in the presenter, in a PDF and in an SVG download.",
+    address: "Address",
+    placeholder: "example.com, or an address that starts with mailto: or tel:",
+    invalid: "This is not an address a link can lead to. Use a web address such as example.com, or one that starts with https://, mailto: or tel:.",
+    remove: "Remove link",
   },
 
   /** AltTextDialog.tsx */
@@ -442,6 +558,12 @@ export const editor = {
     unreachableLink: "Couldn't reach the server. Check the link and that the server is running.",
     /** media.ts: the pictures of a shared design */
     media: {
+      clipTooBig: (name: string, mb: number) =>
+        `"${name}" is larger than this shared design can carry${mb ? ` (${num(mb)} MB)` : ""}: it stays on this device, and the others see an empty box in its place.`,
+      clipsFull: (name: string) => `This shared design holds as many clips and sounds as its server allows: "${name}" stays on this device, and the others do not get it.`,
+      clipRefused: (name: string, status: number) => `"${name}" could not be shared (server response ${status}): it stays on this device.`,
+      /** the file name of a clip or a sound that came from the server, before its extension */
+      clipFileName: "Shared clip",
       missing: "An uploaded image is missing. Replace it to sync this design.",
       checkFailed: (status: number) => `Could not check a shared image (server response ${status}).`,
       cannotShare: (status: number) =>

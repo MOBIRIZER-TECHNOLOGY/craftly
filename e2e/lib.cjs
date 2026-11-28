@@ -35,9 +35,10 @@ function engine() {
   return isChromium ? pw.chromium : pw[ENGINE];
 }
 
-/** Launches the browser; set HEADED=1 to watch it. */
-async function launch() {
-  return engine().launch({ ...(isChromium ? { executablePath: findChrome() } : {}), headless: !process.env.HEADED });
+/** Launches the browser; set HEADED=1 to watch it. `args` are further switches for Chrome (record.cjs gives it a fake camera). */
+async function launch({ args = [] } = {}) {
+  // a page may make sound before anybody clicks (video.cjs records a clip with a tone): Chrome would otherwise keep its audio suspended
+  return engine().launch({ ...(isChromium ? { executablePath: findChrome(), args: ["--autoplay-policy=no-user-gesture-required", ...args] } : {}), headless: !process.env.HEADED });
 }
 
 /** Launches the browser with a profile folder that survives between runs (used when something big is worth keeping, like a downloaded model). */
@@ -89,4 +90,24 @@ function servesSource(page) {
     .catch(() => false);
 }
 
-module.exports = { launch, launchPersistent, outDir, joinIfAsked, servesSource, BASE, ENGINE, isChromium };
+/**
+ * Why a browser cannot play or record the clips and sounds the journeys make (null when it can). Playwright's WebKit on Windows
+ * has no audio or video elements, no MediaRecorder and no Web Audio, which Safari has: a journey of clips and sounds says SKIP
+ * there rather than failing on something Safari would do.
+ */
+async function lacksMedia(browser) {
+  const page = await browser.newPage();
+  try {
+    return await page.evaluate(() => {
+      const missing = [];
+      if (typeof HTMLMediaElement === "undefined" || typeof HTMLMediaElement.prototype.canPlayType !== "function") missing.push("audio and video elements");
+      if (typeof MediaRecorder === "undefined") missing.push("MediaRecorder");
+      if (typeof AudioContext === "undefined") missing.push("Web Audio");
+      return missing.length ? `this browser build has no ${missing.join(", ")}` : null;
+    });
+  } finally {
+    await page.close();
+  }
+}
+
+module.exports = { launch, launchPersistent, outDir, joinIfAsked, servesSource, lacksMedia, BASE, ENGINE, isChromium };

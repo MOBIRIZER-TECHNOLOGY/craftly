@@ -82,48 +82,83 @@ export const hostOf = (server: string): string => {
 
 const LIMIT = 20 * 1024 * 1024;
 
+/** The response's text, read until the limit rather than after the whole answer has arrived. */
+async function responseText(res: Response): Promise<string> {
+  if (!res.body) {
+    const raw = await res.text();
+    if (raw.length > LIMIT) throw new BadAnswer("an answer that is too long");
+    return raw;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > LIMIT) {
+        await reader.cancel();
+        throw new BadAnswer("an answer that is too long");
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
 /** One request: JSON in and out. Throws `CloudError` for a refusal or no answer, `BadAnswer` for an answer that is no JSON object. */
 export async function request(conn: Conn, method: string, path: string, body?: unknown, timeoutMs = 30_000): Promise<Record<string, unknown>> {
   const headers: Record<string, string> = {};
   if (conn.token) headers.authorization = `Bearer ${conn.token}`;
   if (body !== undefined) headers["content-type"] = "application/json";
-  let res: Response;
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("timeout"));
+    }, timeoutMs);
+  });
+  const settle = <T>(work: Promise<T>) => Promise.race([work, late]);
   try {
-    const answer = (conn.fetch ?? fetch)(`${conn.server}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      // nothing of an account goes into a cache, and no cookie goes with it
-      cache: "no-store",
-      credentials: "omit",
-    });
-    const late = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
-    });
-    res = await Promise.race([answer, late]);
-  } catch {
+    const res = await settle(
+      (conn.fetch ?? fetch)(`${conn.server}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        // nothing of an account goes into a cache, and no cookie goes with it
+        cache: "no-store",
+        credentials: "omit",
+        signal: controller.signal,
+      }),
+    );
+    const raw = await settle(responseText(res));
+    let parsed: unknown;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
+    }
+    if (!res.ok) {
+      const code = isObject(parsed) && typeof parsed.code === "string" && /^[a-z-]{1,40}$/.test(parsed.code) ? parsed.code : res.status >= 500 ? "server" : "unknown";
+      const extra: Record<string, unknown> = {};
+      if (isObject(parsed) && typeof parsed.rev === "number") extra.rev = parsed.rev;
+      if (isObject(parsed) && typeof parsed.room === "string") extra.room = parsed.room;
+      throw new CloudError(code, res.status, `the server answered ${res.status} ${code}`, extra);
+    }
+    if (!isObject(parsed)) throw new BadAnswer("an answer that is not JSON");
+    return parsed;
+  } catch (error) {
+    if (error instanceof CloudError || error instanceof BadAnswer) throw error;
     throw new CloudError("offline", 0, "the server could not be reached");
   } finally {
     clearTimeout(timer);
   }
-  const raw = await res.text().catch(() => "");
-  if (raw.length > LIMIT) throw new BadAnswer("an answer that is too long");
-  let parsed: unknown;
-  try {
-    parsed = raw ? JSON.parse(raw) : null;
-  } catch {
-    parsed = null;
-  }
-  if (!res.ok) {
-    const code = isObject(parsed) && typeof parsed.code === "string" && /^[a-z-]{1,40}$/.test(parsed.code) ? parsed.code : res.status >= 500 ? "server" : "unknown";
-    const extra: Record<string, unknown> = {};
-    if (isObject(parsed) && typeof parsed.rev === "number") extra.rev = parsed.rev;
-    if (isObject(parsed) && typeof parsed.room === "string") extra.room = parsed.room;
-    throw new CloudError(code, res.status, `the server answered ${res.status} ${code}`, extra);
-  }
-  if (!isObject(parsed)) throw new BadAnswer("an answer that is not JSON");
-  return parsed;
 }
 
 const at = (...parts: string[]) => parts.map(encodeURIComponent).join("/");
@@ -179,4 +214,50 @@ export const missingAssets = async (conn: Conn, space: string, ids: string[]) =>
 export const putAsset = (conn: Conn, space: string, id: string, mime: string, base64: string) =>
   request(conn, "PUT", `/api/spaces/${at(space, "assets", id)}`, { mime, base64 }, 120_000);
 export const getAsset = async (conn: Conn, space: string, id: string) => readRemoteAsset(await request(conn, "GET", `/api/spaces/${at(space, "assets", id)}`, undefined, 120_000));
+/**
+ * A clip or a sound of a space (docs/ACCOUNTS.md, "Clips and sounds"): it goes as itself, not as JSON, and may take minutes.
+ * Gives the answer, or throws `CloudError` as `request` does (a refusal with its code, or "offline").
+ */
+async function mediaRequest(conn: Conn, method: "HEAD" | "GET" | "PUT", space: string, id: string, body?: Blob): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (conn.token) headers.authorization = `Bearer ${conn.token}`;
+  if (body) headers["content-type"] = body.type;
+  let res: Response;
+  try {
+    res = await (conn.fetch ?? fetch)(`${conn.server}/api/spaces/${at(space, "media", id)}`, {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+      credentials: "omit",
+      signal: AbortSignal.timeout(10 * 60_000),
+    });
+  } catch {
+    throw new CloudError("offline", 0, "the server could not be reached");
+  }
+  if (res.ok || (res.status === 404 && method !== "PUT")) return res;
+  let code = res.status >= 500 ? "server" : "unknown";
+  try {
+    const parsed: unknown = await res.json();
+    if (isObject(parsed) && typeof parsed.code === "string" && /^[a-z-]{1,40}$/.test(parsed.code)) code = parsed.code;
+  } catch {
+    // no JSON: the status says enough
+  }
+  throw new CloudError(code, res.status, `the server answered ${res.status} ${code}`);
+}
+/** Whether the space has this clip or sound. */
+export const hasMedia = async (conn: Conn, space: string, id: string) => (await mediaRequest(conn, "HEAD", space, id)).ok;
+/** Sends a clip or a sound of this device to the space, under its type. */
+export const putMedia = async (conn: Conn, space: string, id: string, blob: Blob): Promise<void> => void (await mediaRequest(conn, "PUT", space, id, blob));
+/** A clip or a sound of the space with its type, or null when the space has none by that id. */
+export async function getMedia(conn: Conn, space: string, id: string): Promise<{ mime: string; blob: Blob } | null> {
+  const res = await mediaRequest(conn, "GET", space, id);
+  if (!res.ok) return null;
+  const mime = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+  try {
+    return { mime, blob: await res.blob() };
+  } catch {
+    throw new CloudError("offline", 0, "the clip did not come whole");
+  }
+}
 export const openLive = async (conn: Conn, space: string, id: string) => readLive(await request(conn, "POST", `/api/spaces/${at(space, "designs", id, "live")}`, {}));

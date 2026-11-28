@@ -14,7 +14,7 @@
  *
  * Restoring only ever adds. Nothing that is in the library now is replaced or removed (see `planRestore`).
  */
-import { isAcceptedImage } from "@/core/assets";
+import { ACCEPTED_AUDIO_TYPES, ACCEPTED_VIDEO_TYPES, isAcceptedImage } from "@/core/assets";
 import { createMigrator, type MigrationError, type MigrationErrorCode, type MigrationStep } from "@/core/schema/migrator";
 import type { BrandKit, Folder } from "@/core/types";
 import { m } from "@/i18n";
@@ -83,9 +83,19 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   svg: "image/svg+xml",
   avif: "image/avif",
   bmp: "image/bmp",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  ogv: "video/ogg",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  aac: "audio/aac",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  weba: "audio/webm",
+  flac: "audio/flac",
 };
 
-/** The picture type a file name says it is, or null for anything else. */
+/** The type of picture, clip or sound a file name says it is, or null for anything else. */
 export function mimeForExtension(name: string): string | null {
   const dot = name.lastIndexOf(".");
   return dot < 0 ? null : (MIME_BY_EXTENSION[name.slice(dot + 1).toLowerCase()] ?? null);
@@ -114,7 +124,7 @@ export interface ManifestDesign {
 export interface ManifestUpload {
   id: string;
   name: string;
-  kind: "image" | "svg";
+  kind: "image" | "svg" | "video" | "audio";
   mime: string;
   size: number;
   width: number;
@@ -217,15 +227,18 @@ function readUpload(item: unknown): ManifestUpload | null {
   const mime = typeof item.mime === "string" && item.mime ? item.mime : (mimeForExtension(item.file) ?? "image/png");
   // The file is stored under the type the backup gives it, and a backup can be made by hand: only what the upload field takes
   // comes back, judged by the type alone (a name proves nothing here). A web page kept in the app's storage could be opened as one.
-  if (!isAcceptedImage(new File([], "", { type: mime }))) return null;
+  const clip = ACCEPTED_VIDEO_TYPES.includes(mime);
+  const sound = ACCEPTED_AUDIO_TYPES.includes(mime);
+  if (!clip && !sound && !isAcceptedImage(new File([], "", { type: mime }))) return null;
   return {
     id: item.id,
     name: text(item.name, "Upload"),
-    kind: mime === "image/svg+xml" ? "svg" : "image",
+    kind: clip ? "video" : sound ? "audio" : mime === "image/svg+xml" ? "svg" : "image",
     mime,
     size: isNum(item.size) && item.size >= 0 ? item.size : 0,
-    width: isNum(item.width) && item.width > 0 ? item.width : 800,
-    height: isNum(item.height) && item.height > 0 ? item.height : 600,
+    // a sound has no picture, and no size
+    width: sound ? 0 : isNum(item.width) && item.width > 0 ? item.width : 800,
+    height: sound ? 0 : isNum(item.height) && item.height > 0 ? item.height : 600,
     createdAt: isNum(item.createdAt) ? item.createdAt : 0,
     file: item.file,
   };

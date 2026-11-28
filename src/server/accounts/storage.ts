@@ -12,6 +12,7 @@
  *   spaces/<spaceId>/manifest.json              what a space holds (Manifest)
  *   spaces/<spaceId>/designs/<sha256(id)>/<rev>.json  each kept revision of a design with its thumbnail, the current one too
  *   spaces/<spaceId>/assets/<sha256(id)>.json   an upload
+ *   spaces/<spaceId>/media/<sha256(id)>.bin     a clip or a sound, its bytes as they came (what it is: `Manifest.media`)
  *
  * Every id that becomes part of a name is checked against a pattern first, and the ids that come from a browser (designs,
  * folders, uploads) are not used as names at all but hashed: they may differ only in capitals, which some file systems do not
@@ -23,9 +24,12 @@
  * revision) is the business of the routes (`routes.ts`, `spaces.ts`, `teams.ts`).
  */
 import { createHash, randomBytes } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import { link, mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { SharedAsset } from "../storage";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { SharedAsset, StagedMedia } from "../storage";
 import { isTeamRole as isRole, type TeamRole } from "./roles";
 
 /* ---------------- records ---------------- */
@@ -135,6 +139,20 @@ export interface Manifest {
   designs: Record<string, DesignEntry>;
   folders: Record<string, FolderEntry>;
   assets: Record<string, AssetEntry>;
+  /**
+   * The clips and sounds of the space (docs/ACCOUNTS.md, "Clips and sounds"): apart from the pictures, so that a browser from
+   * before them, which fetches every upload of the feed as a picture, never meets one. None in a manifest written before them.
+   */
+  media?: Record<string, MediaEntry>;
+}
+
+export interface MediaEntry {
+  mime: string;
+  bytes: number;
+  /** hex SHA-256 of the bytes: the same clip sent again is known from another under its id */
+  sha256: string;
+  seq: number;
+  createdAt: number;
 }
 
 export interface StoredDesign {
@@ -189,7 +207,17 @@ export interface AccountStorage {
   loadAsset(space: string, id: string): Promise<SharedAsset | null>;
   saveAsset(space: string, id: string, asset: SharedAsset): Promise<void>;
   removeAsset(space: string, id: string): Promise<void>;
-  /** Everything of a space: its manifest, designs, revisions and uploads. */
+  /**
+   * Receives the bytes of a clip or a sound of a space as they come, counting and hashing them: null when there are more than
+   * `limit` (what had come is thrown away). It is the space's only once `commitMedia` has put it in place.
+   */
+  stageMedia(space: string, source: AsyncIterable<Buffer | Uint8Array>, limit: number): Promise<StagedMedia | null>;
+  commitMedia(space: string, id: string, staged: StagedMedia): Promise<void>;
+  dropMedia(staged: StagedMedia): Promise<void>;
+  /** The bytes of a clip or a sound of a space, from the start (asked only for one its manifest has). */
+  mediaStream(space: string, id: string): Readable;
+  removeMedia(space: string, id: string): Promise<void>;
+  /** Everything of a space: its manifest, designs, revisions, uploads, clips and sounds. */
   removeSpace(space: string): Promise<void>;
   checkWritable(): Promise<void>;
 }
@@ -251,8 +279,14 @@ const looksLikeDesignEntry = (v: unknown) =>
 const looksLikeFolder = (v: unknown) =>
   isObject(v) && isText(v.name) && nullable(v.parentId, isText) && isTime(v.createdAt) && isCount(v.seq) && (v.deletedAt === undefined || isTime(v.deletedAt));
 const looksLikeAssetEntry = (v: unknown) => isObject(v) && isText(v.mime) && isCount(v.bytes) && isCount(v.seq) && isTime(v.createdAt);
+const looksLikeMediaEntry = (v: unknown) => looksLikeAssetEntry(v) && isObject(v) && isText(v.sha256);
 const looksLikeManifest = (v: unknown): v is Manifest =>
-  isObject(v) && isCount(v.seq) && everyValue(v.designs, looksLikeDesignEntry) && everyValue(v.folders, looksLikeFolder) && everyValue(v.assets, looksLikeAssetEntry);
+  isObject(v) &&
+  isCount(v.seq) &&
+  everyValue(v.designs, looksLikeDesignEntry) &&
+  everyValue(v.folders, looksLikeFolder) &&
+  everyValue(v.assets, looksLikeAssetEntry) &&
+  (v.media === undefined || everyValue(v.media, looksLikeMediaEntry));
 
 const looksLikeStoredDesign = (v: unknown): v is StoredDesign => isObject(v) && isCount(v.rev) && isObject(v.design) && nullable(v.thumbnail, isText);
 const looksLikeAsset = (v: unknown): v is SharedAsset => isObject(v) && isText(v.mime) && isText(v.base64);
@@ -281,6 +315,8 @@ const codeKey = (hash: string) => `codes/${hexHash(hash)}.json`;
 const spaceKey = (space: string) => `spaces/${serverId(space, "space")}`;
 const designKey = (space: string, id: string) => `${spaceKey(space)}/designs/${hashName(id)}`;
 const assetKey = (space: string, id: string) => `${spaceKey(space)}/assets/${hashName(id)}.json`;
+const mediaFolder = (space: string) => `${spaceKey(space)}/media`;
+const mediaKey = (space: string, id: string) => `${mediaFolder(space)}/${hashName(id)}.bin`;
 
 /* ---------------- raw: text by name ---------------- */
 
@@ -296,6 +332,30 @@ interface RawStore {
   /** The names of the files directly in a folder ("users"), without the folder. */
   list(folder: string): Promise<string[]>;
   checkWritable(): Promise<void>;
+  /** Bytes that come as they come, counted and hashed, kept aside in `folder` until `commit` (null: more than `limit`). */
+  stage(folder: string, source: AsyncIterable<Buffer | Uint8Array>, limit: number): Promise<StagedMedia | null>;
+  /** Puts staged bytes in place under a name. */
+  commit(staged: StagedMedia, key: string): Promise<void>;
+  drop(staged: StagedMedia): Promise<void>;
+  /** The bytes under a name, from the start. */
+  stream(key: string): Readable;
+}
+
+/** Counts and hashes bytes as they pass, and stops at more than `limit`. */
+function counter(source: AsyncIterable<Buffer | Uint8Array>, limit: number) {
+  const state = { size: 0, over: false, hash: createHash("sha256") };
+  async function* pass() {
+    for await (const chunk of source) {
+      state.size += chunk.length;
+      if (state.size > limit) {
+        state.over = true;
+        return;
+      }
+      state.hash.update(chunk);
+      yield chunk;
+    }
+  }
+  return { state, pass };
 }
 
 /** Reads a record and checks its form: null when there is none, an error when there is one that is not what it should be. */
@@ -395,6 +455,21 @@ class KeyedAccounts implements AccountStorage {
   async removeAsset(space: string, id: string) {
     return this.raw.remove(assetKey(space, id));
   }
+  async stageMedia(space: string, source: AsyncIterable<Buffer | Uint8Array>, limit: number) {
+    return this.raw.stage(mediaFolder(space), source, limit);
+  }
+  async commitMedia(space: string, id: string, staged: StagedMedia) {
+    return this.raw.commit(staged, mediaKey(space, id));
+  }
+  async dropMedia(staged: StagedMedia) {
+    return this.raw.drop(staged);
+  }
+  mediaStream(space: string, id: string) {
+    return this.raw.stream(mediaKey(space, id));
+  }
+  async removeMedia(space: string, id: string) {
+    return this.raw.remove(mediaKey(space, id));
+  }
   async removeSpace(space: string) {
     return this.raw.removeTree(spaceKey(space));
   }
@@ -421,9 +496,35 @@ class MemoryRaw implements RawStore {
   }
   async remove(key: string) {
     this.files.delete(key);
+    this.bytes.delete(key);
   }
   async removeTree(prefix: string) {
     for (const key of [...this.files.keys()]) if (key.startsWith(`${prefix}/`)) this.files.delete(key);
+    for (const key of [...this.bytes.keys()]) if (key.startsWith(`${prefix}/`)) this.bytes.delete(key);
+  }
+  /** Bytes (clips and sounds), and what is being received. */
+  readonly bytes = new Map<string, Buffer>();
+  private staged = new Map<string, Buffer>();
+  async stage(_folder: string, source: AsyncIterable<Buffer | Uint8Array>, limit: number) {
+    const { state, pass } = counter(source, limit);
+    const chunks: Buffer[] = [];
+    for await (const chunk of pass()) chunks.push(Buffer.from(chunk));
+    if (state.over) return null;
+    const handle = randomBytes(8).toString("hex");
+    this.staged.set(handle, Buffer.concat(chunks));
+    return { handle, size: state.size, sha256: state.hash.digest("hex") };
+  }
+  async commit(staged: StagedMedia, key: string) {
+    const bytes = this.staged.get(staged.handle);
+    this.staged.delete(staged.handle);
+    if (!bytes) throw new Error("no such received clip");
+    this.bytes.set(key, bytes);
+  }
+  async drop(staged: StagedMedia) {
+    this.staged.delete(staged.handle);
+  }
+  stream(key: string) {
+    return Readable.from([this.bytes.get(key) ?? Buffer.alloc(0)]);
   }
   async list(folder: string) {
     const names: string[] = [];
@@ -554,6 +655,39 @@ class FileRaw implements RawStore {
     } finally {
       await rm(probe, { force: true });
     }
+  }
+
+  /** Received into `<random>.tmp` in the folder, flushed, then renamed into place by `commit`. */
+  async stage(folder: string, source: AsyncIterable<Buffer | Uint8Array>, limit: number): Promise<StagedMedia | null> {
+    const dir = this.path(folder);
+    await mkdir(dir, { recursive: true });
+    const handle = join(dir, `${randomBytes(8).toString("hex")}.tmp`);
+    const { state, pass } = counter(source, limit);
+    try {
+      await pipeline(Readable.from(pass()), createWriteStream(handle, { flags: "wx", flush: true }));
+    } catch (error) {
+      await rm(handle, { force: true });
+      throw error;
+    }
+    if (state.over) {
+      await rm(handle, { force: true });
+      return null;
+    }
+    return { handle, size: state.size, sha256: state.hash.digest("hex") };
+  }
+
+  async commit(staged: StagedMedia, key: string): Promise<void> {
+    const target = this.path(key);
+    await rename(staged.handle, target);
+    await this.syncDirectory(join(target, ".."));
+  }
+
+  async drop(staged: StagedMedia): Promise<void> {
+    await rm(staged.handle, { force: true });
+  }
+
+  stream(key: string): Readable {
+    return createReadStream(this.path(key));
   }
 }
 

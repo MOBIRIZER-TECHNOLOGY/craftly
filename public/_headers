@@ -3,7 +3,7 @@
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Permissions-Policy: camera=(self), microphone=(self), display-capture=(self), geolocation=()
 
 # The page, the service worker and the list it installs from must never come from a cache without asking:
 # a new build is found through them.

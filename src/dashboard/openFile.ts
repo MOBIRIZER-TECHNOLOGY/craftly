@@ -2,7 +2,9 @@
  * Opening a file from the dashboard: a `.craftly` project file (Import project file in the account menu) or a picture to start a
  * design around (the welcome panel's "Open a file" takes either).
  */
+import { importPptx } from "@/export/pptxImport";
 import { importProjectFile } from "@/export/projectFile";
+import { saveDesign } from "@/core/library";
 import { ProjectFileError, type ImportReport } from "@/export/projectFormat";
 import { m } from "@/i18n";
 import { designPath, navigate } from "@/router";
@@ -10,10 +12,11 @@ import { toast } from "@/ui";
 import { createFromImageFile, IMAGE_ACCEPT } from "./actions";
 import { pickFiles } from "./files";
 
-export const PROJECT_ACCEPT = ".craftly,.json,application/json";
+export const PROJECT_ACCEPT = ".craftly,.json,.pptx,application/json,application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 /** A project file by its name or type; anything else is taken for a picture. */
 export const isProjectFile = (file: File) => /\.(craftly|json)$/i.test(file.name) || file.type === "application/json";
+export const isPptxFile = (file: File) => /\.pptx$/i.test(file.name) || file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 /** Imports a .craftly file and opens the design it holds; what goes wrong is said in a toast. */
 export async function importProjectAndOpen(file: File): Promise<void> {
@@ -25,6 +28,7 @@ export async function importProjectAndOpen(file: File): Promise<void> {
     if (report.skipped) notes.push(m.dashboard.imported.skipped(report.skipped));
     if (report.remote) notes.push(m.dashboard.imported.remote(report.remote));
     if (report.comments) notes.push(m.dashboard.imported.comments(report.comments));
+    if (report.audio) notes.push(m.dashboard.imported.audio(report.audio));
     if (notes.length) toast.info(m.dashboard.imported.withNotes(design.title, notes.join(" ")));
     else toast.success(m.dashboard.imported.done(design.title));
     navigate(designPath(design.id));
@@ -36,15 +40,27 @@ export async function importProjectAndOpen(file: File): Promise<void> {
   }
 }
 
-/** Import project file: choose a .craftly file and open the design in it. Call straight from a click handler. */
+export async function importPptxAndOpen(file: File): Promise<void> {
+  try {
+    const design = await importPptx(file);
+    await saveDesign(design);
+    toast.success(m.dashboard.imported.done(design.title));
+    navigate(designPath(design.id));
+  } catch {
+    toast.error(m.dashboard.importFailed.toast(m.dashboard.importFailed.notStored));
+  }
+}
+
+/** Import project file: choose a .craftly or .pptx file and open the design in it. */
 export function pickProjectAndOpen(): Promise<void> {
-  return pickFiles({ accept: PROJECT_ACCEPT }).then(([file]) => (file ? importProjectAndOpen(file) : undefined));
+  return pickFiles({ accept: PROJECT_ACCEPT }).then(([file]) => (file ? (isPptxFile(file) ? importPptxAndOpen(file) : importProjectAndOpen(file)) : undefined));
 }
 
 /** Open a file: a project file opens its design, a picture starts a design of its own size. Call straight from a click handler. */
 export function pickAnyFileAndOpen(): Promise<void> {
   return pickFiles({ accept: `${PROJECT_ACCEPT},${IMAGE_ACCEPT}` }).then(async ([file]) => {
     if (!file) return;
+    if (isPptxFile(file)) return importPptxAndOpen(file);
     if (isProjectFile(file)) return importProjectAndOpen(file);
     const problem = await createFromImageFile(file);
     if (problem) toast.error(problem);

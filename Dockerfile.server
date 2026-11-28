@@ -5,12 +5,14 @@
 #   docker run -d --name craftly-live -p 127.0.0.1:8787:8787 -v craftly-live-data:/data \
 #     -e ALLOW_ORIGIN=https://editor.example.org craftly-live
 #
-# NOT BUILT YET: this file was written on a machine without Docker. Its steps were run there by hand outside a container
-# (the build from only the files copied below, the generated package files, `npm ci` from them, the server started from the
-# result, the health command), but no image has been built from it. Build it once and read the output before relying on it.
+# Built and run on 2026-11-28 with Docker 29.9.3 (linux/amd64): an image of 244 MB, healthy about 8 s after it starts,
+# `docker stop` exits 0 in about a second, rooms and accounts kept in the volume over a restart, and the editor shares a clip
+# and a sound through it (docs/DEPLOY.md, section 2.1, says what was checked).
 
 # ---- stage 1: build the bundle -------------------------------------------------------------------------------------
-FROM node:22-alpine AS build
+# On the machine's own platform whatever the image is for: the bundle is JavaScript, the same for every platform, and the
+# development install under emulation (an arm64 image built on amd64) took more than half an hour on CI, or never ended.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 
 # The whole development install, because the bundler (esbuild) comes with Vite. Nothing of it reaches the final image.
@@ -42,9 +44,10 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean -
 
 COPY --from=build /app/dist-server/live.mjs ./live.mjs
 
-# The rooms. The folder belongs to the user the server runs as; a named volume mounted here takes that owner over, a
-# folder of the host mounted here must be writable by uid 1000.
-RUN mkdir /data && chown node:node /data
+# The rooms. The folder belongs to the user the server runs as, and only to it (the server writes its files 600 and its
+# folders 700); a named volume mounted here takes that owner and mode over, a folder of the host mounted here must be
+# writable by uid 1000.
+RUN mkdir -m 700 /data && chown node:node /data
 VOLUME /data
 
 USER node

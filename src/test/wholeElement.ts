@@ -4,7 +4,7 @@
  * wants to show that something else is refused (a script for a picture, a blend mode that does not exist) has to start from an
  * element that is whole: otherwise it is refused for what is missing, and the test says nothing about what it names.
  */
-import { createChart, createGraphic, createGroup, createImage, createLine, createShape, createTable, createText } from "@/core/factory";
+import { createChart, createGraphic, createGroup, createImage, createLine, createShape, createTable, createText, createVideo } from "@/core/factory";
 import type { DesignElement, ElementType } from "@/core/types";
 
 const MAKE: Record<ElementType, () => DesignElement> = {
@@ -16,6 +16,7 @@ const MAKE: Record<ElementType, () => DesignElement> = {
   group: () => createGroup([]),
   table: () => createTable(),
   chart: () => createChart(),
+  video: () => createVideo({ src: "asset:clip", naturalWidth: 640, naturalHeight: 360, duration: 4 }),
 };
 
 /** One element of each kind, as the factory makes it. */

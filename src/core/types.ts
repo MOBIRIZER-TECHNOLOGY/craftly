@@ -88,7 +88,7 @@ export interface Shadow {
 /* Elements                                                           */
 /* ------------------------------------------------------------------ */
 
-export type ElementType = "text" | "shape" | "line" | "image" | "graphic" | "group" | "table" | "chart";
+export type ElementType = "text" | "shape" | "line" | "image" | "graphic" | "group" | "table" | "chart" | "video";
 
 /** How an element mixes its colours with what is under it (src/core/blend.ts). The names are those of a canvas's `globalCompositeOperation` and of a style sheet's `mix-blend-mode`. */
 export type BlendMode =
@@ -183,6 +183,8 @@ export interface TextRun {
   /** may contain "\n" for a soft line break */
   text: string;
   bold?: boolean;
+  /** numeric font weight when it is more specific than bold, 100..900 */
+  weight?: number;
   italic?: boolean;
   underline?: boolean;
   strike?: boolean;
@@ -282,10 +284,17 @@ export interface LineBinding {
   anchor: Anchor;
 }
 
+export type LineRouting = "straight" | "elbow" | "curved";
+
 export interface LineElement extends ElementBase {
   type: "line";
-  /** `width` is the line length; `height` is always 0. The line runs from (x, y) to (x+width, y) before rotation. */
+  /** a straight line runs from (x, y) to (x+width, y); a route is expressed in the same local box */
   stroke: Stroke;
+  routing?: LineRouting;
+  /** elbow points, or four cubic Bezier points when routing is curved */
+  route?: Point[];
+  /** optional text drawn at the middle of the route */
+  label?: string;
   startArrow: ArrowKind;
   endArrow: ArrowKind;
   /**
@@ -314,6 +323,12 @@ export interface ImageFilter {
   blur: number;
   /** -100..100 hue rotation (maps to -180..180deg) */
   hue: number;
+  highlights?: number;
+  shadows?: number;
+  sharpen?: number;
+  tint?: number;
+  curves?: number;
+  levels?: number;
   /** optional duotone */
   duotone?: { dark: Color; light: Color } | null;
 }
@@ -329,6 +344,8 @@ export interface ImageCrop {
   y: number;
   w: number;
   h: number;
+  /** straighten angle in degrees inside the frame */
+  rotation?: number;
 }
 
 export interface ImageElement extends ElementBase {
@@ -351,6 +368,8 @@ export interface ImageElement extends ElementBase {
   crop: ImageCrop;
   /** mask shape id from the shape catalogue ("rect" = no mask) */
   mask: ShapeKind;
+  /** custom normalized path when mask is "path" */
+  maskPath?: string;
   /** corner radius in px when mask is rect-like */
   radius: number;
   filter: ImageFilter;
@@ -384,9 +403,29 @@ export interface GroupElement extends ElementBase {
 
 /* ---- table ---- */
 
+export interface TableCell {
+  row: number;
+  col: number;
+}
+
+export interface TableMerge extends TableCell {
+  rowSpan: number;
+  colSpan: number;
+}
+
+export interface TableCellStyle {
+  fill?: Color;
+  color?: Color;
+  bold?: boolean;
+  align?: TextAlign;
+}
+
 export interface TableElement extends ElementBase {
   type: "table";
   cells: string[][];
+  merges?: TableMerge[];
+  /** optional overrides keyed "row:column" */
+  cellStyles?: Record<string, TableCellStyle>;
   colWidths: number[];
   rowHeights: number[];
   headerRow: boolean;
@@ -403,7 +442,7 @@ export interface TableElement extends ElementBase {
 
 /* ---- chart ---- */
 
-export type ChartKind = "bar" | "column" | "line" | "area" | "pie" | "donut";
+export type ChartKind = "bar" | "column" | "line" | "area" | "combo" | "scatter" | "pie" | "donut";
 
 export interface ChartSeries {
   name: string;
@@ -422,9 +461,99 @@ export interface ChartElement extends ElementBase {
   showLegend: boolean;
   showValues: boolean;
   showGrid: boolean;
+  /** bar, column and area charts with several series: the series of a category on top of each other, not side by side (absent: side by side) */
+  stacked?: boolean;
+  /** stacked values as a share of each category's total */
+  percent?: boolean;
+  /** the words along the axis of the values; none when absent or empty (a pie or donut has no axis) */
+  valueAxisTitle?: string;
+  /** the words along the axis of the categories; none when absent or empty */
+  categoryAxisTitle?: string;
 }
 
-export type DesignElement = TextElement | ShapeElement | LineElement | ImageElement | GraphicElement | GroupElement | TableElement | ChartElement;
+/* ---- video ---- */
+
+/**
+ * An uploaded clip on the page (src/render/videos.ts). It is drawn like a picture (crop, frame shape, corners, outline): at rest
+ * as the frame at `trimStart`, and in Present, an animation preview and a recorded video as the clip playing from `trimStart`
+ * to `trimEnd` at `speed`, over and over. Still downloads (PNG, PDF, SVG, PowerPoint) hold that first frame.
+ */
+/** How a clip's captions look (each part optional: see clipCaptionStyle in core/animation.ts for the defaults). */
+export interface CaptionStyle {
+  /** where on the clip: over its bottom (the default), its middle or its top */
+  place?: "bottom" | "middle" | "top";
+  /** small, medium (the default) or large, against the size of the clip */
+  size?: "s" | "m" | "l";
+  /** the kind of letters: sans-serif (the default), serif or monospaced; the browser's own fonts of that kind */
+  font?: "sans" | "serif" | "mono";
+  /** a font of the app's own (its list, or one uploaded to the brand kit) in place of the browser's: its kind follows it when it is missing */
+  family?: string;
+  /** colour of the words, "#rrggbb" (white by default) */
+  color?: string;
+  /** what is behind the words: a dark band (the default), a light one, or none, the words then outlined to stay readable */
+  band?: "dark" | "light" | "none";
+}
+
+/** One line of a clip's captions. */
+export interface ClipCaption {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface VideoElement extends ElementBase {
+  type: "video";
+  /** "asset:<id>": a clip stored in this browser's uploads (no other scheme: a design never plays a clip from the web) */
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  /** seconds: the length of the whole clip */
+  duration: number;
+  /** seconds into the clip where it starts and stops playing (0 <= trimStart < trimEnd <= duration) */
+  trimStart: number;
+  trimEnd: number;
+  /** how fast it plays, 0.25 to 4 (1 = as recorded) */
+  speed: number;
+  /** without its sound in Present (a clip is always silent while editing) */
+  muted?: boolean;
+  /**
+   * Lines of text shown over the bottom of the clip while it plays, each from `start` to `end` seconds of one play of the clip (from
+   * when it starts on its page, at its speed); they come again with every play. See clipCaptions in core/animation.ts.
+   */
+  captions?: ClipCaption[];
+  /** how its captions look (white words on a dark band over its bottom when absent) */
+  captionStyle?: CaptionStyle;
+  /** seconds into its page at which it starts playing; until then it shows its first frame, silent (0 when absent) */
+  startAt?: number;
+  /** plays once and then holds its last frame, silent, for the rest of its page (it plays over and over when absent) */
+  once?: boolean;
+  /**
+   * Seconds into one play of a clip that plays over and over (seconds of the page, at its speed) at which its first play begins: a
+   * loop carried on from the page it was split from (0 when absent; not read for a clip that plays once). See clipLoopFrom.
+   */
+  loopFrom?: number;
+  /**
+   * How many of the pages after its own the clip runs on under (0 when absent): on those pages it is drawn in the same place, behind
+   * their own elements, going on from where it had got to, with its sound. It is edited on its own page only, and its page no longer
+   * follows its length. See src/core/carriedClips.ts.
+   */
+  runsOn?: number;
+  /** how loud it plays, from 0 to 1 (1 when absent): see clipVolume in core/animation.ts */
+  volume?: number;
+  /** seconds over which its sound rises at the start of every play of it, and falls at the end (0 to 5, 0 when absent) */
+  fadeIn?: number;
+  fadeOut?: number;
+  crop: ImageCrop;
+  /** a picture's filter and adjustments, on every frame (none when absent): see clipFilter in core/factory.ts */
+  filter?: ImageFilter;
+  /** frame shape from the shape catalogue ("rect" = none) */
+  mask: ShapeKind;
+  maskPath?: string;
+  radius: number;
+  stroke?: Stroke | null;
+}
+
+export type DesignElement = TextElement | ShapeElement | LineElement | ImageElement | GraphicElement | GroupElement | TableElement | ChartElement | VideoElement;
 
 export type ElementOf<T extends ElementType> = Extract<DesignElement, { type: T }>;
 
@@ -529,15 +658,48 @@ export interface Design {
   trashedAt: number | null;
   /** ruler guides in design px */
   guides?: { vertical: number[]; horizontal: number[] };
+  /** margin in design px; absent means the default 5% of the shorter page side */
+  margin?: number;
+  /** grid spacing in design px; absent means 20 */
+  gridSize?: number;
   /** present while the design is shared with other people; see `LiveLink` */
   live?: LiveLink;
   /** notes pinned to places of the pages; none is the same as an empty list (an older design has none) */
   comments?: DesignComment[];
+  /** sounds that play across the pages, on the timeline's own row (design version 3); none is the same as an empty list */
+  audio?: AudioTrack[];
   /**
    * The format of this document (src/core/schema/design.ts): CURRENT_DESIGN_VERSION when this build wrote it. A design read
    * from storage or a file passes through `migrateDesign` first, so the editor only ever holds the current version.
    */
   version: number;
+}
+
+/**
+ * A sound that belongs to the whole design (design version 3): music or a voice on the timeline's own row, placed at a second of
+ * the design's time and playing on across its pages, in the timeline's Play, in Present and in a video download. Read with
+ * defaults where it is used (src/core/audioTracks.ts), so a field that is absent is never a problem.
+ */
+export interface AudioTrack {
+  id: ID;
+  /** "asset:<id>": a sound stored in this browser's uploads (no other scheme: a design never plays a sound from the web) */
+  src: string;
+  /** shown on the timeline (the upload's name when it was added) */
+  name?: string;
+  /** seconds: the length of the whole sound */
+  duration: number;
+  /** seconds into the sound where it starts and stops playing (0 <= trimStart < trimEnd <= duration) */
+  trimStart: number;
+  trimEnd: number;
+  /** seconds into the design at which it starts playing, 0 to MAX_TRACK_START */
+  startAt: number;
+  /** plays over and over to the end of the design (it plays once when absent) */
+  loop?: boolean;
+  /** how loud it plays, from 0 to 1 (1 when absent) */
+  volume?: number;
+  /** seconds over which it rises at the start of every play of it, and falls at the end (0 to 5, 0 when absent) */
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 /** Light-weight record used by the dashboard (no page content). */
@@ -605,7 +767,7 @@ export interface SyncRecord {
 export interface Asset {
   id: ID;
   name: string;
-  kind: "image" | "svg";
+  kind: "image" | "svg" | "video" | "audio";
   mime: string;
   size: number;
   width: number;

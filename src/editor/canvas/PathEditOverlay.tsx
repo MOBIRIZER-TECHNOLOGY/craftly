@@ -4,6 +4,7 @@ import { insertNode, moveHandle, moveNodes, nearestOnPath, nodeKindOf, pathToStr
 import { designToLocal, elementPath } from "@/core/penShape";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { Point, ShapeElement } from "@/core/types";
+import { useDragEnd } from "./dragEnd";
 import { applyPath, selectedIn, selectNodes } from "./pathEditActions";
 import { stopPathEdit, usePathEdit } from "./pathEditStore";
 import { screenToDesign, useView } from "./viewStore";
@@ -35,6 +36,7 @@ export function PathEditOverlay() {
   const presenting = useEditor((s) => s.presenting);
   const path = useMemo(() => (shape ? elementPath(shape) : null), [shape]);
   const usable = !!shape && !shape.locked && !!path && onlySelected && tool === "select" && mode === "edit" && !presenting;
+  const dragEnd = useDragEnd(!!id && usable);
 
   // leave point editing when what it needs is gone
   useEffect(() => {
@@ -73,16 +75,26 @@ export function PathEditOverlay() {
       const at = localOf(el, ev);
       onMove({ x: at.x - start.x, y: at.y - start.y }, ev);
     };
-    const up = () => {
+    // once, whichever comes first: the pointer is released, cancelled or loses its capture, or point editing ends (useDragEnd)
+    const finish = () => {
+      if (dragEnd.current !== finish) return false;
+      dragEnd.current = null;
       target.removeEventListener("pointermove", move as EventListener);
       target.removeEventListener("pointerup", up);
       target.removeEventListener("pointercancel", up);
+      target.removeEventListener("lostpointercapture", up);
       actions.endTransaction();
-      onEnd?.(moved);
+      return true;
     };
+    const up = () => {
+      if (finish()) onEnd?.(moved);
+    };
+    dragEnd.current?.();
+    dragEnd.current = finish;
     target.addEventListener("pointermove", move as EventListener);
     target.addEventListener("pointerup", up);
     target.addEventListener("pointercancel", up);
+    target.addEventListener("lostpointercapture", up);
   }
 
   /** Moves the points in `indices` of `from` as the pointer moves. */

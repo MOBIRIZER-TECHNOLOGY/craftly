@@ -3,8 +3,8 @@
  * per-item actions (rename, copy, star, move, trash, delete). UI code only calls these; they own the toasts,
  * the error handling and the "go to the editor" navigation.
  */
-import { ACCEPTED_IMAGE_TYPES, addAssetFromFile, assetSrc, deleteAsset, isAcceptedImage, renameAsset } from "@/core/assets";
-import { createImage, createPage } from "@/core/factory";
+import { ACCEPTED_IMAGE_TYPES, addAssetFromFile, assetSrc, deleteAsset, isAcceptedImage, renameAsset, videoInfo } from "@/core/assets";
+import { createImage, createPage, createVideo } from "@/core/factory";
 import {
   createBlankDesign,
   createDesignFromPages,
@@ -144,16 +144,9 @@ export function fitToLimits(width: number, height: number): { width: number; hei
 /** A design sized to the picture with the picture placed full-bleed, opened in the editor. */
 async function createDesignWithAsset(asset: Asset, options: CreateOptions): Promise<void> {
   const { width, height } = fitToLimits(asset.width, asset.height);
-  const picture = createImage({
-    src: assetSrc(asset.id),
-    naturalWidth: asset.width,
-    naturalHeight: asset.height,
-    x: 0,
-    y: 0,
-    width,
-    height,
-    name: asset.name,
-  });
+  const at = { src: assetSrc(asset.id), naturalWidth: asset.width, naturalHeight: asset.height, x: 0, y: 0, width, height, name: asset.name };
+  // a clip fills its page as a picture does, and plays whole
+  const picture = asset.kind === "video" ? createVideo({ ...at, duration: (await videoInfo(asset.blob))?.duration || 1 }) : createImage(at);
   const design = await createDesignFromPages({
     typeId: "custom",
     width,

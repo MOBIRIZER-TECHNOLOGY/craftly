@@ -1,3 +1,4 @@
+import { CURRENT_DESIGN_VERSION } from "@/core/schema/design";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareAssetFromFile, getAsset, listAssets } from "@/core/assets";
 import { createDesign, createGroup, createImage, createPage, createShape } from "@/core/factory";
@@ -175,7 +176,7 @@ describe("importing a project file", () => {
     holdPictures();
     const { assets } = JSON.parse(await (await exportProjectFile(filed)).text());
     const imported = await importProjectFile(fileOf(JSON.stringify({ craftly: 1, design: filed, assets })));
-    expect(imported).toMatchObject({ folderId: null, starred: false, trashedAt: null, version: 1 });
+    expect(imported).toMatchObject({ folderId: null, starred: false, trashedAt: null, version: CURRENT_DESIGN_VERSION });
     expect(imported.updatedAt).toBe(imported.createdAt);
   });
 

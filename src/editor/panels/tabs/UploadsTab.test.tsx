@@ -1,7 +1,9 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addAssetFromFile, listAssets } from "@/core/assets";
+import { addAssetFromFile, listAssets, restoreAssets } from "@/core/assets";
+import { useEditor } from "@/core/store";
+import { resetTimeline, useTimeline } from "@/editor/timeline/timelineStore";
 import type { ImageElement } from "@/core/types";
 import { DRAG_MIME } from "@/editor/insert";
 import { clearLibrary, resetEditor, stubLayout } from "@/test/helpers";
@@ -10,7 +12,8 @@ import { emptyDesign, fakeDataTransfer, imageFile, lastElement, mountPanels, pag
 /* The real asset store (fake IndexedDB), wrapped so a test can hold back or fail an upload. */
 vi.mock("@/core/assets", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/core/assets")>();
-  return { ...real, addAssetFromFile: vi.fn(real.addAssetFromFile) };
+  // a sound's length: jsdom plays no media
+  return { ...real, addAssetFromFile: vi.fn(real.addAssetFromFile), audioInfo: vi.fn(async () => ({ duration: 12 })) };
 });
 
 let restoreLayout: () => void;
@@ -54,7 +57,7 @@ describe("Uploads tab", () => {
       expect(screen.getByText("Add your own photos and logos. They stay in this browser, ready for any design.")).toBeTruthy();
       expect(zone().classList.contains("is-empty")).toBe(true);
       const click = vi.spyOn(HTMLInputElement.prototype, "click");
-      await user.click(screen.getByRole("button", { name: /Drop images here/ }));
+      await user.click(screen.getByRole("button", { name: /Drop images, videos or sounds here/ }));
       expect(click.mock.contexts).toContain(fileInput());
       expect(screen.queryByText("No uploads found")).toBeNull();
     });
@@ -68,7 +71,7 @@ describe("Uploads tab", () => {
       expect(columns).toEqual([["new", "old"], ["middle"]]);
       expect(zone().classList.contains("is-empty")).toBe(false);
       expect(screen.queryByText("Upload, store and organize")).toBeNull();
-      expect(screen.getByRole("button", { name: /Drop images here/ })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Drop images, videos or sounds here/ })).toBeTruthy();
     });
 
     it("keeps each picture's proportions", async () => {
@@ -110,7 +113,7 @@ describe("Uploads tab", () => {
     it("opens the file chooser from the strip above the list too", async () => {
       const user = await openUploads("existing.png");
       const click = vi.spyOn(HTMLInputElement.prototype, "click");
-      await user.click(screen.getByRole("button", { name: /Drop images here/ }));
+      await user.click(screen.getByRole("button", { name: /Drop images, videos or sounds here/ }));
       expect(click.mock.contexts).toContain(fileInput());
     });
 
@@ -131,7 +134,7 @@ describe("Uploads tab", () => {
       const click = vi.spyOn(HTMLInputElement.prototype, "click");
       await user.click(screen.getByRole("button", { name: "Upload files" }));
       expect(click.mock.contexts).toContain(fileInput());
-      expect(fileInput().accept).toBe("image/*");
+      expect(fileInput().accept).toBe("image/*,video/mp4,video/webm,video/ogg,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/webm,audio/flac,.mp3,.m4a,.wav,.ogg,.flac");
       expect(fileInput().multiple).toBe(true);
     });
 
@@ -161,14 +164,14 @@ describe("Uploads tab", () => {
     it("explains when nothing chosen is an image", async () => {
       await openUploads();
       fireEvent.change(fileInput(), { target: { files: [new File(["x"], "notes.txt", { type: "text/plain" })] } });
-      expect(await screen.findByText("Only images can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP or SVG.")).toBeTruthy();
+      expect(await screen.findByText("Only images, videos and sounds can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP, SVG, MP4, WebM, Ogg, MP3, M4A, WAV or FLAC.")).toBeTruthy();
       expect(await listAssets()).toHaveLength(0);
     });
 
     it("stores the pictures and says how many other files were skipped", async () => {
       await openUploads();
       fireEvent.change(fileInput(), { target: { files: [imageFile("keep.png"), new File(["x"], "a.txt", { type: "text/plain" })] } });
-      expect(await screen.findByText("1 file was skipped because it is not an image.")).toBeTruthy();
+      expect(await screen.findByText("1 file was skipped because it is not an image, a video or a sound.")).toBeTruthy();
       await waitFor(() => expect(cardNames()).toEqual(["keep"]));
     });
 
@@ -177,7 +180,7 @@ describe("Uploads tab", () => {
       fireEvent.change(fileInput(), {
         target: { files: [imageFile("keep.png"), new File(["x"], "a.txt", { type: "text/plain" }), new File(["y"], "b.doc", { type: "application/msword" })] },
       });
-      expect(await screen.findByText("2 files were skipped because they are not images.")).toBeTruthy();
+      expect(await screen.findByText("2 files were skipped because they are not images, videos or sounds.")).toBeTruthy();
     });
 
     it("reports the uploads that failed and keeps the ones that worked", async () => {
@@ -219,7 +222,7 @@ describe("Uploads tab", () => {
       expect(zone().classList.contains("is-over")).toBe(true);
       fireEvent.dragLeave(zone());
       expect(zone().classList.contains("is-over")).toBe(false);
-      expect(within(zone()).getByText("Drop images here")).toBeTruthy();
+      expect(within(zone()).getByText("Drop images, videos or sounds here")).toBeTruthy();
     });
 
     it("also shows it in the empty library", async () => {
@@ -260,7 +263,7 @@ describe("Uploads tab", () => {
     it("explains when a dropped file is not a picture", async () => {
       await openUploads();
       fireEvent.drop(zone(), { dataTransfer: fakeDataTransfer({ files: [new File(["x"], "a.txt", { type: "text/plain" })], types: ["Files"] }) });
-      expect(await screen.findByText("Only images can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP or SVG.")).toBeTruthy();
+      expect(await screen.findByText("Only images, videos and sounds can be uploaded: PNG, JPG, WebP, GIF, AVIF, BMP, SVG, MP4, WebM, Ogg, MP3, M4A, WAV or FLAC.")).toBeTruthy();
     });
   });
 
@@ -367,6 +370,45 @@ describe("Uploads tab", () => {
         expect(await listAssets()).toHaveLength(0);
         expect(await screen.findByText("Upload, store and organize")).toBeTruthy();
       });
+    });
+  });
+
+  describe("a sound", () => {
+    const song = {
+      id: "a_song",
+      name: "Theme",
+      kind: "audio" as const,
+      mime: "audio/mpeg",
+      size: 3,
+      width: 0,
+      height: 0,
+      createdAt: 1,
+      blob: new Blob(["mp3"], { type: "audio/mpeg" }),
+    };
+    afterEach(() => resetTimeline());
+
+    it("is a card with its length that puts it on the timeline, not on the page", async () => {
+      await restoreAssets([song]);
+      const user = userEvent.setup();
+      mountPanels({ tab: "uploads", design: emptyDesign() });
+      const card = await screen.findByRole("button", { name: "Add Theme to the timeline" });
+      expect(await within(card).findByText("0:12")).toBeTruthy();
+      await user.click(card);
+      await waitFor(() => expect(useEditor.getState().design!.audio).toHaveLength(1));
+      expect(useEditor.getState().design!.audio![0]).toMatchObject({ src: "asset:a_song", name: "Theme", duration: 12, startAt: 0 });
+      expect(pageElements()).toHaveLength(0);
+      expect(useTimeline.getState().open).toBe(true);
+    });
+
+    it("says what deleting it does", async () => {
+      await restoreAssets([song]);
+      const user = userEvent.setup();
+      mountPanels({ tab: "uploads", design: emptyDesign() });
+      await screen.findByRole("button", { name: "Add Theme to the timeline" });
+      await user.click(screen.getByRole("button", { name: "More actions for Theme" }));
+      expect(screen.getByRole("menuitem", { name: "Add Theme to the timeline" })).toBeTruthy();
+      await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+      expect(await screen.findByText("Designs that use this sound will be silent where it played. This cannot be undone.")).toBeTruthy();
     });
   });
 });

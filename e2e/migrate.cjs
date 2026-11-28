@@ -22,6 +22,8 @@ const minimal = require("../src/test/fixtures/schema/design-v1-minimal.json");
 const full = require("../src/test/fixtures/schema/design-v1-full.json");
 const BACKUP_PATH = OUT + "backup.zip";
 const FUTURE_VERSION = 99;
+/** The version of the designs this build writes, read from the code (src/core/schema/design.ts). */
+const CURRENT = Number(/CURRENT_DESIGN_VERSION = (\d+)/.exec(fs.readFileSync(require("node:path").join(__dirname, "../src/core/schema/design.ts"), "utf8"))[1]);
 const REPLACED = "Craftly was updated in another tab. Reload this tab to keep working.";
 
 /** The same document with every object's keys in one order, so two copies compare equal whatever order they were written in. */
@@ -91,11 +93,24 @@ function readZip(file) {
   const page = await ctx.newPage();
   // what is expected to be reported while a library is being refused is not an error of the app (see the step that says so)
   let expectRefusals = false;
+  /** errors of the console whose words are still being read (see below) */
+  const reading = [];
   const watch = (target, label) => {
     target.on("console", (m) => {
       if (m.type() !== "error") return;
       const text = m.text();
-      if (expectRefusals && /MigrationError|newer version of Craftly|VersionError|Could not open|Failed to load resource/i.test(text)) return;
+      const expected = /MigrationError|newer version of Craftly|VersionError|Could not open|Failed to load resource/i;
+      if (expectRefusals && expected.test(text)) return;
+      // Firefox gives an Error that is logged as the bare word "Error": its name and message are read from it
+      if (expectRefusals && /^\w*Error$/.test(text.trim()) && m.args().length) {
+        const pending = m
+          .args()[0]
+          .evaluate((v) => (v instanceof Error ? v.name + ": " + v.message : String(v)))
+          .catch(() => text)
+          .then((full) => void (expected.test(full) || logs.push(label + " console.error: " + full.slice(0, 240))));
+        reading.push(pending);
+        return;
+      }
       logs.push(label + " console.error: " + text.slice(0, 240));
     });
     target.on("pageerror", (e) => logs.push(label + " PAGEERROR " + e.message.slice(0, 240)));
@@ -195,7 +210,7 @@ function readZip(file) {
   };
 
   /* ================= a design that release 1 stored ================= */
-  await step("a design of the first release opens whole, with every field, and opening it writes nothing", async () => {
+  await step("a design of the first release opens whole, with every field, brought up to date in memory, and opening it writes nothing", async () => {
     await home(page);
     await seed(page, [
       ["designs", full],
@@ -208,7 +223,7 @@ function readZip(file) {
     if (title !== full.title) throw new Error("the title is " + title);
     const open = await page.evaluate(() => ({ pages: window.__editor.getState().design.pages.length, version: window.__editor.getState().design.version }));
     if (open.pages !== full.pages.length) throw new Error(open.pages + " pages");
-    if (open.version !== 1) throw new Error("the open design is at version " + open.version);
+    if (open.version !== CURRENT) throw new Error("the open design is at version " + open.version + ", not " + CURRENT);
     await wait(page, 2500);
     if (canon(await readFrom(page, "designs", full.id)) !== canon(full)) throw new Error("the stored design is not what was stored");
     const summary = await readFrom(page, "summaries", full.id);
@@ -216,7 +231,7 @@ function readZip(file) {
     await shot(page, "old-design");
     await openEditor(page, minimal.id);
     if ((await page.getByRole("textbox", { name: "Design title" }).inputValue()) !== minimal.title) throw new Error("the design with only the required fields did not open");
-    return `${full.pages.length} pages, ${open.version === 1 ? "version 1" : ""}, nothing written`;
+    return `${full.pages.length} pages, version 1 opened as ${open.version}, nothing written`;
   });
 
   /* ================= a design that a newer release stored ================= */
@@ -321,7 +336,8 @@ function readZip(file) {
     await page.waitForFunction(() => window.__editor.getState().saveState === "saved", null, { timeout: 15000 });
     // a page of the same origin that runs none of the app: it is another tab that talks to the database
     const other = await ctx.newPage();
-    await other.goto(BASE + "/manifest.webmanifest");
+    // (a picture of the site, not its manifest: Firefox downloads a .webmanifest instead of showing it)
+    await other.goto(BASE + "/favicon.svg");
     // the title is written to the design when its field is left (Enter): from then on an edit waits for the autosave, 0.7 s away
     const title = page.getByRole("textbox", { name: "Design title" });
     await title.fill("Edited just before the upgrade");
@@ -377,6 +393,7 @@ function readZip(file) {
   });
 
   await step("no errors reached the console", async () => {
+    await Promise.all(reading);
     if (logs.length) throw new Error(logs.slice(0, 4).join(" | "));
     return "clean";
   });

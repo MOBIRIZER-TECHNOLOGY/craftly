@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RecordingClock, VIDEO_MIME_TYPES, detectVideoSupport, videoContainer, type RecorderEnv } from "./video";
+import { RecordingClock, VIDEO_MIME_TYPES, canEncodeFrames, detectVideoSupport, videoContainer, type RecorderEnv } from "./video";
 import { encodeEbmlSize, patchWebmDuration, withWebmDuration } from "./webm";
 
 const env = (supported: readonly string[] | "throws", captureStream: unknown = () => undefined): RecorderEnv => ({
@@ -15,13 +15,13 @@ const env = (supported: readonly string[] | "throws", captureStream: unknown = (
 describe("detectVideoSupport", () => {
   it("prefers VP9, then VP8, then whatever WebM the browser has, then MP4", () => {
     expect(VIDEO_MIME_TYPES).toEqual(["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4;codecs=avc1", "video/mp4"]);
-    expect(detectVideoSupport(env(VIDEO_MIME_TYPES))).toEqual({ ok: true, mimeType: "video/webm;codecs=vp9", reason: null });
+    expect(detectVideoSupport(env(VIDEO_MIME_TYPES))).toEqual({ ok: true, offline: false, mimeType: "video/webm;codecs=vp9", reason: null });
     expect(detectVideoSupport(env(["video/webm;codecs=vp8", "video/webm"])).mimeType).toBe("video/webm;codecs=vp8");
     expect(detectVideoSupport(env(["video/webm", "video/mp4"])).mimeType).toBe("video/webm");
   });
 
   it("records MP4 in a browser that records no WebM (Safari)", () => {
-    expect(detectVideoSupport(env(["video/mp4;codecs=avc1", "video/mp4"]))).toEqual({ ok: true, mimeType: "video/mp4;codecs=avc1", reason: null });
+    expect(detectVideoSupport(env(["video/mp4;codecs=avc1", "video/mp4"]))).toEqual({ ok: true, offline: false, mimeType: "video/mp4;codecs=avc1", reason: null });
     expect(detectVideoSupport(env(["video/mp4"])).mimeType).toBe("video/mp4");
     expect(videoContainer("video/mp4;codecs=avc1")).toBe("mp4");
     expect(videoContainer("video/webm;codecs=vp9")).toBe("webm");
@@ -52,6 +52,17 @@ describe("detectVideoSupport", () => {
 
   it("survives a browser that throws from isTypeSupported", () => {
     expect(detectVideoSupport(env("throws")).ok).toBe(false);
+  });
+
+  it("makes the video frame by frame in a browser with WebCodecs, recorder or not", () => {
+    const codecs = { VideoEncoder: function VideoEncoder() {}, VideoFrame: function VideoFrame() {} };
+    expect(canEncodeFrames(codecs)).toBe(true);
+    expect(canEncodeFrames({ VideoEncoder: function VideoEncoder() {} })).toBe(false);
+    expect(canEncodeFrames({})).toBe(false);
+    // with no recorder at all (a browser that has WebCodecs and no MediaRecorder): still a video, with no recording type
+    expect(detectVideoSupport(codecs as RecorderEnv)).toEqual({ ok: true, offline: true, mimeType: null, reason: null });
+    // with one: the recording type is kept for the fallback
+    expect(detectVideoSupport({ ...env(VIDEO_MIME_TYPES), ...codecs } as RecorderEnv)).toEqual({ ok: true, offline: true, mimeType: "video/webm;codecs=vp9", reason: null });
   });
 
   it("reports node (no browser APIs) as unsupported instead of throwing", () => {

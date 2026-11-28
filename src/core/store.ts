@@ -24,8 +24,11 @@ import { createPage, cloneElement, createLine, DEFAULT_INK, solid } from "./fact
 import { boundsOfElements } from "./geometry";
 import { uid } from "./ids";
 import * as ops from "./ops";
+import { splitPageAt } from "./splitPage";
 import { carryComments, cleanCommentText, COMMENT_COORD_MAX, MAX_COMMENTS, MAX_REPLIES, settleComments } from "./comments";
+import { MAX_TRACKS } from "./audioTracks";
 import type {
+  AudioTrack,
   Anchor,
   CommentAnchor,
   CommentAuthor,
@@ -67,7 +70,7 @@ export type ContextPanelState =
 
 export type ToolId = "select" | "text" | "shape" | "line" | "draw" | "pen" | "hand" | "comment";
 
-export type DialogName = "resize" | "shortcuts" | "findReplace" | "download" | "share" | "settings" | "versions" | "rename" | "newDesign" | "models";
+export type DialogName = "resize" | "shortcuts" | "findReplace" | "download" | "share" | "settings" | "versions" | "rename" | "newDesign" | "models" | "accessibility";
 
 export interface SnapGuide {
   /** "v" = vertical line at x, "h" = horizontal line at y (design px) */
@@ -97,6 +100,15 @@ export interface EditorState {
   viewport: { w: number; h: number };
   showRulers: boolean;
   snapEnabled: boolean;
+  /** snap to the design's grid, and draw it over the page */
+  snapToGrid: boolean;
+  /** the margins of the page are drawn (src/core/geometry.ts `pageMargin`), and elements snap to them */
+  showMargins: boolean;
+  /**
+   * The browser marks misspelt words while a text box is typed in. Off unless somebody asks for it, and remembered on this device
+   * (SPELL_CHECK_KEY): the checking is the browser's own, and what a browser does with the words is its affair, not Craftly's.
+   */
+  spellCheck: boolean;
 
   leftTab: LeftTab;
   context: ContextPanelState | null;
@@ -175,9 +187,13 @@ export interface EditorActions {
   openDesign(design: Design): void;
   closeDesign(): void;
   setTitle(title: string): void;
+  /** set the page margin in design px; values are kept within half the shorter page side */
+  setMargin(margin: number): void;
+  /** set grid spacing in design px */
+  setGridSize(size: number): void;
   /** library metadata that lives on the document (stored with it, so autosave never overwrites it) */
   updateMeta(patch: Partial<Pick<Design, "starred" | "folderId" | "trashedAt">>): void;
-  resizeDesign(width: number, height: number, scaleContent: boolean, unit?: SizeUnit): void;
+  resizeDesign(width: number, height: number, scaleContent: boolean, unit?: SizeUnit, smart?: boolean): void;
   replaceDesign(design: Design): void;
   /**
    * The design is shared with other people from now on: every change is told to the bridge, and undo and redo take back this person's
@@ -212,6 +228,14 @@ export interface EditorActions {
   setPageTransition(transition: PageTransition | null, scope?: "page" | "all", pageId?: ID): void;
   /** seconds the page stays on screen when played or exported */
   setPageDuration(seconds: number, scope?: "page" | "all", pageId?: ID): void;
+  /**
+   * Splits a page in two `at` seconds into it (core/splitPage.ts): the first part lasts until then, the second goes on from there,
+   * its clips going on from where they were. One step of Undo. Returns the new page's id, "" when the page cannot be split there
+   * (either part would be shorter than a page may be) or the design is only being viewed. The new page becomes the open one.
+   */
+  splitPage(pageId: ID, at: number): ID;
+  /** Takes the length set for the page (or every page) away: it lasts as long as its longest clip again, or 5 s without one. */
+  resetPageDuration(scope?: "page" | "all", pageId?: ID): void;
   /** put a template page's content on the active page (replace) or as a new page (add) */
   applyTemplatePage(page: Page, mode: "replace" | "add"): void;
 
@@ -229,6 +253,11 @@ export interface EditorActions {
   updateSelection(patch: Partial<DesignElement> | ((el: DesignElement) => void), opts?: UpdateOptions): void;
   /** Like `updateElements` for a page that may not be the open one: a slow job finishing after the person turned the page. */
   updateElementsOnPage(pageId: ID, ids: ID[], patch: Partial<DesignElement> | ((el: DesignElement) => void), opts?: UpdateOptions): void;
+  /** Adds a sound to the design (its timeline row): false when the design holds the most it may (MAX_TRACKS). */
+  addAudioTrack(track: AudioTrack): boolean;
+  /** Changes a sound of the design; `coalesce` makes a drag one step of undo. */
+  updateAudioTrack(id: ID, recipe: (track: AudioTrack) => void, opts?: UpdateOptions): void;
+  removeAudioTrack(id: ID): void;
   deleteElements(ids?: ID[]): void;
   duplicateSelection(): void;
   groupSelection(): void;
@@ -312,7 +341,7 @@ export interface EditorActions {
   setZoomMode(mode: "fit" | "fill"): void;
   setViewport(w: number, h: number): void;
   setGuides(guides: SnapGuide[]): void;
-  toggle(key: "showRulers" | "snapEnabled" | "showPageStrip" | "gridView" | "notesOpen" | "panelOpen"): void;
+  toggle(key: "showRulers" | "snapEnabled" | "snapToGrid" | "showMargins" | "spellCheck" | "showPageStrip" | "gridView" | "notesOpen" | "panelOpen"): void;
   setPresenting(on: boolean): void;
 
   /* chrome */
@@ -324,6 +353,31 @@ export interface EditorActions {
   setTool(tool: ToolId, shape?: string): void;
   setMode(mode: "edit" | "view"): void;
   setSaveState(state: EditorState["saveState"]): void;
+}
+
+/* ------------------------------------------------------------------ */
+/* what is remembered on this device                                   */
+/* ------------------------------------------------------------------ */
+
+/** Where the choice to check spelling is kept: "1" when it is on, nothing when it is off. */
+export const SPELL_CHECK_KEY = "craftly.spellcheck";
+
+/** The remembered choice. Off where there is no storage (a test in Node, a private window that refuses it). */
+function storedSpellCheck(): boolean {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem(SPELL_CHECK_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberSpellCheck(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(SPELL_CHECK_KEY, "1");
+    else localStorage.removeItem(SPELL_CHECK_KEY);
+  } catch {
+    /* no storage: the choice holds until the page is closed */
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -438,6 +492,11 @@ function normalizeTexts(next: Design, prev: Design | null, all = false): Design 
   });
 }
 
+/** Text measurement and connector routing for a design generated outside editor actions. */
+export function normalizeGeneratedDesign(next: Design, before: Design): Design {
+  return reflowLines(normalizeTexts(next, before), before);
+}
+
 /** Content stays centred on the page / `at` after insertion. */
 function placeElements(els: DesignElement[], design: Design, opts: AddOptions): void {
   for (const el of els) if (el.type === "text") Object.assign(el, measureTextElement(el));
@@ -459,6 +518,7 @@ const STYLE_KEYS: Record<string, string[]> = {
   shape: ["fill", "stroke", "radius"],
   line: ["stroke", "startArrow", "endArrow"],
   image: ["filter", "radius", "stroke"],
+  video: ["radius", "stroke", "speed", "muted", "volume", "fadeIn", "fadeOut", "once", "startAt"],
   graphic: ["colors", "strokeWidth"],
 };
 
@@ -511,7 +571,14 @@ export const useEditor = create<EditorState>()((set, get) => {
   function settle(base: Design, produced: Design, opts: UpdateOptions & { record?: boolean; history?: false } = {}): void {
     const s = get();
     // (the comments of a page that went go with it, and a pin on an element that went stays where the element was: src/core/comments.ts)
-    let next = settleComments(base, reflowLines(normalizeTexts(produced, base), base));
+    const normalized = normalizeTexts(produced, base);
+    const fitted = produce(normalized, (d) => {
+      if (txnDepth > 0 || !s.focusGroupId) return;
+      const page = pageOf(d, s.activePageId);
+      const group = page?.elements.find((el) => el.id === s.focusGroupId && el.type === "group");
+      if (group?.type === "group") ops.fitGroup(group);
+    });
+    let next = settleComments(base, reflowLines(fitted, base));
     next = produce(next, (d) => {
       d.updatedAt = Date.now();
     });
@@ -706,14 +773,24 @@ export const useEditor = create<EditorState>()((set, get) => {
         d.title = title.trim() || m.core.untitledDesign;
       });
     },
+    setMargin(margin) {
+      commit((d) => {
+        if (Number.isFinite(margin)) d.margin = Math.max(0, Math.min(Math.min(d.width, d.height) / 2, Math.round(margin)));
+      });
+    },
+    setGridSize(size) {
+      commit((d) => {
+        if (Number.isFinite(size)) d.gridSize = Math.max(1, Math.min(1000, Math.round(size)));
+      });
+    },
     updateMeta(patch) {
       commit((d) => {
         Object.assign(d, patch);
       });
     },
-    resizeDesign(width, height, scaleContent, unit) {
+    resizeDesign(width, height, scaleContent, unit, smart) {
       commit((d) => {
-        ops.resizeDesign(d, Math.max(16, Math.round(width)), Math.max(16, Math.round(height)), scaleContent);
+        ops.resizeDesign(d, Math.max(16, Math.round(width)), Math.max(16, Math.round(height)), scaleContent, smart);
         d.typeId = "custom";
         if (unit) d.unit = unit;
       });
@@ -760,6 +837,22 @@ export const useEditor = create<EditorState>()((set, get) => {
       const index = s.design.pages.findIndex((p) => p.id === pageId) + 1;
       commit((d) => ops.insertPage(d, copy, index));
       set({ activePageId: copy.id, selection: [] });
+    },
+    splitPage(pageId, at) {
+      const s = get();
+      const page = pageOf(s.design, pageId);
+      if (!page || !s.design) return "";
+      const parts = splitPageAt(page, at);
+      if (!parts) return "";
+      const second = ops.clonePageWithIds(parts.second);
+      const index = s.design.pages.findIndex((p) => p.id === pageId);
+      const done = commit((d) => {
+        d.pages[index] = parts.first;
+        ops.insertPage(d, second, index + 1);
+      });
+      if (!done) return "";
+      set({ activePageId: second.id, selection: [] });
+      return second.id;
     },
     deletePage(id) {
       const s = get();
@@ -856,6 +949,14 @@ export const useEditor = create<EditorState>()((set, get) => {
         { coalesce: `pdur:${scope === "all" ? "all" : id}` },
       );
     },
+    resetPageDuration(scope = "page", pageId) {
+      const id = pageId ?? get().activePageId;
+      const s = get();
+      if (!s.design?.pages.some((page) => (scope === "all" || page.id === id) && page.duration !== undefined)) return;
+      commit((d) => {
+        for (const page of d.pages) if (scope === "all" || page.id === id) delete page.duration;
+      });
+    },
     applyTemplatePage(page, mode) {
       const s = get();
       if (!s.design) return;
@@ -923,6 +1024,26 @@ export const useEditor = create<EditorState>()((set, get) => {
         const page = d.pages.find((p) => p.id === pageId);
         if (page) ops.patchElements(page as Page, ids, patch as never);
       }, opts);
+    },
+    addAudioTrack(track) {
+      if ((get().design?.audio?.length ?? 0) >= MAX_TRACKS) return false;
+      return commit((d) => {
+        d.audio = [...(d.audio ?? []), track];
+      });
+    },
+    updateAudioTrack(id, recipe, opts) {
+      commit((d) => {
+        const track = d.audio?.find((t) => t.id === id);
+        if (track) recipe(track as AudioTrack);
+      }, opts);
+    },
+    removeAudioTrack(id) {
+      commit((d) => {
+        if (!d.audio?.some((t) => t.id === id)) return;
+        const rest = d.audio.filter((t) => t.id !== id);
+        if (rest.length) d.audio = rest;
+        else delete d.audio;
+      });
     },
     deleteElements(ids) {
       const target = ids ?? get().selection;
@@ -1133,7 +1254,7 @@ export const useEditor = create<EditorState>()((set, get) => {
       const s = get();
       const page = pageOf(s.design, s.activePageId);
       const el = page && ops.findElement(page, id);
-      if (!el || el.type !== "image" || !el.src || el.locked) return;
+      if (!el || (el.type !== "image" && el.type !== "video") || !el.src || el.locked) return;
       set({ croppingId: id, selection: [id], editingTextId: null });
     },
     endCrop() {
@@ -1312,6 +1433,15 @@ export const useEditor = create<EditorState>()((set, get) => {
       if (txnDepth === 0) return;
       txnDepth--;
       if (txnDepth > 0) return;
+      const beforeFit = get().design;
+      if (beforeFit && get().focusGroupId) {
+        const fitted = produce(beforeFit, (d) => {
+          const page = pageOf(d, get().activePageId);
+          const group = page?.elements.find((el) => el.id === get().focusGroupId && el.type === "group");
+          if (group?.type === "group") ops.fitGroup(group);
+        });
+        if (fitted !== beforeFit) settle(beforeFit, fitted, { record: false, history: false });
+      }
       const s = get();
       const base = txnBase;
       txnBase = null;
@@ -1360,6 +1490,7 @@ export const useEditor = create<EditorState>()((set, get) => {
     toggle(key) {
       const s = get();
       set({ [key]: !s[key] } as Partial<EditorState> as EditorState);
+      if (key === "spellCheck") rememberSpellCheck(!s[key]);
     },
     setPresenting(on) {
       set({ presenting: on, selection: on ? [] : get().selection });
@@ -1424,6 +1555,9 @@ export const useEditor = create<EditorState>()((set, get) => {
     viewport: { w: 1000, h: 700 },
     showRulers: false,
     snapEnabled: true,
+    snapToGrid: false,
+    showMargins: false,
+    spellCheck: storedSpellCheck(),
     leftTab: "elements",
     context: null,
     panelOpen: true,

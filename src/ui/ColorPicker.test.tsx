@@ -476,3 +476,15 @@ describe("<ColorSwatch>", () => {
     expect(selected.classList.contains("is-selected")).toBe(true);
   });
 });
+
+describe("named palettes", () => {
+  it("offers the named palette colours and applies one when clicked", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Demo onChange={onChange} />);
+    expect(screen.getByText("Named palettes")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Sunset market: #3d2c4d" }));
+    expect(onChange).toHaveBeenCalledWith("#3d2c4d");
+    expect(hexField().value).toBe("3D2C4D");
+  });
+});

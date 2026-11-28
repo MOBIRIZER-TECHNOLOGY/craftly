@@ -26,6 +26,7 @@ export const REQUIRED_PROPERTIES: Readonly<Record<ElementType, Readonly<Record<s
   group: { ...PLACE, children: "list" },
   table: { ...PLACE, cells: "list", colWidths: "list", rowHeights: "list", fontFamily: "string" },
   chart: { ...PLACE, labels: "list", series: "list", palette: "list that is not empty" },
+  video: { ...PLACE, src: "string", crop: "object", mask: "string", duration: "number", trimStart: "number", trimEnd: "number", speed: "number" },
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);

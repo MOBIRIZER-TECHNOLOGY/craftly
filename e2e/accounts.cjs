@@ -2,7 +2,8 @@
  * Accounts, sync and teams (docs/ACCOUNTS.md) in real browsers against the real server with accounts on (`ACCOUNTS=1 SIGNUP=open`,
  * built and started here as live.cjs does, with a folder of its own, on a port that stays the same when it is stopped and started
  * again). Without an account nothing changes and nothing is asked of the server. Then one person signs up on a laptop with the
- * server typed in and moves the laptop's design in, signs in on a phone (a second browser context) and finds it there, edits the same
+ * server typed in and moves the laptop's design in, signs in on a phone (a second browser context) and finds it there, a clip and a
+ * sound of a design of the laptop reach the phone with it (docs/ACCOUNTS.md, "Clips and sounds"), edits the same
  * design on both while the laptop is offline (a conflict: the server's design stays under its id, the laptop's edit becomes a copy
  * "(edited on …)"), makes a team and invites a second person by link (which names the account server after the #), who makes an
  * account from the invite without typing a server; a team design reaches the second person, who edits it while the owner has it
@@ -21,7 +22,7 @@ const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
-const { launch, outDir, BASE } = require("./lib.cjs");
+const { launch, outDir, lacksMedia, BASE } = require("./lib.cjs");
 
 const OUT = outDir("accounts");
 const ROOT = path.resolve(__dirname, "..");
@@ -115,7 +116,13 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     const serverAway = (text) =>
       !server.running && (/^Could not connect to server/.test(text) || (text.includes(new URL(SERVER).host) && /due to access control checks/.test(text)));
     page.on("console", (m) => {
-      if (m.type() === "error" && !/WebSocket|ERR_CONNECTION|ERR_INTERNET_DISCONNECTED|Failed to load resource|Failed to fetch/.test(m.text()) && !serverAway(m.text()))
+      if (
+        m.type() === "error" &&
+        !/WebSocket|ERR_CONNECTION|ERR_INTERNET_DISCONNECTED|Failed to load resource|Failed to fetch|NetworkError when attempting to fetch|CORS request did not succeed/.test(
+          m.text(),
+        ) &&
+        !serverAway(m.text())
+      )
         logs.push(`${name} console.error: ` + m.text().slice(0, 240));
     });
     page.on("pageerror", (e) => {
@@ -182,6 +189,7 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
       window.__journey = {
         lib: await import(loaded("/src/core/library.ts")),
         factory: await import(loaded("/src/core/factory.ts")),
+        assets: await import(loaded("/src/core/assets.ts")),
         // (the account code only once the journey is past the step that checks it is not loaded, and the app has loaded it)
         sync: withAccount ? await import(loaded("/src/cloud/sync.ts")) : null,
       };
@@ -353,6 +361,78 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
     if (await phone.page.getByRole("dialog", { name: /into your account/ }).count()) throw new Error("the phone asked to move designs it does not have");
     await shot(phone, "signed-in");
     return "listed on the phone";
+  });
+
+  // the steps of clips and sounds need a browser that records and plays them
+  const noMedia = await lacksMedia(browser);
+  const mediaStep = (name, fn) => (noMedia ? Promise.resolve(void console.log(`SKIP ${name}  (${noMedia}; Safari has them)`)) : step(name, fn));
+  await mediaStep("a clip and a sound in a design of the laptop reach the phone with it, as themselves", async () => {
+    await ready(laptop);
+    const made = await laptop.page.evaluate(async () => {
+      const { lib, factory, assets } = window.__journey;
+      // a red clip of a second, recorded in the page, and a tone of a second as a WAV file
+      const c = document.createElement("canvas");
+      c.width = 160;
+      c.height = 90;
+      const g = c.getContext("2d");
+      const rec = new MediaRecorder(c.captureStream(30), { mimeType: "video/webm;codecs=vp8" });
+      const chunks = [];
+      rec.ondataavailable = (e) => chunks.push(e.data);
+      const start = performance.now();
+      rec.start(100);
+      await new Promise((done) => {
+        const tick = () => {
+          g.fillStyle = "#e11d48";
+          g.fillRect(0, 0, 160, 90);
+          if (performance.now() - start < 1000) requestAnimationFrame(tick);
+          else done();
+        };
+        tick();
+      });
+      await new Promise((r) => {
+        rec.onstop = r;
+        rec.stop();
+      });
+      const clip = await assets.addAssetFromFile(new File(chunks, "Red.webm", { type: "video/webm" }));
+      const rate = 8000;
+      const wav = new DataView(new ArrayBuffer(44 + rate * 2));
+      const text = (o, t) => [...t].forEach((ch, i) => wav.setUint8(o + i, ch.charCodeAt(0)));
+      text(0, "RIFF");
+      wav.setUint32(4, 36 + rate * 2, true);
+      text(8, "WAVEfmt ");
+      wav.setUint32(16, 16, true);
+      wav.setUint16(20, 1, true);
+      wav.setUint16(22, 1, true);
+      wav.setUint32(24, rate, true);
+      wav.setUint32(28, rate * 2, true);
+      wav.setUint16(32, 2, true);
+      wav.setUint16(34, 16, true);
+      text(36, "data");
+      wav.setUint32(40, rate * 2, true);
+      for (let i = 0; i < rate; i++) wav.setInt16(44 + i * 2, Math.sin((2 * Math.PI * 440 * i) / rate) * 9000, true);
+      const sound = await assets.addAssetFromFile(new File([wav.buffer], "Tone.wav", { type: "audio/wav" }));
+      const design = await lib.createBlankDesign({ typeId: "custom", width: 800, height: 600, title: "Clip and sound" });
+      const open = await lib.getDesignForEditing(design.id);
+      open.design.pages[0].elements.push(factory.createVideo({ src: `asset:${clip.id}`, naturalWidth: 160, naturalHeight: 90, duration: 1 }));
+      open.design.audio = [{ id: "au_tone", src: `asset:${sound.id}`, name: "Tone", duration: 1, trimStart: 0, trimEnd: 1, startAt: 0 }];
+      await lib.saveDesign(open.design, undefined, open.revision);
+      return { id: design.id, clip: clip.id, clipSize: clip.size, sound: sound.id, soundSize: sound.size };
+    });
+    const sent = await syncNow(laptop);
+    if (sent.error || sent.problems?.length) throw new Error("the laptop's sync: " + JSON.stringify(sent));
+    await syncNow(phone);
+    await until("the phone has the design", async () => (await designs(phone)).some((d) => d.id === made.id));
+    const got = await phone.page.evaluate(
+      async ([clipId, soundId]) => {
+        const { assets } = window.__journey;
+        const [clip, sound] = [await assets.getAsset(clipId), await assets.getAsset(soundId)];
+        return { clip: clip && { kind: clip.kind, mime: clip.mime, size: clip.size }, sound: sound && { kind: sound.kind, mime: sound.mime, size: sound.size } };
+      },
+      [made.clip, made.sound],
+    );
+    if (got.clip?.kind !== "video" || got.clip.size !== made.clipSize) throw new Error("the phone's clip: " + JSON.stringify(got.clip));
+    if (got.sound?.kind !== "audio" || got.sound.size !== made.soundSize) throw new Error("the phone's sound: " + JSON.stringify(got.sound));
+    return `a ${Math.round(made.clipSize / 1024)} KB clip and a ${Math.round(made.soundSize / 1024)} KB sound on the phone`;
   });
 
   await step("a conflict: the same design edited on the phone and on the laptop while it is offline", async () => {
@@ -593,6 +673,73 @@ const secretPassword = () => crypto.randomBytes(12).toString("base64url");
       if (first.t !== "join" || typeof first.session !== "string" || "key" in first) throw new Error("the join was " + s.first.slice(0, 120));
     }
     return `${ws.length} sockets, each joined with a session and no key`;
+  });
+
+  await mediaStep("a clip added in the team's live room reaches the other member through the room, sent with a session and no key", async () => {
+    const puts = [];
+    const onRequest = (req) => {
+      if (/\/api\/rooms\/[^/]+\/media\//.test(req.url()) && req.method() === "PUT") puts.push(req.headers());
+    };
+    laptop.page.on("request", onRequest);
+    const made = await laptop.page.evaluate(async () => {
+      const { assets, factory } = window.__journey;
+      const c = document.createElement("canvas");
+      c.width = 160;
+      c.height = 90;
+      const g = c.getContext("2d");
+      const rec = new MediaRecorder(c.captureStream(30), { mimeType: "video/webm;codecs=vp8" });
+      const chunks = [];
+      rec.ondataavailable = (e) => chunks.push(e.data);
+      const start = performance.now();
+      rec.start(100);
+      await new Promise((done) => {
+        const tick = () => {
+          g.fillStyle = "#16a34a";
+          g.fillRect(0, 0, 160, 90);
+          if (performance.now() - start < 1000) requestAnimationFrame(tick);
+          else done();
+        };
+        tick();
+      });
+      await new Promise((r) => {
+        rec.onstop = r;
+        rec.stop();
+      });
+      const clip = await assets.addAssetFromFile(new File(chunks, "Green.webm", { type: "video/webm" }));
+      const { actions } = window.__editor.getState();
+      // (the editor gives it an id of its own)
+      actions.addElements([{ ...factory.createVideo({ src: `asset:${clip.id}`, naturalWidth: 160, naturalHeight: 90, duration: 1, x: 400, y: 300 }) }], {
+        center: false,
+        select: false,
+      });
+      return { id: clip.id, size: clip.size, live: window.__editor.getState().live };
+    });
+    const where = (who) =>
+      who.page.evaluate(() => {
+        const st = window.__editor.getState();
+        return { live: st.live, pages: st.design.pages.map((p) => p.elements.map((e) => `${e.type}:${e.id}`)) };
+      });
+    await until("bob's page has the clip", async () =>
+      bob.page.evaluate((src) => window.__editor.getState().design.pages.some((p) => p.elements.some((e) => e.src === src)), `asset:${made.id}`),
+    ).catch(async (error) => {
+      throw new Error(`${error.message}; made ${JSON.stringify(made)}; laptop ${JSON.stringify(await where(laptop))}; bob ${JSON.stringify(await where(bob))}`);
+    });
+    await until(
+      "bob has the clip's file, as it was",
+      async () => (await bob.page.evaluate(async (id) => (await window.__journey.assets.getAsset(id))?.size ?? 0, made.id)) === made.size,
+      30000,
+    );
+    laptop.page.off("request", onRequest);
+    if (!puts.length) throw new Error("the clip was not sent to the room");
+    for (const h of puts) {
+      if (!/^Bearer /.test(h.authorization ?? "") || "x-craftly-key" in h) throw new Error("the clip was sent with " + JSON.stringify(Object.keys(h)));
+    }
+    // the clip is removed again on the laptop, so the steps after see the team's design as they did
+    await laptop.page.evaluate((src) => {
+      const { design, actions } = window.__editor.getState();
+      actions.deleteElements(design.pages.flatMap((p) => p.elements.filter((e) => e.src === src).map((e) => e.id)));
+    }, `asset:${made.id}`);
+    return `a ${Math.round(made.size / 1024)} KB clip on bob's device; ${puts.length} PUT with a session`;
   });
 
   await step("a member lowered to viewer is sent out and comes back read-only", async () => {

@@ -34,6 +34,8 @@ async function boot(hash = "#/trash") {
   root.id = "root";
   document.body.replaceChildren(root);
   window.location.hash = hash;
+  // let the previous app's title-restoring cleanup finish before this app writes its own title
+  await new Promise((resolve) => setTimeout(resolve, 0));
   vi.resetModules();
   await import("@/main");
 }
@@ -76,7 +78,7 @@ describe("main", () => {
     localStorage.setItem("craftly.language", "hi");
     await boot("#/design/not-there");
     expect(await screen.findByText(hi.editor.shell.missingTitle)).toBeTruthy();
-    expect(document.title).toBe(hi.dashboard.pageTitles.home);
+    await waitFor(() => expect(document.title).toBe(hi.dashboard.pageTitles.home));
     expect(document.title).not.toBe("Craftly - Design anything");
   });
 

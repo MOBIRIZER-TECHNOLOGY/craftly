@@ -192,3 +192,60 @@
     transition: none;
   }
 }
+
+/* how long the show has run; a click starts it again */
+.cf-present__clock {
+  min-width: 52px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.cf-present__clock:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cf-present__clock:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+
+/* the pointer: a red dot where the mouse is, in place of the cursor */
+.cf-present.is-pointing,
+.cf-present.is-pointing .cf-present__stage {
+  cursor: none;
+}
+
+.cf-present__dot {
+  position: absolute;
+  z-index: 4;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: #ff2d2d;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.85),
+    0 0 14px 4px rgba(255, 45, 45, 0.6);
+  pointer-events: none;
+}
+
+/* a narrow screen has no room for it, and a finger is no mouse to follow: the pointer stays with wide screens and mice */
+@media (max-width: 520px), (pointer: coarse) {
+  .cf-present__pointer {
+    display: none;
+  }
+}
+
+/* the presenter window is a second window beside the show: a phone has neither the room in the bar nor a second window to put it in */
+@media (max-width: 520px), (pointer: coarse) {
+  .cf-present__second {
+    display: none;
+  }
+}

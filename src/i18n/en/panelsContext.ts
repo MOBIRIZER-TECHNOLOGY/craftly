@@ -21,6 +21,7 @@ export const panelsContext = {
   },
   adjust: {
     resetAll: "Reset all",
+    autoEnhance: "Auto enhance",
     /** `label` is the name of an adjustment (Brightness, Contrast ...) */
     resetOne: (label: string) => `Reset ${label.toLowerCase()}`,
     duotone: "Duotone",
@@ -63,6 +64,10 @@ export const panelsContext = {
     pageTimingHint: "in a presentation or an exported animation",
     pageDuration: "Page duration",
     pageSeconds: (v: number) => `${num(Math.round(v * 10) / 10)} s`,
+    /** a page with a clip and no length of its own: "Lasts as long as its clip: 2.4 s" */
+    followsClip: (seconds: string) => `Lasts as long as its clip: ${seconds}`,
+    /** gives a page with a clip its automatic length back */
+    matchClip: (seconds: string) => `Match the clip (${seconds})`,
     transition: "Transition",
     transitionHint: "into this page",
     firstPage: "The first page has nothing to arrive from. Pick another page to set how the presentation moves to it.",
@@ -129,7 +134,16 @@ export const panelsContext = {
     photoFit: "Photo fit",
   },
   chart: {
-    kinds: { bar: "Bar chart", column: "Column chart", line: "Line chart", area: "Area chart", pie: "Pie chart", donut: "Donut chart" },
+    kinds: {
+      bar: "Bar chart",
+      column: "Column chart",
+      line: "Line chart",
+      area: "Area chart",
+      combo: "Bar and line chart",
+      scatter: "Scatter chart",
+      pie: "Pie chart",
+      donut: "Donut chart",
+    },
     chartType: "Chart type",
     data: "Data",
     label: "Label",
@@ -147,6 +161,15 @@ export const panelsContext = {
     values: "Values",
     gridRound: "Grid (not used by pie and donut)",
     gridLines: "Grid lines",
+    stacked: "Stack the series",
+    stackedOther: "Stack the series (bar, column and area charts)",
+    percent: "Show as a share of 100%",
+    axisTitles: "Axis titles",
+    valueAxis: "Along the values",
+    categoryAxis: "Along the categories",
+    valueAxisLabel: "Title of the value axis",
+    categoryAxisLabel: "Title of the category axis",
+    axisPlaceholder: "None",
     paletteColor: (n: number) => `Color ${num(n)}`,
     rowLabel: (n: number) => `Row ${num(n)} label`,
     /** a number cell: `series` and `row` are their names, or what seriesFallback / rowFallback say */
@@ -282,7 +305,8 @@ export const panelsContext = {
     titles: { filters: "Filters", adjust: "Adjust", tools: "Photo tools" },
     sections: "Photo editing sections",
     noPhoto: "No photo selected",
-    noPhotoText: "Select a photo on the page to apply filters, adjust its look or use the photo tools. Empty frames need a photo first.",
+    noPhotoText: "Select a photo or a clip on the page to apply filters, adjust its look or use the photo tools. Empty frames need a photo first.",
+    clipsOnly: "The photo tools work on photos, not on clips. Select a photo to use them.",
     intensity: "Intensity",
     presets: "Filter presets",
   },
@@ -301,6 +325,14 @@ export const panelsContext = {
     noMatch: (query: string) => `No fonts match “${query}”. Try a family name like “Lora” or a style like “script”.`,
     missingLabel: (family: string) => `${family}, not on this device`,
     missing: "Not on this device",
+    weight: "Weight",
+    weightMixed: "Several weights",
+    /** `name` is one of `weights`, or the number itself for a weight in between */
+    weightName: (name: string, weight: number) => (name === String(weight) ? name : `${name} (${num(weight)})`),
+    weights: { 100: "Thin", 200: "Extra light", 300: "Light", 400: "Regular", 500: "Medium", 600: "Semibold", 700: "Bold", 800: "Extra bold", 900: "Black" } as Record<
+      number,
+      string
+    >,
   },
   importData: {
     notText: "Choose a text file: .csv, .tsv or .txt.",
@@ -331,6 +363,7 @@ export const panelsContext = {
     group: "Group",
     table: "Table",
     chart: "Chart",
+    video: "Video",
     emptyText: "Empty text",
     groupOf: (n: number) => `Group (${num(n)})`,
   },
@@ -386,6 +419,14 @@ export const panelsContext = {
     rowStripes: "Row stripes",
     border: "Border",
     borderWidth: "Border width",
+    selectedCell: "Selected cell",
+    cellFill: "Cell fill",
+    cellText: "Cell text",
+    cellBold: "Bold cell text",
+    rowSpan: "Rows spanned",
+    colSpan: "Columns spanned",
+    mergeArea: "Merge area",
+    unmerge: "Unmerge cell",
     cell: (row: number, column: number) => `Row ${num(row)}, column ${num(column)}`,
   },
   tools: {

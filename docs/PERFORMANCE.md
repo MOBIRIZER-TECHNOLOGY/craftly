@@ -204,3 +204,90 @@ BASE=http://127.0.0.1:4179 node e2e/perf-drag.cjs
 `ONLY=text,blend` picks pages, `RUNS=5` repeats more, `HEADED=1` shows the window, `PROFILE=text` adds a CPU profile of one
 drag of that page (use the development server for it: a production build has no function names). The script is not part of
 `npm run e2e` and never fails; it prints the table and writes `result.json` into the journeys' output folder.
+
+# Performance: long video downloads
+
+Measured on 2026-11-27 on the machine above, in Chrome headless, against the dev server, with `e2e/perf-video.cjs`: a design of
+ten pages of a minute, each filled by a looping 720p clip, downloaded as a 1080p video (MP4, H.264, 30 fps, a target of 10 Mbit/s).
+The longest video the panel makes is ten minutes (`VIDEO_MAX_SECONDS`). Memory is the working set of all the browser's processes
+together; the editor with the design open was about 0.8 to 1.0 GB before the download.
+
+| The clip | Made in | File | Memory, peak |
+| --- | --- | --- | --- |
+| flat colour with a moving box | 507 s | 53 MB | 1.45 GB |
+| detail that changes every frame (the most the encoder writes) | 178 s | 413 MB | 2.12 GB |
+| the same, after the change below | 203 s | 426 MB | 1.86 GB |
+| a clip with a transparency layer, one minute only | 634 s | 41 MB | 0.93 GB |
+
+The flat run was the first of the day and the machine was busier; the detailed runs go at about 100 frames a second. Encoding and
+decoding are not what limits it: on their own, 1080p frames were encoded at 160 a second and the clip's frames decoded at 160 a
+second.
+
+**What was changed.** The MP4 was built whole in the page's memory and copied into a file at the end (Mediabunny's
+`fastStart: "in-memory"` into a `BufferTarget`), which is about three times the file at the peak. It is now written into a Blob as it
+is made (`src/export/animated/blobFile.ts`): `fastStart: "reserve"` keeps room at the start of the file for its index, which works
+because the number of frames and packets of sound is known before the first frame, so the file is still an ordinary MP4 with its
+index first (`ftyp`, `moov`, a `free` box of what was kept and not used, then `mdat`). The peak went down by 0.26 GB for a file of
+0.43 GB; what is left is mostly the browser keeping the file's bytes, which a download has to have somewhere.
+
+**The size estimate** left clips out: the panel said "~2.3 MB" for a minute that came to 42 MB. A clip now counts as a picture over
+its area, as an image does (`weighPage` in `src/export/options.ts`), so a page filled by a clip is estimated at the full rate: about
+75 MB a minute at 1080p, where detailed footage measured 42 MB and a flat clip 5 MB. It cannot know how much detail a clip has; it
+errs on the large side.
+
+**What is still slow or large.**
+- A clip with a transparency layer (a WebM with alpha, as a canvas records one) is read by seeking a hidden `<video>` for every
+  frame (`SeekReader` in `clipFrames.ts`), because Mediabunny decodes alpha in workers that the app's policy does not allow: about
+  3 frames a second, so a minute of video takes ten minutes. A clip from a camera or a phone has no such layer.
+- At the encoder's ceiling (10 Mbit/s for ten minutes, 750 MB) the peak would be about 1.9 GB above the editor's own memory. That
+  was not measured; the detailed clip above reached 5.7 Mbit/s.
+- A clip near the limit of an upload (250 MB): a real 720p MP4 padded to 240 MB with a `free` box, which players skip, was taken by
+  Uploads at its full size, placed, kept across a reload and downloaded in a 1080p video; the browser stayed under 0.95 GB. Its
+  decoding was not heavier than a small clip's (the padding is not pictures).
+- Not tried: a computer with less memory, a phone, Firefox and Safari (whose encoders differ).
+
+# Performance: the live server under load
+
+Measured on 2026-11-28 with `scripts/live-load.mjs` against the server's image (`Dockerfile.server`) in Docker Desktop on Windows,
+limited to **one CPU and 512 MB** (`docker run --cpus 1 --memory 512m`), about what a small virtual server has. (To run it again
+now, also set `MAX_CONNECTIONS_PER_ADDRESS` above the number of connections: since these runs, one address may have 200.) The load ran
+on the same machine (an AMD Ryzen 9 9900X), outside the container. Every room has five people. Each of them joins with the edit
+key, adds a shape, then moves it again and again and moves their pointer. An edit is acknowledged only once it is on disk, so
+the time to acknowledge includes the write.
+
+Two profiles:
+- **Busy:** an edit every 2 s and 5 pointer moves a second per person, all the time. The editor sends a pointer move at most
+  every 80 ms and only while the mouse moves, and an edit when something changes, so this is a room where everybody is busy
+  at once, more than people are.
+- **Extreme:** an edit every 0.5 s and 10 pointer moves a second per person, all the time. It shows where the server breaks.
+
+| Profile | Connections | Edits a second | Acknowledged in, p50 / p95 / p99 | CPU | Memory, peak |
+| --- | --- | --- | --- | --- | --- |
+| busy | 1,000 | 498 | 40 / 104 / 137 ms | 89 % | 66 MB |
+| busy | 2,000 | 997 | 1.7 / 2.3 / 2.4 s | 100 % | 85 MB |
+| extreme, before the change below | 500 | 997 | 242 / 363 / 450 ms | 100 % | 61 MB |
+| extreme, after it | 500 | 986 | 161 / 251 / 274 ms | 87 % | — |
+| extreme, before | 1,000 | 1,998 | 4.4 / 5.7 / 6.0 s | 100 % | 100 MB |
+| extreme, after | 1,000 | 1,975 | 0.98 / 1.3 / 1.4 s | 100 % | — |
+| extreme, before | 2,000 | 2,355 | 79 / 102 / 113 s | 100 % | 246 MB |
+
+In every run but the last nothing was refused, lost or closed. In the last one the server was far past what one CPU does:
+joining took eleven minutes instead of thirty seconds, 100 people could not join, and 733 connections were sent away with
+"try again later" (close 1013, `connections_closed_total{reason="queue"}`), as the server is made to do when edits wait too
+long to be saved; a browser comes back by itself and sends again what was not acknowledged. The process stayed up, was not
+killed for its memory, and went back to idle afterwards.
+
+**What was changed.** A profile of the server under the extreme load of 500 connections (`node --cpu-prof` in the container)
+showed its JavaScript idle 44 % of the time and the writes to the network at 25 %: one write for each message to each person,
+and a person in a room of five is told four pointer moves for each of their own. Turning messages into JSON was under 2 %.
+The server now holds each connection's socket at the first message of a turn of the event loop and lets it go when the turn
+is over (`hold` in `src/server/live.ts`), so what one person is told at once leaves in one write. It costs less than a
+millisecond, and it made the extreme load of 1,000 connections four times faster.
+
+**What it means.** One CPU carries about 1,000 people who are all busy at once with an edit acknowledged in about a tenth of
+a second, and degrades slowly past that; most people in most rooms are idle most of the time, which costs a ping every 30 s.
+The server is one Node process and does not use more cores, so a bigger machine helps only up to one fast core; more people
+than that need more servers (docs/DEPLOY.md, "What is not there yet").
+
+**Not measured.** The load on a machine of its own (here the load and the server shared one), designs with many pages and
+pictures, clips and pictures uploaded during the load, rooms of 20 or 50 people, a slow disk, and a run of hours.

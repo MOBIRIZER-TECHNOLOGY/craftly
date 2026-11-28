@@ -31,11 +31,15 @@ export const exporting = {
       /** the same choice in a browser that records MP4 and no WebM (Safari) */
       videoMp4: "Video (MP4)",
       videoHint: "Smooth, small files",
+      /** a video made frame by frame (WebCodecs), with the clips' sound */
+      videoSoundHint: "Smooth, with sound",
       videoUnsupported: "Not supported in this browser",
       sizes: "Several sizes",
       sizesHint: "One ZIP, a file per size",
       html: "Web page (HTML)",
       htmlHint: "A slideshow in any browser",
+      pptx: "PowerPoint (PPTX)",
+      pptxHint: "Slides for PowerPoint, Keynote or Google Slides",
     },
     pagesToDownload: "Pages to download",
     page: (n: number) => `Page ${plain(n)}`,
@@ -92,6 +96,8 @@ export const exporting = {
     frameRate: "Frame rate",
     fps: (fps: number) => `${plain(fps)} fps`,
     videoHint: "Recorded as it plays, so it takes as long as the animation. Keep this tab open and in front while it records.",
+    /** a video made frame by frame (WebCodecs) */
+    videoHintFrames: "Made frame by frame, with the clips' sound. You can use other tabs while it works.",
     notAnimated: "Nothing is animated yet - use Animate on the toolbar",
     bigGif: "Many sites accept GIFs of about 15 MB at most. A lower resolution or frame rate makes this one smaller.",
     sizes: "Sizes",
@@ -109,6 +115,10 @@ export const exporting = {
     htmlHint:
       "One .html file that shows the pages as a slideshow in any browser, for people who do not have Craftly: next and back with the buttons, the arrow keys, a click or a swipe, and a full screen button. Nothing is loaded from the internet.",
     htmlPictures: "Every page is a picture. Animations, transitions and links are not carried over; pages change with a short fade.",
+    pptxHint: "One .pptx file with a slide for every page, for PowerPoint, Keynote, Google Slides and other programs that open such files.",
+    pptxPictures:
+      "Complex content stays in a background picture so it keeps its appearance. Plain text and common solid-colour shapes become editable PowerPoint objects. Animations are not carried over; page transitions and links are.",
+    pptxNotesShown: "The notes are written as the speaker notes of each slide. Everyone who gets the file can read them.",
     includeNotes: "Include speaker notes",
     notesShown: "The notes are shown under each page. Everyone who gets the file can read them.",
     notesPrivate: "Notes are private and stay out of the file.",
@@ -181,6 +191,8 @@ export const exporting = {
     noRecorder: "Your browser cannot record video. Try Chrome, Edge or Firefox, or download an animated GIF instead.",
     noWebm: "This browser cannot record video as WebM or MP4. Try Chrome, Edge, Firefox or Safari, or download an animated GIF instead.",
     recordFailed: "The video could not be recorded. Please try again.",
+    encodeFailed: "The video could not be made. Please try again.",
+    noSound: "This browser cannot add sound to a video, so the video is silent. Chrome, Edge and Safari can.",
     cannotStart: "Your browser could not start recording video. Download an animated GIF instead.",
   },
 

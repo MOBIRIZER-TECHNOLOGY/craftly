@@ -224,6 +224,32 @@ describe("<NumberField>", () => {
       expect(onChange).not.toHaveBeenCalled();
     });
 
+    it("selects its number only while it still has the focus (in Chrome, select() takes the focus back)", async () => {
+      const select = vi.spyOn(HTMLInputElement.prototype, "select");
+      render(
+        <>
+          <Demo />
+          <button>Next</button>
+        </>,
+      );
+      // Tab passes through the field quicker than a frame: the frame's select() must not pull the focus back to it
+      act(() => field().focus());
+      act(() => screen.getByRole("button", { name: "Next" }).focus());
+      await act(() => new Promise((r) => requestAnimationFrame(r)));
+      expect(select).not.toHaveBeenCalled();
+      // and the same after an arrow key, if the focus has gone on by the next frame
+      act(() => field().focus());
+      fireEvent.keyDown(field(), { key: "ArrowUp" });
+      act(() => screen.getByRole("button", { name: "Next" }).focus());
+      await act(() => new Promise((r) => requestAnimationFrame(r)));
+      expect(select).not.toHaveBeenCalled();
+      // while it keeps the focus, the number is selected as before
+      act(() => field().focus());
+      await act(() => new Promise((r) => requestAnimationFrame(r)));
+      expect(select).toHaveBeenCalledTimes(1);
+      select.mockRestore();
+    });
+
     it("drops the edit on Escape without letting the key reach the dialog around it", async () => {
       const user = userEvent.setup();
       const onChange = vi.fn();

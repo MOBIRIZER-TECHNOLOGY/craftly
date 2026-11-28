@@ -5,7 +5,7 @@
  */
 import { configure, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createChart, createDesign, createGroup, createImage, createPage, createShape, createTable, createText } from "@/core/factory";
+import { createChart, createDesign, createGroup, createImage, createPage, createShape, createTable, createText, createVideo } from "@/core/factory";
 import { getActions, getActivePage, useEditor } from "@/core/store";
 import type { DesignElement, TableElement } from "@/core/types";
 import { resetEditor } from "@/test/helpers";
@@ -17,6 +17,7 @@ import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore
 import { usePreview, startPreview } from "./canvas/preview";
 import { takeSelectAllOnEdit } from "./canvas/controller";
 import { installHotkeys } from "./hotkeys";
+import { useLinkDialog } from "./toolbar/link";
 
 // the machine may be busy: give waitFor more than its default second
 configure({ asyncUtilTimeout: 20_000 });
@@ -305,6 +306,40 @@ describe("selection and arrangement shortcuts", () => {
   });
 });
 
+describe("link shortcuts", () => {
+  it("Ctrl+K opens the link dialog for one unlocked selected element", () => {
+    open();
+    actions().select(["r"]);
+    expect(ctrl("k")).toBe(true);
+    expect(useLinkDialog.getState().id).toBe("r");
+  });
+
+  it("does not open it for no selection, several elements or a locked element", () => {
+    open();
+    useLinkDialog.setState({ id: null });
+    expect(ctrl("k")).toBe(true);
+    expect(useLinkDialog.getState().id).toBeNull();
+    actions().select(["r", "e"]);
+    ctrl("k");
+    expect(useLinkDialog.getState().id).toBeNull();
+    actions().setLocked(["r"], true);
+    actions().select(["r"]);
+    ctrl("k");
+    expect(useLinkDialog.getState().id).toBeNull();
+  });
+
+  it("leaves Ctrl+K to the browser in view mode and while typing", () => {
+    open();
+    actions().select(["r"]);
+    actions().setMode("view");
+    actions().select(["r"]);
+    expect(ctrl("k")).toBe(false);
+    actions().setMode("edit");
+    const input = document.body.appendChild(document.createElement("input"));
+    expect(press("k", { ctrlKey: true }, input)).toBe(false);
+  });
+});
+
 describe("zoom shortcuts", () => {
   it.each([
     ["Ctrl+=", "=", 1.25],
@@ -408,6 +443,13 @@ describe("Delete, arrows, Enter and Tab", () => {
     actions().select(["frame"]);
     expect(press("Enter")).toBe(false);
     expect(state().croppingId).toBeNull();
+  });
+
+  it("Enter opens the selected clip for cropping", () => {
+    open([createVideo({ id: "clip", src: "asset:c", duration: 4 })]);
+    actions().select(["clip"]);
+    expect(press("Enter")).toBe(true);
+    expect(state().croppingId).toBe("clip");
   });
 
   it("Enter does nothing for a shape or for several elements", () => {

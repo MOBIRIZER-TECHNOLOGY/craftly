@@ -11,6 +11,8 @@ import type { TextRun } from "@/core/types";
 
 export interface InlineFormat {
   bold?: boolean;
+  /** numeric font weight, 100..900 */
+  weight?: number;
   italic?: boolean;
   underline?: boolean;
   strike?: boolean;
@@ -44,7 +46,7 @@ export const textEditing = {
 interface SelectionStyleStore {
   active: boolean;
   collapsed: boolean;
-  style: Pick<TextRun, "bold" | "italic" | "underline" | "strike" | "color" | "size" | "font">;
+  style: Pick<TextRun, "bold" | "weight" | "italic" | "underline" | "strike" | "color" | "size" | "font">;
   set(patch: Partial<Omit<SelectionStyleStore, "set">>): void;
 }
 

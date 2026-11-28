@@ -11,7 +11,7 @@ import { m } from "@/i18n";
 import { nameIn } from "./names";
 
 /** The numeric sliders of an ImageFilter. */
-export type FilterAdjustKey = "brightness" | "contrast" | "saturation" | "warmth" | "fade" | "vignette" | "blur" | "hue";
+export type FilterAdjustKey = "brightness" | "contrast" | "saturation" | "warmth" | "fade" | "vignette" | "blur" | "hue" | "highlights" | "shadows" | "sharpen" | "tint" | "curves" | "levels";
 
 export interface FilterPreset {
   id: string;
@@ -41,6 +41,12 @@ const SLIDERS: Array<Omit<AdjustmentDef, "label">> = [
   { key: "vignette", min: 0, max: 100, step: 1, default: 0 },
   { key: "blur", min: 0, max: 100, step: 1, default: 0 },
   { key: "hue", min: -100, max: 100, step: 1, default: 0 },
+  { key: "highlights", min: -100, max: 100, step: 1, default: 0 },
+  { key: "shadows", min: -100, max: 100, step: 1, default: 0 },
+  { key: "sharpen", min: 0, max: 100, step: 1, default: 0 },
+  { key: "tint", min: -100, max: 100, step: 1, default: 0 },
+  { key: "curves", min: -100, max: 100, step: 1, default: 0 },
+  { key: "levels", min: -100, max: 100, step: 1, default: 0 },
 ];
 
 /** Sliders of the Adjust panel, in display order. */

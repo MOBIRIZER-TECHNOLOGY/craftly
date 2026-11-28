@@ -13,8 +13,9 @@
  * Only elements of the page itself are attached to (not those inside a group), and never another line. Lines inside a group are
  * left alone: they move with the group, and are aimed again if they come out of it.
  */
-import { boxCenter, DEG, rotatePoint, toLocalPoint } from "./geometry";
-import type { Anchor, Design, DesignElement, LineBinding, LineElement, Page, Point } from "./types";
+import { boxCenter, DEG, fromLocalPoint, rotatePoint, toLocalPoint } from "./geometry";
+import { linePath } from "./lineRoute";
+import type { Anchor, Design, DesignElement, LineBinding, LineElement, LineRouting, Page, Point } from "./types";
 
 type Frame = { x: number; y: number; width: number; height: number; rotation: number };
 export type Side = Exclude<Anchor, "auto">;
@@ -43,11 +44,47 @@ export function lineFromPoints(start: Point, end: Point): Pick<LineElement, "x" 
   return { x: (start.x + end.x) / 2 - length / 2, y: (start.y + end.y) / 2, width: length, height: 0, rotation: length ? Math.atan2(dy, dx) / DEG : 0 };
 }
 
-/** The two ends of a line, on the page. */
-export function lineEndpoints(line: Pick<LineElement, "x" | "y" | "width" | "height" | "rotation">): { start: Point; end: Point } {
+/** The local box and route that join two page-space points with the chosen geometry. */
+export function lineFromRoute(start: Point, end: Point, routing: LineRouting = "straight"): Pick<LineElement, "x" | "y" | "width" | "height" | "rotation" | "route"> {
+  const frame = lineFromPoints(start, end);
+  if (routing === "straight") return { ...frame, route: undefined };
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const world =
+    routing === "elbow"
+      ? Math.abs(dx) >= Math.abs(dy)
+        ? [start, { x: (start.x + end.x) / 2, y: start.y }, { x: (start.x + end.x) / 2, y: end.y }, end]
+        : [start, { x: start.x, y: (start.y + end.y) / 2 }, { x: end.x, y: (start.y + end.y) / 2 }, end]
+      : [start, { x: start.x + dx / 2, y: start.y }, { x: end.x - dx / 2, y: end.y }, end];
+  const centre = boxCenter(frame);
+  const local = world.map((point) => {
+    const rotated = rotatePoint(point, centre, -frame.rotation);
+    return { x: rotated.x - frame.x, y: rotated.y - frame.y };
+  });
+  const minY = Math.min(0, ...local.map((point) => point.y));
+  const maxY = Math.max(0, ...local.map((point) => point.y));
+  const height = maxY - minY;
+  return {
+    ...frame,
+    y: centre.y - height / 2,
+    height,
+    route: local.map((point) => ({ x: point.x, y: point.y + height / 2 })),
+  };
+}
+
+/** The two ends of a line, on the page, where they are drawn. */
+export function lineEndpoints(line: Pick<LineElement, "x" | "y" | "width" | "height" | "rotation" | "route"> & { flipH?: boolean }): { start: Point; end: Point } {
+  if (line.route && line.route.length >= 2) {
+    const path = linePath(line);
+    const left = fromLocalPoint(line, path[0]);
+    const right = fromLocalPoint(line, path[path.length - 1]);
+    return line.flipH ? { start: right, end: left } : { start: left, end: right };
+  }
   const centre = boxCenter(line);
   const y = line.y + line.height / 2;
-  return { start: rotatePoint({ x: line.x, y }, centre, line.rotation), end: rotatePoint({ x: line.x + line.width, y }, centre, line.rotation) };
+  const left = rotatePoint({ x: line.x, y }, centre, line.rotation);
+  const right = rotatePoint({ x: line.x + line.width, y }, centre, line.rotation);
+  return line.flipH ? { start: right, end: left } : { start: left, end: right };
 }
 
 type End = { frame: Frame; anchor: Anchor } | { point: Point };
@@ -158,10 +195,12 @@ function reflowLine(line: LineElement, { here, there, nested }: Surroundings): L
   });
   const right = samePoint(own.start, aimed.start) && samePoint(own.end, aimed.end);
 
+  const routingChanged = previous?.routing !== line.routing;
   // changed by hand, with its elements and its attachments as they were: it is where the person put it, and no longer attached
-  if (previous && previous !== line && !attachmentsChanged && !targetsMoved && !right) return { ...line, start: null, end: null };
-  if (right && intact) return line;
-  return { ...line, ...lineFromPoints(aimed.start, aimed.end), start, end };
+  if (previous && previous !== line && !attachmentsChanged && !targetsMoved && !right && !routingChanged) return { ...line, start: null, end: null };
+  if (right && intact && !routingChanged) return line;
+  // lineFromRoute puts the start on the left of the box: a mirror left over from a flip would draw it on the right
+  return { ...line, ...lineFromRoute(aimed.start, aimed.end, line.routing), ...(line.flipH ? { flipH: false } : {}), start, end };
 }
 
 /**

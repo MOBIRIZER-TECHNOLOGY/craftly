@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { BLEND_MODES, blendLabel } from "@/core/blend";
 import { createLine, createShape, createText } from "@/core/factory";
-import type { DesignElement, ShapeElement } from "@/core/types";
+import type { DesignElement, LineElement, ShapeElement } from "@/core/types";
 import { live, openElements, store, typeNumber } from "@/test/ctxUtils";
 import { resetEditor } from "@/test/helpers";
 import { BorderPopover, FillButton, RadiusPopover, Swatch, TransparencyButton, capFor } from "./common";
@@ -121,6 +121,23 @@ describe("the line bar with nothing selected", () => {
     render(<LineBar els={[]} ids={[]} copyEnabled={false} />);
     await user.click(screen.getByRole("button", { name: "Line weight" }));
     expect(screen.getByRole("slider", { name: "Weight" }).getAttribute("aria-valuenow")).toBe("1");
+  });
+});
+
+describe("connector route and label controls", () => {
+  it("changes the route and edits the label of the selected line", async () => {
+    const line = createLine({ id: "line", x: 100, y: 100, width: 200 });
+    openElements([line], { selected: [line] });
+    render(<LineBar els={[line]} ids={[line.id]} copyEnabled={false} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Connector route" }));
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "Elbow" }));
+    expect(live<LineElement>(line).routing).toBe("elbow");
+    expect(live<LineElement>(line).route).toHaveLength(4);
+    await user.click(screen.getByRole("button", { name: "Line label" }));
+    await user.click(screen.getByRole("textbox", { name: "Line label" }));
+    await user.paste("Next");
+    expect(live<LineElement>(line).label).toBe("Next");
   });
 });
 

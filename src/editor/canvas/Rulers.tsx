@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { pageMargin } from "@/core/geometry";
 import { useEditor } from "@/core/store";
 import { m } from "@/i18n";
+import { useDragEnd } from "./dragEnd";
 import { designToScreen, screenToDesign, useView } from "./viewStore";
 
 export const RULER = 22;
@@ -157,13 +159,37 @@ function DraftGuide({ axis, pos }: { axis: "v" | "h"; pos: number }) {
   );
 }
 
+/** The margins of the page, when they are shown. Not drawn into any export. */
+export function Margins() {
+  const width = useEditor((s) => s.design?.width ?? 0);
+  const height = useEditor((s) => s.design?.height ?? 0);
+  const customMargin = useEditor((s) => s.design?.margin);
+  const zoom = useEditor((s) => s.zoom);
+  const shown = useEditor((s) => s.showMargins);
+  const margin = pageMargin(width, height, customMargin);
+  if (!shown || margin <= 0 || margin * 2 >= Math.min(width, height)) return null;
+  return <div className="cf-margins" data-cf-margins aria-hidden="true" style={{ inset: margin * zoom }} />;
+}
+
+/** The design's grid, shown while grid snapping is on. Not drawn into any export. */
+export function Grid() {
+  const size = useEditor((s) => s.design?.gridSize ?? 20);
+  const zoom = useEditor((s) => s.zoom);
+  const shown = useEditor((s) => s.snapToGrid);
+  if (!shown) return null;
+  const step = size * zoom;
+  return <div className="cf-grid" data-cf-grid aria-hidden="true" style={{ backgroundSize: `${step}px ${step}px` }} />;
+}
+
 /** Persisted guides, drawn across the whole workspace; drag to move, drop onto a ruler to delete. */
 export function Guides() {
   const guides = useEditor((s) => s.design?.guides);
   const zoom = useEditor((s) => s.zoom);
   const showRulers = useEditor((s) => s.showRulers);
   const mode = useEditor((s) => s.mode);
-  if (!guides || (!guides.vertical.length && !guides.horizontal.length) || !showRulers) return null;
+  const shown = !!guides && (guides.vertical.length > 0 || guides.horizontal.length > 0) && showRulers;
+  const dragEnd = useDragEnd(shown);
+  if (!guides || !shown) return null;
 
   const drag = (e: ReactPointerEvent, axis: "v" | "h", index: number) => {
     if (mode === "view") return;
@@ -181,17 +207,33 @@ export function Guides() {
     };
     const move = (ev: PointerEvent) => actions.moveGuide(axis, index, pos(ev).value);
     // a cancelled drag still closes the undo step (left open, it would block undo and the history), but it removes nothing:
-    // the guide stays where the pointer last put it
-    const up = (ev: PointerEvent) => {
+    // the guide stays where the pointer last put it. Once, whichever comes first: the pointer is released, cancelled or loses
+    // its capture, or the guides are hidden (useDragEnd)
+    let done = false;
+    const finish = () => {
+      if (done) return false;
+      done = true;
+      if (dragEnd.current === stop) dragEnd.current = null;
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
       target.removeEventListener("pointercancel", up);
-      if (ev.type !== "pointercancel" && pos(ev).overRuler) actions.removeGuide(axis, index);
+      target.removeEventListener("lostpointercapture", up);
+      return true;
+    };
+    const up = (ev: PointerEvent) => {
+      if (!finish()) return;
+      if (ev.type === "pointerup" && pos(ev).overRuler) actions.removeGuide(axis, index);
       actions.endTransaction();
     };
+    const stop = () => {
+      if (finish()) actions.endTransaction();
+    };
+    dragEnd.current?.();
+    dragEnd.current = stop;
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up);
     target.addEventListener("pointercancel", up);
+    target.addEventListener("lostpointercapture", up);
   };
 
   const line = (axis: "v" | "h", pos: number, index: number) => (

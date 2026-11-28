@@ -28,6 +28,10 @@ const journeys = [
     "editing together in three browsers against the real server: start from Share, join by the edit link, a view link that only looks, pointer drags, simultaneous edits, undo of one's own steps, reload, stop sharing",
   ],
   [
+    "liveclips.cjs",
+    "clips and sounds in a shared design against the real server: a clip and a sound put in a design that is then shared, kept as files beside the room, and a second person who joins by the edit link sees the clip's own picture and hears the sound in the timeline's Play",
+  ],
+  [
     "hostile.cjs",
     "a link that leads to a server that cannot be trusted: a design with code in it is refused in words and nothing of it is kept, an honest server opens the design, the same server turning hostile is left at once and the design stays as it was",
   ],
@@ -48,12 +52,32 @@ const journeys = [
     "a print PDF from the Download panel: bleed chosen by keyboard, crop and registration marks, CMYK, read back (boxes, the DeviceCMYK image, the marks, the text layer, the bleed filled)",
   ],
   [
+    "additions.cjs",
+    "what was added on 2026-11-23: Bulk create, stacked charts and axis titles, shape options, font weight, Link, a fixed shape for a crop, a frame shape, margins, spell-check, Check accessibility, the presenter's clock and pointer",
+  ],
+  [
+    "pptx.cjs",
+    "a PowerPoint file from the Download panel, without and with speaker notes, read back: the package, its XML, relationships and content types, slide size, the JPEG of each page",
+  ],
+  [
     "mobile.cjs",
     "a phone (375 x 812, touch) and a tablet, in English and Hindi: no sideways scroll, every tab reached by taps, top bar and toolbars fit, a text added and edited, menus and Share fit, a PNG downloaded, pages, Present",
   ],
   ["animate.cjs", "element and page animations, timing, transitions, preview, motion templates"],
+  [
+    "video.cjs",
+    "the video element: a WebM recorded in the page uploaded, placed, its first frame drawn, Trim, Speed and Sound, Play on the page, Present and an MP4 download read back from its pixels and the pitch of its sound, a reload",
+  ],
+  [
+    "record.cjs",
+    "Record in Uploads with Chrome's fake camera, microphone and screen: the live picture and the clock, Stop and the recording to watch, Add to the page as a clip as long as it, Record again, the screen without sound, closing while it records stops the camera, a phone in Hindi",
+  ],
+  [
+    "audio.cjs",
+    "the sounds of a design: two tones uploaded and put on the timeline, rows by when they play, volume, over and over, Delete and Undo, heard in the timeline's Play and in Present, an MP4 download read back by pitch and loudness, a reload",
+  ],
   ["present.cjs", "full-screen show: entrance animations, transitions both ways, auto-play, reduced motion"],
-  ["animated-export.cjs", "animated GIF and WebM downloads: structure, length, loop, decoded by the browser, cancel"],
+  ["animated-export.cjs", "animated GIF and MP4 video downloads: structure, length, loop, decoded by the browser, cancel"],
   ["a11y.cjs", "keyboard and screen reader basics: the first Tab reaches a control, the canvas is a stop, focus goes back after a dialog, headings and landmarks"],
   [
     "ml.cjs",

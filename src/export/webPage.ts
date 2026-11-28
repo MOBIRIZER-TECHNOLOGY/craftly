@@ -14,6 +14,7 @@
  * constant; a test recomputes it.
  */
 import type { DesignElement, Page } from "@/core/types";
+import type { PageLink } from "./links";
 import { m } from "@/i18n";
 import { ExportError } from "./errors";
 
@@ -26,6 +27,8 @@ export interface WebPageSlide {
   name?: string;
   /** presenter notes; written into the file only when `notes` is asked for */
   notes?: string;
+  /** safe link hotspots in design pixels */
+  links?: PageLink[];
 }
 
 export interface WebPageInput {
@@ -73,6 +76,8 @@ main{flex:1;min-height:0}
 #stage{position:relative;height:100%}
 .slide{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
 .slide img{display:block;max-width:100%;height:auto}
+.picture{position:relative;display:block;max-width:100%;max-height:100%;line-height:0}
+.picture a{position:absolute;display:block;line-height:1}
 .notes{width:100%;max-width:60em;padding:8px 14px;border-radius:8px;background:#1b1f26;overflow:auto}
 .notes h2{margin:0 0 4px;font-size:13px;font-weight:600;color:#aab2bf}
 .notes p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -235,9 +240,13 @@ export function buildWebPage(input: WebPageInput): string {
     const named = name ? `: ${name}` : "";
     const alt = slide.alt?.trim() || `Page ${i + 1}${named}`;
     const notes = input.notes ? slide.notes?.trim() : "";
+    const links = (slide.links ?? []).map((link) => {
+      const style = `left:${(link.x / width) * 100}%;top:${(link.y / height) * 100}%;width:${(link.w / width) * 100}%;height:${(link.h / height) * 100}%`;
+      return `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(link.url)}" style="${style}"></a>`;
+    });
     return [
       `<section class="slide${notes ? " has-notes" : ""}" aria-roledescription="slide" aria-label="${escapeHtml(`Page ${i + 1} of ${slides.length}${named}`)}">`,
-      `<img src="${slide.src}" alt="${escapeHtml(alt)}" width="${width}" height="${height}">`,
+      `<div class="picture"><img src="${slide.src}" alt="${escapeHtml(alt)}" width="${width}" height="${height}">${links.join("")}</div>`,
       ...(notes ? [`<div class="notes"><h2>Notes</h2><p>${escapeHtml(notes)}</p></div>`] : []),
       `</section>`,
     ].join("\n");

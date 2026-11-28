@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createDesign, createGroup, createImage, createLine, createPage, createShape, createTable, createText, solid } from "./factory";
+import { createDesign, createGroup, createImage, createLine, createPage, createShape, createTable, createText, createVideo, solid } from "./factory";
 import { getActions, getActivePage, getSelectedElements, pageOf, useEditor } from "./store";
-import type { DesignElement, GroupElement, ImageElement, TextElement } from "./types";
+import type { DesignElement, GroupElement, ImageElement, TextElement, VideoElement } from "./types";
 
 const a = () => useEditor.getState().actions;
 const s = () => useEditor.getState();
@@ -253,6 +253,20 @@ describe("page timing", () => {
     expect(page().duration).toBe(1);
     a().setPageDuration(500);
     expect(page().duration).toBe(60);
+  });
+
+  it("takes the length away again, from one page or all, so a page with a clip follows its clip", () => {
+    const second = a().addPage();
+    a().setPageDuration(3, "all");
+    const steps = s().past.length;
+    a().resetPageDuration("page", second);
+    expect(s().design!.pages.map((p) => p.duration)).toEqual([3, undefined]);
+    expect(s().past.length).toBe(steps + 1);
+    a().resetPageDuration("all");
+    expect(s().design!.pages.map((p) => "duration" in p)).toEqual([false, false]);
+    // nothing to take away: no step of undo
+    a().resetPageDuration("all");
+    expect(s().past.length).toBe(steps + 2);
   });
 
   it("sets it on one page by id, or on all pages", () => {
@@ -1092,6 +1106,24 @@ describe("clipboard", () => {
       a().select(["i2"]);
       a().pasteStyle();
       expect((el("i2") as ImageElement).radius).toBe(9);
+    });
+
+    it("copies the corners, outline, speed and sound of a clip onto another clip, and nothing else of it", () => {
+      const stroke = { color: "#ff00ff", width: 4, style: "dotted" as const };
+      open([
+        createVideo({ id: "v1", src: "asset:one", radius: 12, stroke, speed: 2, muted: true, trimStart: 1, trimEnd: 2, duration: 3 }),
+        createVideo({ id: "v2", src: "asset:two", duration: 8 }),
+        createImage({ id: "i1", src: "a.png" }),
+      ]);
+      a().select(["v1"]);
+      a().copyStyle();
+      expect(s().styleClipboard).toEqual({ __type: "video", radius: 12, stroke, speed: 2, muted: true });
+      a().select(["v2", "i1"]);
+      a().pasteStyle();
+      expect(el("v2")).toMatchObject({ src: "asset:two", radius: 12, stroke, speed: 2, muted: true, trimStart: 0, trimEnd: 8 });
+      // the outline is a copy, not the clip's own
+      expect((el("v2") as VideoElement).stroke).not.toBe((el("v1") as VideoElement).stroke);
+      expect((el("i1") as ImageElement).stroke).toBeNull();
     });
 
     it("copies only from a single element that has a style to copy", () => {

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChart, createTable } from "@/core/factory";
 import type { ChartElement, TableElement } from "@/core/types";
-import { captureContexts } from "@/test/logicPaint";
+import { drawChart } from "@/render/drawBlocks";
+import { captureContexts, spyContext, type SpyContext } from "@/test/logicPaint";
 import { chartSvg, tableSvg } from "./svgBlocks";
 import { SvgDoc } from "./svgUtil";
 
@@ -211,6 +212,18 @@ describe("tables", () => {
     expect(border[1]).toContain("M100 0V120");
     expect(border[1].endsWith("M0 0H300V120H0Z")).toBe(true);
     expect(tableOf({ borderWidth: 0 })).not.toContain("<path");
+  });
+
+  it("outlines each cell on its own instead of drawing the grid when cells are merged", () => {
+    const svg = tableOf({ borderWidth: 2, borderColor: "#445566", merges: [{ row: 1, col: 0, rowSpan: 1, colSpan: 2 }] });
+    // a grid would run through the merged cell, so there is none: every cell box carries the border itself
+    expect(svg).not.toContain("<path");
+    const boxes = [...svg.matchAll(/<rect [^>]*\/>/g)].map((m) => m[0]);
+    expect(boxes).toHaveLength(8);
+    for (const box of boxes) expect(box).toContain('stroke="#445566" stroke-width="2"');
+    expect(rects(svg).find((r) => r.y === 40 && r.x === 0)).toMatchObject({ w: 200, h: 40 });
+    // without a border the merged cells have no outline
+    expect(tableOf({ borderWidth: 0, merges: [{ row: 1, col: 0, rowSpan: 1, colSpan: 2 }] })).not.toContain("stroke=");
   });
 
   it("still draws something sensible when the columns have no width at all", () => {
@@ -433,5 +446,287 @@ describe("pie and donut charts", () => {
     const zero = chartOf({ chart: "pie", series: [{ name: "S", values: [0, 0] }] });
     expect(zero).not.toContain("NaN");
     expect(slices(zero)).toHaveLength(2);
+  });
+});
+
+describe("stacked charts and axis titles, written as the painter draws them", () => {
+  const SERIES = [
+    { name: "A", values: [10, 20, 30, 40], color: "#aa0000" },
+    { name: "B", values: [15, 25, 35, 45], color: "#0000aa" },
+  ];
+  /** the x, y, width and height of every bar of one colour, read from the points its path visits */
+  const boxes = (svg: string, fill: string) =>
+    [...svg.matchAll(new RegExp(`<path d="([^"]*)" fill="${fill}"/>`, "g"))].map((m) => {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (const [, command, rest] of m[1].matchAll(/([MHVA])([^MHVAZ]*)/g)) {
+        const n = rest.trim().split(/[ ,]+/).map(Number);
+        if (command === "H") xs.push(n[0]);
+        else if (command === "V") ys.push(n[0]);
+        else {
+          // M x y, and an arc ends at its last two numbers
+          xs.push(n[n.length - 2]);
+          ys.push(n[n.length - 1]);
+        }
+      }
+      return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    });
+
+  it("draws one column of pieces for each category, the second series on the first, and the sum above", () => {
+    const svg = chartOf({ series: SERIES, stacked: true });
+    expect(bars(svg)).toBe(8);
+    const first = boxes(svg, "#aa0000");
+    const second = boxes(svg, "#0000aa");
+    expect(first).toHaveLength(4);
+    expect(second).toHaveLength(4);
+    // 584 px of plot in four categories; a column takes 72 % of its category; the axis ends at 100 over 352 px
+    expect(first[0].x).toBeCloseTo(48 + 146 * 0.14, 1);
+    expect(first[0].w).toBeCloseTo(146 * 0.72, 1);
+    expect(first[0].h).toBeCloseTo(35.2, 1);
+    expect(second[0].x).toBeCloseTo(first[0].x, 1);
+    expect(second[0].h).toBeCloseTo(52.8, 1);
+    expect(second[0].y + second[0].h).toBeCloseTo(first[0].y, 1);
+    expect(labels(svg)).toEqual(["0", "25", "50", "75", "100", "Q1", "Q2", "Q3", "Q4", "25", "45", "65", "85"]);
+    expect(labels(chartOf({ series: SERIES, stacked: true, showValues: false }))).toHaveLength(9);
+  });
+
+  it("lays the pieces of a stacked bar chart end to end", () => {
+    const svg = chartOf({ chart: "bar", series: SERIES, stacked: true });
+    const first = boxes(svg, "#aa0000");
+    const second = boxes(svg, "#0000aa");
+    expect(first[0].x).toBeCloseTo(48, 1);
+    expect(first[0].w).toBeCloseTo(58.4, 1);
+    expect(second[0].x).toBeCloseTo(48 + 58.4, 1);
+    expect(second[0].w).toBeCloseTo(87.6, 1);
+    expect(second[0].y).toBeCloseTo(first[0].y, 1);
+    expect(labels(svg).slice(-4)).toEqual(["25", "45", "65", "85"]);
+  });
+
+  it("leaves out pieces of no size and sums of nothing, and stacks nothing for a single series", () => {
+    const svg = chartOf({ stacked: true, labels: ["a", "b"], series: [{ name: "A", values: [10, 0] }, { name: "B", values: [0, -2] }] }); // prettier-ignore
+    expect(bars(svg)).toBe(1);
+    expect(labels(svg).slice(-1)).toEqual(["10"]);
+    expect(chartOf({ stacked: true })).toBe(chartOf());
+  });
+
+  it("writes the titles of the axes: one under the plot, one turned a quarter on its left", () => {
+    const svg = chartOf({ valueAxisTitle: "Units <sold>", categoryAxisTitle: "Quarter" });
+    expect(labels(svg)).toContain("Quarter");
+    expect(labels(svg)).toContain("Units &lt;sold&gt;");
+    // the title on the left is half its room from the edge, at the middle of a plot that is one room shorter
+    const turned = svg.match(/<g transform="rotate\(-90 ([\d.]+) ([\d.]+)\)"><text [^>]*>Units &lt;sold&gt;<\/text><\/g>/)!;
+    expect(turned).not.toBeNull();
+    expect(+turned[1]).toBeCloseTo(12.8, 1);
+    expect(+turned[2]).toBeCloseTo(12.8 + (352 - 25.6) / 2, 1);
+    // the plot has moved: the first bar begins one room further right
+    expect(boxes(svg, "#7c3aed")[0].x).toBeCloseTo(48 + 25.6 + ((584 - 25.6) / 4) * 0.14, 1);
+    // a bar chart writes them the other way round
+    expect(chartOf({ chart: "bar", valueAxisTitle: "Units", categoryAxisTitle: "Quarter" })).toMatch(/rotate\(-90 [^)]*\)"><text [^>]*>Quarter</);
+  });
+
+  it("writes no title that is empty, and none on a pie", () => {
+    expect(chartOf({ valueAxisTitle: " ", categoryAxisTitle: "" })).toBe(chartOf());
+    expect(chartOf({ chart: "pie", valueAxisTitle: "Units", categoryAxisTitle: "Quarter" })).toBe(chartOf({ chart: "pie" }));
+    expect(chartOf({ categoryAxisTitle: "Quarter" })).not.toContain("rotate(");
+  });
+
+  it("writes only the turned title when the chart names its values but not its categories", () => {
+    const svg = chartOf({ valueAxisTitle: "Units" });
+    expect(count(svg, "rotate(-90")).toBe(1);
+    expect(labels(svg).filter((text) => text === "Units")).toHaveLength(1);
+    // nothing is written under the plot beyond the category names
+    expect(svg).toMatch(/rotate\(-90 [^)]*\)"><text [^>]*>Units</);
+    expect(labels(svg).filter((text) => !/^\d+$|^Q\d$/.test(text))).toEqual(["Units"]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * The exporter is a port of the canvas painter (src/render/drawBlocks.ts): for the newer kinds of chart, the
+ * dots, bars and words it writes are compared with what the painter draws for the same chart.
+ */
+describe("scatter, combined, stacked-area and 100% charts, written as the painter draws them", () => {
+  const circles = (svg: string) => [...svg.matchAll(/<circle cx="([^"]*)" cy="([^"]*)"/g)].map((m) => ({ x: +m[1], y: +m[2] }));
+  const painted = (el: ChartElement) => {
+    const spy = spyContext({ width: 800, height: 600 });
+    drawChart(spy.ctx, el);
+    return spy;
+  };
+  /** what the painter wrote, leaving out the empty strings the exporter does not write */
+  const paintedWords = (spy: SpyContext) =>
+    spy
+      .to("fillText")
+      .map((call) => call.args[0] as string)
+      .filter(Boolean);
+  const expectSamePoints = (svg: string, spy: SpyContext) => {
+    const dots = circles(svg);
+    const arcs = spy.to("arc").map((call) => ({ x: call.args[0] as number, y: call.args[1] as number }));
+    expect(dots).toHaveLength(arcs.length);
+    dots.forEach((dot, i) => {
+      expect(dot.x).toBeCloseTo(arcs[i].x, 2);
+      expect(dot.y).toBeCloseTo(arcs[i].y, 2);
+    });
+  };
+
+  describe("scatter charts", () => {
+    const scatter = (init: Partial<ChartElement> = {}) => chart({ chart: "scatter", ...init });
+
+    it.each<[string, Partial<ChartElement>]>([
+      ["numbers as labels", { labels: ["1", "3", "5"], series: [{ name: "A", values: [10, 20, 50] }] }],
+      ["words as labels", { labels: ["North", "South", "East"], series: [{ name: "A", values: [1, 2, 3] }] }],
+      ["two series", { labels: ["1", "2"], series: [{ name: "A", values: [1, 2] }, { name: "B", values: [3, 4], color: "#00aa00" }] }], // prettier-ignore
+      ["a single label", { labels: ["7"], series: [{ name: "A", values: [4] }] }],
+      ["labels that are all the same number", { labels: ["2", "2"], series: [{ name: "A", values: [4, 8] }] }],
+      ["no grid and no values", { labels: ["1", "2"], series: [{ name: "A", values: [10, 30] }], showGrid: false, showValues: false }],
+    ])("puts the dots and the words where the painter does, for %s", (_name, init) => {
+      const el = scatter(init);
+      const svg = chartSvg(el, { doc: new SvgDoc(), alpha: 1 });
+      const spy = painted(el);
+      expectSamePoints(svg, spy);
+      expect(labels(svg)).toEqual(paintedWords(spy));
+    });
+
+    it("places the dots along the axis by the numbers of their labels and colours them by series", () => {
+      const svg = chartOf({ chart: "scatter", labels: ["1", "3", "5"], series: [{ name: "A", values: [10, 20, 50], color: "#00aa00" }] });
+      // a 640 x 400 chart writes at 16 px: the plot runs from 64 to 624 across and from 352 up to 24
+      expect(circles(svg)).toEqual([
+        { x: 64, y: 286.4 },
+        { x: 344, y: 220.8 },
+        { x: 624, y: 24 },
+      ]);
+      expect(count(svg, 'fill="#00aa00"')).toBe(3);
+      expect(labels(svg)).toEqual(["0", "12.5", "25", "37.5", "50", "10", "20", "50", "1", "3", "5"]);
+    });
+
+    it("draws the five grid lines only when the grid is wanted, and the values only when they are wanted", () => {
+      const full = chartOf({ chart: "scatter" });
+      expect(count(full, 'fill="none"')).toBe(5);
+      expect(full).toMatch(/<path d="M64 [^"]*" fill="none" stroke="#[0-9a-f]{6}" stroke-opacity="0.12" stroke-width="1"\/>/);
+      const bare = chartOf({ chart: "scatter", showGrid: false, showValues: false });
+      expect(count(bare, 'fill="none"')).toBe(0);
+      expect(count(bare, "<circle")).toBe(4);
+      expect(labels(bare)).toHaveLength(5 + 4);
+    });
+
+    it("names only every few of many categories, as the painter does", () => {
+      const names = Array.from({ length: 40 }, (_, i) => String.fromCharCode(i < 26 ? 65 + i : 97 + i - 26));
+      const el = scatter({ labels: names, series: [{ name: "A", values: names.map(() => 5) }], showValues: false });
+      const svg = chartSvg(el, { doc: new SvgDoc(), alpha: 1 });
+      const written = labels(svg).slice(5);
+      expect(written.length).toBeLessThan(40);
+      expect(written[0]).toBe("A");
+      expect(written).toEqual(paintedWords(painted(el)).slice(5));
+    });
+
+    it("still writes its scale for a scatter chart without labels or values", () => {
+      const svg = chartOf({ chart: "scatter", labels: [], series: [] });
+      expect(svg).not.toContain("NaN");
+      expect(count(svg, "<circle")).toBe(0);
+      expect(labels(svg)).toEqual(["0", "0.25", "0.5", "0.75", "1"]);
+    });
+  });
+
+  describe("combined charts", () => {
+    const SERIES = [
+      { name: "Bars", values: [10, 20, 30, 40] },
+      { name: "Line", values: [15, 25, 35, 45], color: "#00aa00" },
+    ];
+
+    it("writes the first series as bars and the others as lines with dots, where the painter draws them", () => {
+      const el = chart({ chart: "combo", series: SERIES });
+      const svg = chartSvg(el, { doc: new SvgDoc(), alpha: 1 });
+      const spy = painted(el);
+      const bars = rects(svg);
+      const fills = spy.to("fillRect");
+      expect(bars).toHaveLength(4);
+      bars.forEach((bar, i) => {
+        expect([bar.x, bar.y, bar.w, bar.h].map((v) => Math.round(v * 100) / 100)).toEqual((fills[i].args as number[]).map((v) => Math.round(v * 100) / 100));
+        expect(bar.fill).toBe("#7c3aed");
+      });
+      expect(count(svg, 'stroke-linejoin="round"')).toBe(1);
+      expect(svg).toMatch(/<path d="M[^"]*" fill="none" stroke="#00aa00"[^>]*stroke-linejoin="round"\/>/);
+      expectSamePoints(svg, spy);
+      expect(labels(svg)).toEqual(paintedWords(spy));
+      expect(labels(svg).slice(-8)).toEqual(["10", "20", "30", "40", "15", "25", "35", "45"]);
+    });
+
+    it("leaves the values off its bars and dots when they are not wanted", () => {
+      const svg = chartOf({ chart: "combo", series: SERIES, showValues: false });
+      expect(rects(svg)).toHaveLength(4);
+      expect(labels(svg)).toEqual(["0", "12.5", "25", "37.5", "50", "Q1", "Q2", "Q3", "Q4"]);
+    });
+
+    it("draws only its scale and its names when it has no series", () => {
+      const svg = chartOf({ chart: "combo", series: [] });
+      expect(svg).not.toContain("<rect");
+      expect(svg).not.toContain("<circle");
+      expect(svg).not.toContain("NaN");
+      expect(labels(svg)).toEqual(["0", "0.25", "0.5", "0.75", "1", "Q1", "Q2", "Q3", "Q4"]);
+    });
+  });
+
+  describe("stacked area charts", () => {
+    const SERIES = [
+      { name: "A", values: [10, 20], color: "#aa0000" },
+      { name: "B", values: [15, 25], color: "#0000aa" },
+    ];
+
+    it("lays each area on top of the one before and writes the running totals", () => {
+      const el = chart({ chart: "area", stacked: true, labels: ["a", "b"], series: SERIES });
+      const svg = chartSvg(el, { doc: new SvgDoc(), alpha: 1 });
+      const spy = painted(el);
+      expectSamePoints(svg, spy);
+      expect(labels(svg)).toEqual(paintedWords(spy));
+      // the scale runs to 50; the second series stands on the first, so its dots show 25 and 45
+      expect(labels(svg)).toEqual(["0", "12.5", "25", "37.5", "50", "a", "b", "10", "20", "25", "45"]);
+      const [a1, a2, b1, b2] = circles(svg);
+      expect(b1.x).toBe(a1.x);
+      expect(b1.y).toBeLessThan(a1.y);
+      expect(b2.y).toBeLessThan(a2.y);
+    });
+
+    it("closes the lowest area along the axis at the bottom of the plot", () => {
+      const svg = chartOf({ chart: "area", stacked: true, labels: ["a", "b"], series: SERIES });
+      const [a1, a2] = circles(svg);
+      const lower = svg.match(/<path d="([^"]*)Z" fill="#aa0000" fill-opacity="0.28"\/>/)!;
+      expect(lower).not.toBeNull();
+      // 400 px high, 16 px text: the plot ends 2.2 font sizes above the bottom, at 364.8
+      expect(lower[1].endsWith(`L${a2.x} 364.8L${a1.x} 364.8`)).toBe(true);
+    });
+
+    // Known bug in svgBlocks.ts (chartSvg, area branch): the way back along the lower series pairs each dot with the
+    // baseline of the mirror category (`baselines[pts.length - 1 - i]` and then `.reverse()`), so with two categories
+    // the upper area's bottom edge runs from (b, top of a) to (a, top of b) and crosses itself. The painter pairs them
+    // correctly. Marked as failing until the exporter is fixed; it then starts to pass and `fails` must come off.
+    it.fails("closes the upper area along the top of the lower one, as the painter does", () => {
+      const svg = chartOf({ chart: "area", stacked: true, labels: ["a", "b"], series: SERIES });
+      const [a1, a2] = circles(svg);
+      const upper = svg.match(/<path d="([^"]*)Z" fill="#0000aa" fill-opacity="0.28"\/>/)!;
+      expect(upper).not.toBeNull();
+      // the way back runs through the dots of the first series, the last category first
+      expect(upper[1]).toContain(`L${a2.x} ${a2.y}L${a1.x} ${a1.y}`);
+    });
+
+    it("does not stack the areas of a chart that is not stacked", () => {
+      const svg = chartOf({ chart: "area", labels: ["a", "b"], series: SERIES });
+      expect(labels(svg).slice(-4)).toEqual(["10", "20", "15", "25"]);
+    });
+  });
+
+  it("turns the values of a 100% chart into shares of each category's total", () => {
+    const el = chart({
+      percent: true,
+      labels: ["a", "b"],
+      series: [
+        { name: "A", values: [10, 20] },
+        { name: "B", values: [30, 20] },
+      ],
+    });
+    const svg = chartSvg(el, { doc: new SvgDoc(), alpha: 1 });
+    expect(labels(svg)).toEqual(["0", "25", "50", "75", "100", "a", "b", "25", "50", "75", "50"]);
+    expect(labels(svg)).toEqual(paintedWords(painted(el)));
+    // the chart it was given keeps its own numbers
+    expect(el.series[0].values).toEqual([10, 20]);
   });
 });

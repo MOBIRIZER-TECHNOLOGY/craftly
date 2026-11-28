@@ -5,7 +5,8 @@ import { textInkOverhang } from "@/render/textLayout";
 import type { Handle } from "./resize";
 
 /** Page-space box of an element that may live inside groups (positions compose through the group chain). */
-export function worldBox(page: Page, id: ID): { x: number; y: number; width: number; height: number; rotation: number } | null {
+export function worldBox(page: Page | null, id: ID): { x: number; y: number; width: number; height: number; rotation: number } | null {
+  if (!page) return null;
   const chain: GroupElement[] = [];
   const find = (els: DesignElement[], parents: GroupElement[]): DesignElement | null => {
     for (const e of els) {

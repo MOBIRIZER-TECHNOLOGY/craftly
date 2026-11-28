@@ -1,0 +1,919 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPage, createVideo } from "@/core/factory";
+import type { AudioTrack, VideoElement } from "@/core/types";
+import { buildTimeline } from "@/core/transition";
+import { ExportError, isCancelled } from "../errors";
+
+/*
+ * The video made frame by frame, with Mediabunny and Web Audio replaced by stand-ins that write down what they were asked: jsdom has
+ * neither WebCodecs nor an audio engine. That the real ones produce a playable MP4 with the right pictures and sound is checked in
+ * Chrome (the browser journey reads a download back from its pixels and its pitch).
+ */
+
+const mb = vi.hoisted(() => ({
+  /** what canEncodeVideo / canEncodeAudio answer, by codec */
+  video: {} as Record<string, boolean>,
+  audio: {} as Record<string, boolean>,
+  /** the stored clips: per asset id, its frames' timestamps (null: no picture track) and its sound (null: none) */
+  clips: {} as Record<
+    string,
+    {
+      frames: number[] | null;
+      sound: { rate: number; seconds: number; channels: number } | null;
+      decodes?: boolean;
+      broken?: boolean;
+      alpha?: boolean;
+      playable?: boolean;
+      breaksAt?: number;
+      stalls?: "load" | "seek";
+    }
+  >,
+  /** the places a <video> was sought to, as [asset id, seconds] (the reader for clips the decoder does not take) */
+  sought: [] as Array<[string, number]>,
+  /** every `canvases(start)` asked of a clip, as [asset id, start] */
+  seeks: [] as Array<[string, number]>,
+  inputsDisposed: 0,
+  outputs: [] as Array<{
+    format: string;
+    started: boolean;
+    finalized: boolean;
+    cancelled: boolean;
+    frames: number[];
+    sound: number[];
+    videoCodec?: string;
+    audioCodec?: string;
+    fastStart?: string;
+    videoPackets?: number;
+    audioPackets?: number;
+  }>,
+  /** a frame number at which CanvasSource.add fails */
+  failAt: -1,
+}));
+
+vi.mock("mediabunny", () => {
+  class Quality {
+    constructor(readonly options: unknown) {}
+  }
+  class BlobSource {
+    constructor(readonly blob: Blob & { assetId?: string }) {}
+  }
+  class Input {
+    private readonly id: string;
+    constructor(opts: { source: BlobSource }) {
+      this.id = opts.source.blob.assetId!;
+    }
+    async getPrimaryVideoTrack() {
+      const clip = mb.clips[this.id];
+      if (clip?.broken) throw new Error("not a media file");
+      return clip?.frames ? { id: this.id, frames: clip.frames, canDecode: async () => clip.decodes !== false } : null;
+    }
+    async getPrimaryAudioTrack() {
+      const clip = mb.clips[this.id];
+      if (clip?.broken) throw new Error("not a media file");
+      return clip?.sound ? { id: this.id, sound: clip.sound, canDecode: async () => clip.decodes !== false } : null;
+    }
+    dispose() {
+      mb.inputsDisposed++;
+    }
+  }
+  class CanvasSink {
+    constructor(private readonly track: { id: string; frames: number[] }) {}
+    async *canvases(start = 0) {
+      mb.seeks.push([this.track.id, start]);
+      // like Mediabunny: from the frame showing at `start` on
+      const frames = this.track.frames;
+      let first = frames.findIndex((t, i) => t <= start && (i === frames.length - 1 || frames[i + 1] > start));
+      if (first < 0) first = 0;
+      const breaksAt = mb.clips[this.track.id]?.breaksAt;
+      for (const t of frames.slice(first)) {
+        if (breaksAt !== undefined && t >= breaksAt) throw new Error("the decoder could not decode a frame");
+        yield { canvas: { picture: `${this.track.id}@${t}` }, timestamp: t, duration: 1 / 30 };
+      }
+    }
+  }
+  class EncodedPacketSink {
+    constructor(private readonly track: { id: string; frames: number[] }) {}
+    async getFirstPacket() {
+      const clip = mb.clips[this.track.id];
+      return clip.frames?.length ? { sideData: clip.alpha ? { alpha: new Uint8Array(1) } : {} } : null;
+    }
+  }
+  class AudioBufferSink {
+    constructor(private readonly track: { sound: { rate: number; seconds: number; channels: number } }) {}
+    async *buffers(start: number, end: number) {
+      // one-second pieces from the start of the clip; the piece holding `start` first, as Mediabunny does
+      const { rate, seconds, channels } = this.track.sound;
+      for (let at = Math.floor(start); at < Math.min(end, seconds); at++) {
+        const length = Math.round(Math.min(1, seconds - at) * rate);
+        const data = Array.from({ length: channels }, (_, c) => Float32Array.from({ length }, (_, i) => (c + 1) * 0.1 + (at * rate + i) / 1e9));
+        yield { buffer: { sampleRate: rate, numberOfChannels: channels, length, getChannelData: (c: number) => data[c] }, timestamp: at, duration: length / rate };
+      }
+    }
+  }
+  class StreamTarget {
+    constructor(
+      readonly writable: WritableStream<{ type: "write"; data: Uint8Array; position: number }>,
+      readonly options: unknown,
+    ) {}
+  }
+  class Mp4OutputFormat {
+    readonly name = "mp4";
+    constructor(readonly options?: { fastStart?: string }) {}
+  }
+  class WebMOutputFormat {
+    readonly name = "webm";
+  }
+  class CanvasSource {
+    output?: (typeof mb.outputs)[number];
+    constructor(
+      readonly canvas: unknown,
+      readonly config: { codec: string },
+    ) {}
+    async add(timestamp: number) {
+      if (mb.failAt >= 0 && this.output!.frames.length === mb.failAt) throw new Error("the encoder broke");
+      this.output!.frames.push(timestamp);
+    }
+  }
+  class AudioBufferSource {
+    output?: (typeof mb.outputs)[number];
+    constructor(readonly config: { codec: string }) {}
+    async add(buffer: { length: number }) {
+      this.output!.sound.push(buffer.length);
+    }
+  }
+  class Output {
+    private readonly record: (typeof mb.outputs)[number];
+    constructor(private readonly opts: { format: { name: string; options?: { fastStart?: string } }; target: StreamTarget }) {
+      this.record = { format: opts.format.name, started: false, finalized: false, cancelled: false, frames: [], sound: [] };
+      mb.outputs.push(this.record);
+    }
+    addVideoTrack(source: CanvasSource, meta?: { maximumPacketCount?: number }) {
+      source.output = this.record;
+      this.record.videoCodec = source.config.codec;
+      this.record.videoPackets = meta?.maximumPacketCount;
+      this.record.fastStart = this.opts.format.options?.fastStart;
+    }
+    addAudioTrack(source: AudioBufferSource, meta?: { maximumPacketCount?: number }) {
+      source.output = this.record;
+      this.record.audioCodec = source.config.codec;
+      this.record.audioPackets = meta?.maximumPacketCount;
+    }
+    async start() {
+      this.record.started = true;
+    }
+    async finalize() {
+      this.record.finalized = true;
+      // as Mediabunny does with "reserve": in order, then the index into the room kept at the start
+      const writer = this.opts.target.writable.getWriter();
+      await writer.write({ type: "write", data: new Uint8Array([0, 0, 0, this.record.frames.length]), position: 0 });
+      await writer.write({ type: "write", data: new Uint8Array([4, 5]), position: 4 });
+      await writer.write({ type: "write", data: new Uint8Array([1, 2, 3]), position: 0 });
+      await writer.close();
+    }
+    async cancel() {
+      this.record.cancelled = true;
+    }
+  }
+  return {
+    ALL_FORMATS: [],
+    AudioBufferSink,
+    AudioBufferSource,
+    BlobSource,
+    CanvasSink,
+    CanvasSource,
+    EncodedPacketSink,
+    Input,
+    Mp4OutputFormat,
+    Output,
+    Quality,
+    StreamTarget,
+    WebMOutputFormat,
+    canEncodeVideo: vi.fn(async (codec: string) => mb.video[codec] ?? false),
+    canEncodeAudio: vi.fn(async (codec: string) => mb.audio[codec] ?? false),
+  };
+});
+
+vi.mock("@/core/assets", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/core/assets")>()),
+  getAsset: vi.fn(async (id: string) => (mb.clips[id] ? { id, blob: Object.assign(new Blob(["x"]), { assetId: id }) } : null)),
+  getAssetUrl: vi.fn(async (id: string) => (mb.clips[id] ? `blob:${id}` : null)),
+}));
+
+/** Web Audio's AudioBuffer, which jsdom does not have. */
+class FakeAudioBuffer {
+  readonly numberOfChannels: number;
+  readonly length: number;
+  readonly sampleRate: number;
+  private readonly data: Float32Array[];
+  constructor(o: { length: number; numberOfChannels: number; sampleRate: number }) {
+    this.length = o.length;
+    this.numberOfChannels = o.numberOfChannels;
+    this.sampleRate = o.sampleRate;
+    this.data = Array.from({ length: o.numberOfChannels }, () => new Float32Array(o.length));
+  }
+  getChannelData(c: number) {
+    return this.data[c];
+  }
+  copyToChannel(src: Float32Array, c: number) {
+    this.data[c].set(src);
+  }
+}
+
+/** An OfflineAudioContext that writes down, for every window of the mix, the pieces it plays, where, and their fades. */
+class FakeOfflineContext {
+  /** every context made, in order: the mix makes one per window, first for its loudness and then as the encoder reads */
+  static all: FakeOfflineContext[] = [];
+  readonly pieces: Array<{ buffer: FakeAudioBuffer; start: number; fades: Array<[string, number, number]> }> = [];
+  readonly destination = {};
+  constructor(readonly options: { numberOfChannels: number; length: number; sampleRate: number }) {
+    FakeOfflineContext.all.push(this);
+  }
+  createBufferSource() {
+    const entry = { buffer: null as unknown as FakeAudioBuffer, start: Number.NaN, fades: [] as Array<[string, number, number]> };
+    const node = {
+      set buffer(b: FakeAudioBuffer) {
+        entry.buffer = b;
+      },
+      connect: (gain: { fades: Array<[string, number, number]> }) => {
+        entry.fades = gain.fades;
+        return gain;
+      },
+      start: (at: number) => (entry.start = at),
+    };
+    this.pieces.push(entry);
+    return node;
+  }
+  createGain() {
+    // the gain is set up before the source is connected to it: the source takes its list of changes when it is
+    const fades: Array<[string, number, number]> = [];
+    return {
+      fades,
+      gain: {
+        setValueAtTime: (v: number, t: number) => fades.push(["set", v, t]),
+        linearRampToValueAtTime: (v: number, t: number) => fades.push(["ramp", v, t]),
+      },
+      connect: () => undefined,
+    };
+  }
+  /** what a rendered window holds: the same sample everywhere, or a few loud ones (window index, channel, sample, value) */
+  static level = 0;
+  static spikes: Array<[number, number, number, number]> = [];
+  async startRendering() {
+    const index = FakeOfflineContext.all.indexOf(this);
+    const out = new FakeAudioBuffer({ length: this.options.length, numberOfChannels: 2, sampleRate: this.options.sampleRate });
+    for (let c = 0; c < 2; c++) out.getChannelData(c).fill(FakeOfflineContext.level);
+    for (const [w, c, i, v] of FakeOfflineContext.spikes) if (w === index) out.getChannelData(c)[i] = v;
+    return out;
+  }
+}
+
+/** The windows the mix rendered to find its loudness: one per second of the timeline, in order. */
+const windows = () => FakeOfflineContext.all;
+
+const { ClipFrames } = await import("./clipFrames");
+const { chooseEncoding, encodeFrames } = await import("./encode");
+const { MIX_CEILING, mixClipSound } = await import("./clipSound");
+
+const frames30 = (seconds: number) => Array.from({ length: Math.round(seconds * 30) }, (_, i) => i / 30);
+const clip = (over: Partial<VideoElement> & { src?: string } = {}) =>
+  createVideo({ src: "asset:a", duration: 2, naturalWidth: 64, naturalHeight: 36, width: 64, height: 36, ...over } as Parameters<typeof createVideo>[0]);
+
+/** The <video> the seeking reader makes: it loads at once (unless the clip is not playable) and lands each seek at once. */
+class SeekVideo {
+  muted = false;
+  preload = "";
+  playsInline = false;
+  readyState = 0;
+  onloadeddata: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onseeked: (() => void) | null = null;
+  private id = "";
+  private time = 0;
+  get picture() {
+    return `${this.id}~${this.time}`;
+  }
+  set src(url: string) {
+    this.id = url.replace("blob:", "");
+    queueMicrotask(() => {
+      if (mb.clips[this.id]?.stalls === "load") return;
+      if (mb.clips[this.id]?.playable === false) return this.onerror?.();
+      this.readyState = 2;
+      this.onloadeddata?.();
+    });
+  }
+  get currentTime() {
+    return this.time;
+  }
+  set currentTime(v: number) {
+    this.time = v;
+    mb.sought.push([this.id, v]);
+    if (mb.clips[this.id]?.stalls !== "seek") queueMicrotask(() => this.onseeked?.());
+  }
+  removeAttribute() {}
+  load() {}
+}
+const realCreateElement = document.createElement.bind(document);
+
+beforeEach(() => {
+  mb.sought = [];
+  vi.spyOn(document, "createElement").mockImplementation(((tag: string) => (tag === "video" ? new SeekVideo() : realCreateElement(tag))) as typeof document.createElement);
+  mb.video = {};
+  mb.audio = {};
+  mb.clips = { a: { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 2 } } };
+  mb.seeks = [];
+  mb.inputsDisposed = 0;
+  mb.outputs = [];
+  mb.failAt = -1;
+  FakeOfflineContext.all = [];
+  FakeOfflineContext.level = 0;
+  FakeOfflineContext.spikes = [];
+  vi.stubGlobal("AudioBuffer", FakeAudioBuffer);
+  vi.stubGlobal("OfflineAudioContext", FakeOfflineContext);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+/* ------------------------------------------------------------------ */
+
+describe("the clips' pictures, frame by frame", () => {
+  const picture = (frames: InstanceType<typeof ClipFrames>, el: VideoElement, t: number) => (frames.frame(el, t) as { picture: string } | null)?.picture ?? null;
+
+  it("has nothing the first time a clip is asked for, then reads the frame showing at that place", async () => {
+    const frames = new ClipFrames();
+    const el = clip();
+    expect(frames.frame(el, 0.5)).toBeNull();
+    expect(frames.incomplete).toBe(true);
+    await frames.fill();
+    expect(frames.incomplete).toBe(false);
+    expect(picture(frames, el, 0.5)).toBe("a@0.5");
+    // between two frames: the one that started last
+    await frames.prefetch(0.02);
+    expect(picture(frames, el, 0.52)).toBe("a@0.5");
+    await frames.dispose();
+    expect(mb.inputsDisposed).toBe(1);
+  });
+
+  it("reads ahead one frame at a time without seeking again, so a whole clip is decoded once", async () => {
+    const frames = new ClipFrames();
+    const el = clip();
+    frames.frame(el, 0);
+    await frames.fill();
+    for (let i = 1; i < 45; i++) {
+      await frames.prefetch(1 / 30);
+      const shown = picture(frames, el, i / 30);
+      expect(frames.incomplete).toBe(false);
+      expect(shown).toBe(`a@${i / 30}`);
+    }
+    expect(mb.seeks).toHaveLength(1);
+  });
+
+  it("goes back to the trim when the clip loops, at its speed", async () => {
+    const frames = new ClipFrames();
+    const el = clip({ trimStart: 0.5, trimEnd: 1, speed: 2 });
+    frames.frame(el, 0);
+    await frames.fill();
+    expect(picture(frames, el, 0)).toBe("a@0.5");
+    // 0.2 s of the page is 0.4 s of the clip at 2x
+    await frames.prefetch(0.2);
+    expect(picture(frames, el, 0.2)).toBe(`a@${27 / 30}`);
+    // 0.3 s is 0.6 s: once round the half-second loop, and 0.1 s into it again
+    await frames.prefetch(0.1);
+    expect(picture(frames, el, 0.3)).toBe(`a@${18 / 30}`);
+    expect(mb.seeks.length).toBe(2);
+    expect(mb.seeks[1][1]).toBeLessThan(0.6);
+  });
+
+  it("shows a clip's first frame until its start time", async () => {
+    const frames = new ClipFrames();
+    const el = clip({ trimStart: 1, startAt: 2 });
+    frames.frame(el, 1);
+    await frames.fill();
+    expect(picture(frames, el, 1)).toBe("a@1");
+    await frames.prefetch(1.5);
+    expect(picture(frames, el, 2.5)).toBe("a@1.5");
+  });
+
+  it("holds the last frame of a clip that plays once", async () => {
+    const frames = new ClipFrames();
+    const el = clip({ trimEnd: 1, once: true });
+    frames.frame(el, 2.5);
+    await frames.fill();
+    expect(picture(frames, el, 2.5)).toBe(`a@${28 / 30}`);
+  });
+
+  it("reads two copies of one clip separately, each at its own place", async () => {
+    const frames = new ClipFrames();
+    const one = clip();
+    const two = clip({ trimStart: 1 });
+    frames.frame(one, 0);
+    frames.frame(two, 0);
+    await frames.fill();
+    expect(picture(frames, one, 0)).toBe("a@0");
+    expect(picture(frames, two, 0)).toBe("a@1");
+  });
+
+  it("draws the first frame of a clip it cannot read: not stored, or not one of the uploads", async () => {
+    const frames = new ClipFrames();
+    for (const el of [clip({ src: "asset:gone" }), clip({ src: "https://x.test/v.mp4" })]) {
+      frames.frame(el, 0);
+      await frames.fill();
+      expect(frames.frame(el, 0)).toBeNull();
+      expect(frames.incomplete).toBe(false);
+    }
+    await frames.dispose();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe("choosing the encoding", () => {
+  it("prefers MP4 with H.264 and AAC", async () => {
+    mb.video = { avc: true, vp9: true, vp8: true };
+    mb.audio = { aac: true, opus: true };
+    expect(await chooseEncoding(1280, 720, 5e6, 48000, true)).toEqual({ container: "mp4", video: "avc", audio: "aac" });
+  });
+
+  it("writes Opus in the MP4 in a browser with no AAC encoder (Firefox)", async () => {
+    mb.video = { avc: true, vp9: true };
+    mb.audio = { opus: true };
+    expect(await chooseEncoding(1280, 720, 5e6, 48000, true)).toEqual({ container: "mp4", video: "avc", audio: "opus" });
+  });
+
+  it("writes WebM in a browser with no H.264 encoder", async () => {
+    mb.video = { vp9: true, vp8: true };
+    mb.audio = { opus: true };
+    expect(await chooseEncoding(1280, 720, 5e6, 48000, true)).toEqual({ container: "webm", video: "vp9", audio: "opus" });
+    mb.video = { vp8: true };
+    expect(await chooseEncoding(1280, 720, 5e6, 48000, true)).toEqual({ container: "webm", video: "vp8", audio: "opus" });
+  });
+
+  it("makes a silent video when there is no sound, or no sound the browser can encode", async () => {
+    mb.video = { avc: true };
+    mb.audio = { aac: true };
+    expect(await chooseEncoding(1280, 720, 5e6, 48000, false)).toEqual({ container: "mp4", video: "avc", audio: null });
+    mb.audio = {};
+    expect(await chooseEncoding(1280, 720, 5e6, 48000, true)).toEqual({ container: "mp4", video: "avc", audio: null });
+  });
+
+  it("gives up when no picture can be encoded at this size", async () => {
+    mb.audio = { aac: true, opus: true };
+    expect(await chooseEncoding(1280, 720, 5e6, 48000, true)).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe("encoding the frames", () => {
+  const canvas = () => document.createElement("canvas");
+  /** sound read a piece at a time, as the mix gives it: writes down the pieces asked for */
+  const asked: Array<[number, number]> = [];
+  const sound = (seconds: number, rate = 1000) => ({
+    sampleRate: rate,
+    length: seconds * rate,
+    read: async (from: number, to: number) => {
+      asked.push([from, to]);
+      return new FakeAudioBuffer({ length: to - from, numberOfChannels: 2, sampleRate: rate }) as unknown as AudioBuffer;
+    },
+  });
+
+  it("paints and encodes every frame at its time, and returns the file", async () => {
+    const painted: number[] = [];
+    const done: number[] = [];
+    const blob = await encodeFrames({
+      encoding: { container: "mp4", video: "avc", audio: null },
+      canvas: canvas(),
+      paint: async (i) => void painted.push(i),
+      frames: 6,
+      fps: 30,
+      bitrate: 1e6,
+      sound: null,
+      onFrame: (n) => done.push(n),
+    });
+    expect(painted).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(done).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(blob.type).toBe("video/mp4");
+    expect(mb.outputs[0]).toMatchObject({ format: "mp4", started: true, finalized: true, videoCodec: "avc", sound: [] });
+    expect(mb.outputs[0].frames.map((t) => Math.round(t * 30))).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(mb.outputs[0].audioCodec).toBeUndefined();
+  });
+
+  it("writes the file as it is made, an MP4 with room kept for its index, and the writes over its start land", async () => {
+    const blob = await encodeFrames({
+      encoding: { container: "mp4", video: "avc", audio: "aac" },
+      canvas: canvas(),
+      paint: async () => undefined,
+      frames: 90,
+      fps: 30,
+      bitrate: 1e6,
+      sound: sound(3, 44100),
+    });
+    const out = mb.outputs[0];
+    // "reserve" needs to know how many packets there can be: every frame, and the sound in its smallest packets at 48 kHz
+    expect(out).toMatchObject({ fastStart: "reserve", videoPackets: 91 });
+    expect(out.audioPackets).toBeGreaterThanOrEqual(Math.ceil((3 * 48000) / 960));
+    // the stand-in writes in order and then its index over the start, as Mediabunny does
+    expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([1, 2, 3, 90, 4, 5]);
+  });
+
+  it("hands the sound over a second at a time alongside the pictures, cut to the length of the video", async () => {
+    await encodeFrames({
+      encoding: { container: "webm", video: "vp9", audio: "opus" },
+      canvas: canvas(),
+      paint: async () => undefined,
+      frames: 75,
+      fps: 30,
+      bitrate: 1e6,
+      sound: sound(4),
+    });
+    const out = mb.outputs[0];
+    expect(out).toMatchObject({ format: "webm", audioCodec: "opus" });
+    // 75 frames are 2.5 s: two whole seconds and a half, of the four the sound lasts, each read when it is needed
+    expect(out.sound).toEqual([1000, 1000, 500]);
+    expect(asked.slice(-3)).toEqual([
+      [0, 1000],
+      [1000, 2000],
+      [2000, 2500],
+    ]);
+  });
+
+  it("leaves the sound out when the encoding has no sound track", async () => {
+    await encodeFrames({
+      encoding: { container: "mp4", video: "avc", audio: null },
+      canvas: canvas(),
+      paint: async () => undefined,
+      frames: 3,
+      fps: 30,
+      bitrate: 1e6,
+      sound: sound(1),
+    });
+    expect(mb.outputs[0].audioCodec).toBeUndefined();
+    expect(mb.outputs[0].sound).toEqual([]);
+  });
+
+  it("stops and throws away the file when cancelled", async () => {
+    const abort = new AbortController();
+    const error = await encodeFrames({
+      encoding: { container: "mp4", video: "avc", audio: null },
+      canvas: canvas(),
+      paint: async (i) => {
+        if (i === 2) abort.abort();
+      },
+      frames: 10,
+      fps: 30,
+      bitrate: 1e6,
+      sound: null,
+      signal: abort.signal,
+    }).catch((e: unknown) => e);
+    expect(isCancelled(error)).toBe(true);
+    expect(mb.outputs[0]).toMatchObject({ cancelled: true, finalized: false });
+    expect(mb.outputs[0].frames.length).toBe(3);
+  });
+
+  it("says in a sentence that the video could not be made when the encoder fails", async () => {
+    mb.failAt = 1;
+    const error = await encodeFrames({
+      encoding: { container: "mp4", video: "avc", audio: null },
+      canvas: canvas(),
+      paint: async () => undefined,
+      frames: 4,
+      fps: 30,
+      bitrate: 1e6,
+      sound: null,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ExportError);
+    expect((error as ExportError).message).toBe("The video could not be made. Please try again.");
+    expect(mb.outputs[0].cancelled).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe("mixing the clips' sound", () => {
+  const page = (elements: VideoElement[], duration = 3, transition?: number) =>
+    createPage({ duration, elements, transition: transition ? { kind: "dissolve", duration: transition } : undefined });
+  /** the pieces of every window, as [window, start in the window, samples, first sample of the left channel] */
+  const placed = () =>
+    windows().flatMap((w, k) => w.pieces.map((p) => [k, Math.round(p.start * 1000) / 1000, p.buffer.length, Math.round(p.buffer.getChannelData(0)[0] * 1e4) / 1e4]));
+
+  it("is nothing when no clip makes a sound, so the video gets no sound track", async () => {
+    mb.clips.quiet = { frames: frames30(2), sound: null };
+    const pages = [page([clip({ muted: true }), clip({ src: "asset:quiet" })])];
+    expect(await mixClipSound(pages, buildTimeline(pages), 3)).toBeNull();
+    expect(windows()).toEqual([]);
+  });
+
+  it("is rendered a second at a time, never whole: a window of 48,000 samples for every second", async () => {
+    const pages = [page([clip()], 3)];
+    const mix = (await mixClipSound(pages, buildTimeline(pages), 3))!;
+    expect(mix).toMatchObject({ sampleRate: 48000, length: 144000, gain: 1 });
+    expect(windows().map((w) => w.options.length)).toEqual([48000, 48000, 48000]);
+    const piece = await mix.read(48000, 72000);
+    expect(piece.length).toBe(24000);
+  });
+
+  it("plays each clip over and over while its page is on screen, and not during the transition into the next", async () => {
+    const pages = [page([clip()], 3), page([], 2, 1), page([clip({ trimStart: 0.5, trimEnd: 1.5 })], 2, 0.5)];
+    const timeline = buildTimeline(pages);
+    await mixClipSound(pages, timeline, timeline.total);
+    // page 1 from 0 to 3 s: a second of the 2 s clip in each window, round again at 2 s; nothing from 3 s to 6.5 s; page 3 from
+    // 6.5 s to 8.5 s with its 1 s loop (each loop fades in from 0)
+    expect(placed()).toEqual([
+      [0, 0, 1000, 0],
+      [1, 0, 1000, 0.1],
+      [2, 0, 1000, 0],
+      [6, 0.5, 500, 0],
+      [7, 0, 1000, 0.1],
+      [8, 0, 500, 0.1],
+    ]);
+  });
+
+  it("goes on part-way through its loop for a clip carried on from a split page", async () => {
+    // a 2 s loop, 0.5 s into its play when the page begins: each window starts half a second further on in the loop
+    const pages = [page([clip({ loopFrom: 0.5 })], 3)];
+    await mixClipSound(pages, buildTimeline(pages), 3);
+    // (the fake clip's samples count their place in the clip after 0.1: the sample at 0.5 s is 0.1 + 500 / 1e9)
+    const firstSample = windows().map((w) => Math.round((w.pieces[0].buffer.getChannelData(0)[0] - 0.1) * 1e9));
+    expect(firstSample.map((n) => Math.round(n / 10) * 10)).toEqual([500, 1500, 500]);
+  });
+
+  it("fades out over the last 10 ms of its page, in the window where the page ends", async () => {
+    const pages = [page([clip()], 2.5)];
+    await mixClipSound(pages, buildTimeline(pages), 2.5);
+    expect(windows()[2].pieces[0].fades).toEqual([
+      ["set", 1, expect.closeTo(0.49, 6)],
+      ["ramp", 0, expect.closeTo(0.5, 6)],
+    ]);
+    expect(windows()[1].pieces[0].fades).toEqual([]);
+  });
+
+  it("plays a clip that plays once a single time, and nothing after it", async () => {
+    const pages = [page([clip({ once: true })], 3.5)];
+    await mixClipSound(pages, buildTimeline(pages), 3.5);
+    expect(placed().map(([w]) => w)).toEqual([0, 1]);
+  });
+
+  it("starts a clip's sound at its start time, and leaves out one that starts after its page", async () => {
+    const pages = [page([clip({ startAt: 1.5 }), clip({ trimStart: 1, startAt: 4 })])];
+    await mixClipSound(pages, buildTimeline(pages), 3);
+    expect(placed().map(([w, at]) => [w, at])).toEqual([
+      [1, 0.5],
+      [2, 0],
+    ]);
+  });
+
+  it("stretches a clip to its speed (a 2 s clip at 2x goes round every second)", async () => {
+    const pages = [page([clip({ speed: 2 })])];
+    await mixClipSound(pages, buildTimeline(pages), 3);
+    expect(placed().map(([, , n, first]) => [n, first])).toEqual([
+      [1000, 0],
+      [1000, 0],
+      [1000, 0],
+    ]);
+  });
+
+  it("keeps the clip's channels, two at most, from where the trim starts", async () => {
+    mb.clips.wide = { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 6 } };
+    const pages = [page([clip({ src: "asset:wide", trimStart: 1.25, trimEnd: 2 })])];
+    await mixClipSound(pages, buildTimeline(pages), 3);
+    const piece = windows()[0].pieces[0].buffer;
+    expect(piece.numberOfChannels).toBe(2);
+    // after the fade in, the clip's sample at 1.25 s
+    expect(piece.getChannelData(1)[100]).toBeCloseTo(0.2 + (1250 + 100) / 1e9, 6);
+  });
+
+  it("goes on under the pages a clip runs on under, from where it got to, and stops when it has played", async () => {
+    // a 2 s clip that plays once, on a 1 s page, running on under the next two
+    const pages = [page([clip({ once: true, runsOn: 2 })], 1), page([], 2), page([], 2)];
+    await mixClipSound(pages, buildTimeline(pages), 5);
+    expect(placed().map(([w, at, n]) => [w, at, n])).toEqual([
+      [0, 0, 1000],
+      [1, 0, 1000],
+    ]);
+  });
+
+  it("reads a clip once for two copies of it on two pages", async () => {
+    const pages = [page([clip()]), page([clip()])];
+    await mixClipSound(pages, buildTimeline(pages), 6);
+    expect(placed()).toHaveLength(6);
+    expect(mb.inputsDisposed).toBe(1);
+  });
+
+  it("leaves out a clip that is gone or that this browser cannot decode, and stops when cancelled", async () => {
+    mb.clips.locked = { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 2 }, decodes: false };
+    const pages = [page([clip({ src: "asset:gone" }), clip({ src: "asset:locked" })])];
+    expect(await mixClipSound(pages, buildTimeline(pages), 3)).toBeNull();
+    const abort = new AbortController();
+    abort.abort();
+    const error = await mixClipSound([page([clip()])], buildTimeline([page([clip()])]), 3, abort.signal).catch((e: unknown) => e);
+    expect(isCancelled(error)).toBe(true);
+  });
+});
+
+describe("edge cases of a clip's pictures", () => {
+  const picture = (frames: InstanceType<typeof ClipFrames>, el: VideoElement, t: number) => (frames.frame(el, t) as { picture: string } | null)?.picture ?? null;
+
+  it("shows the first frame of a clip whose frames start a little after its beginning", async () => {
+    mb.clips.late = { frames: [0.25, 0.5, 0.75], sound: null };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:late" });
+    frames.frame(el, 0);
+    await frames.fill();
+    expect(picture(frames, el, 0)).toBe("late@0.25");
+    await frames.prefetch(0.6);
+    expect(picture(frames, el, 0.6)).toBe("late@0.5");
+  });
+
+  it("has no picture for a file that is not media", async () => {
+    mb.clips.junk = { frames: frames30(1), sound: null, broken: true };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:junk" });
+    frames.frame(el, 0);
+    await frames.fill();
+    expect(frames.frame(el, 0)).toBeNull();
+    await frames.dispose();
+  });
+
+  it("seeks a <video> instead for a clip with a transparency layer, which would need workers from blob: addresses", async () => {
+    mb.clips.alpha = { frames: frames30(2), sound: null, alpha: true };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:alpha" });
+    frames.frame(el, 0.5);
+    await frames.fill();
+    expect(picture(frames, el, 0.5)).toBe("alpha~0.5");
+    await frames.prefetch(0.5);
+    expect(picture(frames, el, 1)).toBe("alpha~1");
+    // the decoder never ran for it
+    expect(mb.seeks.filter(([id]) => id === "alpha")).toEqual([]);
+    await frames.dispose();
+  });
+
+  it("seeks a <video> for a clip the decoder cannot take or that has no frames to it", async () => {
+    mb.clips.ogg = { frames: frames30(2), sound: null, decodes: false };
+    mb.clips.none = { frames: [], sound: null };
+    const frames = new ClipFrames();
+    for (const id of ["ogg", "none"]) {
+      const el = clip({ src: `asset:${id}` });
+      frames.frame(el, 0.25);
+      await frames.fill();
+      expect(picture(frames, el, 0.25)).toBe(`${id}~0.25`);
+    }
+    expect(mb.sought.map(([id]) => id)).toEqual(["ogg", "none"]);
+  });
+
+  it("goes on in a <video> when the decoder breaks down part-way through a clip", async () => {
+    mb.clips.flaky = { frames: frames30(2), sound: null, breaksAt: 1 };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:flaky" });
+    frames.frame(el, 0.5);
+    await frames.fill();
+    expect(picture(frames, el, 0.5)).toBe("flaky@0.5");
+    await frames.prefetch(0.6);
+    expect(picture(frames, el, 1.1)).toBe("flaky~1.1");
+    await frames.prefetch(0.1);
+    expect(Number(String(picture(frames, el, 1.2)).split("~")[1])).toBeCloseTo(1.2, 9);
+    await frames.dispose();
+  });
+
+  it("gives up on a clip that never loads, and goes on from a seek that never lands", async () => {
+    vi.useFakeTimers();
+    try {
+      mb.clips.slow = { frames: frames30(2), sound: null, decodes: false, stalls: "load" };
+      mb.clips.stuck = { frames: frames30(2), sound: null, decodes: false, stalls: "seek" };
+      const frames = new ClipFrames();
+      const slow = clip({ src: "asset:slow" });
+      const stuck = clip({ src: "asset:stuck" });
+      frames.frame(slow, 0);
+      frames.frame(stuck, 0.5);
+      const filling = frames.fill();
+      await vi.advanceTimersByTimeAsync(4100);
+      await filling;
+      // the one that never loaded has no picture; the stuck seek shows the frame the <video> has
+      expect(frames.frame(slow, 0)).toBeNull();
+      expect(picture(frames, stuck, 0.5)).toBe("stuck~0.5");
+      await frames.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("has no picture for a clip the browser cannot play either", async () => {
+    mb.clips.mute = { frames: frames30(2), sound: null, decodes: false, playable: false };
+    const frames = new ClipFrames();
+    const el = clip({ src: "asset:mute" });
+    frames.frame(el, 0);
+    await frames.fill();
+    expect(frames.frame(el, 0)).toBeNull();
+  });
+});
+
+describe("edge cases of the mix", () => {
+  const page = (elements: VideoElement[]) => createPage({ duration: 3, elements });
+
+  it("is lowered evenly when it goes past full scale anywhere, so the encoder does not clip it", async () => {
+    FakeOfflineContext.level = 0.5;
+    // one loud sample in the second window
+    FakeOfflineContext.spikes = [[1, 1, 10, -1.96]];
+    const mix = (await mixClipSound([page([clip(), clip({ trimStart: 0.5 })])], buildTimeline([page([])]), 3))!;
+    expect(mix.gain).toBeCloseTo(MIX_CEILING / 1.96, 6);
+    // every window the encoder reads is lowered by the same amount
+    const first = await mix.read(0, 48000);
+    expect(first.getChannelData(0)[0]).toBeCloseTo(0.25, 5);
+  });
+
+  it("is left exactly as it is when it fits", async () => {
+    FakeOfflineContext.level = 0.7;
+    const mix = (await mixClipSound([page([clip()])], buildTimeline([page([])]), 3))!;
+    expect(mix.gain).toBe(1);
+    expect((await mix.read(0, 100)).getChannelData(0)[5]).toBeCloseTo(0.7, 6);
+  });
+
+  it("keeps a mono clip mono (the mix spreads it to both sides)", async () => {
+    mb.clips.mono = { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 1 } };
+    await mixClipSound([page([clip({ src: "asset:mono" })])], buildTimeline([page([])]), 3);
+    expect(windows()[0].pieces[0].buffer.numberOfChannels).toBe(1);
+  });
+
+  it("leaves out a clip with a sound track that holds nothing, or a file that is not media", async () => {
+    mb.clips.hollow = { frames: frames30(2), sound: { rate: 1000, seconds: 0, channels: 2 } };
+    mb.clips.junk = { frames: frames30(2), sound: { rate: 1000, seconds: 2, channels: 2 }, broken: true };
+    expect(await mixClipSound([page([clip({ src: "asset:hollow" }), clip({ src: "asset:junk" })])], buildTimeline([page([])]), 3)).toBeNull();
+  });
+
+  it("skips a page the timeline has no room for", async () => {
+    const pages = [page([clip()]), page([clip()])];
+    // the second page starts at 3 s; a total of 3 s leaves it no time
+    await mixClipSound(pages, buildTimeline(pages), 3);
+    expect(windows()).toHaveLength(3);
+  });
+});
+
+describe("a clip's volume and fades in the mix", () => {
+  const page = (elements: VideoElement[]) => createPage({ duration: 3, elements });
+  // the stand-in clip's left channel is 0.1 plus a tiny ramp, at 1,000 samples a second
+  const sample = (at: number) => 0.1 + at / 1e9;
+
+  it("plays the clip's sound at its volume", async () => {
+    await mixClipSound([page([clip({ volume: 0.5 })])], buildTimeline([page([])]), 3);
+    expect(windows()[0].pieces[0].buffer.getChannelData(0)[500]).toBeCloseTo(sample(500) * 0.5, 6);
+  });
+
+  it("rises over its fade in and falls over its fade out, once every play", async () => {
+    await mixClipSound([page([clip({ fadeIn: 1, fadeOut: 0.5 })])], buildTimeline([page([])]), 3);
+    const [w0, w1] = windows().map((w) => w.pieces[0].buffer.getChannelData(0));
+    expect(w0[500]).toBeCloseTo(sample(500) * 0.5, 6);
+    expect(w1[200]).toBeCloseTo(sample(1200), 6);
+    expect(w1[750]).toBeCloseTo(sample(1750) * 0.5, 6);
+  });
+
+  it("reads a clip again when only its volume differs, and once for two copies alike", async () => {
+    await mixClipSound([page([clip(), clip(), clip({ volume: 0.2 })])], buildTimeline([page([])]), 3);
+    expect(windows()[0].pieces).toHaveLength(3);
+    expect(mb.inputsDisposed).toBe(2);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe("mixing the sounds of the design", () => {
+  const sound = (over: Partial<AudioTrack> = {}): AudioTrack => ({ id: "au", src: "asset:a", duration: 2, trimStart: 0, trimEnd: 2, startAt: 0, ...over });
+  const pages = [createPage({ duration: 3 })];
+  const placed = () => windows().flatMap((w, k) => w.pieces.map((p) => [k, Math.round(p.start * 1000) / 1000, p.buffer.length]));
+
+  it("plays a sound once from the second of the design it starts at, on pages without a clip", async () => {
+    const mix = await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound({ startAt: 0.5 })], offset: 0 });
+    expect(mix).not.toBeNull();
+    // 0.5 s to 2.5 s: half a second in the first window, a whole one in the second, half in the third
+    expect(placed()).toEqual([
+      [0, 0.5, 500],
+      [1, 0, 1000],
+      [2, 0, 500],
+    ]);
+  });
+
+  it("plays one over and over to the end of the design, across its pages", async () => {
+    const two = [createPage({ duration: 2 }), createPage({ duration: 2 })];
+    await mixClipSound(two, buildTimeline(two), 4, undefined, { tracks: [sound({ loop: true, trimEnd: 1.5 })], offset: 0 });
+    expect(placed().map(([w]) => w)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("is part-way through for a download that starts later in the design, and left out when it has played by then", async () => {
+    await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound()], offset: 1 });
+    // a second of it is left: the first window only
+    expect(placed()).toEqual([[0, 0, 1000]]);
+    windows().length = 0;
+    expect(await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound()], offset: 2.5 })).toBeNull();
+    expect(await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound({ startAt: 5 })], offset: 0 })).toBeNull();
+  });
+
+  it("is left out when its file is gone or cannot be decoded, and goes with a clip's sound in one mix", async () => {
+    expect(await mixClipSound(pages, buildTimeline(pages), 3, undefined, { tracks: [sound({ src: "asset:gone" })], offset: 0 })).toBeNull();
+    const withClip = [createPage({ duration: 3, elements: [clip({ once: true })] })];
+    await mixClipSound(withClip, buildTimeline(withClip), 3, undefined, { tracks: [sound({ startAt: 2 })], offset: 0 });
+    expect(placed().map(([w, at]) => [w, at])).toEqual([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ]);
+  });
+});

@@ -7,7 +7,22 @@ import type { ImageFilter } from "@/core/types";
 import { FILTER_PRESETS } from "@/data/filters";
 import type { Drawable } from "./images";
 
-const NUMERIC: Array<keyof ImageFilter> = ["brightness", "contrast", "saturation", "warmth", "fade", "vignette", "blur", "hue"];
+const NUMERIC: Array<keyof ImageFilter> = [
+  "brightness",
+  "contrast",
+  "saturation",
+  "warmth",
+  "fade",
+  "vignette",
+  "blur",
+  "hue",
+  "highlights",
+  "shadows",
+  "sharpen",
+  "tint",
+  "curves",
+  "levels",
+];
 
 /** Sliders plus the preset's contribution (scaled by intensity). */
 export function effectiveFilter(f: ImageFilter): ImageFilter {
@@ -18,7 +33,7 @@ export function effectiveFilter(f: ImageFilter): ImageFilter {
   const out: ImageFilter = { ...f };
   for (const key of NUMERIC) {
     const add = (preset.patch[key] as number | undefined) ?? 0;
-    (out as unknown as Record<string, number>)[key] = (f[key] as number) + add * k;
+    (out as unknown as Record<string, number>)[key] = ((f[key] as number | undefined) ?? 0) + add * k;
   }
   if (preset.patch.duotone && k > 0.01) out.duotone = preset.patch.duotone;
   return out;
@@ -26,7 +41,7 @@ export function effectiveFilter(f: ImageFilter): ImageFilter {
 
 export function isNeutral(f: ImageFilter): boolean {
   const e = effectiveFilter(f);
-  return NUMERIC.every((k) => Math.abs(e[k] as number) < 0.5) && !e.duotone;
+  return NUMERIC.every((k) => Math.abs((e[k] as number | undefined) ?? 0) < 0.5) && !e.duotone;
 }
 
 export const filterKey = (f: ImageFilter) => JSON.stringify(effectiveFilter(f));
@@ -88,12 +103,55 @@ function paintOverlays(ctx: Ctx, w: number, h: number, e: ImageFilter): void {
   ctx.restore();
 }
 
+function paintPixelAdjustments(ctx: Ctx, w: number, h: number, e: ImageFilter): void {
+  const keys = ["highlights", "shadows", "sharpen", "tint", "curves", "levels"] as const;
+  if (keys.every((key) => Math.abs(e[key] ?? 0) < 0.5)) return;
+  try {
+    const image = ctx.getImageData(0, 0, w, h);
+    const source = new Uint8ClampedArray(image.data);
+    const shadows = (e.shadows ?? 0) / 100;
+    const highlights = (e.highlights ?? 0) / 100;
+    const tint = (e.tint ?? 0) / 100;
+    const curves = (e.curves ?? 0) / 100;
+    const levels = (e.levels ?? 0) / 100;
+    const tone = (value: number, luminance: number) => {
+      let out = value / 255;
+      out += shadows * (1 - luminance) * 0.65 + highlights * luminance * 0.65;
+      out = (out - 0.5) * (1 + levels * 0.6) + 0.5;
+      out += curves * (out - 0.5) * Math.max(0, 1 - Math.abs(out - 0.5) * 2);
+      return out * 255;
+    };
+    for (let i = 0; i < image.data.length; i += 4) {
+      const luminance = (source[i] * 0.2126 + source[i + 1] * 0.7152 + source[i + 2] * 0.0722) / 255;
+      image.data[i] = tone(source[i], luminance) - tint * 18;
+      image.data[i + 1] = tone(source[i + 1], luminance) + tint * 28;
+      image.data[i + 2] = tone(source[i + 2], luminance) - tint * 18;
+    }
+    const sharpen = (e.sharpen ?? 0) / 100;
+    if (sharpen > 0 && w > 2 && h > 2) {
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const at = (y * w + x) * 4;
+          for (let c = 0; c < 3; c++) {
+            const neighbours = source[at - w * 4 + c] + source[at + w * 4 + c] + source[at - 4 + c] + source[at + 4 + c];
+            image.data[at + c] += sharpen * 0.7 * (source[at + c] * 4 - neighbours);
+          }
+        }
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+  } catch {
+    // A browser may refuse pixels from a protected canvas; the ordinary image is still useful.
+  }
+}
+
 const MAX_SIDE = 2048;
 const cache = new Map<string, HTMLCanvasElement>();
 
 export interface FilteredDraw {
   key: string;
-  img: Drawable;
+  /** the picture, or a clip's video element at the frame it shows */
+  img: Drawable | HTMLVideoElement;
   /** destination of the full source image inside the element box, px */
   dx: number;
   dy: number;
@@ -105,7 +163,14 @@ export interface FilteredDraw {
   filter: ImageFilter;
   /** canvas px per design px */
   scale: number;
+  /**
+   * A picture that changes under the same key (a clip's frame while it plays): it is filtered afresh every time, into a canvas kept
+   * for the key and size rather than into the cache.
+   */
+  live?: boolean;
 }
+
+const liveCanvases = new Map<string, HTMLCanvasElement>();
 
 /**
  * Renders the visible part of an image through its filter into an off-screen
@@ -117,9 +182,10 @@ export function renderFiltered(d: FilteredDraw): HTMLCanvasElement {
   const pw = Math.max(1, Math.round(d.boxW * s));
   const ph = Math.max(1, Math.round(d.boxH * s));
   const key = `${d.key}|${pw}x${ph}|${d.dx.toFixed(1)},${d.dy.toFixed(1)},${d.dw.toFixed(1)},${d.dh.toFixed(1)}|${filterKey(d.filter)}`;
-  const hit = cache.get(key);
+  const liveKey = `${d.key}|${pw}x${ph}`;
+  const hit = d.live ? null : cache.get(key);
   if (hit) return hit;
-  const c = document.createElement("canvas");
+  const c = (d.live && liveCanvases.get(liveKey)) || document.createElement("canvas");
   c.width = pw;
   c.height = ph;
   const ctx = c.getContext("2d")!;
@@ -127,7 +193,13 @@ export function renderFiltered(d: FilteredDraw): HTMLCanvasElement {
   if (supportsCtxFilter) ctx.filter = cssFilter(d.filter, s);
   ctx.drawImage(d.img as CanvasImageSource, d.dx * s, d.dy * s, d.dw * s, d.dh * s);
   ctx.filter = "none";
+  paintPixelAdjustments(ctx, pw, ph, e);
   paintOverlays(ctx, pw, ph, e);
+  if (d.live) {
+    if (!liveCanvases.has(liveKey) && liveCanvases.size >= 8) liveCanvases.delete(liveCanvases.keys().next().value as string);
+    liveCanvases.set(liveKey, c);
+    return c;
+  }
   if (cache.size > 40) cache.delete(cache.keys().next().value as string);
   cache.set(key, c);
   return c;

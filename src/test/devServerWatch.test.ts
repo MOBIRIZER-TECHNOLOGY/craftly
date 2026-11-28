@@ -44,7 +44,12 @@ describe("the dev server's file watcher", () => {
       logLevel: "silent",
       appType: "custom",
       optimizeDeps: { noDiscovery: true },
-      server: { middlewareMode: true, hmr: false, watch: config.server?.watch },
+      // Node 24+ on Windows can abort in native fs-event cleanup. Chokidar's polling mode exercises the same ignore rules without that platform bug.
+      server: {
+        middlewareMode: true,
+        hmr: false,
+        watch: { ...config.server?.watch, ...(process.platform === "win32" && Number(process.versions.node.split(".")[0]) >= 24 ? { usePolling: true } : {}) },
+      },
     });
     let raw = 0;
     server.watcher.on("raw", () => {

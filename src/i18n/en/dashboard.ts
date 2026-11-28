@@ -88,6 +88,11 @@ export const dashboard = {
         one: `${num(n)} comment in the file could not be read and was left out.`,
         other: `${num(n)} comments in the file could not be read and were left out.`,
       }),
+    audio: (n: number) =>
+      plural(n, {
+        one: `${num(n)} sound in the file could not be read and was left out.`,
+        other: `${num(n)} sounds in the file could not be read and were left out.`,
+      }),
     withNotes: (title: string, notes: string) => `Imported “${title}”. ${notes}`,
     done: (title: string) => `Imported “${title}”`,
   },
@@ -320,14 +325,15 @@ export const dashboard = {
   about: {
     tagline: "Design anything, right in your browser.",
     stored:
-      "Everything you make here is stored on this device. Your designs, uploaded images and brand kit live in your browser's local storage, and nothing is sent to a server or an account. Craftly keeps working offline.",
+      "Everything you make here is stored on this device. Your designs, uploaded images and brand kit live in your browser's local storage, and nothing is sent to a server or an account unless you start a live session or sign in. Craftly keeps working offline.",
     aiTools: (host: string) =>
-      `The AI photo tools are the one exception: with your permission they download each model once, from ${host}, and then work offline. Your designs and photos are never sent.`,
+      `The AI photo tools are the one exception besides those: with your permission they download each model once, from ${host}, and then work offline. Your designs and photos are never sent.`,
     keepCopy: "Clearing your browser's site data removes all of it, so keep a copy: Back up & restore, in the account menu, saves everything in one file.",
     storedSize: (size: string) => `${size} stored on this device`,
     storedHere: "Stored on this device",
     protected: "Protected: your browser will not clear it automatically.",
     localStorage: "Local browser storage",
+    licences: "Open-source licences",
   },
 
   /** BrandPage.tsx */
@@ -430,6 +436,8 @@ export const dashboard = {
     folder: "Folder",
     actionsForFolder: (name: string) => `Actions for folder ${name}`,
     imageKind: (format: string) => `${format} image`,
+    videoKind: (format: string) => `${format} video`,
+    soundKind: (format: string) => `${format} sound`,
     previewTemplate: (name: string) => `Preview template ${name}`,
     actionsForTemplate: (name: string) => `Actions for template ${name}`,
   },

@@ -61,7 +61,7 @@ describe("what is wrong with an element", () => {
   };
 
   it("has a table that names every kind of element, and the place and size of each", () => {
-    expect(Object.keys(REQUIRED_PROPERTIES).sort()).toEqual(["chart", "graphic", "group", "image", "line", "shape", "table", "text"]);
+    expect(Object.keys(REQUIRED_PROPERTIES).sort()).toEqual(["chart", "graphic", "group", "image", "line", "shape", "table", "text", "video"]);
     for (const needs of Object.values(REQUIRED_PROPERTIES))
       expect(needs).toMatchObject({ x: "number", y: "number", width: "number", height: "number", rotation: "number", opacity: "number" });
   });

@@ -12,11 +12,16 @@ import { ImportData } from "./ImportData";
 import { Section } from "./PanelShell";
 import { useBatch } from "./useBatch";
 
+/** A title along an axis is a few words: longer text is cut here (and to its room when it is drawn). */
+const MAX_AXIS_TITLE = 120;
+
 const KINDS: Array<{ value: ChartKind; title: string; icon: ReactNode }> = [
   { value: "bar", title: m.panelsContext.chart.kinds.bar, icon: <IconChartBar /> },
   { value: "column", title: m.panelsContext.chart.kinds.column, icon: <IconChart /> },
   { value: "line", title: m.panelsContext.chart.kinds.line, icon: <IconChartLine /> },
   { value: "area", title: m.panelsContext.chart.kinds.area, icon: <IconChartArea /> },
+  { value: "combo", title: m.panelsContext.chart.kinds.combo, icon: <IconChartBar /> },
+  { value: "scatter", title: m.panelsContext.chart.kinds.scatter, icon: <IconChartLine /> },
   { value: "pie", title: m.panelsContext.chart.kinds.pie, icon: <IconChartPie /> },
   { value: "donut", title: m.panelsContext.chart.kinds.donut, icon: <IconChartDonut /> },
 ];
@@ -24,6 +29,7 @@ const KINDS: Array<{ value: ChartKind; title: string; icon: ReactNode }> = [
 export function ChartEditor({ chart }: { chart: ChartElement }) {
   const batch = useBatch();
   const round = chart.chart === "pie" || chart.chart === "donut";
+  const stackable = chart.chart === "bar" || chart.chart === "column" || chart.chart === "area";
   const gridStyle = { "--cf-series": chart.series.length } as CSSProperties;
 
   const edit = (fn: (c: ChartElement) => void, coalesce?: string) =>
@@ -110,8 +116,36 @@ export function ChartEditor({ chart }: { chart: ChartElement }) {
             checked={chart.showGrid}
             onChange={(on) => edit((c) => void (c.showGrid = on))}
           />
+          <Switch
+            label={stackable ? m.panelsContext.chart.stacked : m.panelsContext.chart.stackedOther}
+            disabled={!stackable}
+            checked={!!chart.stacked}
+            onChange={(on) => edit((c) => void (c.stacked = on))}
+          />
+          <Switch label={m.panelsContext.chart.percent} disabled={!stackable || !chart.stacked} checked={!!chart.percent} onChange={(on) => edit((c) => void (c.percent = on))} />
         </div>
       </Section>
+
+      {round ? null : (
+        <Section title={m.panelsContext.chart.axisTitles}>
+          <div className="cf-data__axis">
+            <span className="cf-data__axis-name">{m.panelsContext.chart.valueAxis}</span>
+            <TextCell
+              value={chart.valueAxisTitle ?? ""}
+              label={m.panelsContext.chart.valueAxisLabel}
+              placeholder={m.panelsContext.chart.axisPlaceholder}
+              onText={(v) => edit((c) => void (c.valueAxisTitle = v.slice(0, MAX_AXIS_TITLE)), `axis-value:${chart.id}`)}
+            />
+            <span className="cf-data__axis-name">{m.panelsContext.chart.categoryAxis}</span>
+            <TextCell
+              value={chart.categoryAxisTitle ?? ""}
+              label={m.panelsContext.chart.categoryAxisLabel}
+              placeholder={m.panelsContext.chart.axisPlaceholder}
+              onText={(v) => edit((c) => void (c.categoryAxisTitle = v.slice(0, MAX_AXIS_TITLE)), `axis-category:${chart.id}`)}
+            />
+          </div>
+        </Section>
+      )}
     </div>
   );
 }

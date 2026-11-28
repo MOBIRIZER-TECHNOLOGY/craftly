@@ -7,9 +7,23 @@
  * components; this file only reads/writes the stores.
  */
 import { tableCellAt } from "@/core/tableCells";
-import { isAcceptedImage } from "@/core/assets";
+import { isAcceptedAudio, isAcceptedImage, isAcceptedVideo } from "@/core/assets";
 import { createLine, createShape, createText } from "@/core/factory";
-import { boundsOfElements, boxBounds, boxCenter, clamp, DEG, hitTestElement, rectFromPoints, rectsIntersect, rotatePoint, snapAngle, toLocalPoint } from "@/core/geometry";
+import {
+  boundsOfElements,
+  boxBounds,
+  boxCenter,
+  clamp,
+  DEG,
+  hitTestElement,
+  pageMargin,
+  rectFromPoints,
+  rectsIntersect,
+  rotatePoint,
+  snapAngle,
+  toLocalPoint,
+} from "@/core/geometry";
+import { anchorPoint, lineFromRoute } from "@/core/connectors";
 import { measureTextElement } from "@/render/textLayout";
 import * as ops from "@/core/ops";
 import { getActions, getActivePage, useEditor } from "@/core/store";
@@ -25,6 +39,11 @@ import { useGesture } from "./gestureStore";
 import { fingerSpan, pinchZoom, scrollToKeep } from "./pinch";
 import { angleToPointer, HANDLE_VEC, isCorner, resizeBox, scaleOf, type BoxLike, type Handle } from "./resize";
 import { computeTargets, snapEdges, snapMove, type SnapTargets } from "./snapping";
+import { useTableCellEditor } from "./tableCellEditing";
+
+/** The margin elements snap to: the one of the page while margins are shown, none otherwise. */
+const shownMargin = (d: { width: number; height: number; margin?: number }): number => (useEditor.getState().showMargins ? pageMargin(d.width, d.height, d.margin) : 0);
+const shownGrid = (d: { gridSize?: number }): number => (useEditor.getState().snapToGrid ? (d.gridSize ?? 20) : 0);
 import { screenToDesign, setZoomAnchor, useView } from "./viewStore";
 
 /* ------------------------------------------------------------------ */
@@ -61,6 +80,8 @@ export function takeSelectAllOnEdit(): boolean {
 
 interface Base {
   pointerId: number;
+  /** coordinate space of a group being edited from the inside */
+  space?: GroupElement;
 }
 interface PanG extends Base {
   kind: "pan";
@@ -115,6 +136,12 @@ interface LineG extends Base {
   fixed: Point;
   started: boolean;
 }
+interface ConnectG extends Base {
+  kind: "connect";
+  fromId: ID;
+  anchor: "top" | "right" | "bottom" | "left";
+  start: Point;
+}
 interface CreateG extends Base {
   kind: "create";
   tool: "text" | "shape" | "line" | "draw";
@@ -127,7 +154,7 @@ interface PenG extends Base {
   kind: "pen";
   index: number;
 }
-type Gesture = PanG | MarqueeG | MoveG | ResizeG | RotateG | LineG | CreateG | PenG;
+type Gesture = PanG | MarqueeG | MoveG | ResizeG | RotateG | LineG | ConnectG | CreateG | PenG;
 
 /** Whether the gesture already shows its work: a drag past its threshold, a marquee that selects, a path that has a point. */
 function underWay(g: Gesture): boolean {
@@ -141,6 +168,7 @@ function underWay(g: Gesture): boolean {
     case "line":
       return g.started;
     case "pen":
+    case "connect":
       return true;
     case "pan":
       return false;
@@ -156,8 +184,12 @@ interface Pinch {
 
 const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 4;
+/** a tap moves no further than this (CSS px); the second tap of a double tap comes this soon and this near the first */
+const TAP_SLOP = 10;
+const DOUBLE_TAP_MS = 400;
+const DOUBLE_TAP_REACH = 24;
 /** Overlays that handle the pointer themselves: fingers on them take no part in a pinch. */
-const OWN_POINTER = "[data-cf-text-editor],[data-cf-crop],[data-cf-pathedit]";
+const OWN_POINTER = "[data-cf-text-editor],[data-cf-table-editor],[data-cf-crop],[data-cf-pathedit]";
 
 /* ------------------------------------------------------------------ */
 
@@ -195,6 +227,14 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   const zoom = () => st().zoom;
   const px = (n: number) => n / zoom();
 
+  const focusedGroup = (): GroupElement | null => {
+    const s = st();
+    const page = getActivePage(s);
+    const group = s.focusGroupId ? page?.elements.find((el) => el.id === s.focusGroupId) : null;
+    return group?.type === "group" ? group : null;
+  };
+  const inSpace = (pt: Point, space?: GroupElement | null): Point => (space ? toLocalPoint(space, pt) : pt);
+
   /* ---------------- hit testing ---------------- */
 
   function hitDeep(el: DesignElement, pt: Point, slop: number): boolean {
@@ -203,23 +243,26 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     return el.children.some((c) => !c.hidden && hitDeep(c, l, slop));
   }
 
-  function pick(pt: Point, slop = px(2)): DesignElement | null {
-    const page = getActivePage(st());
-    if (!page) return null;
-    for (let i = page.elements.length - 1; i >= 0; i--) {
-      const el = page.elements[i];
-      if (!el.hidden && hitDeep(el, pt, slop)) return el;
+  function pickInside(group: GroupElement, pt: Point, slop = px(2)): DesignElement | null {
+    const l = toLocalPoint(group, pt);
+    for (let i = group.children.length - 1; i >= 0; i--) {
+      const child = group.children[i];
+      if (!child.hidden && hitDeep(child, l, slop)) return child;
     }
     return null;
   }
 
-  /** deepest element under the point inside a group (for double-click editing) */
-  function pickInside(group: GroupElement, pt: Point): DesignElement | null {
-    const l = toLocalPoint(group, pt);
-    for (let i = group.children.length - 1; i >= 0; i--) {
-      const c = group.children[i];
-      if (c.hidden || !hitDeep(c, l, px(2))) continue;
-      return c.type === "group" ? (pickInside(c, l) ?? c) : c;
+  function pick(pt: Point, slop = px(2)): DesignElement | null {
+    const page = getActivePage(st());
+    if (!page) return null;
+    const group = focusedGroup();
+    if (group) {
+      const child = pickInside(group, pt, slop);
+      if (child) return child;
+    }
+    for (let i = page.elements.length - 1; i >= 0; i--) {
+      const el = page.elements[i];
+      if (el.id !== group?.id && !el.hidden && hitDeep(el, pt, slop)) return el;
     }
     return null;
   }
@@ -240,7 +283,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const ws = wsPoint(e);
     useGesture.getState().set({ hud: { x: ws.x + 16, y: ws.y + 18, text } });
   };
-  const clearGestureUi = () => useGesture.getState().set({ marquee: null, hud: null, drawPath: null, active: false });
+  const clearGestureUi = () => useGesture.getState().set({ marquee: null, hud: null, drawPath: null, connector: null, active: false });
 
   function endGesture(e?: PointerEvent) {
     const g = gesture;
@@ -348,6 +391,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       selectUnderPointerForMenu(e);
       return;
     }
+    if (target.closest("[data-cf-table-editor]")) return;
+    useTableCellEditor.getState().close();
     if (s.editingTextId) {
       if (target.closest("[data-cf-text-editor]")) return;
       act().endTextEdit();
@@ -394,6 +439,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const pt = toDesign(e);
     const hit = pick(pt);
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    const group = focusedGroup();
+    if (group && (!hit || !group.children.some((child) => child.id === hit.id))) act().enterGroup(null);
 
     if (hit) {
       const alreadySelected = s.selection.includes(hit.id);
@@ -425,15 +472,17 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     if (!els.length) return;
     const page = getActivePage(st())!;
     const d = st().design!;
+    const space = focusedGroup() ?? undefined;
     gesture = {
       kind: "move",
       pointerId: e.pointerId,
+      space,
       ids: els.map((x) => x.id),
-      start: toDesign(e),
+      start: inSpace(toDesign(e), space),
       startClient: { x: e.clientX, y: e.clientY },
       origins: new Map(els.map((x) => [x.id, { x: x.x, y: x.y }])),
       bounds: boundsOfElements(els)!,
-      targets: computeTargets(page, d.width, d.height, new Set(els.map((x) => x.id)), d.guides),
+      targets: space ? { xs: [], ys: [] } : computeTargets(page, d.width, d.height, new Set(els.map((x) => x.id)), d.guides, shownMargin(d), shownGrid(d)),
       moved: false,
       pressed,
       wasMulti,
@@ -443,7 +492,19 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   }
 
   function startHandleGesture(e: PointerEvent, attr: string) {
-    const [kind, arg] = attr.split(":");
+    const [kind, arg, side] = attr.split(":");
+    if (kind === "connect") {
+      const page = getActivePage(st());
+      const from = page?.elements.find((el) => el.id === arg);
+      if (!from || from.type === "line" || from.locked) return;
+      const anchor = side as ConnectG["anchor"];
+      const start = anchorPoint(from, anchor);
+      e.preventDefault();
+      host.setPointerCapture(e.pointerId);
+      gesture = { kind: "connect", pointerId: e.pointerId, fromId: from.id, anchor, start };
+      useGesture.getState().set({ connector: { start, end: toDesign(e) }, active: true });
+      return;
+    }
     const els = selectedTop();
     const page = getActivePage(st());
     const d = st().design;
@@ -452,6 +513,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     e.preventDefault();
     host.setPointerCapture(e.pointerId);
     const ids = els.map((x) => x.id);
+    const space = focusedGroup() ?? undefined;
     if (kind === "move") {
       startMove(e, ids[0], false, false);
       return;
@@ -459,7 +521,16 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     if (kind === "rotate") {
       const frame = selectionFrame(els)!;
       const center = boxCenter(frame);
-      gesture = { kind: "rotate", pointerId: e.pointerId, ids, orig: structuredClone(els), center, startAngle: angleToPointer(center, toDesign(e)), started: false };
+      gesture = {
+        kind: "rotate",
+        pointerId: e.pointerId,
+        space,
+        ids,
+        orig: structuredClone(els),
+        center,
+        startAngle: angleToPointer(center, inSpace(toDesign(e), space)),
+        started: false,
+      };
       useGesture.getState().set({ active: true });
       return;
     }
@@ -469,7 +540,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       const c = boxCenter(line);
       const fixedLocal = { x: arg === "0" ? line.width / 2 : -line.width / 2, y: 0 };
       const fixed = rotatePoint({ x: c.x + fixedLocal.x, y: c.y }, c, line.rotation);
-      gesture = { kind: "line", pointerId: e.pointerId, id: line.id, end: arg === "0" ? 0 : 1, fixed, started: false };
+      gesture = { kind: "line", pointerId: e.pointerId, space, id: line.id, end: arg === "0" ? 0 : 1, fixed, started: false };
       useGesture.getState().set({ active: true });
       return;
     }
@@ -478,12 +549,13 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       gesture = {
         kind: "resize",
         pointerId: e.pointerId,
+        space,
         handle: arg as Handle,
         ids,
         orig: structuredClone(els),
         frame: { x: frame.x, y: frame.y, width: frame.width, height: frame.height, rotation: frame.rotation },
         multi: frame.multi,
-        targets: computeTargets(page, d.width, d.height, new Set(ids), d.guides),
+        targets: space ? { xs: [], ys: [] } : computeTargets(page, d.width, d.height, new Set(ids), d.guides, shownMargin(d), shownGrid(d)),
         started: false,
       };
       useGesture.getState().set({ active: true });
@@ -554,6 +626,9 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       case "line":
         doLine(g, e);
         break;
+      case "connect":
+        useGesture.getState().set({ connector: { start: g.start, end: toDesign(e) } });
+        break;
       case "create":
         doCreateMove(g, e);
         break;
@@ -593,7 +668,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   }
 
   function doMove(g: MoveG, e: PointerEvent) {
-    const pt = toDesign(e);
+    const pt = inSpace(toDesign(e), g.space);
     if (!g.moved) {
       if (Math.hypot(e.clientX - g.startClient.x, e.clientY - g.startClient.y) < 3) return;
       g.moved = true;
@@ -635,7 +710,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   }
 
   function doResize(g: ResizeG, e: PointerEvent) {
-    const pt = toDesign(e);
+    const pt = inSpace(toDesign(e), g.space);
     if (!g.started) {
       g.started = true;
       act().beginTransaction();
@@ -645,7 +720,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const corner = isCorner(g.handle);
     let keepAspect = false;
     if (g.multi) keepAspect = corner && !e.shiftKey;
-    else if (type === "image" && corner) keepAspect = true;
+    else if ((type === "image" || type === "video") && corner) keepAspect = true;
     else if ((type === "graphic" || type === "group" || type === "text") && corner) keepAspect = !e.shiftKey || type === "text";
     else if (type === "shape" && corner) keepAspect = e.shiftKey;
     else if ((type === "table" || type === "chart") && corner) keepAspect = e.shiftKey;
@@ -703,7 +778,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       }
       return;
     }
-    if (o.type === "image" && el.type === "image") {
+    // a clip is framed as a picture is: corners scale it, sides move the frame over it
+    if ((o.type === "image" && el.type === "image") || (o.type === "video" && el.type === "video")) {
       const corner = isCorner(handle);
       if (corner) {
         el.x = box.x;
@@ -755,7 +831,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       g.started = true;
       act().beginTransaction();
     }
-    const ang = angleToPointer(g.center, toDesign(e));
+    const ang = angleToPointer(g.center, inSpace(toDesign(e), g.space));
     const delta = ang - g.startAngle;
     const single = g.orig.length === 1;
     const apply = (raw: number) => (e.shiftKey ? Math.round(raw / 15) * 15 : snapAngle(raw, 45, 3));
@@ -787,7 +863,7 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       g.started = true;
       act().beginTransaction();
     }
-    let p = toDesign(e);
+    let p = inSpace(toDesign(e), g.space);
     if (e.shiftKey) {
       const ang = (Math.atan2(p.y - g.fixed.y, p.x - g.fixed.x) * 180) / Math.PI;
       const snapped = Math.round(ang / 15) * 15;
@@ -797,13 +873,10 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const s = g.end === 1 ? g.fixed : p;
     const t = g.end === 1 ? p : g.fixed;
     const len = Math.max(2, Math.hypot(t.x - s.x, t.y - s.y));
-    const rot = (Math.atan2(t.y - s.y, t.x - s.x) * 180) / Math.PI;
-    const c = { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
+    const angle = Math.atan2(t.y - s.y, t.x - s.x);
+    const limitedEnd = { x: s.x + Math.cos(angle) * len, y: s.y + Math.sin(angle) * len };
     act().updateElements([g.id], (el) => {
-      el.width = len;
-      el.rotation = rot;
-      el.x = c.x - len / 2;
-      el.y = c.y;
+      if (el.type === "line") Object.assign(el, lineFromRoute(s, limitedEnd, el.routing));
     });
     hud(e, `${Math.round(len)}`);
   }
@@ -921,6 +994,11 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       case "line":
         if (g.started) act().endTransaction();
         break;
+      case "connect": {
+        const target = pick(toDesign(e));
+        if (target && target.id !== g.fromId && target.type !== "line") act().connect(g.fromId, target.id, { fromAnchor: g.anchor });
+        break;
+      }
       case "create":
         finishCreate(g, e);
         break;
@@ -952,32 +1030,76 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
 
   /* ---------------- double click / context menu ---------------- */
 
+  // A double tap: Chrome and Safari answer it with a dblclick, Firefox with two clicks of detail 1 and no dblclick. Two taps
+  // close in time and place are taken as a double click here, unless the browser's own dblclick comes first; one that comes
+  // just after is then left alone, so the element is not opened twice.
+  let tapDown: { id: number; x: number; y: number } | null = null;
+  let lastTap: { t: number; x: number; y: number } | null = null;
+  let doubleTimer = 0;
+  let tappedDoubleAt = -Infinity;
+  function onTapDown(e: PointerEvent) {
+    if (e.pointerType !== "touch") return;
+    // a second finger is a pinch, not a tap
+    tapDown = e.isPrimary ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
+    if (!e.isPrimary) lastTap = null;
+  }
+  function onTapUp(e: PointerEvent) {
+    if (e.pointerType !== "touch" || tapDown?.id !== e.pointerId) return;
+    const still = Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y) <= TAP_SLOP;
+    tapDown = null;
+    if (!still) {
+      lastTap = null;
+      return;
+    }
+    const { clientX: x, clientY: y, timeStamp: t } = e;
+    if (lastTap && t - lastTap.t <= DOUBLE_TAP_MS && Math.hypot(x - lastTap.x, y - lastTap.y) <= DOUBLE_TAP_REACH) {
+      lastTap = null;
+      window.clearTimeout(doubleTimer);
+      doubleTimer = window.setTimeout(() => {
+        const target = document.elementFromPoint(x, y);
+        if (!target || !host.contains(target)) return;
+        tappedDoubleAt = performance.now();
+        openAt({ target, clientX: x, clientY: y });
+      }, 80);
+    } else lastTap = { t, x, y };
+  }
+
   function onDoubleClick(e: MouseEvent) {
+    window.clearTimeout(doubleTimer);
+    if (performance.now() - tappedDoubleAt < 600) return;
+    openAt(e);
+  }
+
+  /** what a double click does at a point: a text is edited, a picture cropped, a path's points opened, a group entered */
+  function openAt(e: { target: EventTarget | null; clientX: number; clientY: number }) {
     const target = e.target as HTMLElement;
-    if (target.closest("[data-cf-ui],[data-cf-handle],[data-cf-text-editor],[data-cf-crop],[data-cf-pathedit]")) return;
+    if (target.closest("[data-cf-ui],[data-cf-handle],[data-cf-text-editor],[data-cf-table-editor],[data-cf-crop],[data-cf-pathedit]")) return;
     const s = st();
     if (!s.design || s.mode === "view" || s.tool !== "select") return;
     const pt = toDesign(e);
-    const hit = pick(pt);
+    let hit = pick(pt);
     if (!hit || hit.locked) return;
+    if (hit.type === "group") {
+      const inner = pickInside(hit, inSpace(pt, focusedGroup()));
+      if (!inner) return;
+      act().enterGroup(hit.id);
+      act().select([inner.id]);
+      hit = inner;
+      if (hit.locked) return;
+    }
     if (hit.type === "text") {
       pendingCaret = { x: e.clientX, y: e.clientY };
       act().startTextEdit(hit.id);
-    } else if (hit.type === "image" && hit.src) {
+    } else if ((hit.type === "image" || hit.type === "video") && hit.src) {
       act().startCrop(hit.id);
     } else if (hit.type === "shape" && elementPath(hit)) {
       startPathEdit(hit.id);
     } else if (hit.type === "table" || hit.type === "chart") {
-      // their content is edited in the Data panel: open it, for a table on the cell under the pointer
-      const cell = hit.type === "table" ? tableCellAt(hit, pt) : null;
+      // their content is edited on the page and in the Data panel, for a table on the cell under the pointer
+      const cell = hit.type === "table" ? tableCellAt(hit, inSpace(pt, focusedGroup())) : null;
       act().select([hit.id]);
       act().openContext(cell ? { kind: "data", cell } : { kind: "data" });
-    } else if (hit.type === "group") {
-      const inner = pickInside(hit, pt);
-      if (inner?.type === "text") {
-        pendingCaret = { x: e.clientX, y: e.clientY };
-        act().startTextEdit(inner.id, hit.id);
-      }
+      if (cell) useTableCellEditor.getState().open(hit.id, cell.row, cell.col);
     }
   }
 
@@ -1020,18 +1142,21 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
     const types = Array.from(e.dataTransfer?.types ?? []);
     if (types.includes(DRAG_MIME) || types.includes("Files")) {
       e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      // where nothing can be added (View mode, no design) the pointer says so, and the drop is still taken (onDrop)
+      const s = st();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = s.design && s.mode !== "view" ? "copy" : "none";
     }
   }
 
   async function onDrop(e: DragEvent) {
-    const s = st();
-    if (!s.design || s.mode === "view") return;
     const types = Array.from(e.dataTransfer?.types ?? []);
     if (!types.includes(DRAG_MIME) && !types.includes("Files")) return;
+    // taken even where nothing is added: a file left to the browser would open in the tab, in place of the editor
     e.preventDefault();
+    const s = st();
+    if (!s.design || s.mode === "view") return;
     const pt = toDesign(e);
-    const files = Array.from(e.dataTransfer?.files ?? []).filter(isAcceptedImage);
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => isAcceptedImage(f) || isAcceptedVideo(f) || isAcceptedAudio(f));
     if (files.length) {
       await insertImageFiles(files, pt);
       return;
@@ -1065,6 +1190,8 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
   host.addEventListener("pointercancel", onPointerCancel);
   host.addEventListener("lostpointercapture", onLostPointerCapture);
   host.addEventListener("dblclick", onDoubleClick);
+  host.addEventListener("pointerdown", onTapDown, true);
+  host.addEventListener("pointerup", onTapUp, true);
   host.addEventListener("contextmenu", onContextMenu);
   host.addEventListener("wheel", onWheel, { passive: false });
   host.addEventListener("dragover", onDragOver);
@@ -1094,6 +1221,9 @@ export function attachController(host: HTMLElement, scroller: HTMLElement): Cont
       host.removeEventListener("pointercancel", onPointerCancel);
       host.removeEventListener("lostpointercapture", onLostPointerCapture);
       host.removeEventListener("dblclick", onDoubleClick);
+      host.removeEventListener("pointerdown", onTapDown, true);
+      host.removeEventListener("pointerup", onTapUp, true);
+      window.clearTimeout(doubleTimer);
       host.removeEventListener("contextmenu", onContextMenu);
       host.removeEventListener("wheel", onWheel);
       host.removeEventListener("dragover", onDragOver);

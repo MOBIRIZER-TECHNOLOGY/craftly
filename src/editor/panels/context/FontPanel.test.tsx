@@ -97,6 +97,49 @@ describe("Font panel", () => {
     expect(screen.getAllByRole("button", { name: "Lora" }).some((b) => b.getAttribute("aria-current") === "true")).toBe(true);
   });
 
+  it("changes the font of a table on its own, asking for the regular upright face since there is no text to copy", async () => {
+    const user = userEvent.setup();
+    const table = createTable({ fontFamily: "Inter" });
+    openElements([table], { selected: [table] });
+    await openFont();
+    await user.click(within(section("Serif")).getByRole("button", { name: "Lora" }));
+    await waitFor(() => expect(live<TableElement>(table).fontFamily).toBe("Lora"));
+    expect(ensureFont).toHaveBeenCalledWith("Lora", 400, false);
+  });
+
+  it("asks for a row's face only once the row is actually in view, and then stops watching it", async () => {
+    // an observer that reports only when the test says so
+    const observers: Array<{ callback: IntersectionObserverCallback; targets: Element[]; disconnect: ReturnType<typeof vi.fn> }> = [];
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        readonly record = { callback: null as unknown as IntersectionObserverCallback, targets: [] as Element[], disconnect: vi.fn() };
+        constructor(callback: IntersectionObserverCallback) {
+          this.record.callback = callback;
+          observers.push(this.record);
+        }
+        observe(target: Element) {
+          this.record.targets.push(target);
+        }
+        disconnect() {
+          this.record.disconnect();
+        }
+      },
+    );
+    const t = text();
+    openElements([t], { selected: [t] });
+    await openFont();
+    const lora = observers.find((o) => o.targets.some((target) => target.getAttribute("aria-label") === "Lora"))!;
+    const report = (isIntersecting: boolean) =>
+      act(() => lora.callback([{ isIntersecting, target: lora.targets[0] } as IntersectionObserverEntry], lora as unknown as IntersectionObserver));
+    report(false);
+    expect(ensureFont).not.toHaveBeenCalledWith("Lora", 400);
+    expect(lora.disconnect).not.toHaveBeenCalled();
+    report(true);
+    expect(ensureFont).toHaveBeenCalledWith("Lora", 400);
+    expect(lora.disconnect).toHaveBeenCalled();
+  });
+
   it("lists the fonts the document already uses, most used first", async () => {
     const [a, b, c] = [text({ fontFamily: "Pacifico" }), text({ fontFamily: "Lora" }), text({ fontFamily: "Lora" })];
     openElements([a, b, c], { selected: [a] });
@@ -221,5 +264,106 @@ describe("Font panel", () => {
     openElements([t], { selected: [t] });
     await openFont();
     for (const sample of ["Inter", "Playfair Display", "Bebas Neue", "Pacifico", "Caveat", "JetBrains Mono"]) expect(ensureFont).toHaveBeenCalledWith(sample, 400);
+  });
+});
+
+describe("Font panel: the weight of a family", () => {
+  const weight = () => screen.getByRole("combobox", { name: "Weight" });
+
+  it("offers every weight of a family that has more than regular and bold, and names the one in use", async () => {
+    const t = text({ fontFamily: "Inter", fontWeight: 400 });
+    openElements([t], { selected: [t] });
+    await openFont();
+    expect(weight().textContent).toContain("Regular (400)");
+    const user = userEvent.setup();
+    await user.click(weight());
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Thin (100)",
+      "Extra light (200)",
+      "Light (300)",
+      "Regular (400)",
+      "Medium (500)",
+      "Semibold (600)",
+      "Bold (700)",
+      "Extra bold (800)",
+      "Black (900)",
+    ]);
+  });
+
+  it("sets the weight of every selected text box as one step of undo, after the face was asked for", async () => {
+    const a = text({ fontWeight: 400, italic: true });
+    const b = text({ fontWeight: 400, y: 300 });
+    openElements([a, b], { selected: [a, b] });
+    await openFont();
+    const user = userEvent.setup();
+    await user.click(weight());
+    await user.click(screen.getByRole("option", { name: "Light (300)" }));
+    await waitFor(() => expect(live<TextElement>(a).fontWeight).toBe(300));
+    expect(live<TextElement>(b).fontWeight).toBe(300);
+    expect(ensureFont).toHaveBeenCalledWith("Inter", 300, true);
+    expect(weight().textContent).toContain("Light (300)");
+    act(() => store().actions.undo());
+    expect([live<TextElement>(a).fontWeight, live<TextElement>(b).fontWeight]).toEqual([400, 400]);
+  });
+
+  it("sets the weight of only the selected characters when a range is open", async () => {
+    const t = text({ fontWeight: 400 });
+    const applyInline = vi.fn(() => true);
+    registerTextEditor({ applyInline, hasSelection: () => true, focus: vi.fn() });
+    useTextSelectionStyle.setState({ active: true, collapsed: false, style: { font: "Inter", weight: 400, italic: false } });
+    openElements([t], { selected: [t] });
+    await openFont();
+    const user = userEvent.setup();
+    await user.click(weight());
+    await user.click(screen.getByRole("option", { name: "Light (300)" }));
+    await waitFor(() => expect(applyInline).toHaveBeenCalledWith({ weight: 300 }));
+    expect(live<TextElement>(t).fontWeight).toBe(400);
+    expect(ensureFont).toHaveBeenCalledWith("Inter", 300, false);
+  });
+
+  it("takes the family and the slant of the text box when the selected characters do not carry their own", async () => {
+    const t = text({ fontFamily: "Inter", fontWeight: 400, italic: true });
+    const applyInline = vi.fn(() => true);
+    registerTextEditor({ applyInline, hasSelection: () => true, focus: vi.fn() });
+    // only the weight of the range is known: its family and slant are those of the box
+    useTextSelectionStyle.setState({ active: true, collapsed: false, style: { weight: 300 } });
+    openElements([t], { selected: [t] });
+    await openFont();
+    expect(weight().textContent).toContain("Light (300)");
+    const user = userEvent.setup();
+    await user.click(weight());
+    await user.click(screen.getByRole("option", { name: "Bold (700)" }));
+    await waitFor(() => expect(applyInline).toHaveBeenCalledWith({ weight: 700 }));
+    expect(ensureFont).toHaveBeenCalledWith("Inter", 700, true);
+    expect(live<TextElement>(t).fontWeight).toBe(400);
+  });
+
+  it("says Several weights when the boxes differ", async () => {
+    const a = text({ fontWeight: 300 });
+    const b = text({ fontWeight: 800, y: 300 });
+    openElements([a, b], { selected: [a, b] });
+    await openFont();
+    expect(weight().textContent).toContain("Several weights");
+  });
+
+  it("is not offered for a family with one or two weights, for boxes of different families, or for a table", async () => {
+    const two = FONT_CATALOG.find((f) => f.weights.length <= 2)!;
+    const t = text({ fontFamily: two.family });
+    openElements([t], { selected: [t] });
+    const first = await openFont();
+    expect(screen.queryByRole("combobox", { name: "Weight" })).toBeNull();
+    first.unmount();
+
+    const a = text({ fontFamily: "Inter" });
+    const b = text({ fontFamily: "Montserrat", y: 300 });
+    openElements([a, b], { selected: [a, b] });
+    const second = await openFont();
+    expect(screen.queryByRole("combobox", { name: "Weight" })).toBeNull();
+    second.unmount();
+
+    const table = createTable();
+    openElements([table], { selected: [table] });
+    await openFont();
+    expect(screen.queryByRole("combobox", { name: "Weight" })).toBeNull();
   });
 });

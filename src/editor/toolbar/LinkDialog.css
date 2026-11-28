@@ -1,0 +1,53 @@
+.cf-linkdlg__hint {
+  margin: 0 0 12px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+
+.cf-linkdlg__input {
+  display: block;
+  width: 100%;
+  height: var(--ctl-lg);
+  padding: 0 12px;
+  border: 1px solid var(--c-field-border);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.cf-linkdlg__input::placeholder {
+  color: var(--c-ink-4);
+}
+
+.cf-linkdlg__input:hover {
+  border-color: var(--c-ink-4);
+}
+
+.cf-linkdlg__input:focus,
+.cf-linkdlg__input:focus-visible {
+  border-color: var(--c-primary);
+  box-shadow: var(--sh-ring);
+  outline: none;
+}
+
+.cf-linkdlg__input[aria-invalid="true"] {
+  border-color: var(--c-danger);
+}
+
+.cf-linkdlg__error {
+  margin: 8px 0 0;
+  color: var(--c-danger-ink);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+
+/* Remove link stands apart from Cancel and Save, at the start of the row */
+.cf-linkdlg__remove {
+  margin-inline-end: auto;
+}

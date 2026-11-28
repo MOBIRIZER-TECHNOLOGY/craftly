@@ -201,6 +201,16 @@ describe("the right-click menu", () => {
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
     expect(live<ImageElement>(b).alt).toBe("A lake at dawn");
     expect(screen.queryByRole("dialog", { name: "Alternative text" })).toBeNull();
+    // the same menu sets where a click on the element leads, and then offers to edit it
+    rightClick();
+    await user.click(item(/^Link/));
+    const link = screen.getByRole("dialog", { name: "Link" });
+    await user.type(within(link).getByRole("textbox", { name: "Address" }), "example.com{Enter}");
+    expect(screen.queryByRole("dialog", { name: "Link" })).toBeNull();
+    rightClick();
+    expect(item(/^Edit link/)).toBeTruthy();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("shows no menu in view mode, without a design, or after the editor is closed", async () => {

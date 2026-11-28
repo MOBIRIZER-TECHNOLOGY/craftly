@@ -1,0 +1,75 @@
+/* Open and save a subtitle file: the two buttons side by side */
+.cf-captions__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* The Captions popover of a clip: a line per caption (from, to, the words, remove), wider than the other popovers. */
+.cf-tbpop--captions {
+  width: 380px;
+  max-width: calc(100vw - 24px);
+}
+
+.cf-captions__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0 2px 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.cf-captions__row {
+  display: grid;
+  grid-template-columns: 64px 64px minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: center;
+}
+
+.cf-captions__head {
+  display: grid;
+  grid-template-columns: 64px 64px minmax(0, 1fr) 28px;
+  gap: 6px;
+  color: var(--c-ink-3);
+  font-size: var(--fs-xs, 11px);
+}
+
+/* the look of the captions: a sample line, the choices and the colours */
+.cf-captions__style {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cf-captions__preview {
+  display: flex;
+  justify-content: center;
+  height: 64px;
+  padding: 6px;
+  border-radius: var(--r-xs);
+  background: linear-gradient(135deg, #3b4252, #7b6a58);
+}
+
+.cf-captions__preview span {
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-captions__colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

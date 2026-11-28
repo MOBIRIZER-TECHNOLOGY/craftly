@@ -35,7 +35,7 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { checkDesign, joinCredential, joinFeatures, MAX_KEY_LENGTH, type ClientMsg, type DeniedReason, type JoinMsg, type Role, type ServerMsg } from "@/collab/protocol";
 import { cleanName } from "@/collab/presence";
@@ -45,7 +45,24 @@ import { ACCOUNT_CORS, createAccounts, type Accounts, type AccountsOptions, type
 import { refuse } from "./accounts/context";
 import type { TeamRole } from "./accounts/roles";
 import { clientAddress, hourlyLimit } from "./address";
-import { ASSET_ID, ASSET_LIMIT, checkAsset, cors, foreign, readBody, reply, replyTooBig, requestTarget, sameSecret, sha256, sha256Hex } from "./http";
+import {
+  ASSET_ID,
+  ASSET_LIMIT,
+  MEDIA_TYPE,
+  checkAsset,
+  cors,
+  foreign,
+  pictureProblem,
+  readBody,
+  reply,
+  replyBusy,
+  replyTooBig,
+  requestTarget,
+  sameSecret,
+  sha256,
+  sha256Hex,
+} from "./http";
+import { createStaging } from "./staging";
 import { createMetrics, METRICS_CONTENT_TYPE, type LabelOf } from "./metrics";
 import { ROOM_ID, type LiveStorage, type RoomRecord } from "./storage";
 
@@ -100,6 +117,27 @@ export interface LiveServerOptions {
   seatCheckEveryMs?: number;
   /** The most the images of one room may take in the storage, in bytes (they are kept as base64: 48 MiB hold 36 MiB of images). */
   maxRoomAssetBytes?: number;
+  /** The largest clip or sound a room keeps, in bytes (100 MiB unless set): a larger one stays on the device that added it. */
+  maxMediaBytes?: number;
+  /** The most the clips and sounds of one room may take, in bytes (500 MiB unless set). */
+  maxRoomMediaBytes?: number;
+  /**
+   * The most that clips and sounds on their way in may hold together, rooms and spaces alike (src/server/staging.ts), in bytes.
+   * One more upload is answered 503 with a wait, before a byte of it is read. 2 GiB by default.
+   */
+  maxStagingBytes?: number;
+  /**
+   * The most WebSocket connections one address may have open at once (an IPv6 address counted by its /64, as for the hourly
+   * limits). One more is refused before it is a connection. 200 by default: an office behind one address, each person with a
+   * tab or two, and well short of `maxConnections`, so that one address cannot take every place.
+   */
+  maxConnectionsPerAddress?: number;
+  /**
+   * The most that may wait in memory to be sent, to all connections together, in bytes. Past it, the connections that have the
+   * most waiting are dropped until it is under again (they come back by themselves). 1 GiB by default. Each connection has its
+   * own limit too (`maxBufferedBytes`); this one keeps many slow readers from adding up to more than the machine has.
+   */
+  maxTotalBufferedBytes?: number;
   maxRooms?: number;
   maxPeersPerRoom?: number;
   /** The most a message from a browser may be, in bytes. */
@@ -123,6 +161,12 @@ export interface LiveServerOptions {
    * What is more is dropped and the connection stays; see `handle` for how this stands beside `rate`.
    */
   presenceRate?: { burst?: number; perSecond?: number };
+  /**
+   * How much work a connection's edits may take on the server (`applyOps`, in elements and pages walked or copied): a burst,
+   * then so much a second. A batch beyond what is left is refused (`rejected`, "too big to apply at once") and its connection
+   * stays. Ordinary editing takes a small part of it; it is what keeps a stream of costly batches from holding every room.
+   */
+  workRate?: { burst?: number; perSecond?: number };
   /** The most a message may be before the connection has shown its key, in bytes; a join is tiny. A bigger one is not read. */
   maxUnjoinedMessageBytes?: number;
   /** The most that may wait to be sent to one connection, in bytes: one that reads slower than that is dropped. Twice `maxDesignBytes` unless set. */
@@ -170,6 +214,8 @@ const DEFAULTS = {
   byteRate: { burst: 8 * 1024 * 1024, perSecond: 1024 * 1024 },
   joinRate: { burst: 4, perSecond: 0.5 },
   presenceRate: { burst: 30, perSecond: 15 },
+  // about 250 ms of one core at once, then 50 ms a second
+  workRate: { burst: 100_000_000, perSecond: 20_000_000 },
   maxUnjoinedMessageBytes: 8 * 1024,
   maxConnections: 5000,
   maxWaitingPerRoom: 20,
@@ -182,6 +228,11 @@ const DEFAULTS = {
   sweepEveryMs: 60 * 60 * 1000,
   seatCheckEveryMs: 5 * 60 * 1000,
   maxRoomAssetBytes: 48 * 1024 * 1024,
+  maxMediaBytes: 100 * 1024 * 1024,
+  maxRoomMediaBytes: 500 * 1024 * 1024,
+  maxStagingBytes: 2 * 1024 * 1024 * 1024,
+  maxConnectionsPerAddress: 200,
+  maxTotalBufferedBytes: 1024 * 1024 * 1024,
 };
 const DAY = 24 * 60 * 60 * 1000;
 /** The rooms in one answer to the operator: so many unless asked otherwise, and never more than the second. */
@@ -189,6 +240,23 @@ const ADMIN_PAGE = 100;
 const ADMIN_PAGE_MAX = 500;
 
 /** A burst and a rate, with what was not given (or given as undefined, as a setting that is not set is) taken from the default. */
+/**
+ * The connections to drop so that what waits to be sent to all of them together is under `limit`: those with the most waiting
+ * first, and none when it is under already.
+ */
+export function overBudget<T extends { bufferedAmount: number }>(connections: Iterable<T>, limit: number): T[] {
+  const all = [...connections];
+  let total = all.reduce((sum, c) => sum + c.bufferedAmount, 0);
+  if (total <= limit) return [];
+  const out: T[] = [];
+  for (const c of all.sort((a, b) => b.bufferedAmount - a.bufferedAmount)) {
+    if (total <= limit || c.bufferedAmount === 0) break;
+    total -= c.bufferedAmount;
+    out.push(c);
+  }
+  return out;
+}
+
 const bucket = (given: { burst?: number; perSecond?: number } | undefined, standard: { burst: number; perSecond: number }) => ({
   burst: given?.burst ?? standard.burst,
   perSecond: given?.perSecond ?? standard.perSecond,
@@ -244,6 +312,18 @@ interface Seat {
 
 /** What a role in a team allows in a room: owners and editors edit, viewers look. */
 const roomRole = (role: TeamRole): Role => (role === "viewer" ? "view" : "edit");
+const UPLOAD = /^asset:([A-Za-z0-9_-]{1,128})$/;
+/** The ids of the uploads a design names anywhere in it (`asset:<id>`: pictures, backgrounds, fills, clips, sounds), each once. */
+function uploadsOf(value: unknown, into = new Set<string>(), depth = 0): string[] {
+  if (typeof value === "string") {
+    const found = UPLOAD.exec(value);
+    if (found) into.add(found[1]);
+  } else if (value && typeof value === "object" && depth < 64) {
+    for (const item of Array.isArray(value) ? value : Object.values(value)) uploadsOf(item, into, depth + 1);
+  }
+  return [...into];
+}
+
 /** The id of the room bound to a design of a space: the same every time, so that the design always finds its room (also after a restart). */
 const boundRoomId = (space: string, designId: string) => createHash("sha256").update(`craftly bound room\n${space}\n${designId}`).digest("base64url");
 const boundKey = (space: string, designId: string) => `${space}\n${designId}`;
@@ -251,6 +331,8 @@ const boundKey = (space: string, designId: string) => `${space}\n${designId}`;
 const SEAT_TRIES = 5;
 /** The most messages that may wait for the answer to a join with a session (a browser sends a few at most before its welcome). */
 const PENDING_MAX = 64;
+/** What may wait before the room has even been read: no more than a small queue and 256 KiB of unauthenticated messages. */
+const EARLY_MAX_BYTES = 256 * 1024;
 
 export function createLiveServer(options: LiveServerOptions): LiveServer {
   const o = {
@@ -266,6 +348,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     byteRate: bucket(options.byteRate, DEFAULTS.byteRate),
     joinRate: bucket(options.joinRate, DEFAULTS.joinRate),
     presenceRate: bucket(options.presenceRate, DEFAULTS.presenceRate),
+    workRate: bucket(options.workRate, DEFAULTS.workRate),
     maxUnjoinedMessageBytes: options.maxUnjoinedMessageBytes ?? DEFAULTS.maxUnjoinedMessageBytes,
     maxBufferedBytes: options.maxBufferedBytes ?? 2 * (options.maxDesignBytes ?? DEFAULTS.maxDesignBytes),
     maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
@@ -281,18 +364,27 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     sweepEveryMs: options.sweepEveryMs ?? DEFAULTS.sweepEveryMs,
     seatCheckEveryMs: options.seatCheckEveryMs ?? DEFAULTS.seatCheckEveryMs,
     maxRoomAssetBytes: options.maxRoomAssetBytes ?? DEFAULTS.maxRoomAssetBytes,
+    maxMediaBytes: options.maxMediaBytes ?? DEFAULTS.maxMediaBytes,
+    maxRoomMediaBytes: options.maxRoomMediaBytes ?? DEFAULTS.maxRoomMediaBytes,
+    maxStagingBytes: options.maxStagingBytes ?? DEFAULTS.maxStagingBytes,
+    maxConnectionsPerAddress: options.maxConnectionsPerAddress ?? DEFAULTS.maxConnectionsPerAddress,
+    maxTotalBufferedBytes: options.maxTotalBufferedBytes ?? DEFAULTS.maxTotalBufferedBytes,
   };
   const now = options.now ?? Date.now;
   const roomsMade = hourlyLimit(o.roomCreatePerHour, now);
   const wrongKeys = hourlyLimit(o.wrongKeysPerHour, now);
   // what the server counts about itself (always counted: a few additions; shown only to whoever has the key for it)
   const metrics = createMetrics();
+  // the clips and sounds on their way in, rooms and spaces together
+  const staging = createStaging(o.maxStagingBytes);
   // A join is noted in the storage at most this often for a room, so that looking at a design does not write to the disk every
   // time: once a day, and more often when rooms live for less than four days, so that a room in use cannot expire between two notes.
   const noteUseEvery = o.roomTtlMs ? Math.min(DAY, o.roomTtlMs / 4) : DAY;
   const loaded = new Map<string, Loaded>();
   const loading = new Map<string, Promise<Loaded | null>>();
   const sockets = new Set<WebSocket>();
+  /** How many connections each address has open now (`clientAddress`, so an IPv6 address by its /64). */
+  const perAddress = new Map<string, number>();
   /** The bound rooms in memory, by space and design (`boundKey`); and the bindings at work, which count as live already. */
   const boundLoaded = new Map<string, Loaded>();
   const binding = new Map<string, Promise<string>>();
@@ -306,7 +398,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     designGone: (space, designId) => dropOnDisk(space, [designId]),
   };
   const accounts: Accounts | null = options.accounts
-    ? createAccounts(options.accounts, { allowOrigin: o.allowOrigin, trustProxy: o.trustProxy, now, maxDesignBytes: o.maxDesignBytes, live: hooks })
+    ? createAccounts(options.accounts, { allowOrigin: o.allowOrigin, trustProxy: o.trustProxy, now, maxDesignBytes: o.maxDesignBytes, live: hooks, staging })
     : null;
 
   let roomCreation = Promise.resolve();
@@ -525,6 +617,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         return true;
       }
       metrics.count("write_backs_total");
+      await keepFiles(l, bound.space);
       if (done.copy) {
         // the room's copy is a design of its own now; the room is no longer the design's (`rev` stays: anything more is a copy too)
         metrics.count("write_back_copies_total");
@@ -535,6 +628,35 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       metrics.count("write_back_failures_total");
       console.error(`Craftly could not write the live design of the room ${l.id} back to its space; the room keeps it and tries again when it next leaves memory`, error);
       return false;
+    }
+  };
+
+  /**
+   * Brings the pictures, clips and sounds the room's design uses into its space, those the space has not got: they were added while
+   * the design was edited live, so they went to the room, and a member who opens the design from the space needs them there. One
+   * that cannot be kept there (the space is full, a clip too large) is written to the log and stays the room's; the design is
+   * written back all the same, as an upload of a device that the space refuses leaves the design as it is.
+   */
+  const keepFiles = async (l: Loaded, space: string) => {
+    if (!accounts) return;
+    const missing = await accounts.bound.missingFiles(space, uploadsOf(l.record.design));
+    for (const assetId of missing) {
+      try {
+        const picture = (await o.storage.loadAsset(l.id, assetId)) ?? (l.record.assets && Object.hasOwn(l.record.assets, assetId) ? l.record.assets[assetId] : null);
+        let kept: boolean | null = null;
+        if (picture) kept = await accounts.bound.keepPicture(space, assetId, picture);
+        else {
+          const clip = await o.storage.mediaInfo(l.id, assetId);
+          if (clip) kept = await accounts.bound.keepClip(space, assetId, clip.mime, clip.size, o.storage.mediaStream(l.id, assetId));
+        }
+        if (kept === false) {
+          metrics.count("write_back_files_refused_total");
+          console.error(`Craftly could not keep the upload ${assetId} of the room ${l.id} in its space (it is full, or the upload is too large); the room keeps it`);
+        }
+      } catch (error) {
+        metrics.count("write_back_files_refused_total");
+        console.error(`Craftly could not bring the upload ${assetId} of the room ${l.id} into its space`, error);
+      }
     }
   };
 
@@ -899,7 +1021,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       return asset ? reply(res, 200, asset) : reply(res, 404, { error: "no such shared image" });
     }
     const body = await readBody(req, ASSET_LIMIT + 100);
-    if (body === null) return reply(res, 413, { error: "this shared image is too large" });
+    // (answered the way a clip that is too big is: the rest of the body is not read)
+    if (body === null) return replyTooBig(req, res, { error: "this shared image is too large" });
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
@@ -908,6 +1031,9 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     }
     const asset = checkAsset(parsed);
     if (!asset) return reply(res, 400, { error: "invalid image data or format" });
+    // what is inside, as a space checks it: the others' browsers draw what one person uploads
+    const problem = pictureProblem(asset);
+    if (problem) return reply(res, 400, { error: problem });
     const { mime, base64 } = asset;
     await enqueue(l, async () => {
       // The body may have taken minutes. Only the room that is in memory now may be saved: not one that was stopped meanwhile, and
@@ -925,6 +1051,100 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       reply(res, 201, { ok: true });
       // an image is use of the room, which the time of the room's file says; the image did not write that file
       noteUse(l);
+    });
+  };
+
+  /* ---------------- clips and sounds ---------------- */
+
+  const roomMedia = async (id: string, assetId: string, req: IncomingMessage, res: ServerResponse) => {
+    const l = await find(id);
+    if (!l || l.removed) return reply(res, 404, { error: "no such shared design" });
+    await pinned(l, () => roomMediaIn(l, assetId, req, res));
+  };
+
+  /**
+   * A clip or a sound of a room (docs/COLLABORATION.md, "Clips and sounds"). Unlike a picture it travels as itself, not as base64 in
+   * JSON: it may be a hundred megabytes, so it is streamed to the storage as it comes and from it as it is read. PUT gives its type
+   * (MEDIA_TYPE) and its size up front, which is weighed against the limits before a byte is read; GET and HEAD give it back
+   * under that type, as a download and never as a page. The same keys and sessions as for pictures.
+   */
+  const roomMediaIn = async (l: Loaded, assetId: string, req: IncomingMessage, res: ServerResponse) => {
+    const id = l.id;
+    const role = l.record.bound ? await sessionRole(l, req.headers.authorization) : roleOf(l, req.headers["x-craftly-key"]);
+    if (!role || (req.method === "PUT" && role !== "edit")) return reply(res, 403, { error: "this link cannot access the requested clip" });
+    if (!ASSET_ID.test(assetId)) return reply(res, 400, { error: "invalid clip id" });
+    if (req.method === "GET" || req.method === "HEAD") {
+      const info = await o.storage.mediaInfo(id, assetId);
+      if (!info) return reply(res, 404, { error: "no such shared clip" });
+      res.statusCode = 200;
+      res.setHeader("content-type", info.mime);
+      res.setHeader("content-length", String(info.size));
+      res.setHeader("cache-control", "no-store");
+      res.setHeader("x-content-type-options", "nosniff");
+      res.setHeader("content-disposition", "attachment");
+      if (req.method === "HEAD") return void res.end();
+      const stream = o.storage.mediaStream(id, assetId);
+      stream.on("error", (error) => {
+        console.error(`Craftly could not read the clip ${assetId} of the shared design ${id}`, error);
+        res.destroy();
+      });
+      return void stream.pipe(res);
+    }
+    const mime = String(req.headers["content-type"] ?? "")
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+    if (!MEDIA_TYPE.test(mime)) return reply(res, 415, { error: "only clips and sounds are shared this way" });
+    const declared = Number(req.headers["content-length"]);
+    if (!Number.isSafeInteger(declared) || declared <= 0) return reply(res, 411, { error: "the size of the clip must be given" });
+    if (declared > o.maxMediaBytes) return replyTooBig(req, res, { error: "this clip is too large to share", limit: o.maxMediaBytes });
+    // what the room holds, and what is on its way into it now (src/server/staging.ts)
+    if ((await o.storage.mediaBytes(id)) + staging.reserved(id) + declared > o.maxRoomMediaBytes) {
+      return replyTooBig(req, res, { error: "this room has reached its storage limit for clips and sounds", limit: o.maxRoomMediaBytes });
+    }
+    if (!staging.reserve(id, declared)) {
+      metrics.countBy("uploads_refused_total", "busy");
+      return replyBusy(req, res, { error: "the server is receiving as much as it can now: try again in a moment" });
+    }
+    try {
+      await receiveRoomMedia(l, assetId, mime, declared, req, res);
+    } finally {
+      staging.release(id, declared);
+    }
+  };
+
+  /** The rest of `roomMediaIn`, once the clip's size is reserved: its bytes, and then its place in the room. */
+  const receiveRoomMedia = async (l: Loaded, assetId: string, mime: string, declared: number, req: IncomingMessage, res: ServerResponse) => {
+    const id = l.id;
+    // the bytes come as they come, which may take minutes; the room is changed only once they are all there
+    const staged = await o.storage.stageMedia(id, req, declared);
+    if (!staged) return replyTooBig(req, res, { error: "the clip was longer than it said" });
+    if (staged.size !== declared) {
+      await o.storage.dropMedia(id, staged);
+      return reply(res, 400, { error: "the clip did not arrive whole" });
+    }
+    await enqueue(l, async () => {
+      // what to answer; a received clip that is not kept is thrown away before the answer goes
+      let answer: [number, unknown];
+      try {
+        const have = l.removed || loaded.get(id) !== l ? null : await o.storage.mediaInfo(id, assetId);
+        if (l.removed || loaded.get(id) !== l) answer = [404, { error: "no such shared design" }];
+        else if (have) answer = have.sha256 === staged.sha256 && have.mime === mime ? [200, { ok: true }] : [409, { error: "clip id already in use" }];
+        // weighed again: another clip may have come in meanwhile
+        else if ((await o.storage.mediaBytes(id)) + staged.size > o.maxRoomMediaBytes) {
+          answer = [413, { error: "this room has reached its storage limit for clips and sounds", limit: o.maxRoomMediaBytes }];
+        } else {
+          await o.storage.commitMedia(id, assetId, staged, mime);
+          reply(res, 201, { ok: true });
+          noteUse(l);
+          return;
+        }
+      } catch (error) {
+        await o.storage.dropMedia(id, staged);
+        throw error;
+      }
+      await o.storage.dropMedia(id, staged);
+      reply(res, ...answer);
     });
   };
 
@@ -987,6 +1207,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
           usedAt: Math.max(usedAt, l?.usedAt ?? 0),
           designBytes: Buffer.byteLength(JSON.stringify(record.design)),
           imageBytes: inside + (await o.storage.assetBytes(id)),
+          mediaBytes: await o.storage.mediaBytes(id),
           people,
         });
       } catch (error) {
@@ -1061,6 +1282,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     if (req.method !== "GET") return reply(res, 404, { error: "not found" });
     let joined = 0;
     for (const l of loaded.values()) joined += l.members.size;
+    let buffered = 0;
+    for (const ws of sockets) buffered += ws.bufferedAmount;
     const text = metrics.text({
       uptime_seconds: process.uptime(),
       rooms_in_memory: loaded.size,
@@ -1068,6 +1291,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       connections: sockets.size,
       peers_joined: joined,
       bound_rooms_in_memory: boundLoaded.size,
+      send_buffer_bytes: buffered,
+      staging_bytes: staging.total(),
     });
     res.statusCode = 200;
     res.setHeader("content-type", METRICS_CONTENT_TYPE);
@@ -1125,6 +1350,8 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       if (req.method === "POST" && url.pathname === "/api/rooms") return await createRoom(req, res);
       const asset = /^\/api\/rooms\/([^/]+)\/assets\/([^/]+)$/.exec(url.pathname);
       if (asset && (req.method === "GET" || req.method === "PUT")) return await roomAsset(asset[1], asset[2], req, res);
+      const media = /^\/api\/rooms\/([^/]+)\/media\/([^/]+)$/.exec(url.pathname);
+      if (media && (req.method === "GET" || req.method === "HEAD" || req.method === "PUT")) return await roomMedia(media[1], media[2], req, res);
       const del = /^\/api\/rooms\/([^/]+)$/.exec(url.pathname);
       if (req.method === "DELETE" && del) return await deleteRoom(del[1], req, res);
       reply(res, 404, { error: "not found" });
@@ -1139,8 +1366,30 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   /** Whether each connection has answered the last ping of the heartbeat (nothing yet: it has not been pinged). */
   const answered = new WeakMap<WebSocket, boolean>();
 
+  // What goes to one connection in one turn of the event loop leaves in one write. Under load a person is told several things
+  // at once (where the others' pointers are, their edits, the acknowledgement of their own), and the cost of the server is
+  // then mostly the writes to the network, one each (measured: docs/PERFORMANCE.md, "The live server under load"). The
+  // socket is held (corked) at the first message and let go once the turn is over, a fraction of a millisecond later.
+  const corked = new Set<Socket>();
+  let uncorking = false;
+  const uncork = () => {
+    uncorking = false;
+    for (const socket of corked) socket.uncork();
+    corked.clear();
+  };
+  const hold = (ws: WebSocket) => {
+    const socket = (ws as unknown as { _socket?: Socket })._socket;
+    if (!socket || corked.has(socket) || socket.destroyed) return;
+    socket.cork();
+    corked.add(socket);
+    if (!uncorking) {
+      uncorking = true;
+      setImmediate(uncork);
+    }
+  };
   const send = (ws: WebSocket, msg: ServerMsg) => {
     if (ws.readyState !== ws.OPEN) return;
+    hold(ws);
     ws.send(JSON.stringify(msg));
     // What a connection does not read waits here, in memory, and a connection that reads nothing would have it grow for as long as
     // the room has something to say. Past the limit it is dropped at once (a polite close would wait behind everything else that
@@ -1173,7 +1422,27 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws) => void connection(ws, url.searchParams.get("room") ?? ""));
+    const address = clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], o.trustProxy);
+    if ((perAddress.get(address) ?? 0) >= o.maxConnectionsPerAddress) {
+      metrics.countBy("upgrades_refused_total", "address");
+      socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      return;
+    }
+    perAddress.set(address, (perAddress.get(address) ?? 0) + 1);
+    let counted = true;
+    const uncount = () => {
+      if (!counted) return;
+      counted = false;
+      const left = (perAddress.get(address) ?? 1) - 1;
+      if (left > 0) perAddress.set(address, left);
+      else perAddress.delete(address);
+    };
+    // the upgrade may fail before it is a connection: then the socket closing is where it stops counting
+    socket.once("close", uncount);
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      ws.once("close", uncount);
+      void connection(ws, url.searchParams.get("room") ?? "");
+    });
   });
 
   /** What a key allows in a room: editing, looking, or (null) nothing. A key that is no text, or too long to be one, allows nothing. */
@@ -1202,6 +1471,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     ws.on("pong", () => answered.set(ws, true));
     // what arrives while the room is being loaded waits here
     const early: RawData[] = [];
+    let earlyBytes = 0;
     let handle: ((data: RawData) => void) | null = null;
     let shownKey = false;
     ws.on("message", (data) => {
@@ -1213,8 +1483,13 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
         metrics.countBy("connections_closed_total", "size");
         return void ws.close(1009, "too big before the key");
       }
-      if (handle) handle(data);
-      else early.push(data);
+      if (handle) return handle(data);
+      if (early.length >= PENDING_MAX || earlyBytes + sizeOf(data) > EARLY_MAX_BYTES) {
+        metrics.countBy("connections_closed_total", "rate");
+        return void ws.close(1008, "too much before the room loads");
+      }
+      early.push(data);
+      earlyBytes += sizeOf(data);
     });
 
     let l: Loaded | null;
@@ -1241,10 +1516,23 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
       return void ws.close(1013, "try again later");
     }
     l.sockets.add(ws);
+    let work = o.workRate.burst;
+    let workAt = Date.now();
     const peer: Peer = {
       send: (msg) => {
         if (msg.t === "rejected") metrics.count("batches_rejected_total");
         send(ws, msg);
+      },
+      work: {
+        left: () => {
+          const at = Date.now();
+          work = Math.min(o.workRate.burst, work + ((at - workAt) / 1000) * o.workRate.perSecond);
+          workAt = at;
+          return Math.max(0, work);
+        },
+        spent: (n) => {
+          work -= n;
+        },
       },
     };
     const silent = setTimeout(() => deny(ws, "bad-request"), o.joinWaitMs);
@@ -1420,6 +1708,16 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
   };
 
   // a connection that stopped answering is dropped (the browser's own pings keep a live one busy as well)
+  // What waits to be sent to all connections together: past the limit, those with the most waiting go first. Looked at once a
+  // second; a burst between two looks is bounded by each connection's own limit (maxBufferedBytes).
+  const buffers = setInterval(() => {
+    for (const ws of overBudget(sockets, o.maxTotalBufferedBytes)) {
+      metrics.countBy("connections_closed_total", "slow_reader");
+      ws.terminate();
+    }
+  }, 1000);
+  buffers.unref();
+
   const heartbeat = setInterval(() => {
     for (const ws of sockets) {
       if (answered.get(ws) === false) {
@@ -1446,6 +1744,7 @@ export function createLiveServer(options: LiveServerOptions): LiveServer {
     async close() {
       closing = true;
       clearInterval(heartbeat);
+      clearInterval(buffers);
       clearInterval(sweeper);
       clearInterval(seatChecker);
       await sweeping;

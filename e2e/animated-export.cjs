@@ -194,8 +194,9 @@ function parseGif(buf) {
   });
 
   /*
-   * What this browser records, as the panel says it: "Video (WebM)" (Chrome, Firefox), "Video (MP4)" (Safari, whose recorder
-   * writes MP4), or the option switched off with the reason (Playwright's WebKit build on Windows has no MediaRecorder at all).
+   * What this browser makes, as the panel says it: "Video (MP4)" where it has WebCodecs (Chrome, Edge, Firefox, Safari 26: made
+   * frame by frame), "Video (WebM)" where it only records (an older Firefox), or the option switched off with the reason (Playwright's
+   * WebKit build on Windows has neither).
    */
   let video = { kind: "webm", hint: "" };
   await step("the panel names the video this browser records, or switches it off and says why", async () => {
@@ -209,10 +210,11 @@ function parseGif(buf) {
     await page.keyboard.press("Escape");
     await closeDownload();
     if (off) {
-      if (isChromium) throw new Error("Chrome records WebM, but the panel says: " + text);
+      if (isChromium) throw new Error("Chrome makes video, but the panel says: " + text);
       if (!/Not supported in this browser/.test(text)) throw new Error("the option is off without a reason: " + text);
       video = { kind: null, hint: text };
     } else if (/MP4/.test(text)) video = { kind: "mp4", hint: text };
+    else if (isChromium) throw new Error("Chrome has WebCodecs and makes an MP4, but the panel says: " + text);
     else if (!/WebM/.test(text)) throw new Error("the option names no format: " + text);
     return text;
   });
@@ -296,7 +298,9 @@ function parseGif(buf) {
     return `${name} ${(buf.length / 1024).toFixed(0)} KB, ${seen.w}x${seen.h}, ${seen.duration.toFixed(2)} s`;
   });
 
-  await videoStep("Cancel stops a video while it records and nothing is downloaded", async () => {
+  await videoStep("Cancel stops a video while it is made and nothing is downloaded", async () => {
+    // a video made frame by frame is quicker than the show: a minute of it leaves time to cancel
+    await page.evaluate(() => window.__editor.getState().actions.setPageDuration(30, "all"));
     await openDownload("Video");
     let saved = false;
     page.once("download", () => {

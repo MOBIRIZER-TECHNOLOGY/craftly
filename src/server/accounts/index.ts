@@ -18,16 +18,21 @@ import {
   deleteDesign,
   deleteFolder,
   getAsset,
+  getMedia,
   getDesign,
   listVersions,
   missingAssets,
   openLive,
   patchMeta,
   putAsset,
+  putMedia,
   putDesign,
   putFolder,
   restoreVersion,
   writeBack,
+  missingFiles,
+  keepPicture,
+  keepClip,
   type WriteBack,
 } from "./spaces";
 import type { TeamRole } from "./roles";
@@ -80,6 +85,10 @@ const ROUTES: Route[] = [
   { path: at("/api/spaces/:p/designs/:p/live"), methods: { POST: (c, q, r, [s, d]) => openLive(c, q, r, s, d) } },
   { path: at("/api/spaces/:p/assets/missing"), methods: { POST: (c, q, r, [s]) => missingAssets(c, q, r, s) } },
   { path: at("/api/spaces/:p/assets/:p"), methods: { GET: (c, q, r, [s, a]) => getAsset(c, q, r, s, a), PUT: (c, q, r, [s, a]) => putAsset(c, q, r, s, a) } },
+  {
+    path: at("/api/spaces/:p/media/:p"),
+    methods: { GET: (c, q, r, [s, a]) => getMedia(c, q, r, s, a), HEAD: (c, q, r, [s, a]) => getMedia(c, q, r, s, a), PUT: (c, q, r, [s, a]) => putMedia(c, q, r, s, a) },
+  },
   { path: at("/api/spaces/:p/folders/:p"), methods: { PUT: (c, q, r, [s, f]) => putFolder(c, q, r, s, f), DELETE: (c, q, r, [s, f]) => deleteFolder(c, q, r, s, f) } },
 ];
 
@@ -109,6 +118,12 @@ export interface Accounts {
     roleInSpace(tokenHash: string, space: string, use?: boolean): Promise<{ userId: string; name: string; role: TeamRole } | null>;
     /** Writes a room's design back to its space (`writeBack` in spaces.ts), or as a copy when the space moved on past `baseRev`; throws when it cannot. */
     writeBack(space: string, designId: string, design: Record<string, unknown>, startTitle: string | undefined, baseRev: number): Promise<WriteBack>;
+    /** Which of these ids of uploads the space has not got (`missingFiles` in spaces.ts). */
+    missingFiles(space: string, ids: readonly string[]): Promise<string[]>;
+    /** Keeps a picture of a room in the space; false when it may not be kept there. */
+    keepPicture(space: string, id: string, asset: unknown): Promise<boolean>;
+    /** Keeps a clip or a sound of a room in the space, read from `source`; false when it may not be kept there. */
+    keepClip(space: string, id: string, mime: string, size: number, source: AsyncIterable<Buffer | Uint8Array>): Promise<boolean>;
   };
 }
 
@@ -173,6 +188,9 @@ export function createAccounts(options: AccountsOptions, server: ServerContext):
     bound: {
       roleInSpace: (tokenHash, space, use) => ctx.roleInSpace(tokenHash, space, use),
       writeBack: (space, designId, design, startTitle, baseRev) => writeBack(ctx, space, designId, design, startTitle, baseRev),
+      missingFiles: (space, ids) => missingFiles(ctx, space, ids),
+      keepPicture: (space, id, asset) => keepPicture(ctx, space, id, asset),
+      keepClip: (space, id, mime, size, source) => keepClip(ctx, space, id, mime, size, source),
     },
   };
 }

@@ -52,6 +52,14 @@ describe("<AboutDialog>", () => {
     }
   });
 
+  it("links to the licences of the open-source packages and models, which open beside the app", () => {
+    render(<AboutDialog open onClose={() => undefined} />);
+    const link = within(dialog()).getByRole("link", { name: "Open-source licences" });
+    expect(link.getAttribute("href")).toBe("/third-party-notices.txt");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
   it("closes from the Close button", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

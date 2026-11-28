@@ -412,6 +412,131 @@ describe("lines", () => {
     expect([shaft.state.shadowOffsetX, shaft.state.shadowOffsetY]).toEqual([4, 8]);
     expect(spy.ctx.shadowBlur).toBe(0);
   });
+
+  describe("connectors with a route", () => {
+    // an elbow from the top left corner of a 300 x 100 box to its bottom right corner, turning twice half way across
+    const ELBOW = [
+      { x: 0, y: 0 },
+      { x: 150, y: 0 },
+      { x: 150, y: 100 },
+      { x: 300, y: 100 },
+    ];
+    const routed = (init: Parameters<typeof createLine>[0] = {}) => line({ height: 100, routing: "elbow", route: ELBOW, ...init });
+
+    it("strokes an elbow connector point by point along its route", () => {
+      const { spy } = paint([routed()]);
+      expect(spy.to("stroke")).toHaveLength(1);
+      expect(spy.to("moveTo").map((c) => c.args)).toEqual([[0, 0]]);
+      expect(spy.to("lineTo").map((c) => c.args)).toEqual([
+        [150, 0],
+        [150, 100],
+        [300, 100],
+      ]);
+      expect(spy.to("bezierCurveTo")).toHaveLength(0);
+      expect(origin(spy.to("stroke")[0])).toEqual({ x: 10, y: 20 });
+    });
+
+    it("draws a curved connector as one Bezier curve through its four points", () => {
+      const { spy } = paint([routed({ routing: "curved" })]);
+      expect(spy.to("moveTo").map((c) => c.args)).toEqual([[0, 0]]);
+      expect(spy.to("bezierCurveTo").map((c) => c.args)).toEqual([[150, 0, 150, 100, 300, 100]]);
+      expect(spy.to("lineTo")).toHaveLength(0);
+    });
+
+    it("joins the points with straight pieces when a curved route does not have exactly four points", () => {
+      const route = [ELBOW[0], ELBOW[2], ELBOW[3]];
+      const { spy } = paint([routed({ routing: "curved", route })]);
+      expect(spy.to("bezierCurveTo")).toHaveLength(0);
+      expect(spy.to("lineTo").map((c) => c.args)).toEqual([
+        [150, 100],
+        [300, 100],
+      ]);
+    });
+
+    it("puts the arrow heads on the ends of the route, each turned along its last piece", () => {
+      // the route ends going straight down, and starts going to the right
+      const route = [
+        { x: 0, y: 0 },
+        { x: 300, y: 0 },
+        { x: 300, y: 100 },
+      ];
+      const { spy } = paint([routed({ route, startArrow: "triangle", endArrow: "triangle" })]);
+      const [end, start] = spy.to("fill");
+      expect(end.state.fillStyle).toBe("#0000ff");
+      expect(toDevice(end.state.matrix, 0, 0)).toEqual({ x: 10 + 300, y: 20 + 100 });
+      // turned a quarter: the head's own x axis points down the page
+      expect(end.state.matrix[0]).toBeCloseTo(0);
+      expect(end.state.matrix[1]).toBeCloseTo(1);
+      const startTip = toDevice(start.state.matrix, 0, 0);
+      expect(startTip.x).toBeCloseTo(10);
+      expect(startTip.y).toBeCloseTo(20);
+      // turned half way round: it points back out of the line, to the left
+      expect(start.state.matrix[0]).toBeCloseTo(-1);
+      expect(start.state.matrix[1]).toBeCloseTo(0);
+      // the shaft is drawn after both heads, along the whole route
+      expect(spy.names().lastIndexOf("fill")).toBeLessThan(spy.names().indexOf("stroke"));
+      expect(spy.to("moveTo").at(-1)!.args).toEqual([0, 0]);
+      expect(
+        spy
+          .to("lineTo")
+          .slice(-2)
+          .map((c) => c.args),
+      ).toEqual([
+        [300, 0],
+        [300, 100],
+      ]);
+    });
+
+    it("draws no heads on a routed connector without arrows", () => {
+      const { spy } = paint([routed()]);
+      expect(spy.to("fill")).toHaveLength(0);
+      expect(spy.to("translate").some((c) => c.args[0] === 300 && c.args[1] === 100)).toBe(true);
+    });
+
+    it.each([
+      ["a route of a single point", { route: [{ x: 0, y: 0 }] }],
+      ["no route at all", { route: undefined }],
+      ["the routing switched back to straight", { routing: "straight" as const }],
+    ])("draws a straight line for %s", (_name, init) => {
+      const { spy } = paint([routed({ height: 0, ...init })]);
+      expect(spy.to("moveTo").at(-1)!.args).toEqual([0, 0]);
+      expect(spy.to("lineTo").map((c) => c.args)).toEqual([[300, 0]]);
+      expect(spy.to("bezierCurveTo")).toHaveLength(0);
+    });
+  });
+
+  describe("labels", () => {
+    it("writes the label of a line in its colour, centred just above the middle of the line", () => {
+      const { spy } = paint([line({ label: "Next step" })]);
+      const text = spy.to("fillText")[0];
+      expect(text.args).toEqual(["Next step", 150, -8]);
+      expect(text.state.fillStyle).toBe("#0000ff");
+      expect(text.state.font).toBe("600 14px 'Plus Jakarta Sans Variable', system-ui, sans-serif");
+      expect(text.state.textAlign).toBe("center");
+      expect(text.state.textBaseline).toBe("bottom");
+      expect(origin(text)).toEqual({ x: 10, y: 20 });
+      // the label comes after the line, and the paint state is put back afterwards
+      expect(spy.names().indexOf("stroke")).toBeLessThan(spy.names().indexOf("fillText"));
+      expect(spy.ctx.textBaseline).not.toBe("bottom");
+    });
+
+    it("writes the label of a routed connector half way along the route", () => {
+      // the elbow is 400 px long, so half way is 50 px down its middle piece
+      const route = [
+        { x: 0, y: 0 },
+        { x: 150, y: 0 },
+        { x: 150, y: 100 },
+        { x: 300, y: 100 },
+      ];
+      const { spy } = paint([line({ height: 100, routing: "elbow", route, label: "Yes" })]);
+      expect(spy.to("fillText")[0].args).toEqual(["Yes", 150, 42]);
+    });
+
+    it("writes nothing for a line without a label, or with an empty one", () => {
+      expect(paint([line()]).spy.to("fillText")).toHaveLength(0);
+      expect(paint([line({ label: "" })]).spy.to("fillText")).toHaveLength(0);
+    });
+  });
 });
 
 describe("images", () => {
@@ -494,6 +619,34 @@ describe("images", () => {
     expect(cast.state.shadowBlur).toBe(4);
     expect(cast.state.fillStyle).toBe("#000");
     expect(spy.names().indexOf("fill")).toBeLessThan(spy.names().indexOf("drawImage"));
+  });
+
+  it("turns the picture inside its frame by the straighten angle of the crop, around the middle of the frame", async () => {
+    const src = url("straighten");
+    await loadImage(src);
+    const element = createImage({ src, x: 0, y: 0, width: 200, height: 100, naturalWidth: 64, naturalHeight: 48, crop: { x: 0, y: 0, w: 1, h: 1, rotation: 90 } });
+    const { spy } = paint([element]);
+    const draw = spy.to("drawImage")[0];
+    expect(draw.args.slice(1)).toEqual([0, 0, 200, 100]);
+    // a quarter turn about (100, 50) takes the top left corner of the picture to (150, -50)
+    const corner = toDevice(draw.state.matrix, 0, 0);
+    expect(corner.x).toBeCloseTo(150);
+    expect(corner.y).toBeCloseTo(-50);
+    const middle = toDevice(draw.state.matrix, 100, 50);
+    expect(middle.x).toBeCloseTo(100);
+    expect(middle.y).toBeCloseTo(50);
+    // the frame itself stays upright: it is clipped before the picture is turned
+    const clip = spy.to("clip").at(-1)!;
+    expect(clip.state.matrix).toEqual([1, 0, 0, 1, 0, 0]);
+    expect(pathOf(clip)).toBe("M0 0H200V100H0Z");
+  });
+
+  it("does not turn a picture whose crop has no straighten angle", async () => {
+    const src = url("upright");
+    await loadImage(src);
+    const element = createImage({ src, x: 0, y: 0, width: 200, height: 100, naturalWidth: 64, naturalHeight: 48, crop: { x: 0, y: 0, w: 1, h: 1, rotation: 0 } });
+    const { spy } = paint([element]);
+    expect(spy.to("drawImage")[0].state.matrix).toEqual([1, 0, 0, 1, 0, 0]);
   });
 
   it("draws a filtered picture from a cached off-screen copy", async () => {

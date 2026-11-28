@@ -547,13 +547,17 @@ describe("dropping things on the canvas", () => {
     expect(state().past).toHaveLength(0);
   });
 
-  it("ignores drops in view mode and without an open design", async () => {
+  it("adds nothing in view mode or without an open design, but takes the drop, so that a file never opens in the tab", async () => {
     const rig = await mountWorkspace(canvasDesign());
     act(() => getActions().setMode("view"));
-    expect(drop(rig, 300, 200, payload({ type: "background", fill: { type: "solid", color: "#ff8800" } }))).toBe(true);
+    // (false: the browser's own handling of the drop was prevented)
+    expect(drop(rig, 300, 200, payload({ type: "background", fill: { type: "solid", color: "#ff8800" } }))).toBe(false);
+    const photo = new File([new Uint8Array([137, 80, 78, 71])], "photo.png", { type: "image/png" });
+    expect(drop(rig, 300, 200, { types: ["Files"], files: [photo], getData: () => "" })).toBe(false);
     expect(currentPage().background).toEqual({ type: "solid", color: "#ffffff" });
+    expect(currentPage().elements).toHaveLength(0);
     act(() => getActions().closeDesign());
-    expect(drop(rig, 300, 200, payload({ type: "background", fill: { type: "solid", color: "#ff8800" } }))).toBe(true);
+    expect(drop(rig, 300, 200, payload({ type: "background", fill: { type: "solid", color: "#ff8800" } }))).toBe(false);
   });
 });
 

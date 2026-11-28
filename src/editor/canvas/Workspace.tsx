@@ -6,9 +6,11 @@ import { CropOverlay } from "./CropOverlay";
 import { PathEditOverlay } from "./PathEditOverlay";
 import { GestureHud, GesturePreview, SelectionOverlay, SnapGuides } from "./SelectionOverlay";
 import { PageView } from "./PageView";
-import { usePreview } from "./preview";
-import { Guides, Rulers } from "./Rulers";
+import { stopPreview, usePreview } from "./preview";
+import { TransitionOverlay } from "@/editor/timeline/TransitionOverlay";
+import { Grid, Guides, Margins, Rulers } from "./Rulers";
 import { TextEditorOverlay } from "./TextEditorOverlay";
+import { TableCellEditor } from "./TableCellEditor";
 import { PresenceOverlay } from "../live/PresenceOverlay";
 import { CommentsOverlay } from "../comments/CommentsOverlay";
 import { layoutFor, screenToDesign, takeZoomAnchor, useView } from "./viewStore";
@@ -100,6 +102,10 @@ export function Workspace({ children }: { children?: ReactNode }) {
       aria-label={m.editor.canvas.label}
       aria-describedby="cf-workspace-hint"
       data-cf-workspace
+      // the page held at the timeline's playhead gives way to editing at the first press on it
+      onPointerDownCapture={() => {
+        if (usePreview.getState().preview?.paused) stopPreview();
+      }}
     >
       <span id="cf-workspace-hint" className="cf-sr-only">
         {m.editor.canvas.hint}
@@ -110,7 +116,10 @@ export function Workspace({ children }: { children?: ReactNode }) {
           <div className="cf-sticky">
             <PageView />
           </div>
+          <TransitionOverlay left={pageLeft} top={pageTop} width={pageW} height={pageH} />
           <div className="cf-pageframe" style={{ left: pageLeft, top: pageTop, width: pageW, height: pageH }}>
+            <Margins />
+            <Grid />
             <Guides />
             <SnapGuides />
             <SelectionOverlay />
@@ -118,6 +127,7 @@ export function Workspace({ children }: { children?: ReactNode }) {
             <CropOverlay />
             <PathEditOverlay />
             <TextEditorOverlay />
+            <TableCellEditor />
             <PresenceOverlay />
             <CommentsOverlay />
           </div>

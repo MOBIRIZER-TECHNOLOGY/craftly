@@ -9,6 +9,9 @@
  * checks that the design did not change here meanwhile. What the server sends is checked as a hostile room's is (validate.ts);
  * what the server deletes goes to the Trash here; at most 20 conflict copies are made in a run, and then sync stops and says so.
  */
+import { retryAssetImage } from "@/render/images";
+import { retrySound } from "@/render/soundTracks";
+import { retryClip } from "@/render/videos";
 import { m } from "@/i18n";
 import { cacheSharedAsset, getAsset as getLocalAsset, prepareAssetFromFile } from "@/core/assets";
 import { getStoredDesign, getSummary, listDesigns, listFolders, notifyLibrary, subscribeLibrary, summarize, type VersionRecord } from "@/core/library";
@@ -16,13 +19,13 @@ import { uid } from "@/core/ids";
 import { dbDelete, dbGet, dbGetAll, metaGet, metaSet, wrap, writeTransaction } from "@/core/persistence";
 import type { Design, DesignSummary, Folder, SyncRecord, SyncedMeta } from "@/core/types";
 import { blobToDataUrl } from "@/export/encoding";
-import { collectAssetIds, dataUrlToBytes, extensionForMime, portableDesign } from "@/export/projectFormat";
+import { clipIds, collectAssetIds, dataUrlToBytes, extensionForMime, portableDesign } from "@/export/projectFormat";
 import * as api from "./api";
 import { CloudError, type Conn } from "./api";
 import { designLock, heldLocks, SYNC_LOCK, tryLock } from "./locks";
 import { CURSORS_KEY, FOLDERS_KEY, roleIn, updateSession, useCloud, type CloudSession, type Role } from "./state";
 import { setSyncStatus, useSyncStatus } from "./syncStatus";
-import { isDirty, changedHere, metaOf, planSync, type LocalDesign, type SyncAction } from "./syncPlan";
+import { isDirty, changedHere, metaOf, planSync, withLaterChanges, type LocalDesign, type SyncAction } from "./syncPlan";
 import { BadAnswer, MAX_THUMBNAIL, NewerDesign, THUMBNAIL, checkDesign, migrateDesign, type Changes } from "./validate";
 
 /** At most this many "(edited on …)" copies in one run; past that sync stops and says so. */
@@ -98,9 +101,12 @@ export async function waitingDesigns(session = useCloud.getState().session): Pro
 
 /* ---------------- uploads ---------------- */
 
-/** Fetches the uploads a design uses that are not here, checked as any picture from outside is (`checkUpload`). */
+/**
+ * Fetches the pictures a design uses that are not here, checked as any picture from outside is (`checkUpload`). Its clips and
+ * sounds come by `fetchClips`.
+ */
 async function fetchAssets(conn: Conn, space: string, design: Design, report: SyncReport): Promise<void> {
-  for (const id of collectAssetIds(design)) {
+  for (const id of collectAssetIds(design, { clips: false })) {
     if (await getLocalAsset(id)) continue;
     try {
       const { mime, base64 } = await api.getAsset(conn, space, id);
@@ -117,9 +123,9 @@ async function fetchAssets(conn: Conn, space: string, design: Design, report: Sy
   }
 }
 
-/** Sends the uploads a design uses that the space does not have, before the design. */
+/** Sends the pictures a design uses that the space does not have, before the design (its clips and sounds: `sendClips`). */
 async function sendAssets(conn: Conn, space: string, design: Design): Promise<void> {
-  const ids = collectAssetIds(design);
+  const ids = collectAssetIds(design, { clips: false });
   if (!ids.length) return;
   const missing = await api.missingAssets(conn, space, ids.slice(0, 1000));
   for (const id of missing) {
@@ -132,6 +138,48 @@ async function sendAssets(conn: Conn, space: string, design: Design): Promise<vo
       // another upload under this id, or one the server will not keep: the design goes without it
       if (error instanceof CloudError && (error.code === "exists" || error.code === "bad-request")) continue;
       throw error;
+    }
+  }
+}
+
+/**
+ * Fetches the clips and sounds a design uses that are not here (docs/ACCOUNTS.md, "Clips and sounds"), checked as any upload from
+ * outside is. One the space has not got (it stayed on the device it was added on: too large for the server, or the space full)
+ * is left out, and the design keeps an empty box for it.
+ */
+async function fetchClips(conn: Conn, space: string, design: Design, report: SyncReport): Promise<void> {
+  for (const id of clipIds(design)) {
+    if (await getLocalAsset(id)) continue;
+    try {
+      const got = await api.getMedia(conn, space, id);
+      if (!got) continue;
+      const file = new File([got.blob], `${m.cloud.sync.clipName}.${extensionForMime(got.mime)}`, { type: got.mime });
+      const asset = await prepareAssetFromFile(file, id);
+      await cacheSharedAsset({ ...asset, space });
+      retryAssetImage(id);
+      retryClip(id);
+      retrySound(id);
+    } catch (error) {
+      if (offline(error)) throw error;
+      report.problems.push(m.cloud.sync.clipFailed);
+    }
+  }
+}
+
+/**
+ * Sends the clips and sounds a design uses that the space has not got, before the design, as its pictures go. One the server will
+ * not keep (too large, the space full) stays on this device and the person is told; the design goes all the same.
+ */
+async function sendClips(conn: Conn, space: string, design: Design, report: SyncReport): Promise<void> {
+  for (const id of clipIds(design)) {
+    const asset = await getLocalAsset(id);
+    if (!asset || (await api.hasMedia(conn, space, id))) continue;
+    try {
+      await api.putMedia(conn, space, id, asset.blob);
+    } catch (error) {
+      if (!(error instanceof CloudError) || error.code === "offline" || error.status >= 500) throw error;
+      // another clip under this id is the space's already; a clip the server will not keep stays here
+      if (error.code !== "exists") report.problems.push(error.code === "quota" ? m.cloud.sync.full : m.cloud.sync.clipTooBig(asset.name));
     }
   }
 }
@@ -313,6 +361,7 @@ async function pull(run: SpaceRun, id: string, expected: string | null | undefin
     throw error;
   }
   await fetchAssets(run.conn, run.space, got.design, run.report);
+  await fetchClips(run.conn, run.space, got.design, run.report);
   const written = await tryLock(designLock(id), () => writeServers(run.space, got, expected, keep));
   if (written === "written") run.report.pulled++;
   else {
@@ -334,6 +383,7 @@ async function push(run: SpaceRun, id: string, baseRev: number | null): Promise<
   let rev: number;
   try {
     await sendAssets(run.conn, run.space, design);
+    await sendClips(run.conn, run.space, design, run.report);
     rev = await api.putDesign(run.conn, run.space, design, baseRev, thumbnail);
   } catch (error) {
     if (!(error instanceof CloudError)) throw error;
@@ -372,7 +422,10 @@ async function push(run: SpaceRun, id: string, baseRev: number | null): Promise<
     const now = await wrap<DesignSummary | undefined>(tx.objectStore("summaries").get(id));
     // a new design sent its details with its content; one the server had keeps the details that were in step
     const syncedMeta = baseRev === null || !before?.syncedMeta ? metaOfSummary(summary) : before.syncedMeta;
-    sync.put({ id, space: run.space, serverRev: rev, syncedRevision: now ? sentRevision : null, syncedMeta } satisfies SyncRecord);
+    // deleted for good while it was being sent (deleteForever takes no lock of the design): the server has it now, so its deletion
+    // waits to be sent, as a tombstone; a record without one would have the next run take it back from the feed
+    const deleted = now ? {} : { tombstone: true };
+    sync.put({ id, space: run.space, serverRev: rev, syncedRevision: now ? sentRevision : null, syncedMeta, ...deleted } satisfies SyncRecord);
   });
   run.report.pushed++;
 }
@@ -396,6 +449,7 @@ async function conflict(run: SpaceRun, id: string, rev: number | null): Promise<
   }
   if (rev !== null && got.rev < rev) return; // the feed is ahead of the design: the next run looks again
   await fetchAssets(run.conn, run.space, got.design, run.report);
+  await fetchClips(run.conn, run.space, got.design, run.report);
   const copyId = uid("d");
   const made = await tryLock(designLock(id), () =>
     writeTransaction(["designs", "summaries", "versions", "sync"], async (tx) => {
@@ -498,7 +552,7 @@ async function metaPush(run: SpaceRun, id: string, patch: Partial<SyncedMeta>): 
 }
 
 /** Takes the server's details where they did not change here; the content stays in step when it was. */
-async function metaPull(run: SpaceRun, id: string, meta: SyncedMeta, remote: SyncedMeta): Promise<void> {
+async function metaPull(run: SpaceRun, id: string, planned: SyncedMeta, remote: SyncedMeta, local: SyncedMeta): Promise<void> {
   const done = await tryLock(designLock(id), () =>
     writeTransaction(["designs", "summaries", "sync"], async (tx) => {
       const designs = tx.objectStore("designs");
@@ -510,6 +564,8 @@ async function metaPull(run: SpaceRun, id: string, meta: SyncedMeta, remote: Syn
         wrap<SyncRecord | undefined>(sync.get(id)),
       ]);
       if (!design || !summary || !record) return true;
+      // a detail changed here while this run went on (a rename, a star: updateSummary takes no lock of the design) is kept
+      const meta = withLaterChanges(planned, local, metaOfSummary(summary));
       const revision = uid("revision");
       designs.put({ ...design, ...meta });
       summaries.put({ ...summary, ...meta, revision });
@@ -554,7 +610,7 @@ async function act(run: SpaceRun, action: SyncAction, local: Map<string, LocalDe
       if (mayWrite) await metaPush(run, action.id, action.patch);
       return;
     case "meta-pull":
-      return metaPull(run, action.id, action.meta, action.remote);
+      return metaPull(run, action.id, action.meta, action.remote, action.local);
     case "skip":
       run.report.skipped++;
       run.hold = true;
@@ -671,6 +727,7 @@ async function claim(run: SpaceRun, id: string, summary: DesignSummary): Promise
     throw error;
   }
   await fetchAssets(run.conn, run.space, got.design, run.report);
+  await fetchClips(run.conn, run.space, got.design, run.report);
   const mine = await getStoredDesign(id);
   // (only a design of this device only is taken as the server's: one of another space stays in it, under a new id)
   const same = !summary.space && !!mine && mine.title === got.design.title && sameContent(mine, got.design);

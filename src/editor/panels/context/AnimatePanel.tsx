@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import {
   MAX_ANIMATION_DELAY,
   MAX_ANIMATION_DURATION,
+  MAX_CLIP_PAGE_DURATION,
   MAX_PAGE_DURATION,
   MIN_PAGE_DURATION,
   PAGE_ANIMATION_PRESETS,
@@ -11,6 +12,7 @@ import {
   getAnimationPreset,
   isAnimated,
   pageAnimationFor,
+  pageClipLength,
   pageDuration,
   presetsFor,
   type AnimPhase,
@@ -31,7 +33,7 @@ import "./AnimatePanel.css";
  * arrives at it. Choosing or changing something plays the page on the canvas so the effect is seen straight away.
  */
 export function AnimatePanel({ tab }: { tab: "element" | "page" }) {
-  const previewing = usePreview((s) => s.preview !== null);
+  const previewing = usePreview((s) => s.preview !== null && !s.preview.paused);
   const page = useEditor((s) => getActivePage(s));
   const tabs = (
     <Tabs
@@ -296,6 +298,8 @@ function PagePane() {
   const els = animatableElements(page, design);
   const active = currentPageAnimation(page, design);
   const noEntrances = els.every((e) => !e.animation?.in);
+  /** how long the page's longest clip takes to play once (null: no clip) */
+  const clipLength = pageClipLength(page);
 
   const choosePage = (id: string | null) => {
     getActions().setPageAnimation(id);
@@ -337,6 +341,20 @@ function PagePane() {
           value={pageDuration(page)}
           onChange={(v) => getActions().setPageDuration(v, allTiming ? "all" : "page")}
         />
+        {clipLength !== null ? (
+          // a page with a clip lasts as long as the clip until a length is set for it; then it can be given that length back
+          page.duration === undefined ? (
+            <p className="cf-an__note" role="status">
+              {m.panelsContext.animate.followsClip(m.panelsContext.animate.pageSeconds(pageDuration(page)))}
+            </p>
+          ) : (
+            <p className="cf-an__note">
+              <Button variant="secondary" size="sm" onClick={() => getActions().resetPageDuration(allTiming ? "all" : "page")}>
+                {m.panelsContext.animate.matchClip(m.panelsContext.animate.pageSeconds(Math.min(clipLength, MAX_CLIP_PAGE_DURATION)))}
+              </Button>
+            </p>
+          )
+        ) : null}
         <Checkbox checked={allTiming} onChange={setAllTiming} label={m.panelsContext.shared.applyToAllPages} />
       </Section>
 

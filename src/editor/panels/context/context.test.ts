@@ -452,6 +452,12 @@ describe("chart edits", () => {
     expect(parseNumber("1.")).toBe(1);
     for (const bad of ["", "abc", "1e3", "--1", "1 2", "-"]) expect(parseNumber(bad)).toBeNull();
   });
+
+  it("refuses a number made only of digits that is too large to hold", () => {
+    expect(parseNumber("9".repeat(400))).toBeNull();
+    expect(parseNumber(`-${"9".repeat(400)}`)).toBeNull();
+    expect(parseNumber("9".repeat(300))).toBe(1e300);
+  });
 });
 
 /* ------------------------------------------------------------------ */

@@ -6,6 +6,7 @@
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { svgProblem } from "@/core/svgSafety";
 import type { SharedAsset } from "./storage";
 
 /** The origins that may call the HTTP interface from a page: "*", or a list. None: no CORS headers at all. */
@@ -34,6 +35,14 @@ export const reply = (res: ServerResponse, status: number, body: unknown) => {
 export const replyTooBig = (req: IncomingMessage, res: ServerResponse, body: unknown) => {
   res.setHeader("connection", "close");
   reply(res, 413, body);
+  res.once("finish", () => req.socket.destroy());
+};
+
+/** Answers 503 with a wait for a request whose body is not read now (the server holds what it may), and drops the connection. */
+export const replyBusy = (req: IncomingMessage, res: ServerResponse, body: unknown, retryAfterSeconds = 30) => {
+  res.setHeader("connection", "close");
+  res.setHeader("retry-after", String(retryAfterSeconds));
+  reply(res, 503, body);
   res.once("finish", () => req.socket.destroy());
 };
 
@@ -107,6 +116,11 @@ export const ASSET_ID = /^[A-Za-z0-9_-]{1,128}$/;
 export const IMAGE_TYPE = /^image\/(?:png|jpeg|webp|gif|svg\+xml|avif|bmp)$/;
 /** base64 for up to 9 MiB */
 export const ASSET_LIMIT = 12 * 1024 * 1024;
+/**
+ * The clips and sounds a room may keep (docs/COLLABORATION.md, "Clips and sounds"): the types the app stores them under
+ * (ACCEPTED_VIDEO_TYPES and ACCEPTED_AUDIO_TYPES in src/core/assets.ts), and nothing a browser would run as a page.
+ */
+export const MEDIA_TYPE = /^(?:video\/(?:mp4|webm|ogg)|audio\/(?:mpeg|mp4|aac|wav|ogg|webm|flac))$/;
 
 /**
  * An uploaded picture as it came, if it is one that may be kept: a picture type, and base64 that is exactly what its bytes
@@ -129,4 +143,40 @@ export function checkAsset(value: unknown): SharedAsset | null {
     return null;
   }
   return { mime, base64 };
+}
+
+/** Whether the bytes begin the way a picture of that type does. A picture that is not is refused, whatever it says it is. */
+export function looksLike(mime: string, bytes: Buffer): boolean {
+  const starts = (...b: number[]) => b.every((v, i) => bytes[i] === v);
+  const ascii = (at: number, text: string) => bytes.subarray(at, at + text.length).toString("latin1") === text;
+  switch (mime) {
+    case "image/png":
+      return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+    case "image/jpeg":
+      return starts(0xff, 0xd8, 0xff);
+    case "image/gif":
+      return ascii(0, "GIF87a") || ascii(0, "GIF89a");
+    case "image/webp":
+      return ascii(0, "RIFF") && ascii(8, "WEBP");
+    case "image/bmp":
+      return ascii(0, "BM");
+    case "image/avif":
+      return ascii(4, "ftyp");
+    default:
+      return false;
+  }
+}
+
+/**
+ * What is wrong inside a picture that `checkAsset` let through, or null: an SVG must be plain drawing (no script, no outside
+ * address: `svgProblem`), and any other picture must begin with the bytes of its type. A room and a space check their uploads
+ * alike: what one person uploads is drawn in the others' browsers.
+ */
+export function pictureProblem(asset: SharedAsset): string | null {
+  const bytes = Buffer.from(asset.base64, "base64");
+  if (asset.mime === "image/svg+xml") {
+    const problem = svgProblem(bytes.toString("utf8"));
+    return problem ? `this drawing cannot be kept: ${problem}` : null;
+  }
+  return looksLike(asset.mime, bytes) ? null : `this is not a ${asset.mime} picture`;
 }

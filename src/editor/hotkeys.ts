@@ -14,6 +14,7 @@ import { startPathEdit, stopPathEdit, usePathEdit } from "./canvas/pathEditStore
 import { backspacePen, finishPen, hasPenDraft, penHistory, penKey } from "./canvas/penTool";
 import { stopPreview, usePreview } from "./canvas/preview";
 import { insertImageFiles } from "./insert";
+import { openLinkDialog } from "./toolbar/link";
 import { pasteDataIntoSelection } from "./panels/context/dataImport";
 import { isInteractiveControl, isTyping, markSelectAllOnEdit } from "./canvas/controller";
 
@@ -62,6 +63,9 @@ function onKeyDown(e: KeyboardEvent) {
     else if (useComments.getState().panelOpen) {
       e.preventDefault(); // one thing per Esc: the grid view waits for the next one
       useComments.setState({ panelOpen: false, highlight: null });
+    } else if (s.focusGroupId) {
+      a.enterGroup(null);
+      a.select([s.focusGroupId]);
     } else if (s.selection.length) a.clearSelection();
     return;
   }
@@ -147,6 +151,11 @@ function onKeyDown(e: KeyboardEvent) {
   } else if (mod && key === "f") {
     e.preventDefault();
     a.openDialog("findReplace");
+  } else if (mod && key === "k") {
+    e.preventDefault();
+    const page = getActivePage(s);
+    const el = s.selection.length === 1 && page ? findElement(page, s.selection[0]) : null;
+    if (el && !el.locked) openLinkDialog(el.id);
   } else if (e.altKey && e.shiftKey && key === "l") {
     e.preventDefault();
     const page = getActivePage(s);
@@ -168,7 +177,7 @@ function onKeyDown(e: KeyboardEvent) {
     if (el?.type === "text") {
       e.preventDefault();
       a.startTextEdit(el.id);
-    } else if (el?.type === "image" && el.src) {
+    } else if ((el?.type === "image" || el?.type === "video") && el.src) {
       e.preventDefault();
       a.startCrop(el.id);
     } else if (el?.type === "shape" && elementPath(el)) {

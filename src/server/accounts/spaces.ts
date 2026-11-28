@@ -22,8 +22,7 @@ import { checkDesign } from "@/collab/protocol";
 import { uid } from "@/core/ids";
 import { MigrationError } from "@/core/schema/migrator";
 import { migrateDesign } from "@/core/schema/design";
-import { svgProblem } from "@/core/svgSafety";
-import { ASSET_ID, ASSET_LIMIT, checkAsset, readBody, reply } from "../http";
+import { ASSET_ID, ASSET_LIMIT, MEDIA_TYPE, checkAsset, pictureProblem, readBody, reply } from "../http";
 import { badRequest, BodyTooBig, exactly, notFound, readJson, refuse, TOMBSTONE_MS, type Ctx } from "./context";
 import { can, type Action, type TeamRole } from "./roles";
 import { SERVER_ID, type DesignEntry, type Manifest, type StoredDesign, type UserRecord } from "./storage";
@@ -86,11 +85,12 @@ const readId = (raw: string, pattern: RegExp, what: string) => {
 
 const designBytes = (entry: DesignEntry) => entry.bytes + entry.versions.reduce((sum, v) => sum + v.bytes, 0);
 
-/** Everything a space takes: its designs with their kept revisions (tombstones too, until they are purged) and its uploads. */
+/** Everything a space takes: its designs with their kept revisions (tombstones too, until they are purged), its uploads, and its clips and sounds. */
 export function spaceBytes(m: Manifest): number {
   let bytes = 0;
   for (const entry of Object.values(m.designs)) bytes += designBytes(entry);
   for (const asset of Object.values(m.assets)) bytes += asset.bytes;
+  for (const clip of Object.values(m.media ?? {})) bytes += clip.bytes;
   return bytes;
 }
 
@@ -512,28 +512,6 @@ export async function deleteFolder(ctx: Ctx, req: IncomingMessage, res: ServerRe
 
 /* ---------------- uploads ---------------- */
 
-/** Whether the bytes begin the way a picture of that type does. A picture that is not is refused, whatever it says it is. */
-export function looksLike(mime: string, bytes: Buffer): boolean {
-  const starts = (...b: number[]) => b.every((v, i) => bytes[i] === v);
-  const ascii = (at: number, text: string) => bytes.subarray(at, at + text.length).toString("latin1") === text;
-  switch (mime) {
-    case "image/png":
-      return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
-    case "image/jpeg":
-      return starts(0xff, 0xd8, 0xff);
-    case "image/gif":
-      return ascii(0, "GIF87a") || ascii(0, "GIF89a");
-    case "image/webp":
-      return ascii(0, "RIFF") && ascii(8, "WEBP");
-    case "image/bmp":
-      return ascii(0, "BM");
-    case "image/avif":
-      return ascii(4, "ftyp");
-    default:
-      return false;
-  }
-}
-
 export async function putAsset(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
   const { asker } = await access(ctx, req, space, "upload");
   const id = readId(rawId, ASSET_ID, "an upload");
@@ -551,11 +529,8 @@ export async function putAsset(ctx: Ctx, req: IncomingMessage, res: ServerRespon
   // the checks a picture of a room gets (http.ts), and then what is inside: plain drawing for an SVG, a picture's bytes otherwise
   const asset = checkAsset(parsed);
   if (!asset) throw badRequest("invalid image data or format");
-  const bytes = Buffer.from(asset.base64, "base64");
-  if (asset.mime === "image/svg+xml") {
-    const problem = svgProblem(bytes.toString("utf8"));
-    if (problem) throw badRequest(`this drawing cannot be kept: ${problem}`);
-  } else if (!looksLike(asset.mime, bytes)) throw badRequest(`this is not a ${asset.mime} picture`);
+  const problem = pictureProblem(asset);
+  if (problem) throw badRequest(problem);
   const status = await change(ctx, space, asker, async (m) => {
     if (Object.hasOwn(m.assets, id)) {
       const have = await ctx.storage.loadAsset(space, id);
@@ -578,6 +553,161 @@ export async function getAsset(ctx: Ctx, req: IncomingMessage, res: ServerRespon
   const asset = Object.hasOwn(m.assets, id) ? await ctx.storage.loadAsset(space, id) : null;
   if (!asset) throw notFound("no such upload");
   reply(res, 200, asset);
+}
+
+/* ---------------- clips and sounds ---------------- */
+
+/** A refusal that also drops the connection once it has been answered: the rest of a big body is still on its way. */
+function refuseUnread(req: IncomingMessage, res: ServerResponse, error: Error): never {
+  res.setHeader("connection", "close");
+  res.once("finish", () => req.socket.destroy());
+  throw error;
+}
+
+/**
+ * A clip or a sound of a space (docs/ACCOUNTS.md, "Clips and sounds"): sent as itself and streamed, as a room's (live.ts), with its
+ * type (MEDIA_TYPE) and its size up front. The size is weighed against `maxMediaBytes` and against what the space may still hold
+ * before a byte is read, the bytes are counted and hashed as they come, and only a clip that came whole is put in place, in the
+ * space's queue, where the space is weighed again. It is listed in `Manifest.media`, apart from the pictures.
+ */
+export async function putMedia(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
+  const { asker } = await access(ctx, req, space, "upload");
+  const id = readId(rawId, ASSET_ID, "a clip");
+  const mime = String(req.headers["content-type"] ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (!MEDIA_TYPE.test(mime)) refuseUnread(req, res, refuse(415, "type", "only clips and sounds are kept this way"));
+  const declared = Number(req.headers["content-length"]);
+  if (!Number.isSafeInteger(declared) || declared <= 0) refuseUnread(req, res, refuse(411, "length", "the size of the clip must be given"));
+  if (declared > ctx.o.maxMediaBytes) refuseUnread(req, res, refuse(413, "too-big", "this clip is too large to keep", { limit: ctx.o.maxMediaBytes }));
+  // what the space holds, and what is on its way into it now (src/server/staging.ts)
+  const key = `space:${space}`;
+  if (spaceBytes(await ctx.storage.loadManifest(space)) + ctx.staging.reserved(key) + declared > ctx.o.spaceQuotaBytes) refuseUnread(req, res, quota());
+  if (!ctx.staging.reserve(key, declared)) {
+    res.setHeader("retry-after", "30");
+    refuseUnread(req, res, refuse(503, "busy", "the server is receiving as much as it can now: try again in a moment"));
+  }
+  try {
+    await receiveMedia(ctx, req, res, space, id, mime, declared, asker);
+  } finally {
+    ctx.staging.release(key, declared);
+  }
+}
+
+/** The rest of `putMedia`, once the clip's size is reserved: its bytes, and then its place in the space. */
+async function receiveMedia(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, id: string, mime: string, declared: number, asker: Asker) {
+  const staged = await ctx.storage.stageMedia(space, req, declared);
+  if (!staged) throw new BodyTooBig();
+  let kept = false;
+  try {
+    if (staged.size !== declared) throw badRequest("the clip did not arrive whole");
+    const status = await change(ctx, space, asker, async (m) => {
+      const media = (m.media ??= {});
+      if (Object.hasOwn(media, id)) {
+        if (media[id].sha256 === staged.sha256 && media[id].mime === mime) return { value: 200, changed: false };
+        throw refuse(409, "exists", "there is another clip under this id");
+      }
+      if (spaceBytes(m) + staged.size > ctx.o.spaceQuotaBytes) throw quota();
+      await ctx.storage.commitMedia(space, id, staged);
+      kept = true;
+      m.seq++;
+      media[id] = { mime, bytes: staged.size, sha256: staged.sha256, seq: m.seq, createdAt: ctx.now() };
+      return { value: 201, changed: true };
+    });
+    reply(res, status, { ok: true });
+  } finally {
+    if (!kept) await ctx.storage.dropMedia(staged);
+  }
+}
+
+/*
+ * What a room bound to a design of the space brings back with the design (live.ts, `writeBack`): the pictures, clips and sounds
+ * that were added while it was edited live went to the room, and a member who opens the design from the space later needs them
+ * there. They are checked as an upload of the space is, count towards its quota, and never replace one the space has under the id.
+ */
+
+/** Which of `ids` the space has neither as a picture nor as a clip or a sound. */
+export async function missingFiles(ctx: Ctx, space: string, ids: readonly string[]): Promise<string[]> {
+  const m = await ctx.storage.loadManifest(space);
+  return ids.filter((id) => ASSET_ID.test(id) && !Object.hasOwn(m.assets, id) && !(m.media && Object.hasOwn(m.media, id)));
+}
+
+/** Keeps a room's picture in the space: true when it is there afterwards, false when it may not be kept (its kind, or the quota). */
+export async function keepPicture(ctx: Ctx, space: string, id: string, given: unknown): Promise<boolean> {
+  const asset = ASSET_ID.test(id) ? checkAsset(given) : null;
+  if (!asset || pictureProblem(asset)) return false;
+  return change(ctx, space, null, async (m) => {
+    if (Object.hasOwn(m.assets, id)) return { value: true, changed: false };
+    if (spaceBytes(m) + asset.base64.length > ctx.o.spaceQuotaBytes) return { value: false, changed: false };
+    await ctx.storage.saveAsset(space, id, asset);
+    m.seq++;
+    m.assets[id] = { mime: asset.mime, bytes: asset.base64.length, seq: m.seq, createdAt: ctx.now() };
+    return { value: true, changed: true };
+  });
+}
+
+/** Keeps a room's clip or sound in the space, read from `source`, which gives `size` bytes: true when it is there afterwards. */
+export async function keepClip(ctx: Ctx, space: string, id: string, mime: string, size: number, source: AsyncIterable<Buffer | Uint8Array>): Promise<boolean> {
+  if (!ASSET_ID.test(id) || !MEDIA_TYPE.test(mime) || !Number.isSafeInteger(size) || size <= 0 || size > ctx.o.maxMediaBytes) return false;
+  const before = await ctx.storage.loadManifest(space);
+  if (before.media && Object.hasOwn(before.media, id)) return true;
+  const key = `space:${space}`;
+  if (spaceBytes(before) + ctx.staging.reserved(key) + size > ctx.o.spaceQuotaBytes) return false;
+  // (with the server receiving all it may, the clip stays the room's for now: the next write-back tries again)
+  if (!ctx.staging.reserve(key, size)) return false;
+  try {
+    return await copyClip(ctx, space, id, mime, size, source);
+  } finally {
+    ctx.staging.release(key, size);
+  }
+}
+
+async function copyClip(ctx: Ctx, space: string, id: string, mime: string, size: number, source: AsyncIterable<Buffer | Uint8Array>): Promise<boolean> {
+  const staged = await ctx.storage.stageMedia(space, source, size);
+  if (!staged) return false;
+  let kept = false;
+  try {
+    if (staged.size !== size) return false;
+    return await change(ctx, space, null, async (m) => {
+      const media = (m.media ??= {});
+      if (Object.hasOwn(media, id)) return { value: true, changed: false };
+      if (spaceBytes(m) + staged.size > ctx.o.spaceQuotaBytes) return { value: false, changed: false };
+      await ctx.storage.commitMedia(space, id, staged);
+      kept = true;
+      m.seq++;
+      media[id] = { mime, bytes: staged.size, sha256: staged.sha256, seq: m.seq, createdAt: ctx.now() };
+      return { value: true, changed: true };
+    });
+  } finally {
+    if (!kept) await ctx.storage.dropMedia(staged);
+  }
+}
+
+/** A clip or a sound of a space, streamed back as a download of its type; HEAD says only whether it is there. */
+export async function getMedia(ctx: Ctx, req: IncomingMessage, res: ServerResponse, space: string, rawId: string) {
+  await access(ctx, req, space, "read");
+  const id = readId(rawId, ASSET_ID, "a clip");
+  const m = await ctx.storage.loadManifest(space);
+  const entry = m.media && Object.hasOwn(m.media, id) ? m.media[id] : undefined;
+  if (!entry) throw notFound("no such clip");
+  res.statusCode = 200;
+  res.setHeader("content-type", entry.mime);
+  res.setHeader("content-length", String(entry.bytes));
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("content-disposition", "attachment");
+  if (req.method === "HEAD") return void res.end();
+  const stream = ctx.storage.mediaStream(space, id);
+  await new Promise<void>((done) => {
+    stream.on("error", (error) => {
+      console.error(`Craftly could not read the clip ${id} of the space ${space}`, error);
+      res.destroy();
+      done();
+    });
+    res.on("close", () => done());
+    stream.pipe(res);
+  });
 }
 
 /** Which of these uploads the space does not hold: what a browser sends before the design that uses them. */

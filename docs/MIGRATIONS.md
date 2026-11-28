@@ -2,7 +2,7 @@
 
 Craftly keeps a person's designs in their own browser, so no release may lose or damage them. This page says what is stored, how each thing is versioned, what happens when versions meet, and the recipe for changing a format. The code is in `src/core/schema/` (the runner, the design format, the database upgrade), in the places that read a format (`src/core/library.ts`, `src/core/persistence.ts`, `src/export/projectFormat.ts`, `src/export/backupFormat.ts`, `src/export/backup.ts`) and in the notices (`src/databaseNotices.ts`, the editor's screens in `src/editor/Editor.tsx`).
 
-**Status.** The design format, project files and backups are still at their first version, so no design migration step exists yet. The framework, its tests and the frozen documents come before the first change on purpose: a format cannot be changed safely until old data can be tried against the change. The database has its second step (2026-11-17, accounts and sync, `docs/ACCOUNTS.md`): the store `sync` and an optional `space` on summaries, folders and uploads; see [Database step 2](#database-step-2-accounts-and-sync).
+**Status.** The design format is at version 3 (2026-11-27, the sounds of a design: [Design version 3](#design-version-3-the-sounds-of-a-design); version 2 came with the video element on 2026-11-24); project files and backups are still at their first version. The framework, its tests and the frozen documents came before the first change on purpose: a format cannot be changed safely until old data can be tried against the change. The database has its second step (2026-11-17, accounts and sync, `docs/ACCOUNTS.md`): the store `sync` and an optional `space` on summaries, folders and uploads; see [Database step 2](#database-step-2-accounts-and-sync).
 
 The library summary also tracks a local save revision. It detects stale writes and is separate from the design format version. Portable project and backup readers discard embedded live credentials, including those in legacy files. Backup preserves other document fields for newer formats where it can copy the record.
 
@@ -31,6 +31,26 @@ The library summary also tracks a local save revision. It detects stale writes a
 Uploaded fonts needed no new version of anything: the files are records of the existing `meta` store (no step in `DB_STEPS`), and a project file and a backup list them in an optional `fonts` field that is left out when there are none, so a file without uploaded fonts is byte for byte what it was, and an older release that reads a file with the field ignores it.
 
 The service worker's caches are not user data: a new build replaces them (`docs/UPDATES.md`).
+
+## Design version 2: the video element
+
+The first step in `DESIGN_MIGRATIONS` (`src/core/schema/design.ts`).
+
+- **Why a version and not an optional field**: an element of a new kind is not a field an older release can leave alone. A release of version 1 refuses an element of a kind it does not know where a design comes in from outside (`elementProblem` in `src/core/usableElement.ts`: a project file, a copy, the clipboard, a shared design), so a design with a clip would lose it there, and its Layers panel has no name for it. With the number raised, such a release refuses the whole design, which is the promise above.
+- **What the step does**: nothing but the number. A design of version 1 has no video element, so it is a design of version 2 as it is (`src/core/video.test.ts` checks it against `design-v1-full.json`).
+- **The frozen designs**: `design-v2-full.json` and `design-v2-minimal.json`, made from `completeDesign()` and `minimalDesign()`; every optional field that was added to version 1 is in them, and `persistedShapes.test.ts` checks that version 2 is version 1 with those fields (`ADDED_TO_V1`) and those of the video element (`VIDEO`), and nothing else. `ADDED.design` is empty again.
+- **What a person sees**: the first save of a design from before keeps the stored one in Version history as "Before the update"; a tab of an older release says "Update Craftly to open this design" for a design saved since.
+
+## Design version 3: the sounds of a design
+
+The second step in `DESIGN_MIGRATIONS` (`src/core/schema/design.ts`).
+
+- **Why a version and not an optional field**: `audio` is a field a release of version 2 does not know. It would keep it in a stored design, but a copy, a project file or a backup made there goes through `sanitizeDesign`, which builds the design from the fields it knows, so the sounds would be lost there, and its video download would be silent. With the number raised such a release refuses the design whole.
+- **What the step does**: nothing but the number. A design of version 2 has no sounds, so it is a design of version 3 as it is (`src/core/audioTracks.test.ts` checks it against `design-v2-full.json`).
+- **The field**: `audio?: AudioTrack[]` on the design (`src/core/types.ts`): a sound of the uploads (`asset:<id>`), its length, its trim, the second of the design at which it starts, and optionally `loop`, `volume`, `fadeIn` and `fadeOut`. A design from outside (a project file, a backup) keeps only the tracks `readAudioTracks` can use, with their numbers put in range; a project file says how many it left out.
+- **Uploads** may now be sounds: `kind: "audio"` on an upload, with no size (`width` and `height` 0). The `assets` store has no version: a release before this one lists such an upload among the pictures, where it cannot be shown, and leaves it alone.
+- **Not shared**: the sounds of a shared design stay on the device that added them, like the clips' files (account servers and live rooms carry pictures only), and `audio` is not one of the design fields live editing sends (`DESIGN_KEYS` in `src/collab/ops.ts`).
+- **The frozen designs**: `design-v3-full.json` and `design-v3-minimal.json`. `persistedShapes.test.ts` checks that version 3 is version 2 with the optional fields its clips gained (`ADDED_TO_V2`) and the sounds (`AUDIO`), and nothing else. `ADDED.design` is empty again.
 
 ## Database step 2: accounts and sync
 
@@ -124,7 +144,7 @@ First decide which kind of change it is.
 
 ## Not done
 
-- No design migration step exists, so none has run on real data yet. The first one will be the first real test of this page. The database's step 2 only adds a store.
+- The one design migration step (version 2) changes nothing but the number, so a step that rewrites a design has not run on real data yet. The database's step 2 only adds a store.
 - A design from a newer release cannot be opened read-only; it is refused.
 - The notice for a tab that holds an upgrade up is only seen by tabs of this release and later. A tab of an earlier release is not told anything and holds the other tab up until it is closed.
 - Preferences and the small `meta` values have no version; a change to one of them is a reader that copes with the old value.

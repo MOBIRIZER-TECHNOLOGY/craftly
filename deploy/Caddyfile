@@ -1,0 +1,10 @@
+# The live server behind Caddy, which gets and renews the certificate itself (docs/DEPLOY.md, section 2.4).
+# LIVE_DOMAIN is the server's public name, live.example.org say. For "localhost" Caddy makes the certificate with its own
+# local authority instead, which is how deploy/compose.caddy.yml is tried on one machine.
+#
+# Caddy passes the WebSocket upgrade on by itself, keeps quiet connections open, has no limit on the size of a body,
+# and sets X-Forwarded-For to the address it saw (replacing what the browser sent): TRUST_PROXY=1 on the server reads it.
+
+{$LIVE_DOMAIN} {
+	reverse_proxy live:8787
+}

@@ -3,12 +3,18 @@
  * its frame, the frame is trimmed with the eight handles, the wheel zooms and Done leaves crop mode.
  */
 import { act, configure, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { createImage, createShape } from "@/core/factory";
+import { describe, expect, it, vi } from "vitest";
+
+// a clip's first frame: this browser plays no clips, so the frame is a canvas made here
+vi.mock(import("@/render/videos"), async (original) => ({
+  ...(await original()),
+  loadPoster: async () => Object.assign(document.createElement("canvas"), { width: 64, height: 36 }),
+}));
+import { createImage, createShape, createVideo } from "@/core/factory";
 import { getActions, useEditor } from "@/core/store";
-import type { ImageElement } from "@/core/types";
+import type { ImageElement, VideoElement } from "@/core/types";
 import { canvasDesign, elementOf, mountWorkspace, type CanvasRig } from "@/test/canvasUtils";
-import { clampCrop, getCropScale, resetCrop, setCropScale } from "./CropOverlay";
+import { CROP_RATIOS, clampCrop, cropRatioOf, currentCropRatio, getCropScale, resetCrop, setCropRatio, setCropRotation, setCropScale } from "./CropOverlay";
 
 // the machine may be busy: give waitFor more than its default second
 configure({ asyncUtilTimeout: 20_000 });
@@ -211,6 +217,20 @@ describe("panning the picture", () => {
     expect(img().crop.x).toBe(cancelled);
   });
 
+  it("closes the drag's undo step when crop mode ends before the pointer is released, so undo still works", async () => {
+    const rig = await crop({}, 2);
+    const before = state().past.length;
+    const target = windowOf(rig);
+    rig.pointerAt("pointerDown", 0, 0, { target });
+    rig.pointerAt("pointerMove", 40, 25, { target });
+    // Esc, or anything else that ends crop mode, while the picture is held: the overlay goes and its pointerup never comes
+    act(() => getActions().endCrop());
+    await waitFor(() => expect(rig.container.querySelector("[data-cf-crop]")).toBeNull());
+    expect(state().past).toHaveLength(before + 1);
+    act(() => getActions().undo());
+    expect(img().crop.x).toBe(-0.5);
+  });
+
   it("does not start a canvas gesture while the picture is pressed", async () => {
     const rig = await crop({}, 2);
     rig.down(600, 350, { target: windowOf(rig) });
@@ -319,5 +339,143 @@ describe("zooming with the wheel in crop mode", () => {
     expect(getCropScale(img())).toBe(1);
     fireEvent.wheel(frame(rig), { deltaY: -9000 });
     expect(getCropScale(img())).toBe(8);
+  });
+});
+
+describe("giving the frame a fixed shape", () => {
+  /** where the picture is on the page, whatever the frame shows of it */
+  const pictureOnPage = (el: ImageElement) => ({ x: el.x + el.crop.x * el.width, y: el.y + el.crop.y * el.height, w: el.crop.w * el.width, h: el.crop.h * el.height });
+  const open = (extra: Partial<ImageElement> = {}) => act(() => getActions().openDesign(canvasDesign([photo(extra)])));
+
+  it("offers the shape of the picture and seven named ones", () => {
+    expect(CROP_RATIOS.map((r) => r.id)).toEqual(["original", "1:1", "4:3", "3:2", "16:9", "3:4", "2:3", "9:16"]);
+    expect(cropRatioOf(photo(), "16:9")).toBeCloseTo(16 / 9);
+    expect(cropRatioOf(photo(), "original")).toBe(2);
+    expect(cropRatioOf(photo({ naturalWidth: 300, naturalHeight: 400 }), "original")).toBe(0.75);
+  });
+
+  it("makes the largest frame of that shape the picture covers, around the middle, and leaves the picture where it is", () => {
+    // a 400 x 200 picture that just covers its 200 x 100 frame at (500, 300)
+    open();
+    const before = pictureOnPage(img());
+    act(() => setCropRatio("img", 1));
+    expect(img()).toMatchObject({ x: 550, y: 300, width: 100, height: 100 });
+    const after = pictureOnPage(img());
+    expect(after.x).toBeCloseTo(before.x);
+    expect(after.y).toBeCloseTo(before.y);
+    expect(after.w).toBeCloseTo(before.w);
+    expect(after.h).toBeCloseTo(before.h);
+    expect(img().crop).toEqual({ x: -0.5, y: 0, w: 2, h: 1 });
+    // one step of undo
+    act(() => getActions().undo());
+    expect(img()).toMatchObject({ x: 500, y: 300, width: 200, height: 100, crop: { x: 0, y: 0, w: 1, h: 1 } });
+  });
+
+  it("can make the frame larger again, up to the whole picture", () => {
+    open();
+    act(() => setCropRatio("img", 1));
+    act(() => setCropRatio("img", 2));
+    expect(img()).toMatchObject({ x: 500, y: 300, width: 200, height: 100 });
+    expect(img().crop.x).toBeCloseTo(0);
+    expect(img().crop.w).toBeCloseTo(1);
+  });
+
+  it("uses what the zoom shows: a picture zoomed to twice its size gives a frame of twice the size", () => {
+    open();
+    act(() => setCropScale("img", 2));
+    // the picture is 400 x 200 on the page now, around the middle of the frame
+    act(() => setCropRatio("img", 16 / 9));
+    expect(img().width).toBeCloseTo((200 * 16) / 9);
+    expect(img().height).toBeCloseTo(200);
+    // the middle of the frame is where it was
+    expect(img().x + img().width / 2).toBeCloseTo(600);
+    expect(img().y + img().height / 2).toBeCloseTo(350);
+  });
+
+  it("stays inside the picture when the picture was panned to one side", () => {
+    // the picture is twice the frame and pushed all the way left: its right edge is the frame's right edge
+    open({ crop: { x: -1, y: -1, w: 2, h: 2 } });
+    act(() => setCropRatio("img", 2));
+    const el = img();
+    // the whole picture: 400 x 200 on the page, from (300, 200)
+    expect(el).toMatchObject({ x: 300, y: 200, width: 400, height: 200 });
+    expect(el.crop).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+  });
+
+  it("keeps the middle of a turned picture where it was", () => {
+    open({ rotation: 90 });
+    act(() => setCropRatio("img", 1));
+    expect(img().x + img().width / 2).toBeCloseTo(600);
+    expect(img().y + img().height / 2).toBeCloseTo(350);
+    expect(img()).toMatchObject({ width: 100, height: 100, rotation: 90 });
+  });
+
+  it("does nothing for a ratio that is none, for another kind of element and for an id that does not exist", () => {
+    act(() => getActions().openDesign(canvasDesign([photo(), createShape("rect", { id: "other", x: 100, y: 100, width: 100, height: 100 })])));
+    const before = JSON.stringify(state().design);
+    act(() => setCropRatio("img", 0));
+    act(() => setCropRatio("img", Number.NaN));
+    act(() => setCropRatio("img", Number.POSITIVE_INFINITY));
+    act(() => setCropRatio("other", 1));
+    act(() => setCropRatio("nobody", 1));
+    expect(JSON.stringify(state().design)).toBe(before);
+  });
+
+  it("says which shape the frame has now", () => {
+    expect(currentCropRatio(photo())).toBe("original");
+    expect(currentCropRatio(photo({ width: 100, height: 100 }))).toBe("1:1");
+    expect(currentCropRatio(photo({ width: 160, height: 90 }))).toBe("16:9");
+    expect(currentCropRatio(photo({ width: 90, height: 160 }))).toBe("9:16");
+    expect(currentCropRatio(photo({ width: 200, height: 133.4 }))).toBe("3:2");
+    expect(currentCropRatio(photo({ width: 200, height: 77 }))).toBeNull();
+    // a square picture in a square frame is 1:1, not "original"
+    expect(currentCropRatio(photo({ width: 100, height: 100, naturalWidth: 300, naturalHeight: 300 }))).toBe("1:1");
+    // a picture of an unusual shape in a frame of that shape
+    expect(currentCropRatio(photo({ width: 210, height: 100, naturalWidth: 420, naturalHeight: 200 }))).toBe("original");
+  });
+});
+
+describe("straightening", () => {
+  it("turns the picture inside its frame, clamps the angle and resets it", async () => {
+    const rig = await crop({ crop: { x: 0, y: 0, w: 1, h: 1, rotation: 12 } });
+    expect(rig.container.querySelector<HTMLElement>(".cf-crop__live")?.style.transform).toBe("rotate(12deg)");
+    act(() => setCropRotation("img", 99));
+    expect(img().crop.rotation).toBe(45);
+    act(() => resetCrop("img"));
+    expect(img().crop.rotation).toBeUndefined();
+  });
+});
+
+describe("cropping a clip", () => {
+  const clip = (extra: Partial<VideoElement> = {}) =>
+    createVideo({ id: "clip", src: "asset:c", x: 500, y: 300, width: 320, height: 180, naturalWidth: 640, naturalHeight: 360, duration: 8, ...extra });
+
+  it("shows the clip's first frame in the crop, and pans it like a picture", async () => {
+    const rig = await mountWorkspace(canvasDesign([clip()]));
+    act(() => setCropScale("clip", 2));
+    act(() => getActions().startCrop("clip"));
+    await waitFor(() => expect(rig.container.querySelector(".cf-crop__live")?.getAttribute("src")).toMatch(/^data:/));
+    dragBy(windowOf(rig), 40, 0, rig);
+    const crop = elementOf<VideoElement>("clip").crop;
+    expect(crop.w).toBeCloseTo(2);
+    expect(crop.x).toBeCloseTo(-0.5 + 40 / 320);
+  });
+
+  it("gives the clip a frame of another shape, and takes the crop back", async () => {
+    await mountWorkspace(canvasDesign([clip()]));
+    act(() => setCropRatio("clip", 1));
+    const square = elementOf<VideoElement>("clip");
+    expect([square.width, square.height]).toEqual([180, 180]);
+    expect(currentCropRatio(square)).toBe("1:1");
+    act(() => setCropRotation("clip", 12));
+    expect(elementOf<VideoElement>("clip").crop.rotation).toBe(12);
+    act(() => resetCrop("clip"));
+    expect(getCropScale(elementOf<VideoElement>("clip"))).toBeCloseTo(1);
+  });
+
+  it("does not start for a locked clip", async () => {
+    await mountWorkspace(canvasDesign([clip({ locked: true })]));
+    act(() => getActions().startCrop("clip"));
+    expect(state().croppingId).toBeNull();
   });
 });

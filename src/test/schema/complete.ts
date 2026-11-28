@@ -1,7 +1,7 @@
 /**
  * "Complete" documents: every optional field of the stored formats is present, and the compiler checks it. A new optional
  * property on `Design`, an element, a fill, a summary ... makes the builders below fail to compile until it is added here,
- * and a new property in the builders then differs from the frozen v1 fixtures, which the tests of src/core/schema name
+ * and a new property in the builders then differs from the frozen fixtures of the current version, which the tests of src/core/schema name
  * (docs/MIGRATIONS.md: "changing what is stored"). Adding a field is allowed; doing it without noticing is what this stops.
  *
  * `Complete<T>`: T with every optional property required and not null, in every nested object, array item and union member.
@@ -46,6 +46,12 @@ const filter = {
   vignette: 30,
   blur: 1,
   hue: 5,
+  highlights: 10,
+  shadows: -10,
+  sharpen: 20,
+  tint: 5,
+  curves: 15,
+  levels: -5,
   duotone: { dark: "#101010", light: "#f0e0d0" },
 };
 const stroke = { color: "#112233", width: 3, style: "dashed" as const, cap: "round" as const, join: "bevel" as const };
@@ -63,8 +69,8 @@ function completeElements(): Complete<DesignElement>[] {
       paragraphs: [
         {
           runs: [
-            { text: "Hello ", bold: true, italic: true, underline: true, strike: true, color: "#ff8800", size: 40, font: "Playfair Display", spacing: 20 },
-            { text: "world", bold: false, italic: false, underline: false, strike: false, color: "#0088ff", size: 36, font: "Plus Jakarta Sans", spacing: -10 },
+            { text: "Hello ", bold: true, weight: 300, italic: true, underline: true, strike: true, color: "#ff8800", size: 40, font: "Playfair Display", spacing: 20 },
+            { text: "world", bold: false, weight: 500, italic: false, underline: false, strike: false, color: "#0088ff", size: 36, font: "Plus Jakarta Sans", spacing: -10 },
           ],
           align: "center",
           list: "bullet",
@@ -143,6 +149,14 @@ function completeElements(): Complete<DesignElement>[] {
       stroke,
       startArrow: "triangle",
       endArrow: "open-arrow",
+      routing: "elbow",
+      route: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 50, y: 40 },
+        { x: 100, y: 40 },
+      ],
+      label: "Next",
       start: { elementId: "s_1", anchor: "auto" },
       end: { elementId: "s_5", anchor: "left" },
     },
@@ -153,8 +167,9 @@ function completeElements(): Complete<DesignElement>[] {
       originalSrc: "asset:a_original",
       naturalWidth: 1600,
       naturalHeight: 900,
-      crop: { x: -0.1, y: -0.2, w: 1.2, h: 1.4 },
+      crop: { x: -0.1, y: -0.2, w: 1.2, h: 1.4, rotation: 5 },
       mask: "circle",
+      maskPath: "M0 0 L100 0 L100 100 L0 100 Z",
       radius: 8,
       filter,
       stroke,
@@ -179,7 +194,7 @@ function completeElements(): Complete<DesignElement>[] {
           type: "text",
           paragraphs: [
             {
-              runs: [{ text: "Inside", bold: true, italic: true, underline: true, strike: true, color: "#111111", size: 20, font: "Inter", spacing: 5 }],
+              runs: [{ text: "Inside", bold: true, weight: 300, italic: true, underline: true, strike: true, color: "#111111", size: 20, font: "Inter", spacing: 5 }],
               align: "left",
               list: "number",
             },
@@ -201,7 +216,23 @@ function completeElements(): Complete<DesignElement>[] {
           curve: 0,
           list: "bullet",
         },
-        { ...base("l_2"), type: "line", stroke, startArrow: "none", endArrow: "arrow", start: { elementId: "s_1", anchor: "top" }, end: { elementId: "s_5", anchor: "bottom" } },
+        {
+          ...base("l_2"),
+          type: "line",
+          stroke,
+          startArrow: "none",
+          endArrow: "arrow",
+          routing: "curved",
+          route: [
+            { x: 0, y: 0 },
+            { x: 30, y: -20 },
+            { x: 70, y: 20 },
+            { x: 100, y: 0 },
+          ],
+          label: "Inside",
+          start: { elementId: "s_1", anchor: "top" },
+          end: { elementId: "s_5", anchor: "bottom" },
+        },
       ],
     },
     {
@@ -211,6 +242,8 @@ function completeElements(): Complete<DesignElement>[] {
         ["Name", "Qty"],
         ["Pens", "12"],
       ],
+      merges: [{ row: 0, col: 0, rowSpan: 1, colSpan: 2 }],
+      cellStyles: { "0:0": { fill: "#eeeeee", color: "#111111", bold: true, align: "center" } },
       colWidths: [120, 80],
       rowHeights: [40, 40],
       headerRow: true,
@@ -239,13 +272,44 @@ function completeElements(): Complete<DesignElement>[] {
       showLegend: true,
       showValues: true,
       showGrid: true,
+      stacked: true,
+      percent: true,
+      valueAxisTitle: "Units",
+      categoryAxisTitle: "Year",
+    },
+    {
+      ...base("v_1"),
+      type: "video",
+      src: "asset:a_clip",
+      naturalWidth: 1280,
+      naturalHeight: 720,
+      duration: 12.5,
+      trimStart: 1.5,
+      trimEnd: 9,
+      speed: 1.5,
+      muted: true,
+      once: true,
+      loopFrom: 0.4,
+      runsOn: 2,
+      startAt: 0.5,
+      captions: [{ start: 0, end: 2.5, text: "Hello" }],
+      captionStyle: { place: "top", size: "l", font: "serif", family: "Inter", color: "#facc15", band: "none" },
+      volume: 0.6,
+      fadeIn: 1,
+      fadeOut: 2.5,
+      crop: { x: -0.1, y: 0, w: 1.2, h: 1, rotation: 3 },
+      filter,
+      mask: "hexagon",
+      maskPath: "M0 0 L100 0 L50 100 Z",
+      radius: 12,
+      stroke,
     },
   ];
 }
 
 /** Five pages: one for each kind of page background, the elements spread over them. */
 function completePages(): Complete<Page>[] {
-  const [text, star, imageFill, patternFill, linearShape, solidShape, line, image, graphic, group, table, chart] = completeElements();
+  const [text, star, imageFill, patternFill, linearShape, solidShape, line, image, graphic, group, table, chart, video] = completeElements();
   const page = (id: string, background: Complete<Page>["background"], elements: Complete<DesignElement>[]): Complete<Page> => ({
     id,
     name: `Page ${id}`,
@@ -260,7 +324,7 @@ function completePages(): Complete<Page>[] {
     page("p_2", { type: "linear", angle: 135, stops }, [patternFill, linearShape, solidShape]),
     page("p_3", { type: "radial", stops, cx: 0.3, cy: 0.7 }, [line, image, graphic]),
     page("p_4", { type: "pattern", pattern: "dots", color: "#99aabb", background: "#ffffff", scale: 2 }, [group, table, chart]),
-    page("p_5", { type: "image", src: "asset:a_background", fit: "cover", dim: 0.35 }, []),
+    page("p_5", { type: "image", src: "asset:a_background", fit: "cover", dim: 0.35 }, [video]),
   ];
 }
 
@@ -280,7 +344,10 @@ export function completeDesign(): Complete<Design> {
     starred: true,
     trashedAt: 1_700_000_900_000,
     guides: { vertical: [100, 960], horizontal: [200, 540] },
+    margin: 48,
+    gridSize: 20,
     live: { server: "https://live.example.test", room: "r_complete", key: "k_complete", role: "edit", ownerKey: "owner-key", viewKey: "v_complete" },
+    audio: [{ id: "au_complete", src: "asset:a_song", name: "Song", duration: 30, trimStart: 2, trimEnd: 26, startAt: 1.5, loop: true, volume: 0.6, fadeIn: 1, fadeOut: 2 }],
     comments: [
       {
         id: "c_complete",
@@ -294,7 +361,7 @@ export function completeDesign(): Complete<Design> {
         replies: [{ id: "r_complete", author: { name: "Bob", colorIndex: 7 }, createdAt: 1_700_000_300_000, editedAt: 1_700_000_400_000, text: "Done" }],
       },
     ],
-    version: 1,
+    version: 3,
   };
 }
 
@@ -380,6 +447,25 @@ export function minimalDesign(): Design {
             showLegend: false,
             showValues: false,
             showGrid: false,
+            stacked: false,
+            percent: false,
+            valueAxisTitle: "",
+            categoryAxisTitle: "",
+          },
+          {
+            id: "v_1",
+            type: "video",
+            ...required,
+            src: "asset:a_clip",
+            naturalWidth: 640,
+            naturalHeight: 360,
+            duration: 4,
+            trimStart: 0,
+            trimEnd: 4,
+            speed: 1,
+            crop: { x: 0, y: 0, w: 1, h: 1 },
+            mask: "rect",
+            radius: 0,
           },
         ],
       },
@@ -389,7 +475,7 @@ export function minimalDesign(): Design {
     folderId: null,
     starred: false,
     trashedAt: null,
-    version: 1,
+    version: 3,
   };
 }
 

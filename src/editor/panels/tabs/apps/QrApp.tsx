@@ -1,13 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { contrastRatio } from "@/core/color";
-import { createGraphic } from "@/core/factory";
+import { createGraphic, createImage } from "@/core/factory";
 import { getActions } from "@/core/store";
-import { svgToDataUrl } from "@/core/svg";
+import { isAcceptedImage, prepareAssetFromFile } from "@/core/assets";
+import { blobToDataUrl } from "@/export/encoding";
 import { m } from "@/i18n";
 import { Button, IconAlert, IconPlus, IconWarning, Segmented, Select, TextField } from "@/ui";
 import { designMin } from "../../shared/panelActions";
 import { AppField, AppPage, ColorButton } from "./appKit";
 import { qrSvg, type QrLevel } from "./qrSvg";
+import { rasterizeQrWithLogo, type QrLogo } from "./qrLogo";
 import "./QrApp.css";
 
 type Level = QrLevel;
@@ -47,6 +49,9 @@ export function QrApp() {
   const [fg, setFg] = useState("#0e1318");
   const [bg, setBg] = useState("#ffffff");
   const [level, setLevel] = useState<Level>("M");
+  const [logo, setLogo] = useState<QrLogo | undefined>();
+  const [logoError, setLogoError] = useState(false);
+  const [rendered, setRendered] = useState<string | null>(null);
 
   const payload = useMemo(() => {
     switch (kind) {
@@ -73,10 +78,47 @@ export function QrApp() {
   const contrast = contrastRatio(fg, bg);
   const inverted = contrastRatio(fg, "#ffffff") < contrastRatio(bg, "#ffffff");
 
-  const add = () => {
+  useEffect(() => {
+    let alive = true;
+    setRendered(null);
     if (!result.svg) return;
+    void rasterizeQrWithLogo(result.svg, logo)
+      .then((url) => {
+        if (alive) setRendered(url);
+      })
+      .catch(() => {
+        if (alive) setRendered(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [result.svg, logo]);
+
+  const chooseLogo = async (file: File | undefined) => {
+    if (!file) return;
+    if (!isAcceptedImage(file)) {
+      setLogo(undefined);
+      setLogoError(true);
+      return;
+    }
+    try {
+      const asset = await prepareAssetFromFile(file);
+      setLogo({ url: await blobToDataUrl(asset.blob), width: asset.width, height: asset.height });
+      setLogoError(false);
+    } catch {
+      setLogo(undefined);
+      setLogoError(true);
+    }
+  };
+
+  const add = () => {
+    if (!rendered) return;
     const size = Math.round(designMin() * 0.28);
-    getActions().addElement(createGraphic({ svg: result.svg, width: size, height: size, source: { kind: "qr" }, name: "QR code" }));
+    if (logo) {
+      getActions().addElement(createImage({ src: rendered, naturalWidth: size, naturalHeight: size, width: size, height: size, name: "QR code" }));
+    } else {
+      getActions().addElement(createGraphic({ svg: result.svg!, width: size, height: size, source: { kind: "qr" }, name: "QR code" }));
+    }
   };
 
   return (
@@ -84,14 +126,14 @@ export function QrApp() {
       title={m.panelsTabs.qr.title}
       subtitle={m.panelsTabs.qr.subtitle}
       footer={
-        <Button variant="primary" size="lg" block icon={<IconPlus />} disabled={!result.svg} onClick={add}>
+        <Button variant="primary" size="lg" block icon={<IconPlus />} disabled={!rendered} onClick={add}>
           {m.panelsTabs.shared.addToDesign}
         </Button>
       }
     >
       <div className="cf-qr__stage cf-app__stage">
         {result.svg ? (
-          <img className="cf-qr__img" src={svgToDataUrl(result.svg)} alt={m.panelsTabs.qr.alt(payload.length > 60 ? `${payload.slice(0, 60)}...` : payload)} />
+          <img className="cf-qr__img" src={rendered!} alt={m.panelsTabs.qr.alt(payload.length > 60 ? `${payload.slice(0, 60)}...` : payload)} />
         ) : (
           <div className="cf-qr__empty">{result.error ? m.panelsTabs.qr.tooMuch : m.panelsTabs.qr.empty}</div>
         )}
@@ -142,6 +184,16 @@ export function QrApp() {
             ) : null}
           </div>
         ) : null}
+
+        <AppField label={m.panelsTabs.qr.logo}>
+          <input type="file" accept="image/*,.svg" aria-label={m.panelsTabs.qr.logo} onChange={(e) => void chooseLogo(e.currentTarget.files?.[0])} />
+          {logo ? (
+            <Button variant="ghost" size="sm" onClick={() => setLogo(undefined)}>
+              {m.panelsTabs.qr.removeLogo}
+            </Button>
+          ) : null}
+        </AppField>
+        {logoError ? <p role="alert">{m.panelsTabs.qr.logoError}</p> : null}
 
         <div className="cf-app__row cf-qr__colors">
           <AppField label={m.panelsTabs.qr.squares}>

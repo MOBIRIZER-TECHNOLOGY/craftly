@@ -9,7 +9,8 @@
  *   emphasis   repeats every `duration` for as long as the page is shown
  */
 import { m } from "@/i18n";
-import type { AnimDirection, DesignElement, ElementAnimation, ElementAnimations, Page } from "./types";
+import { contrastRatio } from "./color";
+import type { AnimDirection, CaptionStyle, ClipCaption, DesignElement, ElementAnimation, ElementAnimations, Page, VideoElement } from "./types";
 
 export type AnimPhase = "in" | "out" | "loop";
 
@@ -21,9 +22,164 @@ export const MAX_ANIMATION_DELAY = 10;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** Seconds a page stays on screen when played or exported. */
-export const pageDuration = (page: Pick<Page, "duration">): number =>
-  clamp(Number.isFinite(page.duration) ? (page.duration as number) : DEFAULT_PAGE_DURATION, MIN_PAGE_DURATION, MAX_PAGE_DURATION);
+/**
+ * The longest a page can last by following its clip (a page timed by hand stops at MAX_PAGE_DURATION): ten minutes, as long as a
+ * video download can be.
+ */
+export const MAX_CLIP_PAGE_DURATION = 600;
+
+/** Seconds a clip takes to play once on its page: its trimmed part at its speed (never 0). */
+export const clipPlayingLength = (el: Pick<VideoElement, "trimStart" | "trimEnd" | "speed">): number => Math.max(0.05, el.trimEnd - el.trimStart) / (el.speed > 0 ? el.speed : 1);
+
+/** The latest a clip can start playing on its page, in seconds (as long as a page that follows its clip can last). */
+export const MAX_CLIP_START = 600;
+
+/** Seconds into its page at which a clip starts playing, 0 to MAX_CLIP_START (a value from outside that is not a number counts as 0). */
+export const clipStartAt = (el: Pick<VideoElement, "startAt">): number =>
+  typeof el.startAt === "number" && Number.isFinite(el.startAt) ? clamp(el.startAt, 0, MAX_CLIP_START) : 0;
+
+/** Seconds a clip has been playing when its page has been shown for `time` seconds (0 until it starts). */
+export const clipLocalTime = (el: Pick<VideoElement, "startAt">, time: number): number => Math.max(0, time - clipStartAt(el));
+
+/** At most this many caption lines on a clip, and this many letters in one. */
+export const MAX_CAPTIONS = 200;
+export const MAX_CAPTION_LENGTH = 300;
+
+/**
+ * A clip's caption lines as they can be shown: lines with a text, a start that is a number of at least 0 and an end after it, at most
+ * MAX_CAPTIONS of them, each cut to MAX_CAPTION_LENGTH letters, in the order they start. Anything else (from a file or a shared
+ * design) is left out.
+ */
+export function clipCaptions(el: Pick<VideoElement, "captions">): ClipCaption[] {
+  if (!Array.isArray(el.captions)) return [];
+  const out: ClipCaption[] = [];
+  for (const line of el.captions as unknown[]) {
+    if (out.length >= MAX_CAPTIONS) break;
+    if (typeof line !== "object" || line === null) continue;
+    const { start, end, text } = line as Record<string, unknown>;
+    if (typeof text !== "string" || !text.trim()) continue;
+    if (typeof start !== "number" || typeof end !== "number" || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) continue;
+    out.push({ start, end, text: text.trim().slice(0, MAX_CAPTION_LENGTH) });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+export const CAPTION_PLACES = ["bottom", "middle", "top"] as const;
+export const CAPTION_SIZES = ["s", "m", "l"] as const;
+export const CAPTION_FONTS = ["sans", "serif", "mono"] as const;
+export const CAPTION_BANDS = ["dark", "light", "none"] as const;
+
+/** The longest font name a caption style keeps. */
+export const MAX_CAPTION_FAMILY = 100;
+
+const oneOf = <T extends string>(list: readonly T[], v: unknown, fallback: T): T => (list.includes(v as T) ? (v as T) : fallback);
+
+/** How a clip's captions look, every part filled in; anything that is not one of the choices (from a file or a shared design) is the default. */
+export function clipCaptionStyle(el: Pick<VideoElement, "captionStyle">): Required<CaptionStyle> {
+  const s: Record<string, unknown> = typeof el.captionStyle === "object" && el.captionStyle !== null ? (el.captionStyle as Record<string, unknown>) : {};
+  return {
+    place: oneOf(CAPTION_PLACES, s.place, "bottom"),
+    size: oneOf(CAPTION_SIZES, s.size, "m"),
+    font: oneOf(CAPTION_FONTS, s.font, "sans"),
+    family: typeof s.family === "string" ? s.family.trim().slice(0, MAX_CAPTION_FAMILY) : "",
+    color: typeof s.color === "string" && /^#[0-9a-f]{6}$/i.test(s.color) ? s.color.toLowerCase() : "#ffffff",
+    band: oneOf(CAPTION_BANDS, s.band, "dark"),
+  };
+}
+
+/** True when words of `color` (a "#rrggbb") are outlined in dark to stand out, for captions with no band behind them. */
+export function captionOutlineIsDark(color: string): boolean {
+  return contrastRatio(color, "#000000") >= contrastRatio(color, "#ffffff");
+}
+
+/** The caption line showing `t` seconds into one play of a clip (the last one to start, when two overlap), or null. */
+export function captionAt(captions: readonly ClipCaption[], t: number): ClipCaption | null {
+  let found: ClipCaption | null = null;
+  for (const line of captions) if (line.start <= t && t < line.end) found = line;
+  return found;
+}
+
+/** The longest a clip's sound can take to fade in or out, in seconds. */
+export const MAX_CLIP_FADE = 5;
+
+const finiteOr = (v: unknown, fallback: number): number => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+
+/**
+ * Seconds into one play at which a clip that plays over and over begins its first play (VideoElement.loopFrom): 0 to just under one
+ * play; 0 for a clip that plays once, and for a value from outside that is not a number or lies outside one play.
+ */
+export function clipLoopFrom(el: Pick<VideoElement, "loopFrom" | "once" | "trimStart" | "trimEnd" | "speed">): number {
+  if (el.once) return 0;
+  const v = finiteOr(el.loopFrom, 0);
+  return v > 0 && v < clipPlayingLength(el) ? v : 0;
+}
+
+/** Seconds into its plays a clip is when its page has been shown for `time` seconds: its own time, from where its first play begins. */
+export const clipPlayTime = (el: Pick<VideoElement, "startAt" | "loopFrom" | "once" | "trimStart" | "trimEnd" | "speed">, time: number): number =>
+  clipLocalTime(el, time) + clipLoopFrom(el);
+
+/** How long a clip's first play lasts on its page: one play, less the part a loop carried on from a split page has already played. */
+export const clipFirstPlayLength = (el: Pick<VideoElement, "loopFrom" | "once" | "trimStart" | "trimEnd" | "speed">): number => clipPlayingLength(el) - clipLoopFrom(el);
+
+/** How loud a clip plays, 0 to 1 (a value from outside that is not a number counts as 1). */
+export const clipVolume = (el: Pick<VideoElement, "volume">): number => clamp(finiteOr(el.volume, 1), 0, 1);
+
+/**
+ * How long a clip's sound fades in and out, in seconds of the page, 0 to MAX_CLIP_FADE each; when the two add up to more than one
+ * play of the clip they are shortened alike, so that they meet instead of overlapping.
+ */
+export function clipFades(el: Pick<VideoElement, "fadeIn" | "fadeOut" | "trimStart" | "trimEnd" | "speed">): { fadeIn: number; fadeOut: number } {
+  let fadeIn = clamp(finiteOr(el.fadeIn, 0), 0, MAX_CLIP_FADE);
+  let fadeOut = clamp(finiteOr(el.fadeOut, 0), 0, MAX_CLIP_FADE);
+  const length = clipPlayingLength(el);
+  if (fadeIn + fadeOut > length) {
+    const k = length / (fadeIn + fadeOut);
+    fadeIn *= k;
+    fadeOut *= k;
+  }
+  return { fadeIn, fadeOut };
+}
+
+/**
+ * How loud a clip sounds `t` seconds into one play of it (0 <= t <= its playing length): its volume, times its fades. Present sets
+ * the <video>'s volume to this, and a video download shapes the clip's sound with it.
+ */
+export function clipGainAt(el: Pick<VideoElement, "volume" | "fadeIn" | "fadeOut" | "trimStart" | "trimEnd" | "speed">, t: number): number {
+  const volume = clipVolume(el);
+  if (volume === 0) return 0;
+  const { fadeIn, fadeOut } = clipFades(el);
+  const length = clipPlayingLength(el);
+  let g = 1;
+  if (fadeIn > 0 && t < fadeIn) g = Math.min(g, Math.max(0, t) / fadeIn);
+  if (fadeOut > 0 && t > length - fadeOut) g = Math.min(g, Math.max(0, length - t) / fadeOut);
+  return volume * g;
+}
+
+/**
+ * When the last clip on the page has played once, from the time it starts (groups looked into, hidden ones left out); null without
+ * a clip. A clip that runs on under the pages after its own (`runsOn`) is not counted.
+ */
+export function pageClipLength(page: { elements?: readonly DesignElement[] }): number | null {
+  let longest: number | null = null;
+  const visit = (el: DesignElement) => {
+    if (el.hidden) return;
+    // a clip that runs on under the pages after its own does not hold its page for its length: it goes on on the next one
+    if (el.type === "video" && !(typeof el.runsOn === "number" && el.runsOn >= 1)) longest = Math.max(longest ?? 0, clipStartAt(el) + clipFirstPlayLength(el));
+    else if (el.type === "group") el.children.forEach(visit);
+  };
+  page.elements?.forEach(visit);
+  return longest;
+}
+
+/**
+ * Seconds a page stays on screen when played or exported: the length set for it; without one, as long as its longest clip takes to
+ * play once (as Canva does: a page with an 11 s clip plays 11 s); and 5 s for a page with no clip.
+ */
+export const pageDuration = (page: Pick<Page, "duration"> & { elements?: readonly DesignElement[] }): number => {
+  if (Number.isFinite(page.duration)) return clamp(page.duration as number, MIN_PAGE_DURATION, MAX_PAGE_DURATION);
+  const clip = pageClipLength(page);
+  return clip === null ? DEFAULT_PAGE_DURATION : clamp(clip, MIN_PAGE_DURATION, MAX_CLIP_PAGE_DURATION);
+};
 
 /* ------------------------------------------------------------------ */
 /* easing                                                              */
@@ -308,8 +464,11 @@ export function evaluateAnimation(anim: ElementAnimations | null | undefined, t:
 /** True when the element has any animation at all. */
 export const isAnimated = (el: Pick<DesignElement, "animation">): boolean => !!el.animation && !!(el.animation.in || el.animation.out || el.animation.loop);
 
-/** True when some element on the page is animated. */
-export const pageHasAnimation = (page: Pick<Page, "elements">): boolean => page.elements.some(isAnimated);
+/** True when the element is a clip that plays, or a group with one (a hidden one plays nothing). */
+export const playsClip = (el: DesignElement): boolean => !el.hidden && (el.type === "video" || (el.type === "group" && el.children.some(playsClip)));
+
+/** True when some element on the page is animated, or is a clip, which plays for as long as the page is shown. */
+export const pageHasAnimation = (page: Pick<Page, "elements">): boolean => page.elements.some((el) => isAnimated(el) || playsClip(el));
 
 /* ------------------------------------------------------------------ */
 /* page animations: one preset for every element, staggered            */

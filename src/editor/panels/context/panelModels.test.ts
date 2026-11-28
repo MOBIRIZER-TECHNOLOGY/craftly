@@ -13,6 +13,7 @@ import {
   removeTableColumn,
   removeTableRow,
   setChartPaletteColor,
+  tableSize,
 } from "./dataEdit";
 import { resizeSingle } from "./boxEdit";
 import { sameColor } from "./colorTargets";
@@ -107,6 +108,133 @@ describe("table grid repair", () => {
       ["a", "b"],
       ["c", "d"],
     ]);
+  });
+
+  it("counts no rows and no columns in a table without cells", () => {
+    expect(tableSize({ cells: [] })).toEqual({ rows: 0, cols: 0 });
+    expect(tableSize({ cells: [["a", "b", "c"]] })).toEqual({ rows: 1, cols: 3 });
+  });
+});
+
+describe("merged cells and cell styles follow row and column edits", () => {
+  /** A 3 by 3 table, 300 by 300, with nothing merged or styled yet. */
+  const grid = () =>
+    createTable({
+      cells: [
+        ["a", "b", "c"],
+        ["d", "e", "f"],
+        ["g", "h", "i"],
+      ],
+      colWidths: [100, 100, 100],
+      rowHeights: [100, 100, 100],
+      width: 300,
+      height: 300,
+    });
+
+  it("moves the merges and styles at or under an inserted row down, and leaves those above it", () => {
+    const t = grid();
+    t.merges = [
+      { row: 0, col: 1, rowSpan: 1, colSpan: 2 },
+      { row: 1, col: 0, rowSpan: 2, colSpan: 2 },
+    ];
+    t.cellStyles = { "0:0": { bold: true }, "1:0": { fill: "#ff0000" }, "2:2": { align: "right" } };
+    addTableRow(t, 1);
+    expect(t.cells.map((row) => row[0])).toEqual(["a", "", "d", "g"]);
+    expect(t.merges).toEqual([
+      { row: 0, col: 1, rowSpan: 1, colSpan: 2 },
+      { row: 2, col: 0, rowSpan: 2, colSpan: 2 },
+    ]);
+    expect(t.cellStyles).toEqual({ "0:0": { bold: true }, "2:0": { fill: "#ff0000" }, "3:2": { align: "right" } });
+  });
+
+  it("moves the merges and styles at or right of an inserted column along, and leaves those left of it", () => {
+    const t = grid();
+    t.merges = [
+      { row: 0, col: 0, rowSpan: 2, colSpan: 1 },
+      { row: 1, col: 1, rowSpan: 1, colSpan: 2 },
+    ];
+    t.cellStyles = { "2:0": { bold: true }, "0:1": { color: "#00ff00" } };
+    addTableColumn(t, 1);
+    expect(t.cells[1]).toEqual(["d", "", "e", "f"]);
+    expect(t.merges).toEqual([
+      { row: 0, col: 0, rowSpan: 2, colSpan: 1 },
+      { row: 1, col: 2, rowSpan: 1, colSpan: 2 },
+    ]);
+    expect(t.cellStyles).toEqual({ "2:0": { bold: true }, "0:2": { color: "#00ff00" } });
+  });
+
+  it("drops the styles of a removed row, moves those under it up, and shrinks a merge that reached the last row", () => {
+    const t = grid();
+    t.merges = [
+      { row: 0, col: 0, rowSpan: 3, colSpan: 1 },
+      { row: 1, col: 1, rowSpan: 1, colSpan: 2 },
+    ];
+    t.cellStyles = { "0:0": { bold: true }, "1:1": { fill: "#ff0000" }, "2:2": { align: "center" } };
+    removeTableRow(t, 2);
+    expect(t.cells).toEqual([
+      ["a", "b", "c"],
+      ["d", "e", "f"],
+    ]);
+    // the tall merge ran to the end of the table, so it ends where the table now ends
+    expect(t.merges).toEqual([
+      { row: 0, col: 0, rowSpan: 2, colSpan: 1 },
+      { row: 1, col: 1, rowSpan: 1, colSpan: 2 },
+    ]);
+    expect(t.cellStyles).toEqual({ "0:0": { bold: true }, "1:1": { fill: "#ff0000" } });
+
+    const u = grid();
+    u.cellStyles = { "0:0": { bold: true }, "1:1": { fill: "#ff0000" }, "2:2": { align: "center" } };
+    removeTableRow(u, 0);
+    expect(u.cellStyles).toEqual({ "0:1": { fill: "#ff0000" }, "1:2": { align: "center" } });
+    expect(u.merges).toBeUndefined();
+  });
+
+  it("drops the styles of a removed column, moves those right of it back, and narrows a merge that reached the last column", () => {
+    const t = grid();
+    t.merges = [{ row: 2, col: 0, rowSpan: 1, colSpan: 3 }];
+    t.cellStyles = { "0:0": { bold: true }, "0:1": { fill: "#ff0000" }, "1:2": { align: "right" } };
+    removeTableColumn(t, 1);
+    expect(t.cells).toEqual([
+      ["a", "c"],
+      ["d", "f"],
+      ["g", "i"],
+    ]);
+    expect(t.merges).toEqual([{ row: 2, col: 0, rowSpan: 1, colSpan: 2 }]);
+    expect(t.cellStyles).toEqual({ "0:0": { bold: true }, "1:1": { align: "right" } });
+  });
+
+  it("throws away merges and style keys that point outside the grid, and the list of merges once it is empty", () => {
+    const t = grid();
+    t.merges = [
+      { row: -1, col: 0, rowSpan: 1, colSpan: 2 },
+      { row: 0, col: -1, rowSpan: 1, colSpan: 2 },
+      { row: 9, col: 0, rowSpan: 1, colSpan: 2 },
+      { row: 0, col: 9, rowSpan: 1, colSpan: 2 },
+      { row: 0, col: 0, rowSpan: 5, colSpan: 0 },
+    ];
+    t.cellStyles = { "-1:0": { bold: true }, "1:1": { bold: true } };
+    addTableRow(t);
+    // the one merge inside the grid is kept, its spans brought inside the grid too
+    expect(t.merges).toEqual([{ row: 0, col: 0, rowSpan: 4, colSpan: 1 }]);
+    expect(t.cellStyles).toEqual({ "1:1": { bold: true } });
+
+    const u = grid();
+    u.merges = [{ row: 7, col: 7, rowSpan: 1, colSpan: 1 }];
+    addTableColumn(u);
+    expect(u).not.toHaveProperty("merges");
+    // an empty list is not kept either
+    const v = grid();
+    v.merges = [];
+    addTableRow(v);
+    expect(v).not.toHaveProperty("merges");
+  });
+
+  it("keeps no merges when a column is added to a table without cells", () => {
+    const t = createTable({ cells: [], width: 300, height: 300 });
+    t.merges = [{ row: 0, col: 0, rowSpan: 1, colSpan: 1 }];
+    addTableColumn(t);
+    expect(t.cells).toEqual([]);
+    expect(t).not.toHaveProperty("merges");
   });
 });
 

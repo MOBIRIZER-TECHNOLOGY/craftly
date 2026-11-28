@@ -22,10 +22,17 @@ import { withWebmDuration } from "./webm";
 export interface RecorderEnv {
   MediaRecorder?: { isTypeSupported?: (type: string) => boolean };
   HTMLCanvasElement?: { prototype?: { captureStream?: unknown } };
+  VideoEncoder?: unknown;
+  VideoFrame?: unknown;
 }
 
 export interface VideoSupport {
   ok: boolean;
+  /**
+   * The browser has WebCodecs: a video is made frame by frame, with sound, as an MP4 (encode.ts). Without it the playback is
+   * recorded as it plays, silent (below).
+   */
+  offline: boolean;
   /** the first container / codec combination the browser can record */
   mimeType: string | null;
   /** a sentence for the person when it is not possible, null when it is */
@@ -43,18 +50,29 @@ export const videoContainer = (mimeType: string | null): "mp4" | "webm" => (mime
 
 const NO_RECORDER = m.exporting.animation.noRecorder;
 
+/** True when this browser has the encoders a video made frame by frame needs (WebCodecs; see encode.ts). */
+export function canEncodeFrames(env: Pick<RecorderEnv, "VideoEncoder" | "VideoFrame"> = globalThis as unknown as RecorderEnv): boolean {
+  return typeof env.VideoEncoder === "function" && typeof env.VideoFrame === "function";
+}
+
 export function detectVideoSupport(env: RecorderEnv = globalThis as unknown as RecorderEnv): VideoSupport {
+  const recording = detectRecorder(env);
+  if (canEncodeFrames(env)) return { ...recording, ok: true, offline: true, reason: null };
+  return recording;
+}
+
+function detectRecorder(env: RecorderEnv): VideoSupport {
   const recorder = env.MediaRecorder;
-  if (!recorder || typeof recorder.isTypeSupported !== "function") return { ok: false, mimeType: null, reason: NO_RECORDER };
-  if (typeof env.HTMLCanvasElement?.prototype?.captureStream !== "function") return { ok: false, mimeType: null, reason: NO_RECORDER };
+  if (!recorder || typeof recorder.isTypeSupported !== "function") return { ok: false, offline: false, mimeType: null, reason: NO_RECORDER };
+  if (typeof env.HTMLCanvasElement?.prototype?.captureStream !== "function") return { ok: false, offline: false, mimeType: null, reason: NO_RECORDER };
   for (const type of VIDEO_MIME_TYPES) {
     try {
-      if (recorder.isTypeSupported(type)) return { ok: true, mimeType: type, reason: null };
+      if (recorder.isTypeSupported(type)) return { ok: true, offline: false, mimeType: type, reason: null };
     } catch {
       /* try the next one */
     }
   }
-  return { ok: false, mimeType: null, reason: m.exporting.animation.noWebm };
+  return { ok: false, offline: false, mimeType: null, reason: m.exporting.animation.noWebm };
 }
 
 /* ------------------------------------------------------------------ */
