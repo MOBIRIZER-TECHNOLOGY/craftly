@@ -126,16 +126,19 @@ describe("the work a batch may take", () => {
   it("refuses a batch that moves the last element back and forth until it would take seconds, and changes nothing", () => {
     const design = big();
     const ops: Op[] = Array.from({ length: 2000 }, (_, i) => ({ k: "el.move", page: "p", id: `e${N - 1}`, parent: null, index: i % 2 ? 0 : N }));
-    const t = performance.now();
-    expect(() => applyOps(design, ops, { work: 20_000_000 })).toThrow(TooMuchWork);
-    const stopped = performance.now() - t;
+    const limited = { work: 20_000_000, used: 0 };
+    expect(() => applyOps(design, ops, limited)).toThrow(TooMuchWork);
     expect(design.pages[0].elements[N - 1].id).toBe(`e${N - 1}`);
-    // it stopped at the limit, long before the whole batch would have finished (measured on the same machine, so that a slow
-    // one, such as CI's with coverage, is weighed against itself)
-    const w = performance.now();
-    applyOps(big(), ops);
-    expect(stopped).toBeLessThan((performance.now() - w) / 2);
-  }, 30_000);
+    // it stopped at the limit, not after it: within one move's work of it
+    expect(limited.used).toBeGreaterThan(20_000_000);
+    expect(limited.used).toBeLessThan(20_000_000 + 2 * N);
+    // long before the whole batch would have finished: a quarter of it, with no limit, is already more than twice the work.
+    // Counted in work, not timed: CI's machine with coverage is about 16 times slower than a laptop, and timing the whole batch
+    // there took longer than the test may run.
+    const quarter = { used: 0 };
+    applyOps(big(), ops.slice(0, ops.length / 4), quarter);
+    expect(quarter.used).toBeGreaterThan(2 * 20_000_000);
+  });
 
   it("refuses 2,000 additions at the front of that page the same way", () => {
     const design = big();
